@@ -70,6 +70,16 @@ a parameter-free mapped PLE embedding. Tests pass for:
 - exact mapped FP8+E8M0 embedding gathers against the Transformers lookup on
   CPU and both RTX GPUs, including chunking, repeats, and empty inputs;
 - mapping lifetime, explicit prefetch/release, owned rows, and bounds.
+- five-layer explicit replay with owned CPU boundaries, carrying both mHC
+  pre-mix and CSA2 shared state, matching full-forward logits exactly and
+  reproducing each layer when replayed twice from the same input state.
+
+`gptqmodel.utils.v41_replay.V41ReplayBatch` now implements that replay contract
+for full-prompt text batches. It drops consumed PLE gathers at their layer.
+Durable serialization, source-layer loading, dSpark replay and integration
+with the quantizer's layer loop still remain to be implemented and tested.
+TileLang 0.1.14 was built in the development container for direct checkpoint
+reference tests; the production dependency lock is still pending.
 
 These are component gates, not full official-reference backbone parity or
 quantization qualification. The checkpoint's `inference/model.py` remains the

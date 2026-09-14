@@ -10,6 +10,7 @@ import torch
 from transformers import DeepseekV41ForCausalLM, DeepseekV41TextConfig
 from transformers.models.deepseek_v41.modeling_deepseek_v41 import DeepseekV41EngramEmbedding
 from gptqmodel.models.definitions.deepseek_v41 import DeepSeekV41Expert, DeepSeekV41MappedEmbedding, DeepSeekV41QModel
+from gptqmodel.utils.v41_replay import V41ReplayBatch
 
 
 def tiny_config():
@@ -28,6 +29,28 @@ def tiny_config():
 
 
 class V41PrimitivesTest(unittest.TestCase):
+    @torch.no_grad()
+    def test_layer_replay_preserves_shared_state_and_mhc(self):
+        torch.manual_seed(789)
+        model = DeepseekV41ForCausalLM(tiny_config()).eval()
+        DeepSeekV41QModel.convert_model_structure(model)
+        ids = torch.randint(0, 128, (2, 33))
+        reference = model(ids, use_cache=False).logits
+        state = V41ReplayBatch.prepare(model, ids)
+        for layer in model.model.layers:
+            first = state.advance(layer, "cpu")
+            second = state.advance(layer, "cpu")
+            torch.testing.assert_close(first.hidden, second.hidden, rtol=0, atol=0)
+            torch.testing.assert_close(first.pre_mix, second.pre_mix, rtol=0, atol=0)
+            state = first
+        hidden = model.model.layers[-1].hc_collapse(state.hidden, state.pre_mix)
+        result = model.lm_head(model.model.norm(hidden))
+        torch.testing.assert_close(result, reference, rtol=0, atol=0)
+        self.assertEqual(state.next_layer, 5)
+        self.assertTrue({"compress_kv", "index_k", "candidates", "topk_idx"} <= state.shared.keys())
+        with self.assertRaises(ValueError):
+            state.advance(model.model.layers[0], "cpu")
+
     @torch.no_grad()
     def test_expert_against_checkpoint_reference(self):
         # Execute the original definitions unchanged; unrelated TileLang attention
