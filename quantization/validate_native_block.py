@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 import sys
+from contextlib import nullcontext
 
 import torch
 from transformers import DeepseekV41Config
@@ -13,7 +14,7 @@ from gptqmodel.utils.v41_replay import V41ReplayBatch, owned_tree
 
 
 @torch.inference_mode()
-def validate(snapshot, device, layer_index=0, lengths=(32, 129), frontier=None):
+def validate(snapshot, device, layer_index=0, lengths=(32, 129), frontier=None, capture_experts=None):
     sys.path.insert(0, str(snapshot / "inference"))
     import model as reference
     import kernel
@@ -140,13 +141,26 @@ def validate(snapshot, device, layer_index=0, lengths=(32, 129), frontier=None):
                 owned_tree(dict(position_embeddings=pos_emb, position_ids=positions,
                                 attention_mask=mask, padding_mask=None, past_key_values=None), "cpu"),
                 {} if rows is None else {layer_index: owned_tree(rows, "cpu")})
-            outgoing = state.advance(block, device)
+            from gptqmodel.utils.v41_capture import V41Capture
+            capture_state = (V41Capture(block, capture_experts, device=device)
+                             if capture_experts else None)
+            with capture_state if capture_state is not None else nullcontext():
+                outgoing = state.advance(block, device)
             actual, actual_pre = outgoing.hidden.to(device), outgoing.pre_mix.to(device)
             candidate_shared = owned_tree(outgoing.shared, device)
             report = {"layer": layer_index, "length": length,
                       "hidden_max_abs": (actual.float() - expected.float()).abs().max().item(),
                       "hidden_relative_l2": ((actual.float() - expected.float()).norm() / expected.float().norm()).item(),
                       "pre_max_abs": (actual_pre - expected_pre).abs().max().item()}
+            if capture_state is not None:
+                report["captured_experts"] = {}
+                for expert in capture_experts:
+                    for projection in ("w1", "w3", "w2"):
+                        hessian, evidence = capture_state.projection(expert, projection)
+                        if not torch.isfinite(hessian["H"]).all():
+                            raise AssertionError("nonfinite captured Hessian")
+                        report["captured_experts"][f"{expert}.{projection}"] = evidence
+                del capture_state
             if original.attn.compress_ratio:
                 count = length // original.attn.compress_ratio
                 for name in ("compress_kv", "index_k"):
@@ -189,13 +203,19 @@ if __name__ == "__main__":
     parser.add_argument("--through-layer", type=int,
                         help="validate consecutive blocks with owned CPU replay boundaries")
     parser.add_argument("--lengths", type=int, nargs="+", default=[32, 129])
+    parser.add_argument("--capture-experts", type=int, nargs="+")
     arguments = parser.parse_args()
+    if arguments.capture_experts:
+        # Process startup, before reference or candidate execution; never toggle
+        # global matmul precision inside concurrent capture workers.
+        torch.backends.cuda.matmul.allow_tf32 = False
     last = arguments.layer if arguments.through_layer is None else arguments.through_layer
     if last < arguments.layer:
         parser.error("--through-layer must be at least --layer")
     frontier = {}
     for layer in range(arguments.layer, last + 1):
-        validate(arguments.snapshot.resolve(), arguments.device, layer, arguments.lengths, frontier)
+        validate(arguments.snapshot.resolve(), arguments.device, layer, arguments.lengths, frontier,
+                 arguments.capture_experts)
         # Hooks create cycles in the diagnostic model; free them between blocks.
         import gc
         gc.collect()

@@ -446,3 +446,36 @@ process RSS was 2,714,356 KiB. Evidence: `reports/native-main-draft-smoke.log`.
 These are short-input native-source smoke figures, not production memory bounds,
 full-reference end-to-end parity, calibrated quality or a quantization ETA.
 No production quantization has started.
+
+### Bounded natural-route Hessian capture
+
+`gptqmodel.utils.v41_capture.V41Capture` captures selected experts only, sharing
+one gate/up Hessian and a separate down Hessian per expert. It stores raw FP32
+X.T@X sums with explicit row counts, chunked input conversions, and deterministic
+CPU natural-route counts and gate-squared mass. Forward routing is never changed.
+Down inputs include the model's activation/clamping and pre-down route weighting.
+Capture hooks are removed on exit; failed captures cannot export partial evidence.
+Zero-row experts retain explicit zero sums/counts, not fabricated calibration.
+Low-coverage augmentation and normalization are separate pending integration.
+
+Capture requires TF32 disabled at process startup before concurrent workers;
+the initial development GPU probe correctly refused its enabled default. The
+failure is retained in `reports/native-capture-parity.log`. With explicit FP32
+startup, `reports/native-capture-parity-fp32.log` shows real block-0 output and
+carry still exactly equal to the checkpoint at 129 tokens while four experts'
+Hessians are captured, including one naturally zero-row expert. All seventeen
+component tests pass, covering raw sums, shared gate/up input, route-weighted
+down input, natural mass fractions, zero rows and hook cleanup.
+
+`quantization/probe_exl3.py` is a diagnostic bridge from native MoE capture to the
+actual K3 MCG trellis quantizer. It uses synthetic inputs and must never supply
+production candidates or quality evidence. The production corpus loop, cold-route
+policy, distributed scheduler and detached launcher remain unfinished.
+
+The projection bridge probe succeeded (`reports/exl3-projection-probe.log`):
+`layers.0.ffn.experts.3.w1.weight`, 16 naturally routed synthetic rows, physical
+K3 MCG trellis shape [320,144,48] INT16 with FP16 suh/svh and MCG marker. Returned
+reconstruction is finite, proxy error 0.0005012495. Search-call wall time was
+16.06 seconds including ~15 seconds compiling the fork's EXL3 extension. No
+production candidate was retained. This proves the capture/search API bridge,
+not full-corpus quality, packed runtime replay correctness or throughput/ETA.
