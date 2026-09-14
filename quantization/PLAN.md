@@ -1502,3 +1502,20 @@ root at `attempts/20a7062c30244474aead819b422f57af.log`. Launch is not evidence 
 committed layers or completion; inspect runtime events and Docker state for
 current progress. Stay on close monitoring until several blocks commit safely
 and memory stabilizes, then use the requested 30-minute cadence with ETA.
+
+### Production stopped for serializer memory retention
+
+At the user's direction, the coordinator was stopped at 2026-09-14 13:45:37 UTC
+to fix memory retention before it can hide other problems. Docker confirms
+`exited`, exit 143, OOM false. All 1,441 input records emitted commit events before
+the stop; preserve this recovery data and all logs. No completed quantized layers
+have been reported. Do not restart automatically.
+
+Host RSS grew to about 96.7 GiB during input creation. A focused diagnostic with
+the serializer's writer replaced by a plain function and garbage collection
+disabled found all eight copied tensor snapshots alive after return, then zero
+after explicit collection. The recursive encoder closure retains its tensor
+dictionary until collection. An earlier mock-based diagnostic also retained
+mock call arguments and was invalid for isolating the cause; the plain-function
+diagnostic removes that confound. Fix deterministic release, test with collection
+disabled, and review other serialization closures before explicit recovery.
