@@ -1219,3 +1219,52 @@ development runtime at that source identity, not a claim that the final immutabl
 coordinator image already exists. Full runtime/launch integration remains pending;
 production quantization has not started. All 52 component tests pass again in
 `reports/component-tests-distributed-integration.log`.
+
+### Coordinator image recipe
+
+`docker/Dockerfile.quant-coordinator` now derives from the inspected immutable
+coordinator base `sha256:6213ea40c79617373562d7f2d3cc5fa25ca9d03e27dd213361b216c3e315e9f4`.
+Before building, bind the local tag `ds41rt-quant-coordinator-base:6213ea40c796`
+to that exact image ID. `coordinator-overlay.lock` pins the six additions/changes
+against that base (TileLang, TVM FFI, Tokenizers, cloudpickle, ml-dtypes, z3-solver),
+installed with `--no-deps` to preserve the remaining tested environment. The
+vendored Transformers source is installed with matching 5.18.0.dev0 distribution
+metadata, replacing the development runtime's stale installed 5.14.1 metadata.
+The fork and quantization scripts are copied into the image, with no workspace
+bind mount required to execute them. TF32 override is off; the CUDA target is
+SM120 and the quantization/export stage is the entry point.
+
+Build/import success is not GPU or full workflow qualification. The image still
+needs its own component tests and six-device/integration checks before a
+production manifest is pinned. The recipe packages the existing quantization
+and weight-export stage, not yet deployment, full validation, upload/cache and
+the final one-shot launcher.
+
+The coordinator build completed and the final bundled-code layout is available
+as image ID
+`sha256:bc6237fda65dbd570985bd8b8d8325a18b52a96fcad88140632f49ff53413ee2`
+(`ds41rt-quant-coordinator:integration-v1`). Evidence:
+`reports/coordinator-image-build-final.log`. Its build-time imports verify
+Transformers 5.18.0.dev0 code/distribution agreement and the bundled GPTQModel
+path. `uv pip check` reports all 98 installed packages compatible. All 52
+component tests pass without a workspace mount
+(`reports/coordinator-image-component-tests.log`).
+
+The same immutable image passes the live six-device diagnostic, ten cases and
+two waves, exact serial RTX comparison and durable assignment reload, in 40.86s
+including its cold EXL3 extension build
+(`reports/coordinator-image-distributed-qualification.log`). The report's generic
+`development-container-distributed-search-diagnostic` scope label comes from the
+existing probe; the inspected container image ID above and absence of workspace
+mounts identify this execution as the frozen-image check. The search code digest
+remains `9f2f4a55c86febb5944de166a2fe8eb2ca988949c9a99f22a293df41a1496610`.
+
+The image also passes the real-weight two-RTX activation and mixed-weight replica
+probe, including all 384 selected projections and completed-wavefront reload
+(`reports/coordinator-image-activation-qualification.log`). Natural routed/output
+and mixed outputs match serial execution exactly on four diagnostic batches.
+TileLang emitted a ThreadSync barrier-hoisting warning while compiling the native
+kernel; preserve this warning for review rather than implying this small numerical
+probe proves absence of all possible kernel races. Both qualification containers
+exited 0 and are retained for inspection. The persistent JIT volume is
+`ds41rt-quant-coordinator-jit`. These are diagnostics, not production quantization.

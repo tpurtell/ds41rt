@@ -54,3 +54,25 @@ Release artifacts identify the same engine revision, verified SparkInfer and
 XGrammar source, native architecture and checkpoint revision across all five
 hosts. The [clean build/run report](../docs/release-v1-build-run.md) records the
 qualified workflow and artifact hashes.
+
+## Quantization coordinator image
+
+Quantization is separate from the serving images above. Its authoritative state,
+qualification evidence and recovery policy are in [the quantization plan](../quantization/PLAN.md).
+Build the bundled-code coordinator from its pinned local base:
+
+```bash
+docker tag sha256:6213ea40c79617373562d7f2d3cc5fa25ca9d03e27dd213361b216c3e315e9f4 ds41rt-quant-coordinator-base:6213ea40c796
+docker build -f docker/Dockerfile.quant-coordinator -t ds41rt-quant-coordinator:integration-v1 .
+```
+
+The base must already be available; do not substitute an unrelated tag. The
+overlay dependencies are pinned in `quantization/coordinator-overlay.lock`.
+The image installs the vendored V4.1 Transformers version, includes our GPTQModel
+fork and scripts, and requires no workspace mount. Model weights stay outside it.
+Use the inspected image ID, not the mutable build tag, for qualification and runs.
+
+Its entry point accepts a runtime manifest and optional `--resume`, and runs the
+quantization/weight-export stage. It is **not yet the complete one-shot workflow**:
+deployment, complete export validation, upload and HF-cache finalization are still
+being integrated. Do not treat the stage's terminal status as a completed model.

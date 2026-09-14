@@ -1,0 +1,20 @@
+# Bind the build tag to the inspected base image ID before building.
+# This packages the quantization/export stage; the end-to-end launcher is separate.
+ARG BASE_IMAGE=ds41rt-quant-coordinator-base:6213ea40c796
+FROM ${BASE_IMAGE}
+ENV TORCH_ALLOW_TF32_CUBLAS_OVERRIDE=0
+ENV TORCH_CUDA_ARCH_LIST=12.0
+ENV PYTHONUNBUFFERED=1
+ENV MAX_JOBS=8
+COPY quantization/coordinator-overlay.lock /opt/ds41rt/coordinator-overlay.lock
+RUN uv pip install --python /opt/glmrt/quant-venv/bin/python --no-deps -r /opt/ds41rt/coordinator-overlay.lock
+# Install the pinned V4.1 Transformers source, including correct version metadata.
+COPY third_party/transformers /opt/ds41rt/transformers
+RUN uv pip install --python /opt/glmrt/quant-venv/bin/python --no-deps --no-build-isolation /opt/ds41rt/transformers
+COPY third_party/gptqmodel/gptqmodel /opt/ds41rt/third_party/gptqmodel/gptqmodel
+COPY third_party/gptqmodel/gptqmodel_ext /opt/ds41rt/third_party/gptqmodel/gptqmodel_ext
+COPY quantization /opt/ds41rt/quantization
+ENV PYTHONPATH=/opt/ds41rt/third_party/gptqmodel:/opt/ds41rt/quantization
+WORKDIR /opt/ds41rt/quantization
+RUN /opt/glmrt/quant-venv/bin/python -c "import importlib.metadata as m; import transformers, gptqmodel, tilelang; from gptqmodel.utils.v41_source import V41Source; from run_quantization import run; assert m.version('transformers') == transformers.__version__ == '5.18.0.dev0'; assert gptqmodel.__file__.startswith('/opt/ds41rt/'); print('coordinator imports passed')"
+ENTRYPOINT ["/usr/bin/tini", "--", "/opt/glmrt/quant-venv/bin/python", "/opt/ds41rt/quantization/run_quantization.py"]
