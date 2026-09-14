@@ -1671,3 +1671,23 @@ identity and left untouched; new searches use
 Unfinished searches can be recomputed in the new epoch rather than falsely
 claiming execution under the old coordinator image. No source-weight rehash,
 activation regeneration, or deletion of old recovery payloads is involved.
+
+### Continuous-search production launch — 2026-09-14
+
+Implementation commit `e687fd8` was pushed to main. The exact launch image
+`sha256:bdd15949d70120fa42e4f9188da727f288ca0617e58b04f4ec97fdc5aa6f88f9`
+passed all 78 component tests (`reports/continuous-image-tests.log`), including
+new recovery-epoch preservation/rejection tests. Its coordinator preflight is
+`bbe6db704094d63e5f933d4ebef34a9954b0f6d6c60a501a10cedc69049f9c96`.
+The already-running warm probe finished successfully: 64 exact projections in
+29.59 seconds continuous, 36.24 RTX-only, and 68.43 fixed windows. No further
+performance probes were launched after the user's direction to prioritize
+starting.
+
+The detached `--resume` launch uses run-local
+`production-continuous-manifest.json`. Attempt `175fe546bf71472fa12d79e5d64980ad`
+is container `e3860a0a92da54bb5555e759ce2f363786ed64ad9ff091d16d53947085c10e62`
+(`ds41rt-quant-175fe546bf71472fa12d79e5d64980ad`). Its full log is
+`attempts/175fe546bf71472fa12d79e5d64980ad.log`. Initial Docker inspection shows
+running, OOM false. This launch record alone does not establish successful
+recovery or stable layer throughput/memory; inspect subsequent durable events.
