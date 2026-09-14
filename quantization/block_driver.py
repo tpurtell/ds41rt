@@ -5,6 +5,7 @@ It stops on failure; calling it again is an explicit, identity-checked recovery.
 It does not create corpus frontiers, propagate outputs, export, or launch workers.
 """
 import gc
+from concurrent.futures import ThreadPoolExecutor
 
 import torch
 
@@ -67,6 +68,40 @@ class BlockDriver:
             self.progress(dict(event="candidate_committed", key=key, bits=bits))
         return key, result
 
+    def _candidates(self, jobs):
+        """Bound search concurrency; SQLite and candidate publication stay local.
+
+        A search backend must explicitly advertise safe concurrency. Windows
+        bound outstanding Hessians/results even when an early worker is slow.
+        Exceptions stop new dispatch; completed but unpublished work is orphaned
+        and may be recovered from the remote worker's own request checkpoint.
+        """
+        workers = getattr(self.search, "max_workers", 1)
+        if type(workers) is not int or not 1 <= workers <= 16:
+            raise ValueError("invalid search backend concurrency")
+        if workers == 1:
+            for job in jobs:
+                self._candidate(*job)
+            return
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            for offset in range(0, len(jobs), workers):
+                pending = []
+                for prefix, expert, projection, bits, hessian_key, source_prefix in jobs[offset:offset + workers]:
+                    key = f"{prefix}/expert-{expert:03d}/{projection}-k{bits}"
+                    if self._load(key, "projection") is not None:
+                        continue
+                    captured = self._load(hessian_key, "hessian")
+                    future = pool.submit(self.search,
+                                         f"{source_prefix}.ffn.experts.{expert}.{projection}",
+                                         captured["hessian"], bits)
+                    pending.append((key, bits, hessian_key, captured["evidence"], future))
+                for key, bits, hessian_key, evidence, future in pending:
+                    packed, metrics = future.result()
+                    result = dict(packed=packed, quantizer_metrics=metrics, route_evidence=evidence)
+                    projection_score(result)
+                    self._publish(key, "projection", result, (hessian_key,))
+                    self.progress(dict(event="candidate_committed", key=key, bits=bits))
+
     def run(self, block, namespace, layer, routed_keys, *, routed_provenance):
         source_namespace, layers, experts = NAMESPACES[namespace]
         if (block.layer_idx != layer or not 0 <= layer < layers
@@ -117,10 +152,9 @@ class BlockDriver:
                     del capture, recovery, batch, hessian
                     gc.collect()
                     self.progress(dict(event="capture_committed", phase=phase, experts=missing))
-                for expert in subset:
-                    hessian_key = f"{prefix}/expert-{expert:03d}/hessian"
-                    for projection in projections:
-                        self._candidate(prefix, expert, projection, 3, hessian_key, source_prefix)
+                self._candidates([(prefix, expert, projection, 3,
+                                   f"{prefix}/expert-{expert:03d}/hessian", source_prefix)
+                                  for expert in subset for projection in projections])
             # Choose K4 by K3 risk within each projection quota. Tie-break by
             # numeric expert index, frozen as part of this driver's contract.
             tier_key = prefix + "/tiers"
@@ -137,6 +171,10 @@ class BlockDriver:
                     upgrades[projection] = tuple(expert for _, expert in scores[:layer_quotas(namespace, layer)[projection]])
                 tier = dict(upgrades=upgrades)
                 self._publish(tier_key, "tiers", tier, tuple(candidate_keys))
+            self._candidates([(prefix, expert, projection, 4,
+                               f"{prefix}/expert-{expert:03d}/hessian", source_prefix)
+                              for expert in range(experts) for projection in projections
+                              if expert in tier["upgrades"][projection]])
             selected = []
             for expert in range(experts):
                 for projection in projections:

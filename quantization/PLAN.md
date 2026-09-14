@@ -674,3 +674,39 @@ records, verifies completed reload performs no preparation, and rejects reordere
 inventory. The full component suite now has 27 passing tests in
 `reports/component-tests-corpus-inputs.log`. The test uses lightweight adapters;
 two-RTX integration of this new corpus coordinator remains to be exercised.
+
+### Bounded distributed-search integration
+
+The fork's existing `exl3_remote` implementation was inspected directly. It
+already provides authenticated tensor envelopes, immutable slot assignments,
+worker qualification, bounded two-request Spark staging, and worker-side
+projection checkpoints. We reuse that protocol rather than build a second one.
+`quantization/distributed_search.py` adapts our V4.1 weight/Hessian search calls:
+two qualified coordinator slots plus four Spark endpoints are required, as is
+a durable assignment store. Assignment identity includes run, projection and
+K3/K4 tier. Remote requests bind decoded weights, raw recovered Hessians/count,
+quantizer numerical contracts, run identity and execution identity. Results
+retain execution/assignment evidence, and leases release on every exit path.
+Only weights and Hessians are sent to Sparks; activation generation stays RTX-only.
+
+`BlockDriver` now accepts explicitly concurrency-capable search backends, with
+bounded windows (ten requests for this topology). Search runs in worker threads;
+all journal loads/publications remain on the coordinator thread. K3 and K4
+search batches finish before selected-weight installation and the next capture
+phase. Serial search remains the default. This changes the driver code identity:
+the old synthetic mtp0 diagnostic must not be silently resumed under this code.
+Its successful completed-phase reload evidence above used the original identity.
+
+All 29 component tests pass (`reports/component-tests-dispatch.log`). New tests
+exercise simultaneous searches, journal-thread ownership, no repeat of committed
+candidates, remote request validation, tier-distinct assignment IDs and lease
+release after a network exception. Remote transport/search is mocked in that
+test; no six-device numerical qualification is claimed. CPU decoding for remote
+transfer exactly matches RTX decoding for all three real expert-0 projections
+in main block 0 and mtp block 0 (`reports/remote-source-decode-parity.log`).
+
+Read-only SSH checks confirm all four hosts (`ostrich,dodo,emu,kiwi`) are reachable,
+each exposes a GB10, and none had a running Docker container at this check.
+Worker image/preflight reconstruction, actual remote numerical qualification,
+deployment and end-to-end one-shot orchestration remain required. No production
+quantization job has been launched.

@@ -2,6 +2,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+import threading
 from unittest.mock import patch
 
 import torch
@@ -17,6 +18,32 @@ from test_v41_primitives import tiny_config
 
 
 class BlockDriverTest(unittest.TestCase):
+    def test_concurrent_candidates_keep_journal_on_coordinator(self):
+        with tempfile.TemporaryDirectory() as directory:
+            journal = RunStore(directory, {"test": "concurrent"})
+            self.addCleanup(journal.close)
+            barrier = threading.Barrier(2)
+            threads = []
+            def search(name, hessian, bits):
+                threads.append(threading.get_ident())
+                barrier.wait(timeout=10)
+                return {"bits": torch.tensor(bits)}, {"hessian_weighted_relative_error": 1.0}
+            search.max_workers = 2
+            driver = BlockDriver(None, journal, {"test": "concurrent"}, device="cpu", search=search)
+            jobs = []
+            for expert in range(2):
+                key = f"phase/expert-{expert:03d}/hessian"
+                driver._publish(key, "hessian", dict(hessian={"H": torch.eye(2), "count": 2},
+                    evidence={"expert_gate_squared_mass_fraction": 1.0}), ())
+                jobs.append(("phase", expert, "w1", 3, key, "layers.0"))
+            driver._candidates(jobs)
+            self.assertEqual(len(set(threads)), 2)
+            self.assertNotIn(threading.get_ident(), threads)
+            self.assertIsNotNone(journal.get("phase/expert-000/w1-k3"))
+            self.assertIsNotNone(journal.get("phase/expert-001/w1-k3"))
+            driver._candidates(jobs)
+            self.assertEqual(len(threads), 2)
+
     @torch.no_grad()
     def test_interrupted_search_resumes_and_orders_phases(self):
         torch.manual_seed(73)
