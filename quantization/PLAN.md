@@ -479,3 +479,30 @@ reconstruction is finite, proxy error 0.0005012495. Search-call wall time was
 16.06 seconds including ~15 seconds compiling the fork's EXL3 extension. No
 production candidate was retained. This proves the capture/search API bridge,
 not full-corpus quality, packed runtime replay correctness or throughput/ETA.
+
+### Selected packed-weight replay
+
+`v41_mixed_replay.install_projection` replaces only routed w1/w3/w2 linears,
+validates K3/K4 MCG packed geometry and finite scales, and reconstructs BF16
+weights from trellis/suh/svh via the fork's existing reconstruction helper.
+The search function's raw `weight_q` must not be used for propagation: its
+higher-precision scale/reconstruction path is not the serialized artifact.
+This follows the fork's BF16 dense propagation contract, not a claim of exact
+equivalence to every fused serving GEMM kernel. Packed payloads remain the
+export artifact; the dense replay copy is only block-local working storage.
+
+`reports/exl3-packed-replay-probe.log` records actual K3 capture/search, safetensors
+save/load, installation and two identical finite mixed-MoE forwards. The raw
+search weight differs from packed BF16 by up to 0.0006238967, confirming the need
+for the explicit reconstruction boundary. Post-compilation probe duration was
+1.39 seconds, but this sparse synthetic calibration is not production timing or
+quality evidence. All nineteen component tests pass, including invalid packed
+payload rejection without modifying the source module.
+
+The equivalent K4 probe on RTX 1 also passed, including serialization and
+repeatable mixed-MoE execution (`reports/exl3-k4-packed-replay-probe.log`), with
+physical trellis shape [320,144,64]. Both tiers therefore cross the tested
+capture/search/serialization/reconstruction boundary. Full selected-block
+capture ordering, corpus execution, low-coverage handling and production
+orchestration remain unfinished; these single-projection probes do not replace
+those gates.

@@ -9,16 +9,19 @@ import json
 from pathlib import Path
 import sys
 import time
+import tempfile
 
 import torch
 
 from gptqmodel.utils.v41_capture import V41Capture
 from gptqmodel.utils.v41_source import V41Source
 from gptqmodel.exllamav3.modules.quant.exl3_lib.quantize import quantize_exl3
+from gptqmodel.utils.v41_mixed_replay import install_projection
+from safetensors.torch import save_file, load_file
 
 
 @torch.inference_mode()
-def run(snapshot, device):
+def run(snapshot, device, bits=3):
     torch.backends.cuda.matmul.allow_tf32 = False
     sys.path.insert(0, str(snapshot / "inference"))
     import kernel
@@ -33,20 +36,31 @@ def run(snapshot, device):
     hessian, evidence = capture.projection(expert, "w1")
     if not hessian["count"]:
         raise AssertionError("probe has no naturally routed rows")
-    del block, capture, hidden
+    del capture
     gc.collect()
     torch.cuda.empty_cache()
     name = f"layers.0.ffn.experts.{expert}.w1.weight"
     weight = source.decoded(name, device).T.contiguous().float()
     hessian["H"] = hessian["H"].to(device)
-    args = dict(K=3, devices=[torch.device(device)], apply_out_scales=None,
+    args = dict(K=bits, devices=[torch.device(device)], apply_out_scales=None,
                 sigma_reg=0.025, seed=787, mcg=True)
-    print(json.dumps(dict(event="search_start", projection=name, route_evidence=evidence)), flush=True)
+    print(json.dumps(dict(event="search_start", bits=bits, projection=name, route_evidence=evidence)), flush=True)
     started = time.monotonic()
     quantized, error, tensors = quantize_exl3(weight, hessian, args, return_weight_q=True)
     if not torch.isfinite(quantized).all():
         raise AssertionError("nonfinite reconstructed projection")
+    with tempfile.TemporaryDirectory(prefix="ds41rt-packed-probe-") as directory:
+        path = str(Path(directory) / "candidate.safetensors")
+        save_file({key: value.cpu().contiguous() for key, value in tensors.items()}, path)
+        packed = load_file(path)
+        replacement = install_projection(block, expert, "w1", packed, device=device)
+        raw_difference = (replacement.weight.float().T - quantized.float()).abs().max().item()
+        first = block.mlp(hidden)
+        second = block.mlp(hidden)
+        if not torch.isfinite(first).all() or not torch.equal(first, second):
+            raise AssertionError("mixed expert replay is nonfinite or not repeatable")
     print(json.dumps(dict(event="search_passed", seconds=time.monotonic() - started,
+                          packed_replay_repeatable=True, raw_search_vs_packed_bf16_max_abs=raw_difference,
                           proxy_error=float(error), metrics=args.get("error_metrics"),
                           tensors={key: dict(shape=list(value.shape), dtype=str(value.dtype))
                                    for key, value in tensors.items()})), flush=True)
@@ -56,5 +70,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--snapshot", type=Path, required=True)
     parser.add_argument("--device", default="cuda:0")
+    parser.add_argument("--bits", type=int, choices=(3, 4), default=3)
     args = parser.parse_args()
-    run(args.snapshot, args.device)
+    run(args.snapshot, args.device, args.bits)
