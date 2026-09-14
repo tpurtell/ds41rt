@@ -1445,3 +1445,7 @@ confirmed account `wrldsuksgo2mars`; the target repository is not yet created.
 The dev container needs `HF_TOKEN_PATH=/hf/token` to use the existing read-only
 credential mount; no credential value was logged. Detached launcher, real launch
 smoke testing and rebuilt-image qualification remain outstanding.
+
+The user's free HF account requires public publication from the start. Create
+the target with `private=False` (already implemented); do not use a private
+staging repository or a private-then-public visibility transition.
