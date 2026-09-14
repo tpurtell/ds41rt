@@ -165,6 +165,11 @@ def run(manifest, *, resume=False):
                 records, hashes = prepare_inputs(snapshot, manifest["corpus"], attestation)
                 if torch.cuda.device_count() != 2:
                     raise ValueError("runtime must expose exactly the two RTX GPUs")
+                from qualify_distributed import coordinator_identity
+                _, actual_slots = coordinator_identity(manifest["coordinator_slots"][0]["image_digest"])
+                from dataclasses import asdict
+                if [asdict(slot) for slot in actual_slots] != manifest["coordinator_slots"]:
+                    raise ValueError("runtime code/environment differs from qualified coordinator identity")
                 for slot in manifest["coordinator_slots"]:
                     properties = torch.cuda.get_device_properties(slot["device"])
                     if str(properties.uuid) != slot["gpu_uuid"] or "RTX" not in properties.name:

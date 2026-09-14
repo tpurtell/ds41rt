@@ -1449,3 +1449,30 @@ smoke testing and rebuilt-image qualification remain outstanding.
 The user's free HF account requires public publication from the start. Create
 the target with `private=False` (already implemented); do not use a private
 staging repository or a private-then-public visibility transition.
+
+### Detached launcher and pinned runtime identity
+
+`launch_quantization.py` now starts the complete publication-enabled runtime in
+a detached Docker container using an immutable image ID. It checks the exact
+image and run-label container state, refuses a second nonterminal coordinator,
+requires explicit `--resume` for prior attempts, and never automatically removes
+or restarts containers. Launch intents persist before Docker invocation so an
+ambiguous response can be investigated by exact container name. `session_runner`
+redirects stdout/stderr to per-attempt files and records caught failures/completion;
+Docker state remains authoritative for kills/OOMs. The runtime also recomputes
+the qualified code/environment/GPU identity before starting search.
+
+The source model is overmounted read-only. Export staging and the target HF
+cache share the HF-home mount to avoid cross-mount hard-link failures; the run
+journal is a separate NVMe mount. HF credentials are mounted read-only, and the
+container has a 170 GiB memory/no-swap limit. The operator entry point and recovery
+instructions are in `quantization/README.md`.
+
+All 69 development component tests pass (`reports/component-tests-launcher.log`).
+The rebuilt image is
+`sha256:832e8a09ad90f315a10f5b647151c62671c74bd286d5c65368ca064fc8d159cc`.
+Its six-device qualification passes: ten real-weight jobs across two waves,
+exact serial reference and durable assignments, 21.65 seconds
+(`reports/coordinator-launch-search-qualification.log`). This is still diagnostic
+work, not production quantization. Frozen-image activation/component checks and
+the production manifest/launch smoke check are being completed before launch.
