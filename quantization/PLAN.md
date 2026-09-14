@@ -1296,3 +1296,29 @@ treating this specific warning as a compiler-analysis false positive, not an
 unresolved production blocker. This does not claim blanket race freedom for all
 TileLang kernels. No native-kernel/runtime change or warning suppression was made.
 All 53 component tests pass (`reports/component-tests-sparse-sync.log`).
+
+### Checkpoint asset packaging
+
+`export_assets.py` plans the checkpoint's bounded non-weight assets from the
+passed source attestation and publishes them byte-for-byte without overwriting
+existing files. It preserves tokenizer JSON/config, license, encoding/evaluation
+and reference-inference files, images and technical report. Source weights and
+the source model config/index are excluded; our weight/config writer owns those.
+The original source README is renamed `README.source.md`, not used as this
+quantization's model card. A new quantization model card remains a finalization
+task, and the retained reference generation code is not presented as an EXL3
+serving implementation.
+
+Assets are bounded to 64 MiB each and checked against their existing source
+checksums. This does not hash any weight shards. The writer freezes asset records
+into the same export plan, checks nested output inventories on resume, rejects
+unsafe paths/symlink traversal and detects same-size asset corruption. Runtime
+assembly now supplies this asset plan to export. The previously qualified frozen
+image predates this packaging integration and must be rebuilt before using it.
+
+All 54 component tests pass (`reports/component-tests-export-assets.log`). A
+real-source temporary export and repeated-resume check passes for all 38 selected
+assets, totaling 9,171,648 bytes (`reports/export-assets-source-probe.log`), without
+copying any weight payloads or mutating the source. Temporary probe files were
+cleaned up. Final model-card/validation/publication and one-shot integration remain
+pending; production quantization has not started.

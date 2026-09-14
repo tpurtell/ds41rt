@@ -1,4 +1,5 @@
 import json
+import hashlib
 from pathlib import Path
 import sys
 import tempfile
@@ -42,6 +43,10 @@ class WriteExportTest(unittest.TestCase):
             kwargs = dict(identity={"test": 1}, target_bytes=32,
                           metadata={"config.json": {"model_type": "deepseek_v41"},
                                     "quantize_config.json": {"quant_method": "exl3"}})
+            asset = root / "tokenizer.json"
+            asset.write_bytes(b"unchanged asset\n")
+            kwargs["assets"] = {"reference/tokenizer.json": dict(path=str(asset), bytes=asset.stat().st_size,
+                                                               sha256=hashlib.sha256(asset.read_bytes()).hexdigest())}
             with self.assertRaisesRegex(RuntimeError, "injected"):
                 write_export(inventory, output, state, progress=stop, **kwargs)
             self.assertFalse((output / "model.safetensors.index.json").exists())
@@ -56,6 +61,7 @@ class WriteExportTest(unittest.TestCase):
             index = json.loads((output / "model.safetensors.index.json").read_text())
             for filename, value in kwargs["metadata"].items():
                 self.assertEqual(json.loads((output / filename).read_text()), value)
+            self.assertEqual((output / "reference/tokenizer.json").read_bytes(), asset.read_bytes())
             for name, filename in index["weight_map"].items():
                 torch.testing.assert_close(load_file(output / filename)[name], tensors[name], rtol=0, atol=0)
             with patch("write_export.repack", side_effect=AssertionError("must not recopy")):

@@ -29,6 +29,7 @@ from corpus_inputs import tokenize_corpus
 from distributed_search import DistributedSearch
 from export_inventory import build_inventory
 from export_config import model_metadata
+from export_assets import plan_assets
 from run_store import RunStore
 from write_export import write_export
 
@@ -197,8 +198,9 @@ def run(manifest, *, resume=False):
                                     draft_adapters=draft_adapters, native_kernels=kernels, replica_device="cuda:1")
                 inventory = build_inventory(driver)
                 metadata = model_metadata(source.config, inventory, provenance=manifest["identity"])
+                assets = plan_assets(snapshot, json.loads(Path(manifest["source_attestation"]).read_text()))
                 result = write_export(inventory, manifest["output"], manifest["export_state"], identity=identity,
-                                      resume=resume, metadata=metadata, progress=progress)
+                                      resume=resume, metadata=metadata, assets=assets, progress=progress)
                 progress(dict(event="runtime_stage_complete", **result))
                 return result
             except BaseException as error:
