@@ -1,7 +1,9 @@
 """Recovery gates for owned, atomic V4.1 replay frontiers."""
 from pathlib import Path
+import gc
 import tempfile
 import unittest
+import weakref
 from unittest.mock import patch
 
 import torch
@@ -13,6 +15,41 @@ from gptqmodel.utils.v41_replay import V41ReplayBatch
 
 
 class V41CheckpointTest(unittest.TestCase):
+    def test_saved_tensor_copies_release_without_cyclic_collection(self):
+        from gptqmodel.utils import v41_checkpoint as checkpoint
+        original = checkpoint.save_file
+        references = []
+        def observed(tensors, *args, **kwargs):
+            references.extend(weakref.ref(value) for value in tensors.values())
+            return original(tensors, *args, **kwargs)
+        enabled = gc.isenabled()
+        gc.disable()
+        try:
+            # Plain function replacement, not a mock retaining call arguments.
+            with patch.object(checkpoint, "save_file", new=observed):
+                for _ in range(16):
+                    save_frontier(self.batch, self.path, provenance=self.provenance)
+                    self.assertTrue(references)
+                    self.assertTrue(all(reference() is None for reference in references))
+        finally:
+            if enabled:
+                gc.enable()
+
+    def test_loaded_tensors_release_without_cyclic_collection(self):
+        digest = save_frontier(self.batch, self.path, provenance=self.provenance)
+        enabled = gc.isenabled()
+        gc.disable()
+        try:
+            for _ in range(16):
+                state = self.load(digest)
+                references = [weakref.ref(state.hidden), weakref.ref(state.pre_mix),
+                              weakref.ref(state.engram_rows[14])]
+                del state
+                self.assertTrue(all(reference() is None for reference in references))
+        finally:
+            if enabled:
+                gc.enable()
+
     def test_routed_roundtrip_cannot_be_confused_with_replay(self):
         batch = V41RoutedBatch(torch.randn(3, 8), torch.randn(3, 4), torch.rand(3, 2),
                                torch.tensor([[0, 1], [1, 2], [2, 3]]))

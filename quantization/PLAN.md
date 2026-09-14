@@ -1519,3 +1519,31 @@ dictionary until collection. An earlier mock-based diagnostic also retained
 mock call arguments and was invalid for isolating the cause; the plain-function
 diagnostic removes that confound. Fix deterministic release, test with collection
 disabled, and review other serialization closures before explicit recovery.
+
+### Serializer repair verified without cyclic GC
+
+The recursive encoder and decoder are now module-level functions with explicit
+arguments, removing closure cycles rather than adding periodic collection calls.
+Tensor storage is released as soon as the save completes. A scan of quantization
+modules and V4.1 utility modules found no remaining nested self-recursive functions.
+All 71 component tests pass (`reports/component-tests-serializer-release.log`),
+including repeated immediate weak-reference expiry for saved copies and loaded
+tensors with cyclic garbage collection disabled.
+
+`probe_checkpoint_memory.py` read the stopped journal without modifying it:
+1,441 committed initial frontiers and zero block-completion records. The repaired
+serializer rewrites the first, middle and last inputs byte-for-byte identically.
+It then performs 32 two-worker waves (64 saves) using an actual committed input,
+with cyclic GC disabled and per-wave tensor-release checks. Process RSS stays
+near 1.24 GiB, with only 120 KiB spread after warmup
+(`reports/checkpoint-memory-repair-probe.log`). Temporary probe outputs were
+automatically removed; committed production inputs were not rewritten or deleted.
+An initial byte-comparison probe incorrectly reconstructed provenance in SQLite's
+canonical key order; preserving the original header key order fixes the probe
+and confirms the serializer's actual byte compatibility.
+
+Production remains stopped. Recovery must qualify the repaired image and
+explicitly preserve the original input/data identity while recording the new
+execution identity; do not discard the committed inputs or silently bypass the
+existing identity checks. No quantization/search assignments need migration at
+this input-only boundary.
