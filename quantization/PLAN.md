@@ -1058,3 +1058,24 @@ closed together. Tests cover split-file gathers/repeats/release/close plus
 standard safetensors shard round trips and PLE filename stability when ordinary
 weights change. Final packed-weight export, model-loader integration, production
 runtime assembly and the detached end-to-end launcher remain unfinished.
+
+### Selected-payload export inventory
+
+`export_inventory.py` now collects selected candidates only after all 43 block
+completion records exist. It checks complete phase inventories, canonical
+candidate paths, all 47,232 routed projections and the exact 11,808 K4 upgrades
+with the prescribed per-block projection quotas. Source headers/index must agree;
+the complete source routed inventory must consist exactly of those weight/scale
+pairs. Only those pairs are replaced by source-native projection names with
+`.trellis`, `.suh`, `.svh`, `.mcg` suffixes; other tensor names and raw payloads
+remain unchanged. This source-native inventory still needs the final V4.1 model
+loader/config contract and is not advertised as a loadable finished checkpoint.
+
+Selected journal candidates are verified as recovery artifacts, then their typed
+metadata is inspected for buffer offsets, geometry and provenance without loading
+or reconstructing weight tensors. Huge source files are not hashed. All 45
+component tests pass (`reports/component-tests-export-inventory.log`). A separate
+read-only header check passes for all 480 actual K3/K4 candidate files from the
+earlier mtp0 diagnostic (`reports/export-inventory-fixture-headers.json`); that
+fixture is unchanged and is not production calibration. Final inventory writing,
+loader/config integration and the production launcher remain pending.
