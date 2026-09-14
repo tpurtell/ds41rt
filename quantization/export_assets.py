@@ -1,5 +1,6 @@
 """Preserve bounded checkpoint assets byte-for-byte, separate from weight IO."""
 import hashlib
+import io
 import os
 from pathlib import Path, PurePosixPath
 import tempfile
@@ -52,7 +53,9 @@ def publish_asset(root, name, record):
     descriptor, temporary = tempfile.mkstemp(prefix=".asset-", suffix=".partial", dir=target.parent)
     try:
         digest, size = hashlib.sha256(), 0
-        with os.fdopen(descriptor, "wb") as output, Path(record["path"]).open("rb") as source:
+        source_stream = (io.BytesIO(record["content"].encode("utf-8")) if "content" in record
+                         else Path(record["path"]).open("rb"))
+        with os.fdopen(descriptor, "wb") as output, source_stream as source:
             while chunk := source.read(1024 * 1024):
                 size += len(chunk)
                 if size > record["bytes"]:

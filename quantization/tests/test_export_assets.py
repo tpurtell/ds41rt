@@ -6,9 +6,23 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from export_assets import plan_assets, publish_asset, asset_target
+from model_card import model_card_asset
 
 
 class ExportAssetsTest(unittest.TestCase):
+    def test_generated_card_is_immutable_small_asset(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            record = model_card_asset("a" * 40)
+            publish_asset(root, "README.md", record)
+            self.assertEqual((root / "README.md").read_text(), record["content"])
+            publish_asset(root, "README.md", record)
+            with self.assertRaisesRegex(ValueError, "checksum"):
+                publish_asset(root, "README.md", model_card_asset("b" * 40))
+            self.assertIn("remain unvalidated", record["content"])
+            with self.assertRaises(ValueError):
+                model_card_asset("main")
+
     def test_exact_source_assets_resume_and_card_separation(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

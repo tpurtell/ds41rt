@@ -30,6 +30,7 @@ from distributed_search import DistributedSearch
 from export_inventory import build_inventory
 from export_config import model_metadata
 from export_assets import plan_assets
+from model_card import model_card_asset
 from run_store import RunStore
 from write_export import write_export
 from validate_export import validate_export
@@ -200,6 +201,7 @@ def run(manifest, *, resume=False):
                 inventory = build_inventory(driver)
                 metadata = model_metadata(source.config, inventory, provenance=manifest["identity"])
                 assets = plan_assets(snapshot, json.loads(Path(manifest["source_attestation"]).read_text()))
+                assets["README.md"] = model_card_asset(snapshot.name)
                 result = write_export(inventory, manifest["output"], manifest["export_state"], identity=identity,
                                       resume=resume, metadata=metadata, assets=assets, progress=progress)
                 validation = validate_export(manifest["output"], manifest["export_state"], snapshot)

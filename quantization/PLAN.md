@@ -1387,3 +1387,25 @@ interruption after authorization but before unlink, idempotent cleanup, and a
 corrupt dSpark handoff refusing to authorize deletion. Tests use temporary fixtures;
 no production or prior diagnostic payloads were deleted. Production deployment,
 model-card/upload/cache integration and frozen-image requalification remain pending.
+
+### Model card and no-copy HF cache component
+
+The generated quantization README is now a bounded, checksum-verified asset in
+the immutable export plan. It documents the exact recipe, routed-only meaning of
+3.25 bpw, native non-routed tensors, isolated PLE groups, and deferred behavioral
+validation. It makes no claim of stock-loader compatibility or benchmark quality.
+The original checkpoint card remains separately preserved as `README.source.md`.
+
+`materialize_cache.py` accepts a completed upload receipt binding remote blob IDs
+to local file fingerprints. It builds HF `blobs`, `snapshots/<commit>` and finally
+`refs/main` using hard links and relative symlinks. It performs no weight hashing,
+copying or downloading, rejects different filesystems and conflicting existing
+cache entries, and can resume an interrupted snapshot construction. Identical
+acknowledged assets share a blob. This follows the documented file-cache layout:
+https://huggingface.co/docs/huggingface_hub/guides/manage-cache
+
+Temporary-fixture tests exercise real installed `huggingface_hub` offline file
+lookup, inode sharing, interruption before ref publication, explicit retry and
+changed-export rejection. Upload receipt creation and runtime/publication wiring
+remain pending; no remote repository or user cache was changed by these tests.
+All 62 component tests pass (`reports/component-tests-cache-card.log`).
