@@ -1150,3 +1150,42 @@ Its completion status remains model-validation-pending. Tests exercise complete
 main+draft storage coverage, exact K4 count, source config preservation, wrong-tier
 geometry rejection and metadata publication/resume. Tokenizer/assets packaging,
 full loader validation, production runtime and detached launcher remain pending.
+
+### Manifest-driven runtime entry point (not launched)
+
+`run_quantization.py MANIFEST [--resume]` now assembles Tokenicer corpus inputs,
+independent mapped main adapters on both RTX devices, joint dSpark adapters,
+the six-device distributed search backend, both namespace loops, selected-weight
+inventory, config metadata and resumable weight export. TF32 is disabled before
+execution, GPU UUID/name checks require the two qualified RTX slots, all four
+named Spark endpoints must pass the client's live identity check, worker secrets
+are read from a private file, and the search client uses one attempt (no automatic
+retry). Each failure is logged then propagated. An exclusive runtime lock and
+explicit `--resume` protect an existing journal; the entire manifest, passed input
+attestation and source manifest identity are bound into journal identity.
+
+`runtime-events.jsonl` is append-only, flushed/fsynced, timestamped, and includes
+host peak RSS alongside coordinator progress. Standard output repeats events for
+the eventual detached container log. Its terminal state is still
+weights-index-complete/model-validation-pending, not goal completion.
+
+Required manifest fields are schema `ds41rt-quantization-runtime-v1`, `identity`,
+absolute `snapshot`, `source_attestation`, `corpus`, `input_attestation`, `run_root`,
+`output`, `export_state`, `token_file`, and the fork's exact `RemoteEndpoint` and
+`CoordinatorSlot` records in `endpoints`/`coordinator_slots`. A production manifest
+must be generated from qualified, pinned runtime/code/image evidence; accepting
+these records is not itself numerical qualification. That manifest generation,
+coordinator image qualification, end-to-end integration, asset/full-model validation,
+upload/cache stages and detached launcher remain unfinished. Do not launch this
+stage alone and present it as the complete one-shot workflow.
+
+The tokenizer-normalization skill keeps construction on `Tokenicer.load`, with
+no new tokenizer patches. The actual runtime preparation passes the unchanged
+1,441-record/1,056,269-token corpus (`reports/runtime-input-preparation.log`).
+Source startup reuses the existing attestation: manifest consistency, inventory,
+file sizes, HF blob symlink addresses and complete tensor headers are checked;
+only bounded non-weight assets are hashed. The real source reuse check passes
+(`reports/runtime-source-reuse.log`), with no weight-payload hashing. Structural
+checks do not claim detection of same-size corruption in ordinary weight files.
+All 52 component tests pass before the final standalone-pretty-JSON reader test;
+the focused runtime suite is rerun for that reader change.
