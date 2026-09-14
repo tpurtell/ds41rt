@@ -1596,3 +1596,23 @@ report. New attempt `e8983b98e3c54311b6da645aef4a0cbc` is container
 original stopped attempt and all committed inputs. Launch does not establish
 stable production memory; monitor input reuse and subsequent blocks closely
 before switching to the requested 30-minute cadence.
+
+### Stopped for search scheduling repair — 2026-09-14 14:07 UTC
+
+At the user's direction, attempt `e8983b98e3c54311b6da645aef4a0cbc` was stopped
+at 14:07:12 UTC. Docker confirms exited 143, OOM false. The journal preserves
+1,441 initial frontiers, 1,441 block-0 routed batches, and 192 committed gate/up
+K3 candidates (experts 0 through 95). Do not discard these or the durable search
+assignments. No complete quantized block has been reported.
+
+The fixed ten-job search windows and per-eight-expert subset drain barriers
+leave fast RTX GPUs idle waiting for Spark work. In observed 16-job gate/up
+subsets, the RTX pair received four jobs while the Sparks received twelve;
+search took roughly 17–18 seconds per subset, alternating with capture. The
+user reports a Spark runs at roughly one-quarter of one RTX, making this fixed
+allocation inappropriate. Actual RTX-only production throughput has not yet
+been benchmarked, so an exact slowdown is not established. Repair continuous
+bounded dispatch and subset barriers, test correctness/memory and measure
+heterogeneous throughput before resuming. Production must remain stopped during
+this repair; the prior input-only recovery authorization is insufficient for
+migrating the now-existing search assignments to another execution identity.
