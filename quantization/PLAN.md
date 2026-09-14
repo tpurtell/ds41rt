@@ -640,3 +640,37 @@ input ordering. Twenty-six component tests pass (`reports/component-tests-wavefr
 The unit test uses a mocked selected-weight phase; full checkpoint/corpus integration
 is still required. The existing real mtp0 phase diagnostic remains live and is
 committing candidates; it does not yet exercise this new propagation wrapper.
+
+### Full dSpark phase qualification and attested corpus inputs
+
+The previously live real-weight mtp0 diagnostic completed successfully in
+576.27 seconds. Its persistent log contains exactly 384 K3 searches (128 each
+for w1/w3/w2) and 96 K4 searches (18/30/48), followed by down-phase commitment
+and finite, repeatable mixed-MLP output checks. These are synthetic 64-row
+diagnostic candidates, not production calibration or final quality evidence.
+The original run is terminal; an explicit same-identity completed-phase reload
+was then run separately, with output in `reports/full-mtp0-phase-resume.log`:
+passed in 1.81 seconds with no new candidate or capture events.
+
+`quantization/corpus_inputs.py` now verifies unchanged corpus bytes and the
+entire token stream against the passed input attestation. It rejects duplicate
+record IDs, padding, invalid IDs, and changed counts/lengths/digests. Normal
+tokenizer construction remains Tokenicer-owned; no tokenizer normalization
+patch is introduced. The actual 1,441-record corpus passes this new path with
+1,056,269 tokens, using the previously attested Tokenicer 0.0.14 environment.
+
+Initial-frontier preparation freezes the ordered original records and attestation
+in the journal, uses one unpadded original record per batch, and supports two
+independently owned input adapters. The caller must construct these on the two
+RTX devices; Sparks are not activation workers. Two-record windows bound pending
+states and disk writers, with all SQLite writes on the coordinator thread.
+Committed frontiers are checksum/provenance checked and skipped on explicit
+resume; uncommitted orphan payloads are regenerated. Completion depends on every
+input frontier. This is a callable pipeline component, not yet the detached
+launcher or a launched full-corpus preparation run.
+
+The interruption test stops after the first durable input, resumes only missing
+records, verifies completed reload performs no preparation, and rejects reordered
+inventory. The full component suite now has 27 passing tests in
+`reports/component-tests-corpus-inputs.log`. The test uses lightweight adapters;
+two-RTX integration of this new corpus coordinator remains to be exercised.
