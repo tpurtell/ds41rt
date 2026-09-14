@@ -1322,3 +1322,27 @@ assets, totaling 9,171,648 bytes (`reports/export-assets-source-probe.log`), wit
 copying any weight payloads or mutating the source. Temporary probe files were
 cleaned up. Final model-card/validation/publication and one-shot integration remain
 pending; production quantization has not started.
+
+### Complete export structure validator
+
+`validate_export.py` adds a read-only post-export gate. It verifies the exact file
+inventory against the frozen export plan, all tensor/header/index assignments,
+payload totals, per-file PLE group isolation, source-native non-routed descriptors,
+all 47,232 routed replacements, exact per-block K3/K4 quotas, packed buffer
+geometry/bytes and regenerated model/storage config consistency. Small assets
+are checksum-verified; weight shards are never hashed. Runtime assembly publishes
+the result outside the artifact as `<EXPORT_STATE>/structure-validation.json`.
+The report explicitly leaves numerical validation as a separate required gate;
+it is not evidence that quantization or full-model numerical validation has run.
+
+All 54 component tests pass (`reports/component-tests-export-validation.log`),
+including complete main/draft descriptor validation and read-only verification of
+the actual small exported fixture. A real-source header-only dry run validates
+the full expected export inventory using synthetic quota placement solely for
+layout/size planning (`reports/export-contract-source-dry-run.log`):
+96,085 source tensors become 190,549 export tensors in 52 planned shards, with
+441,341,094,744 payload bytes, including 202,758,032,400 PLE bytes. Exact expert
+placement does not alter this size because each projection has equal geometry.
+These numbers exclude file headers/JSON/assets and rolling recovery state; they
+are not yet a complete peak-disk budget. No weight payload was read or exported.
+Final numerical/model-card/publication and one-shot integration remain pending.

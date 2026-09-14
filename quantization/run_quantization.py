@@ -32,6 +32,7 @@ from export_config import model_metadata
 from export_assets import plan_assets
 from run_store import RunStore
 from write_export import write_export
+from validate_export import validate_export
 
 
 def verify_source(snapshot, report_path):
@@ -201,6 +202,10 @@ def run(manifest, *, resume=False):
                 assets = plan_assets(snapshot, json.loads(Path(manifest["source_attestation"]).read_text()))
                 result = write_export(inventory, manifest["output"], manifest["export_state"], identity=identity,
                                       resume=resume, metadata=metadata, assets=assets, progress=progress)
+                validation = validate_export(manifest["output"], manifest["export_state"], snapshot)
+                from write_export import _publish_json
+                _publish_json(Path(manifest["export_state"]) / "structure-validation.json", validation)
+                progress(dict(event="export_structure_validated", **validation))
                 progress(dict(event="runtime_stage_complete", **result))
                 return result
             except BaseException as error:

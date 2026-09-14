@@ -12,6 +12,7 @@ from safetensors.torch import save_file, load_file
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from stream_shard import read_header
 from write_export import write_export, _write_shard
+from validate_export import verify_files
 
 
 class WriteExportTest(unittest.TestCase):
@@ -62,6 +63,12 @@ class WriteExportTest(unittest.TestCase):
             for filename, value in kwargs["metadata"].items():
                 self.assertEqual(json.loads((output / filename).read_text()), value)
             self.assertEqual((output / "reference/tokenizer.json").read_bytes(), asset.read_bytes())
+            frozen = json.loads((state / "plan.json").read_text())
+            self.assertEqual(verify_files(output, frozen)["tensors"], 5)
+            bad_plan = json.loads(json.dumps(frozen))
+            bad_plan["layout"]["index"]["metadata"]["total_size"] += 1
+            with self.assertRaises(ValueError):
+                verify_files(output, bad_plan)
             for name, filename in index["weight_map"].items():
                 torch.testing.assert_close(load_file(output / filename)[name], tensors[name], rtol=0, atol=0)
             with patch("write_export.repack", side_effect=AssertionError("must not recopy")):
