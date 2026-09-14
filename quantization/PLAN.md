@@ -408,3 +408,41 @@ records both identities plus the imported modeling-file hash. The production
 image must make the dependency installation reproducible, not trust distribution
 metadata alone. This is an input/hash gate, not dense-model quality evaluation.
 Full main-model corpus replay and quantization remain pending.
+
+### Native main input adapter and executable mixed recipe
+
+`V41MainInput` loads no decoder blocks or PLE tensor parameters: only the BF16
+token embedding, attested small hash state, FP32 rotary coefficients, and mapped
+PLE handles. It accepts joint equal-length unpadded independent text sequences.
+PLE gathers move immediately into owned CPU replay storage. Native attention
+constructs sliding indices, avoiding a quadratic causal mask in each checkpoint.
+Padding/packing are not supported by this adapter; do not silently pad input
+groups or split an already-issued joint batch when connecting the corpus loop.
+
+`quantization/replay_source.py` is a diagnostic main-to-draft replay, **not** the
+production one-shot launcher. It loads/releases one block at a time, preserves
+main target features, and saves/reloads every boundary in a temporary directory.
+Its temporary smoke snapshots are discarded on exit; persistent reports are in
+the run's `reports/` directory. Production journal/checkpoint retention remains
+separate work and must not copy this temporary-lifetime policy.
+
+`quantization/mixed_recipe.py` supplies both `base` and `mtp` policies to the
+fork's existing causal EXL3 mixed-tier selector. Its source-key validator demands
+exact coverage of all 47,232 routed projections and per-block 54/90/144 main or
+18/30/48 dSpark upgrades. This yields 11,808 K4 projections and exactly 3.25 bits
+per routed weight, excluding metadata and preserved non-routed tensors. Selection
+still uses the fork's measured K3 Hessian-relative error times natural gate-squared
+mass; tests use synthetic tier maps only, not measured production selections.
+All fifteen component tests pass (`reports/component-tests-main-input.log`),
+including policy compatibility with the fork's selector for all 43 blocks.
+
+The initial main-to-draft smoke completed successfully in 211.56 seconds:
+two jointly executed copies of a 17-token real-tokenizer prompt, all 40 main
+blocks and 3 dSpark blocks, finite outputs, and all 43 checkpoint round-trips.
+Target captures accumulated at exactly 37, 38 and 39. Peak GPU allocation was
+8,973,808,128 bytes; post-main-block allocation remained 1,358,417,408 bytes and
+dropped to 34,590,208 after releasing the shared embedding for dSpark. Maximum
+process RSS was 2,714,356 KiB. Evidence: `reports/native-main-draft-smoke.log`.
+These are short-input native-source smoke figures, not production memory bounds,
+full-reference end-to-end parity, calibrated quality or a quantization ETA.
+No production quantization has started.

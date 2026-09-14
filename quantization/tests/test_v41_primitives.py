@@ -12,6 +12,7 @@ from transformers.models.deepseek_v41.modeling_deepseek_v41 import DeepseekV41En
 from gptqmodel.models.definitions.deepseek_v41 import DeepSeekV41Expert, DeepSeekV41MappedEmbedding, DeepSeekV41QModel
 from gptqmodel.utils.v41_replay import V41ReplayBatch
 from gptqmodel.utils.v41_checkpoint import load_frontier, save_frontier
+from gptqmodel.utils.v41_inputs import V41MainInput
 
 
 def tiny_config():
@@ -30,6 +31,24 @@ def tiny_config():
 
 
 class V41PrimitivesTest(unittest.TestCase):
+    @torch.no_grad()
+    def test_main_input_joint_batch_without_decoder_allocation(self):
+        config = tiny_config()
+        model = DeepseekV41ForCausalLM(config).eval()
+        ids = torch.randint(0, 128, (2, 17))
+        expected = V41ReplayBatch.prepare(model, ids)
+        adapter = V41MainInput(model.model.embed_tokens, None, model.model.rotary_emb, {}, config)
+        actual = adapter.prepare(ids)
+        torch.testing.assert_close(actual.hidden, expected.hidden, rtol=0, atol=0)
+        torch.testing.assert_close(actual.pre_mix, expected.pre_mix, rtol=0, atol=0)
+        torch.testing.assert_close(actual.kwargs["position_ids"], expected.kwargs["position_ids"], rtol=0, atol=0)
+        self.assertEqual(actual.target_layer_ids, expected.target_layer_ids)
+        self.assertIsNone(actual.kwargs["attention_mask"])
+        self.assertEqual(actual.hidden.device.type, "cpu")
+        for invalid in (ids[0], ids[:, :0], ids.float()):
+            with self.assertRaises(ValueError):
+                adapter.prepare(invalid)
+
     @torch.no_grad()
     def test_layer_replay_preserves_shared_state_and_mhc(self):
         torch.manual_seed(789)
