@@ -620,3 +620,23 @@ Still absent: full-corpus frontier creation, propagated mixed-block output
 commitment, distributed worker dispatch/deployment, production recovery control,
 detached end-to-end launcher, final export/upload. The block phase driver alone
 does not declare a whole quantization block complete or satisfy deployment.
+
+### Mixed-output wavefront commitment
+
+`quantization/wavefront.py` now binds a block's ordered input inventory, captures
+and journals routed FFN batches, invokes the phase driver, then propagates the
+selected mixed block from each original input. Every output is checked for finite
+hidden/carry state and the correct next-layer index, saved atomically, and bound
+to its input plus the completed selected-down phase. Only after all outputs exist
+does the block-complete record commit. The returned output keys/provenance become
+the next layer's inputs; no native or capture-only output substitutes for them.
+
+Explicit resume skips committed routed batches and outputs, reloading selected
+weights through the phase driver when propagation remains. Completed block reload
+verifies all output states. No retention/deletion or automatic restart is included.
+An injected interruption after the first of two durable output batches resumes
+without repeating it, produces exact selected-weight outputs, and rejects changed
+input ordering. Twenty-six component tests pass (`reports/component-tests-wavefront.log`).
+The unit test uses a mocked selected-weight phase; full checkpoint/corpus integration
+is still required. The existing real mtp0 phase diagnostic remains live and is
+committing candidates; it does not yet exercise this new propagation wrapper.
