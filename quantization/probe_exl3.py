@@ -10,6 +10,7 @@ from pathlib import Path
 import sys
 import time
 import tempfile
+from contextlib import nullcontext
 
 import torch
 
@@ -17,11 +18,12 @@ from gptqmodel.utils.v41_capture import V41Capture
 from gptqmodel.utils.v41_source import V41Source
 from gptqmodel.exllamav3.modules.quant.exl3_lib.quantize import quantize_exl3
 from gptqmodel.utils.v41_mixed_replay import install_projection
+from gptqmodel.utils.v41_recovery import V41Recovery
 from safetensors.torch import save_file, load_file
 
 
 @torch.inference_mode()
-def run(snapshot, device, bits=3):
+def run(snapshot, device, bits=3, recover=False):
     torch.backends.cuda.matmul.allow_tf32 = False
     sys.path.insert(0, str(snapshot / "inference"))
     import kernel
@@ -30,13 +32,15 @@ def run(snapshot, device, bits=3):
     torch.manual_seed(41)
     hidden = torch.randn(1, 256, 5120, device=device, dtype=torch.bfloat16) * .1
     capture = V41Capture(block, [0, 1, 2, 3], device=device)
-    with capture:
+    recovery = V41Recovery(block, capture.expert_ids) if recover else None
+    with capture, recovery if recovery is not None else nullcontext():
         block.mlp(hidden)
     expert = max(capture.expert_ids, key=lambda index: capture.counts[index, "gate_up"])
-    hessian, evidence = capture.projection(expert, "w1")
+    hessian, evidence = (capture.projection(expert, "w1") if recovery is None
+                         else recovery.projection(capture, expert, "w1"))
     if not hessian["count"]:
         raise AssertionError("probe has no naturally routed rows")
-    del capture
+    del capture, recovery
     gc.collect()
     torch.cuda.empty_cache()
     name = f"layers.0.ffn.experts.{expert}.w1.weight"
@@ -71,5 +75,6 @@ if __name__ == "__main__":
     parser.add_argument("--snapshot", type=Path, required=True)
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--bits", type=int, choices=(3, 4), default=3)
+    parser.add_argument("--recover", action="store_true", help="exercise adjacent-rank plus identity top-up")
     args = parser.parse_args()
-    run(args.snapshot, args.device, args.bits)
+    run(args.snapshot, args.device, args.bits, args.recover)

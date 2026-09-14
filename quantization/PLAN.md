@@ -506,3 +506,31 @@ capture/search/serialization/reconstruction boundary. Full selected-block
 capture ordering, corpus execution, low-coverage handling and production
 orchestration remain unfinished; these single-projection probes do not replace
 those gates.
+
+### Cold-expert recovery adapter
+
+`V41Recovery` now uses the fork's `learned_router_ranked_choices` to verify exact
+live top-k and retain adjacent-rank candidate inputs without modifying routing.
+For this source that is main ranks 7–12 and dSpark ranks 4–6. Selection matches
+the established V4 recovery implementation: rank-major, then corpus row order,
+not score-gap sorting. It retains at most 1,024 owned CPU rows per selected
+expert/rank; only the rows needed after the complete natural census are used.
+Selected coordinates are hashed and observed/selected rank counts are recorded.
+
+Recovery produces a new raw Hessian, preserving the original natural evidence.
+It records natural, augmented, residual identity and effective row counts
+separately. Remaining shortages add `missing * I` to raw sums before EXL3's
+count normalization (equivalent to the fork's normalized-2I convention).
+Recovery-only down inputs use unit route weight, matching the established
+direct-expert policy, but preserve V4.1's FP32 SwiGLU/clamping then BF16 store.
+The caller must install selected gate/up tiers before down-phase recovery.
+Recovery does not contribute to natural gate-squared mass used for tier scores.
+
+`reports/exl3-recovery-probe.log` passed the actual K3 search and serialized
+mixed-MoE replay with 16 natural + 9 adjacent-rank + 999 identity rows. Those
+numbers are from synthetic diagnostic input, not production corpus coverage.
+Twenty component tests cover the adapters, including unchanged natural outputs,
+candidate selection, unit-weight down construction and true-zero identity case.
+Production still needs to bind stream identity and recovery parameters into the
+durable journal, stage gate/up then down capture correctly, and deploy the full
+corpus/distributed/one-shot workflow. No production quantization has started.
