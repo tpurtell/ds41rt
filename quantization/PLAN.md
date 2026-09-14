@@ -827,3 +827,36 @@ retired payloads: completed block markers must form a contiguous prefix, and onl
 the newest output frontiers are loaded/verified. Corrupt newest outputs or a gap
 in completion markers fail closed rather than silently selecting an older state.
 All 32 component tests pass (`reports/component-tests-retention.log`).
+
+### Namespace coordinator and frozen dSpark anchor policy
+
+`quantization/coordinator.py` now connects the block driver, propagated output
+wavefront, latest-frontier lookup and post-commit retirement. It binds each
+namespace's original inputs, loads one block at a time, commits/cleans up before
+advancing, and resumes cleanup after a block-commit interruption without executing
+that block again. Namespace completion is separate from whole-model completion.
+An exclusive run-directory lock is provided and must surround the entire eventual
+coordinator lifecycle, including input creation. This is not yet a CLI launcher;
+two-RTX execution placement, main-to-dSpark handoff and export remain to connect.
+
+Re-reading the sister project's optimized dSpark procedure established the
+pre-route anchor policy: exactly 327,680 stratified selections with seed 20260809,
+one splitmix64 choice per equal-width global stratum, retaining original source
+sequence groups and all five proposal rows jointly. Its old coordinates must not
+be reused after V4.1 retokenization. `quantization/draft_anchors.py` reproduces
+that selection algorithm with V4.1 eligibility (history ending at p >= 1 with
+known token p+1), returns grouped coordinates and an explicit coordinate digest,
+and refuses to silently resize a corpus too small for the requested sample.
+The known-token choice remains the already documented teacher-forced corpus
+policy, not a claim to reproduce the reference's sampled token generation.
+
+The selection is fixed before dSpark routing, never enlarged after inspecting
+coverage. The adapter must process all selected anchors of each source record
+jointly, reuse projected main features, and preserve their individual causal
+128-row histories. The existing single-anchor diagnostic adapter does not yet
+satisfy that efficient joint production contract; integration must implement and
+qualify it before a dSpark production run. Tests cover stratification, coordinate
+bounds, stable hashing, full selection, lock exclusion, and recovery after block
+commit/before retirement. Coordinator scheduling tests mock the block operation;
+they are not full-corpus integration evidence.
+All 35 component tests pass (`reports/component-tests-coordinator-anchors.log`).
