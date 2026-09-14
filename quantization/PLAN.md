@@ -1268,3 +1268,31 @@ kernel; preserve this warning for review rather than implying this small numeric
 probe proves absence of all possible kernel races. Both qualification containers
 exited 0 and are retained for inspection. The persistent JIT volume is
 `ds41rt-quant-coordinator-jit`. These are diagnostics, not production quantization.
+
+### Sparse-attention ThreadSync warning review
+
+The warning was traced to the unchanged checkpoint sparse-attention kernel at
+the h=16,d=512 specialization used by the RTX head-group path. The emitted CUDA
+is retained as `reports/sparse-attention-reviewed-device.cu` (TileLang cache key
+`da8fea672aaf71a96bca082a7937870cdf7f9e0bf91b045a7f6ab507f99075a4`).
+The flagged branch selects lanes 0..3 of each warp and only writes the shared KV
+tile. There are no shared reads inside that branch. Each of its 32 participating
+threads writes 128 eight-BF16 vectors. Exhaustive evaluation of the generated
+swizzled addresses proves all 32,768 shared elements have exactly one writer,
+without overlap or gaps (`test_sparse_gather_layout.py`). A block-wide barrier
+after the gather precedes the GEMM reads; the loop's next gather is also preceded
+by a block barrier. The compiler's apparent intra-branch conflict is therefore
+not present in the reviewed generated memory accesses.
+
+`probe_sparse_sync.py` was run against the frozen coordinator image and unchanged
+checkpoint kernel under Compute Sanitizer, with topk 1/63/64/65/129/257, repeated
+indices, mixed invalid slots, all-masked rows and four calls per case. RTX0
+racecheck reports **0 hazards, 0 errors, 0 warnings**
+(`reports/sparse-attention-racecheck.log`); RTX1 synccheck reports **0 errors**
+(`reports/sparse-attention-synccheck.log`). Both processes/retained diagnostic
+containers exited 0. Outputs are finite, all-masked rows are zero, and repeats
+are bitwise identical. The generated-address proof and sanitizer evidence support
+treating this specific warning as a compiler-analysis false positive, not an
+unresolved production blocker. This does not claim blanket race freedom for all
+TileLang kernels. No native-kernel/runtime change or warning suppression was made.
+All 53 component tests pass (`reports/component-tests-sparse-sync.log`).
