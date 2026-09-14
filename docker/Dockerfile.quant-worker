@@ -1,0 +1,12 @@
+# Bind this local build tag to its inspected image ID before building.
+ARG BASE_IMAGE=ds41rt-quant-base:a70e6af77cd3
+FROM ${BASE_IMAGE}
+COPY third_party/gptqmodel/gptqmodel /opt/ds41rt/gptqmodel
+COPY third_party/gptqmodel/gptqmodel_ext /opt/ds41rt/gptqmodel_ext
+COPY quantization/exl3_worker.py /opt/ds41rt/quantization/exl3_worker.py
+ENV PYTHONPATH=/opt/ds41rt
+ENV TORCH_ALLOW_TF32_CUBLAS_OVERRIDE=0
+ENV TORCH_CUDA_ARCH_LIST=12.1
+ENV PYTHONUNBUFFERED=1
+RUN /opt/ds4rt/quant-venv/bin/python -c "import gptqmodel; from gptqmodel.utils.exl3_remote import execute_remote_projection; print(gptqmodel.__version__)"
+ENTRYPOINT ["/usr/bin/tini", "--", "/opt/ds4rt/quant-venv/bin/python", "/opt/ds41rt/quantization/exl3_worker.py"]

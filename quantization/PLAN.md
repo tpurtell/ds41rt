@@ -710,3 +710,44 @@ each exposes a GB10, and none had a running Docker container at this check.
 Worker image/preflight reconstruction, actual remote numerical qualification,
 deployment and end-to-end one-shot orchestration remain required. No production
 quantization job has been launched.
+
+### Reconstructed Spark worker runtime
+
+`quantization/exl3_worker.py` implements our worker endpoint using the inspected
+ds4rt server as reference and the vendored authenticated protocol unchanged.
+It bounds staged request bodies to two, serializes GPU execution, limits body
+size/read time, closes connections after requests, signs responses, and retains
+tracebacks in container logs. Worker checkpoint/resume uses the fork's existing
+content-addressed store. Tests cover authentication, response signatures,
+oversized-body rejection, and staging-capacity rejection/release. Thirty
+component tests pass (`reports/component-tests-worker.log`).
+
+`docker/Dockerfile.quant-worker` layers our current fork, including its sibling
+`gptqmodel_ext` CUDA sources, onto the existing platform-local quantization base.
+The inspected base on ostrich is
+`sha256:a70e6af77cd323ae2fe507fbeb5f6353a6fdce3e9247d2d5b9632bf4c92a55ae`,
+bound locally to `ds41rt-quant-base:a70e6af77cd3` for Docker builds. Deployment
+must inspect/verify that binding; the tag alone is not sufficient identity.
+Current worker image on ostrich:
+`sha256:a555eaf016eeb9ddec333215a9dbc3c97b4e83733cf765cdfbd5340651a4319a`.
+It imports GPTQModel 7.3.6 on Python 3.14.6 free-threaded, Torch 2.13.0+cu130,
+Triton 3.7.1. Workers need no V4.1 tokenizer/model loader, so their inherited
+Transformers 5.14.1 is not used for activation generation.
+
+Identity-only execution on the actual GB10 passes; it records live GPU UUID,
+runtime versions, image identity, worker hash and Python/CUDA source-tree hash.
+TF32 is disabled. This runtime report is explicitly not numerical qualification.
+Evidence: `reports/spark-worker-build-ext.log` and
+`reports/spark-worker-identity-ext.log`.
+
+The first standalone GPU search probe exposed missing sibling CUDA sources in
+the initial image, before producing a candidate; its failure is preserved in
+`reports/spark-worker-search-probe.log`. The corrected image's probe is recorded
+separately in `reports/spark-worker-search-probe-ext.log`. It uses a synthetic
+5120x2304 weight and raw diagonal Hessian at count 1024, not production weights.
+The JIT cache uses the named Docker volume `ds41rt-quant-jit` on ostrich.
+The corrected K3 probe completed successfully in 31.49 seconds including JIT
+compilation, returning the expected 320x144x48 trellis and finite error metrics.
+The probe container exited normally; no worker service is running yet. Authenticated
+real-weight cross-device qualification and deployment on all four hosts remain
+required, as does the complete detached coordinator workflow.
