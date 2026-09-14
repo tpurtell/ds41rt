@@ -1079,3 +1079,30 @@ read-only header check passes for all 480 actual K3/K4 candidate files from the
 earlier mtp0 diagnostic (`reports/export-inventory-fixture-headers.json`); that
 fixture is unchanged and is not production calibration. Final inventory writing,
 loader/config integration and the production launcher remain pending.
+
+### Resumable weight-shard writer
+
+`write_export.py` connects the final tensor inventory to bounded repacking and
+the standard HF index. It freezes inventory/layout/run identity plus source
+device/inode/size/mtime metadata in a separate state directory before publishing
+weights, under an exclusive export lock. Existing state requires explicit resume;
+identity changes, unknown output files, structural corruption and truncation
+stop without replacing published files. Shards are checked by complete tensor
+names, dtypes, shapes, spans and file size; no huge-file payload hashes are added.
+The index is published only after all shards pass and source metadata is unchanged.
+Same-size payload corruption is explicitly outside this structural verification.
+
+If a planned shard exactly matches a complete source file with unchanged tensor
+names, the writer hard-links the immutable source inode (same filesystem); otherwise
+it streams raw bytes, including an EXDEV fallback. This supports reusing isolated
+PLE shards in later model materializations. It does not hard-link a mixed source
+shard when only its PLE subset belongs in the output. Partial temporary files left
+by an abrupt process death require inspection/recovery; they are never silently
+accepted or deleted. Tests cover interruption after a shard, explicit resume,
+no recopy on completed resume, changed identity rejection, truncation rejection,
+ordinary safetensors reads via the generated index, and actual inode reuse.
+
+The writer's terminal status is deliberately
+`weights-index-complete-model-validation-pending`. It does not yet write the final
+model config/tokenizer, establish V4.1/EXL3 model-loader compatibility, upload to
+HF, or launch production. No production quantization or large export has started.
