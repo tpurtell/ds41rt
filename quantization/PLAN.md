@@ -350,3 +350,32 @@ Still required: derive actual draft inputs from main-model target-layer **inputs
 outputs), qualify main_proj/main_norm and token/noise embeddings, integrate both
 namespaces with calibration and quantization, and test durable end-to-end resume.
 There is still no production quantization run or finished detached launcher.
+
+### dSpark input adapter and target-feature capture
+
+`V41ReplayBatch` now carries target-layer IDs and owned target features through
+durable boundaries. A temporary attention-hyperconnection pre-hook captures the
+unweighted BF16 stream mean after any PLE injection, before the block executes;
+it is removed even on failure. The tiny five-layer replay test checks these
+features survive every save/load boundary without numerical changes.
+
+`V41Source.load_dspark_input` loads the real `mtp.0.main_proj`, `main_norm` and
+shared BF16 token embedding (or reuses a supplied embedding). `V41DSparkInput`
+builds the five-position noise draft and explicit main history. Teacher-forced
+alignment is enforced by `prepare(target_features, token_ids, position=P)`:
+main features cover only positions 0..P; the known first draft token is corpus
+token P+1, replacing the main model's sampled next token; all remaining draft
+positions are noise. Future main features are excluded before projection.
+This is a calibration policy, not a claim that the reference itself teacher-forces.
+
+`reports/dspark-input-core-parity.log` qualifies input projection/normalization,
+real embedding gathers and the three-stage core chain against the checkpoint at
+history lengths 2, 129 and 257, all exactly equal. Target features remain synthetic
+in this diagnostic; full-main-to-draft corpus replay is still pending.
+`reports/component-tests-dspark-input.log` records twelve passing tests, including
+target ordering, P+1 token selection, noise placement, and future-feature exclusion
+(future rows replaced with NaNs must not change the draft input).
+
+Remaining production integration includes tokenizer/hash qualification, corpus
+preparation, main-to-draft replay, EXL3 wavefront/worker scheduling, transaction
+journaling and detached one-shot orchestration, isolated PLE export and upload.

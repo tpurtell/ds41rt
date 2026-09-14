@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Real dSpark core-chain parity, including reference window seeding/wraparound.
 
-Synthetic projected main features and draft embeddings isolate the three routed
-blocks. This does not qualify main_proj, token embedding, or auxiliary heads.
+Synthetic target-layer features and real token embeddings exercise input
+preparation and the three routed blocks. Auxiliary output heads are excluded.
 """
 import argparse
 import gc
@@ -36,10 +36,23 @@ def validate(snapshot, device, lengths):
     frontier = {}
     try:
         torch.set_default_dtype(torch.bfloat16)
+        adapter = source.load_dspark_input(device, native_kernels=kernel)
         for stage in range(args.n_mtp_layers):
             candidate = source.load_decoded_block(stage, device, native_kernels=kernel, namespace="mtp")
             with torch.device("meta"):
                 original = reference.DSparkBlock(args.n_layers + stage, args)
+            if stage == 0:
+                reference_input = torch.nn.Module()
+                reference_input.main_proj = original.main_proj
+                reference_input.main_norm = original.main_norm
+                reference_input.embed = adapter.embed
+                reference_input.block_size = args.dspark_block_size
+                reference_input.noise_token_id = args.dspark_noise_token_id
+                reference_input.hc_mult = args.hc_mult
+                reference_input.load_state_dict(adapter.state_dict(), strict=True, assign=True)
+                for module in reference_input.modules():
+                    if getattr(module, "scale", None) is not None and hasattr(module, "weight"):
+                        module.weight.scale = module.scale
             # Scope is the core block, excluding input preparation/output heads.
             for name in ("main_proj", "main_norm", "norm", "markov_head", "confidence_head"):
                 if hasattr(original, name):
@@ -63,11 +76,18 @@ def validate(snapshot, device, lengths):
                 for length in lengths:
                     if stage == 0:
                         torch.manual_seed(1234 + length)
-                        hidden = torch.randn(1, args.dspark_block_size, args.hc_mult, args.dim, device=device) * .1
+                        features = {index: torch.randn(1, length, args.dim, device=device) * .1
+                                    for index in args.dspark_target_layer_ids}
+                        token_ids = torch.randint(args.vocab_size, (1, length + 1), device=device)
+                        ids = token_ids[:, length]
+                        main_hidden = torch.cat(list(features.values()), dim=-1)
+                        hidden, main = reference.DSparkBlock.forward_embed(reference_input, main_hidden, ids)
                         pre = reference.make_identity_pre_mix(hidden, args.hc_mult)
-                        main = torch.randn(1, length, args.dim, device=device) * .1
-                        state = V41ReplayBatch(0, owned_tree(hidden, "cpu"), owned_tree(pre, "cpu"), {},
-                                               {"main_x": owned_tree(main, "cpu")}, {})
+                        state = adapter.prepare(features, token_ids, position=length - 1)
+                        exact = torch.equal(state.hidden, hidden.cpu()) and torch.equal(state.kwargs["main_x"], main.cpu())
+                        print(json.dumps(dict(input_main_length=length, input_exact=exact)), flush=True)
+                        if not exact:
+                            raise AssertionError("dSpark input preparation differs from reference")
                         ref_hidden, ref_pre = hidden, pre
                     else:
                         state, ref_hidden, ref_pre = frontier[length]

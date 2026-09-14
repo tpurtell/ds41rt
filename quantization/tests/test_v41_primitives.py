@@ -38,6 +38,12 @@ class V41PrimitivesTest(unittest.TestCase):
         ids = torch.randint(0, 128, (2, 33))
         reference = model(ids, use_cache=False).logits
         state = V41ReplayBatch.prepare(model, ids)
+        target_inputs = {}
+        handles = []
+        for index in state.target_layer_ids:
+            def capture(module, args, index=index):
+                target_inputs[index] = args[0].mean(dim=2).clone()
+            handles.append(model.model.layers[index].attn_hc.register_forward_pre_hook(capture))
         for layer in model.model.layers:
             first = state.advance(layer, "cpu")
             second = state.advance(layer, "cpu")
@@ -53,6 +59,11 @@ class V41PrimitivesTest(unittest.TestCase):
         result = model.lm_head(model.model.norm(hidden))
         torch.testing.assert_close(result, reference, rtol=0, atol=0)
         self.assertEqual(state.next_layer, 5)
+        for handle in handles:
+            handle.remove()
+        self.assertEqual(set(state.target_features), set(state.target_layer_ids))
+        for index, value in state.target_features.items():
+            torch.testing.assert_close(value, target_inputs[index], rtol=0, atol=0)
         self.assertTrue({"compress_kv", "index_k", "candidates", "topk_idx"} <= state.shared.keys())
         with self.assertRaises(ValueError):
             state.advance(model.model.layers[0], "cpu")
