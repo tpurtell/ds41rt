@@ -860,3 +860,33 @@ bounds, stable hashing, full selection, lock exclusion, and recovery after block
 commit/before retirement. Coordinator scheduling tests mock the block operation;
 they are not full-corpus integration evidence.
 All 35 component tests pass (`reports/component-tests-coordinator-anchors.log`).
+
+### Joint dSpark prefix implementation — numerical qualification pending
+
+The fork now has `V41DSparkInput.prepare_joint`: one source prompt, sorted
+distinct selected positions, one projected main prefix, and joint five-row draft
+groups. Native dSpark attention accepts explicit `anchor_positions`, projects
+each shared main KV row once per block, and gathers per-anchor ring slots in
+reference order. Early nonexistent slots are masked; RoPE uses each anchor's
+absolute draft positions. The existing single-anchor path remains available.
+
+All 37 component tests pass (`reports/component-tests-joint-dspark-ring.log`).
+New tests verify prefix slicing, known/noise tokens, coordinate rejection, and
+literal reference-style cache writes across the 128-row wrap boundary; changing
+future main KV rows cannot affect earlier anchor windows.
+
+`probe_joint_dspark.py` executes all three real-weight blocks with positions
+1,7,127,128,256, retaining just one [1,257,5120] projected prefix for the five
+anchors. Joint outputs are finite and repeatable, but **not yet qualified**:
+even with TF32 disabled, joint versus separate-anchor hidden maximum differences
+are 0.491943359375, 6.4677734375 and 35.0 across stages 0/1/2. Evidence is
+`reports/joint-dspark-smoke-fp32.log`. Earlier failed config-key lookup and
+TF32-enabled comparison logs are retained separately. These differences must
+be localized against an independently adapted checkpoint-reference joint batch;
+repeatability is not sufficient proof of correctness, and no production draft
+Hessians should use this implementation yet. Batch-shape-dependent numerical
+behavior is possible, but has not been established as the explanation.
+
+This fork change affects native calibration modules, not the EXL3 search code.
+The four running worker images still bind their previously qualified source
+identities; no image was silently changed underneath a running worker.
