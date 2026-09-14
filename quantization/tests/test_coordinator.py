@@ -28,12 +28,14 @@ class CoordinatorTest(unittest.TestCase):
                 _publish=lambda key, kind, state, parents: stored.__setitem__(key, state))
             def forbidden():
                 raise AssertionError("must not recreate consumed input adapters")
-            with patch("coordinator.run_namespace", side_effect=[main, draft]) as run:
+            with patch("coordinator.run_namespace", side_effect=[main, draft]) as run, \
+                 patch("coordinator.retire_namespace_frontier") as retire:
                 result = quantize_namespaces(driver, records, attestation, main_adapters=forbidden,
                     draft_adapters=forbidden, native_kernels=None, anchor_count=2)
                 self.assertEqual([call.args[1] for call in run.call_args_list], ["base", "mtp"])
                 self.assertEqual(result["status"], "namespaces-quantized-export-pending")
                 self.assertIn("quantization/complete", stored)
+                self.assertEqual([call.args[1] for call in retire.call_args_list], ["base", "mtp"])
 
     def test_exclusive_lock_and_release(self):
         with tempfile.TemporaryDirectory() as directory:

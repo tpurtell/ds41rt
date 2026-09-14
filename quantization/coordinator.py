@@ -12,7 +12,7 @@ import time
 import torch
 
 from mixed_recipe import NAMESPACES
-from retention import retire_block_temporaries
+from retention import retire_block_temporaries, retire_namespace_frontier
 from wavefront import Wavefront
 from corpus_inputs import prepare_frontiers
 from draft_inputs import prepare_draft_frontiers
@@ -49,6 +49,10 @@ def run_namespace(driver, namespace, initial_frontier, *, native_kernels, replic
         driver._publish(initial_key, "namespace-inputs", initial_frontier, initial_frontier["output_keys"])
     elif previous != initial_frontier:
         raise ValueError("namespace initial frontier changed during recovery")
+    if driver._load(f"namespaces/{namespace}/retirement", "namespace-retirement") is not None:
+        # Finish an interrupted retirement without trying to reload consumed
+        # outputs or rerun completed layers. Only a durable authorization permits it.
+        return retire_namespace_frontier(driver, namespace)
     wavefront = Wavefront(driver)
     frontier = wavefront.latest(namespace)
     if frontier is not None:
@@ -125,7 +129,9 @@ def quantize_namespaces(driver, records, attestation, *, main_adapters, draft_ad
             finally:
                 del adapters
                 gc.collect()
+        retire_namespace_frontier(driver, "base")
         draft = run_namespace(driver, "mtp", draft_initial, native_kernels=native_kernels, replica_device=replica_device)
+        retire_namespace_frontier(driver, "mtp")
         result = dict(main=main, draft=draft, status="namespaces-quantized-export-pending")
         previous = driver._load("quantization/complete", "quantization")
         if previous is None:

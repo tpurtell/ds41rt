@@ -5,6 +5,54 @@ from gptqmodel.utils.v41_checkpoint import load_frontier
 from mixed_recipe import NAMESPACES
 
 
+def retire_namespace_frontier(driver, namespace):
+    """Commit a verified handoff before retiring the final rolling payloads.
+
+    The authorization survives crashes and downstream retirement. No replay
+    samples are retained. Completion metadata and selected weights stay intact.
+    """
+    if namespace not in NAMESPACES:
+        raise ValueError("invalid retention namespace")
+    complete_key = f"namespaces/{namespace}/complete"
+    complete = driver._load(complete_key, "namespace")
+    if complete is None or complete["next_layer"] != NAMESPACES[namespace][1]:
+        raise ValueError("cannot retire an incomplete namespace")
+    downstream_key, kind = (("draft-inputs/complete", "inputs") if namespace == "base"
+                            else (complete_key, "namespace"))
+    downstream = driver._load(downstream_key, kind)
+    if downstream is None or not downstream["output_keys"] or not complete["output_keys"]:
+        raise ValueError("namespace retirement requires a completed handoff")
+    if namespace == "base":
+        inventory = driver._load("draft-inputs/inventory", "inventory")
+        if inventory is None or inventory["main_frontier"] != complete or downstream["next_layer"] != 0:
+            raise ValueError("namespace retirement handoff differs")
+    marker = f"namespaces/{namespace}/retirement"
+    expected = dict(frontier=complete, downstream_key=downstream_key, downstream=downstream)
+    authorization = driver._load(marker, "namespace-retirement")
+    if authorization is None:
+        # Before authorizing deletion, actually reload every replacement. After
+        # authorization, these may themselves be legitimately superseded.
+        for key in downstream["output_keys"]:
+            record = driver.journal.get(key, verify=False)
+            if record is None or record["kind"] != "replay":
+                raise ValueError("handoff output is not a replay payload")
+            state = load_frontier(driver.journal.root / record["path"],
+                expected_sha256=record["sha256"],
+                expected_provenance=downstream["output_provenance"][key])
+            if (state.next_layer != downstream["next_layer"]
+                    or not torch.isfinite(state.hidden).all() or not torch.isfinite(state.pre_mix).all()):
+                raise ValueError("invalid namespace handoff frontier")
+            del state
+        driver._publish(marker, "namespace-retirement", expected,
+                        tuple(dict.fromkeys((complete_key, downstream_key))))
+    elif authorization != expected:
+        raise ValueError("namespace retirement authorization changed")
+    removed = driver.journal.retire_files(complete["output_keys"], barrier=marker)
+    driver.progress(dict(event="namespace_frontier_retired", namespace=namespace,
+                         payloads=len(complete["output_keys"]), removed_bytes=removed))
+    return complete
+
+
 def retire_block_temporaries(driver, namespace, layer):
     if namespace not in NAMESPACES or type(layer) is not int or not 0 <= layer < NAMESPACES[namespace][1]:
         raise ValueError("invalid retention block")

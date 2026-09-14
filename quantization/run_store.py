@@ -113,7 +113,7 @@ class RunStore:
         if not keys or len(set(keys)) != len(keys) or barrier in keys:
             raise ValueError("retirement requires distinct explicit payload keys")
         barrier_record = self.get(barrier)
-        if barrier_record is None or barrier_record["kind"] != "block":
+        if barrier_record is None or barrier_record["kind"] not in {"block", "namespace-retirement"}:
             raise ValueError("retirement requires a completed block barrier")
         ancestors, pending = set(), list(barrier_record["parents"].items())
         while pending:

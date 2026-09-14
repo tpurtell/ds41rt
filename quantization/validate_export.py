@@ -93,4 +93,4 @@ def validate_export(output, state_root, source_snapshot):
     return dict(schema="ds41rt-export-structure-validation-v1", status="passed", **counts,
                 routed_projections=len(inventory["tiers"]), k4_projections=sum(bits == 4 for bits in inventory["tiers"].values()),
                 verification="complete headers/index/config/native descriptors and small asset checksums",
-                weight_payload_hashes=False, numerical_validation="separate-required-gate")
+                weight_payload_hashes=False, numerical_validation="deferred-to-inference-engine-integration")

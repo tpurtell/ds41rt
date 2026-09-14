@@ -33,7 +33,7 @@ def model_metadata(source_config, inventory, *, provenance):
         routed_average_bpw="13/4", projection_ratio=dict(w1=3, w3=5, w2=8),
         native_quantization_config=copy.deepcopy(source_config.get("quantization_config")),
         provenance=copy.deepcopy(provenance),
-        loader_validation="required-before-publication")
+        loader_validation="deferred-to-inference-engine-integration")
     config = copy.deepcopy(source_config)
     config["quantization_config"] = {key: external[key] for key in
                                     ("quant_method", "format", "checkpoint_format", "bits")}

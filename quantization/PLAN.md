@@ -1346,3 +1346,44 @@ placement does not alter this size because each projection has equal geometry.
 These numbers exclude file headers/JSON/assets and rolling recovery state; they
 are not yet a complete peak-disk budget. No weight payload was read or exported.
 Final numerical/model-card/publication and one-shot integration remain pending.
+
+### User correction: rolling recovery only; no final replay
+
+This supersedes earlier references to final numerical replay or a required
+pre-publication loader/numerical-validation gate. Do not retain calibration
+frontiers, including a small validation subset, for a final replay. Keep only
+rolling recovery data needed to resume current work; retire obsolete data after
+the dependent layer or handoff has durably completed. Main-model features needed
+to construct dSpark inputs are a real downstream dependency, not validation data.
+Keep selected quantized weights until export and recovery no longer need them.
+
+The requested terminal workflow is quantization, standard safetensors/HF model
+assembly, structural export validation, upload, and HF cache materialization.
+Behavioral validation, normal prompts and tool calls will be tested by the user
+later while integrating support into the inference engine. Do not claim those
+checks passed or block publication on adding them to this pipeline. Existing
+quantizer correctness checks and structural validation remain in scope; routine
+hashing of huge weight files remains out of scope.
+
+The unused, unintegrated final-replay validator was removed. It had not run and
+production quantization has not started. Final-frontier retirement and resume
+handling still need integration; this entry records the required policy, not a
+claim that final cleanup or the publication launcher is already complete.
+
+### Final rolling-frontier cleanup integrated
+
+The coordinator now retires the final main frontier after all joint dSpark inputs
+are committed and reloaded successfully. It retires the final dSpark frontier
+after namespace completion and verification. A durable `namespace-retirement`
+authorization records the exact namespace completion and downstream handoff
+before deletion; explicit resume finishes interrupted deletion using that same
+authorization, without loading retired outputs or rerunning completed layers.
+The journal retains immutable dependency records and deletion intents, while
+selected projection payloads remain available for export. No validation samples
+are retained. This removes final activation payloads, not selected model weights.
+
+All 57 component tests pass, including both namespace cleanup/resume paths,
+interruption after authorization but before unlink, idempotent cleanup, and a
+corrupt dSpark handoff refusing to authorize deletion. Tests use temporary fixtures;
+no production or prior diagnostic payloads were deleted. Production deployment,
+model-card/upload/cache integration and frozen-image requalification remain pending.
