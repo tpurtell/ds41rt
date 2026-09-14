@@ -1709,3 +1709,22 @@ allocation fell to 2,328,038,400 bytes (2.17 GiB), despite high cached memory in
 `nvidia-smi`. This verifies primary block-tensor release, not a measurement of
 the replica's live allocation or multi-layer stability. Host peak RSS was
 8,420,972 KiB. Report system RAM and VRAM separately in future check-ins.
+
+### Detached-run recheck — 2026-09-15 04:31 Taipei
+
+The same attempt remained running across session interruption, with main
+blocks 0–9 committed and retired and block 10 routing. Blocks 2–9 took
+2,183–2,242 seconds each (about 36–37 minutes). Each logged the identical
+post-cleanup primary live allocation of 2,328,038,400 bytes. Free NVMe was
+873 GiB. Both RTX devices showed about 44 GiB total usage including caches.
+
+Host peak RSS increased across layers, reaching 23,104,964 KiB after block 9;
+current process RSS was about 18.8 GiB and anonymous cgroup memory about
+18.6 GiB. This is not yet established as a stable host-memory plateau. The
+cgroup had zero OOMs/kills but 1,825 memory-limit reclaim events with roughly
+114 GiB of file cache; do not report all limit counters as zero. Continue
+observing host-memory growth without treating cache-inclusive VRAM as live
+tensor allocation or restarting the progressing job without cause.
+Recent throughput projects roughly 18.5 hours for the remaining main blocks
+(around 22:50 Taipei September 15); dSpark/export/upload time remains additional
+and this is not a verified final publication ETA.
