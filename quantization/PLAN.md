@@ -890,3 +890,30 @@ behavior is possible, but has not been established as the explanation.
 This fork change affects native calibration modules, not the EXL3 search code.
 The four running worker images still bind their previously qualified source
 identities; no image was silently changed underneath a running worker.
+
+### Joint dSpark checkpoint-reference gate passed
+
+The joint-versus-single diagnostic above is now resolved for the tested cases.
+`quantization/validate_joint_dspark.py` independently adapts only the checkpoint
+attention's scalar-position/cache interface to per-anchor positions: main-cache
+population uses literal sequential ring writes, rotary uses the checkpoint's
+in-place complex routine per anchor, and projections, normalization, sparse
+attention, output einsum, mHC and experts remain checkpoint-reference operations.
+Main input projection and embeddings are also computed through the checkpoint's
+`DSparkBlock.forward_embed`, not taken from the candidate as the expected answer.
+
+Exact parity passes through all three real-weight stages for:
+- five joint anchors at 1,7,127,128,256 on RTX0
+  (`reports/joint-dspark-reference.log`, core gate before input-comparator addition);
+- 231 consecutive anchors on RTX1, including exact reference input preparation
+  (`reports/joint-dspark-reference-231.log`);
+- anchors at 1,127,128,256,511,1024 on RTX0, including input preparation and
+  multiple cache wraps (`reports/joint-dspark-reference-long.log`).
+
+Every reported attention, hidden and pre-mix maximum difference is zero. No
+candidate implementation change was required to pass these gates. This supports
+using the fixed joint batching topology; separately issued anchors are not a
+bitwise-equivalent substitute. The earlier divergent single-anchor results remain
+recorded, not relabeled as parity. These are synthetic target features and real
+weights, not final-corpus quality evidence. Full-corpus handoff and two-RTX
+orchestration remain to connect before production starts.
