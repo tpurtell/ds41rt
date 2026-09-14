@@ -1189,3 +1189,33 @@ only bounded non-weight assets are hashed. The real source reuse check passes
 checks do not claim detection of same-size corruption in ordinary weight files.
 All 52 component tests pass before the final standalone-pretty-JSON reader test;
 the focused runtime suite is rerun for that reader change.
+
+### Six-device distributed integration qualification
+
+`qualify_distributed.py` now exercises the actual `DistributedSearch` backend
+with real source projections and synthetic raw diagonal Hessians. A diagnostic
+barrier holds ten scheduler leases before computation, ensuring both RTX slots
+and both staging positions on each of the four Sparks participate concurrently.
+It requires the existing complete 12-case numerical qualification report for
+each Spark and repeats live authenticated worker identity checks. No activation
+capture is sent to the Sparks.
+
+The real run passes ten main/draft K3/K4 jobs across all six devices, then
+reconstructs the client from its persisted assignment file and repeats all ten.
+Every assignment and packed result is unchanged; every result also matches a
+separate serial RTX0 search exactly. Evidence:
+`reports/distributed-search-qualification.log`, terminal event
+`distributed_qualification_passed`, 10 cases, 2 waves, 21.41 seconds including
+serial comparisons. This synthetic-Hessian diagnostic is not a production ETA.
+Temporary coordinator assignments are cleaned up after this test; Spark request
+checkpoints remain in their existing durable worker volumes.
+
+The report binds the inspected development-container base image
+`sha256:6213ea40c79617373562d7f2d3cc5fa25ca9d03e27dd213361b216c3e315e9f4`,
+loaded source-tree digest
+`9f2f4a55c86febb5944de166a2fe8eb2ca988949c9a99f22a293df41a1496610`,
+Python/runtime versions and both GPU UUIDs. This is qualification of the mutable
+development runtime at that source identity, not a claim that the final immutable
+coordinator image already exists. Full runtime/launch integration remains pending;
+production quantization has not started. All 52 component tests pass again in
+`reports/component-tests-distributed-integration.log`.
