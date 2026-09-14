@@ -14,6 +14,45 @@ from run_store import RunStore
 
 
 class RecoveryIdentityTest(unittest.TestCase):
+    def test_search_epoch_preserves_data_and_prior_authorization(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            original, previous = self.fixture(root)
+            (root / 'previous.json').write_text(json.dumps(previous))
+            payload = json.dumps(dict(event='throughput_passed', variant='continuous', jobs=64,
+                packed_exact=True, devices={name: 1 for name in ('cuda:0', 'cuda:1', 'ostrich', 'dodo', 'emu', 'kiwi')})).encode()
+            (root / 'search.log').write_bytes(payload)
+            current = copy.deepcopy(previous)
+            for slot in current['coordinator_slots']:
+                slot.update(image_digest='queue-image', preflight_sha256='queue-code')
+            current['recovery'] = dict(schema='ds41rt-continuous-search-recovery-v1',
+                previous_manifest=str(root / 'previous.json'), search_report=str(root / 'search.log'),
+                search_report_sha256=hashlib.sha256(payload).hexdigest())
+            preserved, evidence = resolve_identity(current)
+            self.assertEqual(preserved, original)
+            journal = RunStore(root, {'runtime': original})
+            self.addCleanup(journal.close)
+            driver = BlockDriver(None, journal, {'runtime': original}, device='cpu')
+            with self.assertRaisesRegex(ValueError, 'prior execution'):
+                authorize_input_recovery(driver, evidence)
+            old_key = 'recovery/input-serializer-release-v1'
+            driver._publish(old_key, 'recovery', evidence['previous_evidence'], ())
+            driver._publish('blocks/base/000/candidate', 'projection', {'preserved': True}, ())
+            old_dir = root / 'search-assignments.json'
+            old_dir.mkdir()
+            (old_dir / 'sentinel').write_text('unchanged')
+            authorize_input_recovery(driver, evidence)
+            authorize_input_recovery(driver, evidence)
+            self.assertEqual((old_dir / 'sentinel').read_text(), 'unchanged')
+            self.assertEqual(driver._load('blocks/base/000/candidate', 'projection'), {'preserved': True})
+            self.assertEqual(driver._load(old_key, 'recovery'), evidence['previous_evidence'])
+            changed = copy.deepcopy(current)
+            changed['corpus'] = 'wrong'
+            with self.assertRaisesRegex(ValueError, 'changed model/corpus'):
+                resolve_identity(changed)
+            with self.assertRaisesRegex(ValueError, 'identity changed'):
+                authorize_input_recovery(driver, {**evidence, 'search_report_sha256': 'wrong'})
+
     def fixture(self, root):
         original = dict(run_root=str(root), corpus="unchanged-corpus", coordinator_slots=[
             dict(device=f"cuda:{i}", gpu_uuid=str(i), image_digest="old-image", preflight_sha256="old-code") for i in range(2)])

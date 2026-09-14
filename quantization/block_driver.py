@@ -5,7 +5,6 @@ It stops on failure; calling it again is an explicit, identity-checked recovery.
 It does not create corpus frontiers, propagate outputs, export, or launch workers.
 """
 import gc
-from concurrent.futures import ThreadPoolExecutor
 
 import torch
 
@@ -17,6 +16,7 @@ from gptqmodel.utils.exl3_inline_mixed import projection_score
 from gptqmodel.exllamav3.modules.quant.exl3_lib.quantize import quantize_exl3
 
 from mixed_recipe import NAMESPACES, layer_quotas
+from candidate_queue import CandidateQueue
 
 
 class BlockDriver:
@@ -69,38 +69,10 @@ class BlockDriver:
         return key, result
 
     def _candidates(self, jobs):
-        """Bound search concurrency; SQLite and candidate publication stay local.
-
-        A search backend must explicitly advertise safe concurrency. Windows
-        bound outstanding Hessians/results even when an early worker is slow.
-        Exceptions stop new dispatch; completed but unpublished work is orphaned
-        and may be recovered from the remote worker's own request checkpoint.
-        """
-        workers = getattr(self.search, "max_workers", 1)
-        if type(workers) is not int or not 1 <= workers <= 16:
-            raise ValueError("invalid search backend concurrency")
-        if workers == 1:
+        """Feed bounded search continuously, publishing only on this thread."""
+        with CandidateQueue(self) as queue:
             for job in jobs:
-                self._candidate(*job)
-            return
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            for offset in range(0, len(jobs), workers):
-                pending = []
-                for prefix, expert, projection, bits, hessian_key, source_prefix in jobs[offset:offset + workers]:
-                    key = f"{prefix}/expert-{expert:03d}/{projection}-k{bits}"
-                    if self._load(key, "projection") is not None:
-                        continue
-                    captured = self._load(hessian_key, "hessian")
-                    future = pool.submit(self.search,
-                                         f"{source_prefix}.ffn.experts.{expert}.{projection}",
-                                         captured["hessian"], bits)
-                    pending.append((key, bits, hessian_key, captured["evidence"], future))
-                for key, bits, hessian_key, evidence, future in pending:
-                    packed, metrics = future.result()
-                    result = dict(packed=packed, quantizer_metrics=metrics, route_evidence=evidence)
-                    projection_score(result)
-                    self._publish(key, "projection", result, (hessian_key,))
-                    self.progress(dict(event="candidate_committed", key=key, bits=bits))
+                queue.submit(job)
 
     def run(self, block, namespace, layer, routed_keys, *, routed_provenance):
         source_namespace, layers, experts = NAMESPACES[namespace]
@@ -131,30 +103,34 @@ class BlockDriver:
                     install_projection(block, expert, projection, candidate["packed"], device=self.device)
                 parent = complete_key
                 continue
-            for start in range(0, experts, self.subset_size):
-                subset = list(range(start, min(experts, start + self.subset_size)))
-                missing = [index for index in subset
-                           if self.journal.get(f"{prefix}/expert-{index:03d}/hessian", verify=False) is None]
-                if missing:
-                    capture = V41Capture(block, missing, device=self.device, phase=phase)
-                    recovery = V41Recovery(block, missing)
-                    for batch_key in routed_keys:
-                        record = self.journal.get(batch_key, verify=False)
-                        batch = load_routed_batch(self.journal.root / record["path"],
-                                                  expected_sha256=record["sha256"],
-                                                  expected_provenance=routed_provenance[batch_key])
-                        capture.capture_routed(batch)
-                        recovery.observe_routed(batch)
-                    for expert in missing:
-                        hessian, evidence = recovery.projection(capture, expert, projections[0])
-                        key = f"{prefix}/expert-{expert:03d}/hessian"
-                        self._publish(key, "hessian", dict(hessian=hessian, evidence=evidence), (parent,))
-                    del capture, recovery, batch, hessian
-                    gc.collect()
-                    self.progress(dict(event="capture_committed", phase=phase, experts=missing))
-                self._candidates([(prefix, expert, projection, 3,
-                                   f"{prefix}/expert-{expert:03d}/hessian", source_prefix)
-                                  for expert in subset for projection in projections])
+            with CandidateQueue(self) as queue:
+                for start in range(0, experts, self.subset_size):
+                    queue.harvest()
+                    subset = list(range(start, min(experts, start + self.subset_size)))
+                    missing = [index for index in subset
+                               if self.journal.get(f"{prefix}/expert-{index:03d}/hessian", verify=False) is None]
+                    if missing:
+                        capture = V41Capture(block, missing, device=self.device, phase=phase)
+                        recovery = V41Recovery(block, missing)
+                        for batch_key in routed_keys:
+                            record = self.journal.get(batch_key, verify=False)
+                            batch = load_routed_batch(self.journal.root / record["path"],
+                                                      expected_sha256=record["sha256"],
+                                                      expected_provenance=routed_provenance[batch_key])
+                            capture.capture_routed(batch)
+                            recovery.observe_routed(batch)
+                            queue.harvest()
+                        for expert in missing:
+                            hessian, evidence = recovery.projection(capture, expert, projections[0])
+                            key = f"{prefix}/expert-{expert:03d}/hessian"
+                            self._publish(key, "hessian", dict(hessian=hessian, evidence=evidence), (parent,))
+                        del capture, recovery, batch, hessian
+                        gc.collect()
+                        self.progress(dict(event="capture_committed", phase=phase, experts=missing))
+                    for expert in subset:
+                        for projection in projections:
+                            queue.submit((prefix, expert, projection, 3,
+                                          f"{prefix}/expert-{expert:03d}/hessian", source_prefix))
             # Choose K4 by K3 risk within each projection quota. Tie-break by
             # numeric expert index, frozen as part of this driver's contract.
             tier_key = prefix + "/tiers"

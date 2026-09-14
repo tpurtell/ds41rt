@@ -58,3 +58,11 @@ until dSpark input handoff, and final dSpark states are not kept for replay.
 
 After several production layers commit with stable memory, monitor every
 30 minutes and report current progress plus completion ETA.
+
+The continuous-search repair uses the explicit
+`ds41rt-continuous-search-recovery-v1` manifest authorization documented in
+`PLAN.md`. Keep its referenced previous manifest and qualification report.
+Old assignment files and completed candidates remain intact; new assignments
+are recorded separately in `search-assignments-continuous-v1.json`. Only
+unfinished searches may be recomputed. Resume the same repaired manifest with
+`--resume`; do not replace the old assignment directory or relabel old results.

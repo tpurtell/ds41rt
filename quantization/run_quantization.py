@@ -181,10 +181,21 @@ def run(manifest, *, resume=False):
                 token_path = Path(manifest["token_file"])
                 if token_path.stat().st_mode & 0o077:
                     raise ValueError("worker token file must be private")
+                assignment_path = root / "search-assignments.json"
+                if recovery_evidence and recovery_evidence["schema"] == "ds41rt-continuous-search-recovery-v1":
+                    # Validate, but never rewrite or execute under, old identities.
+                    # Completed candidates bypass search; only unfinished work
+                    # gets a fresh auditable assignment under the new image.
+                    previous = recovery_evidence["previous_evidence"]["execution_manifest"]
+                    EXL3RemoteClient(endpoints=[RemoteEndpoint(**item) for item in previous["endpoints"]],
+                        coordinator_slots=[CoordinatorSlot(**item) for item in previous["coordinator_slots"]],
+                        token=token_path.read_bytes().strip(), timeout_seconds=600, max_attempts=1,
+                        assignment_store_path=assignment_path)
+                    assignment_path = root / "search-assignments-continuous-v1.json"
                 client = EXL3RemoteClient(endpoints=[RemoteEndpoint(**item) for item in manifest["endpoints"]],
                     coordinator_slots=[CoordinatorSlot(**item) for item in manifest["coordinator_slots"]],
                     token=token_path.read_bytes().strip(), timeout_seconds=600, max_attempts=1,
-                    assignment_store_path=root / "search-assignments.json")
+                    assignment_store_path=assignment_path)
                 for endpoint in client.endpoints:
                     client.qualify(endpoint)
                 source = V41Source(snapshot)

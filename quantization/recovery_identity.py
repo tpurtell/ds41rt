@@ -1,4 +1,4 @@
-"""Explicit, input-only serializer repair without rewriting saved provenance."""
+"""Explicit compatible execution repairs without rewriting saved provenance."""
 import copy
 import hashlib
 import json
@@ -18,6 +18,34 @@ def resolve_identity(manifest):
     recovery = manifest.get("recovery")
     if recovery is None:
         return manifest, None
+    if recovery.get("schema") == "ds41rt-continuous-search-recovery-v1":
+        root = Path(manifest["run_root"])
+        previous = json.loads(_bounded(recovery["previous_manifest"], root, 1024 * 1024))
+        if previous.get("recovery", {}).get("schema") != "ds41rt-input-serializer-recovery-v1":
+            raise ValueError("continuous search recovery requires the prior serializer execution")
+        original, previous_evidence = resolve_identity(previous)
+        normalized = copy.deepcopy(manifest)
+        normalized["recovery"] = previous["recovery"]
+        for old, new in zip(previous["coordinator_slots"], normalized["coordinator_slots"], strict=True):
+            if {k: v for k, v in old.items() if k not in {"image_digest", "preflight_sha256"}} != {
+                    k: v for k, v in new.items() if k not in {"image_digest", "preflight_sha256"}}:
+                raise ValueError("search recovery cannot change coordinator GPU topology")
+        normalized["coordinator_slots"] = previous["coordinator_slots"]
+        if normalized != previous:
+            raise ValueError("search recovery changed model/corpus/recipe/runtime inputs")
+        payload = _bounded(recovery["search_report"], root, 4 * 1024 * 1024)
+        if hashlib.sha256(payload).hexdigest() != recovery["search_report_sha256"]:
+            raise ValueError("search recovery evidence checksum differs")
+        reports = [json.loads(line) for line in payload.decode().splitlines()
+                   if line.startswith('{"event": "throughput_passed"')]
+        passed = [item for item in reports if item.get("variant") == "continuous"]
+        if (len(passed) != 1 or passed[0].get("packed_exact") is not True
+                or passed[0].get("jobs", 0) < 64
+                or set(passed[0].get("devices", {})) != {"cuda:0", "cuda:1", "ostrich", "dodo", "emu", "kiwi"}
+                or any(count <= 0 for count in passed[0]["devices"].values())):
+            raise ValueError("search recovery lacks exact six-device qualification")
+        return original, dict(schema=recovery["schema"], execution_manifest=manifest,
+            previous_evidence=previous_evidence, search_report_sha256=recovery["search_report_sha256"])
     if recovery.get("schema") != "ds41rt-input-serializer-recovery-v1":
         raise ValueError("unsupported recovery authorization")
     root = Path(manifest["run_root"])
@@ -52,6 +80,22 @@ def resolve_identity(manifest):
 
 def authorize_input_recovery(driver, evidence):
     if evidence is None:
+        return
+    if evidence["schema"] == "ds41rt-continuous-search-recovery-v1":
+        previous_key = "recovery/input-serializer-release-v1"
+        if driver._load(previous_key, "recovery") != evidence["previous_evidence"]:
+            raise ValueError("search recovery differs from committed prior execution")
+        key = "recovery/continuous-search-v1"
+        existing = driver._load(key, "recovery")
+        if existing is not None:
+            if existing != evidence:
+                raise ValueError("committed search recovery execution identity changed")
+            return
+        if (driver.journal.root / "search-assignments-continuous-v1.json").exists():
+            raise ValueError("new search epoch exists without authorization")
+        driver._publish(key, "recovery", evidence, (previous_key,))
+        driver.progress(dict(event="continuous_search_recovery_authorized",
+            committed_candidates="reused", prior_assignments="preserved", unfinished_searches="recompute_in_new_epoch"))
         return
     key = "recovery/input-serializer-release-v1"
     existing = driver._load(key, "recovery")

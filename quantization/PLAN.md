@@ -1616,3 +1616,58 @@ bounded dispatch and subset barriers, test correctness/memory and measure
 heterogeneous throughput before resuming. Production must remain stopped during
 this repair; the prior input-only recovery authorization is insufficient for
 migrating the now-existing search assignments to another execution identity.
+
+### Continuous queue repair in progress — 2026-09-14
+
+The user's corrected guidance is that an RTX may be six or seven times faster
+than a Spark for this workload, depending on compute versus memory pressure.
+Neither 4:1 nor 7:1 is a scheduling quota. Dispatch must follow actual slot
+availability so faster devices naturally consume more jobs. Activation capture
+remains exclusively on the two RTX GPUs.
+
+The working-tree driver now uses one continuously refilled, bounded candidate
+queue across capture subsets within each K3 phase, and the same queue for K4.
+It removes fixed search-window and per-subset drain barriers; true K3 ranking,
+K4 selection, and gate/up-before-down dependencies remain. Pending work is
+bounded to twice backend concurrency, with queued jobs holding metadata rather
+than loaded Hessians. Only the owner thread accesses the journal or publishes
+results. Worker failure stops further dispatch; committed recovery data stays.
+
+All 77 component tests passed, including a slow-first-job regression, simulated
+4x and 7x heterogeneous devices with uneven task durations, queue bounds,
+committed-candidate reuse, and failure propagation. Evidence is run-local
+`reports/component-tests-continuous-queue.log`. These simulations are not a
+hardware throughput measurement. Real heterogeneous/RTX-only throughput and
+overlap/memory qualification, plus an explicit compatible execution-identity
+migration preserving existing assignments, remain required before deployment.
+Production remains stopped; this change has not yet been deployed.
+
+### Real search qualification and explicit resume epoch — 2026-09-14
+
+`probe_search_throughput.py` used 64 real committed block-0 gate/up Hessians
+and source projections, with the production run mounted read-only. Continuous
+six-device dispatch completed in 29.54 seconds versus 36.05 seconds RTX-only.
+Every packed buffer matched its committed production candidate exactly. Each
+RTX handled 20 projections and each Spark six, with no fixed allocation ratio.
+The first fixed-window timing included a cold JIT compile and is not used as a
+fair throughput comparison. Evidence: `reports/continuous-throughput.log`.
+Temporary local diagnostic state is removed on success; production recovery
+data is untouched. This is bounded search qualification, not final replay.
+
+The user explicitly prefers starting once efficient concurrent operation and
+correctness are established; further performance benchmarking is not a launch
+gate. The already-running warm probe may finish, but do not launch more probes
+just to refine performance numbers.
+
+The new `ds41rt-continuous-search-recovery-v1` authorization references the prior
+serializer recovery manifest and checksum-pinned exact six-device report.
+Only coordinator image/preflight may change; data identity, recipe, model,
+corpus, GPU topology and remote workers remain unchanged. The prior serializer
+authorization must already match the journal. A separate durable
+`recovery/continuous-search-v1` marker records this transition. Old
+`search-assignments.json` records are validated under their original execution
+identity and left untouched; new searches use
+`search-assignments-continuous-v1.json`. All committed candidates are reused.
+Unfinished searches can be recomputed in the new epoch rather than falsely
+claiming execution under the old coordinator image. No source-weight rehash,
+activation regeneration, or deletion of old recovery payloads is involved.
