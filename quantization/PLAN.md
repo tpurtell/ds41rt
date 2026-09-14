@@ -587,3 +587,36 @@ idempotence, missing dependencies, identity mismatch and payload corruption.
 The diagnostic still discards its temporary files; production retention and
 end-to-end crash/resume orchestration remain unfinished. No production quantizer
 is running.
+
+### Journaled block phase driver
+
+`quantization/block_driver.py` now connects the validated components for one
+block. It binds an ordered routed-batch inventory, captures phase-specific
+Hessians in bounded expert subsets, journals recovered raw Hessians and K3
+candidates, selects K4 by per-projection risk quotas, reconstructs selected
+gate/up tensors, and only then captures/quantizes down. Completed phase markers
+depend on their tier plan and every selected packed projection. Explicit resume
+reloads completed candidates/phases rather than searching them again. Search
+dispatch is injectable; the default currently uses the local RTX only.
+
+The driver's tie-break is numeric expert index for equal risk, frozen in its
+implementation identity. Checkpoint metadata now supports typed lists as well as
+tuples to preserve the quantizer's nested metrics. All twenty-five component
+tests pass, including a small-model injected search failure, no duplicate search
+for committed candidates, phase ordering, exact upgrade counts and completed
+phase reload. This test mocks search/installation; it is not real full-block
+qualification.
+
+A real full dSpark block-0 diagnostic was started with `probe_block.py` using
+64 synthetic FFN rows, all 128 experts, and the exact 18/30/48 quotas. Its durable
+root is `/home/tj/Developer/ds41rt/.ds41rt-cache/quantization-diagnostics/mtp0-phase-v1`
+(container `/workspace/.ds41rt-cache/quantization-diagnostics/mtp0-phase-v1`).
+Persistent log: `reports/full-mtp0-phase-probe.log` under the standard run report
+root. Initial K3 gate/up candidates are committing successfully. Inspect the
+live process/journal before any restart; completion has not yet been established.
+These synthetic candidates must never enter the production artifact.
+
+Still absent: full-corpus frontier creation, propagated mixed-block output
+commitment, distributed worker dispatch/deployment, production recovery control,
+detached end-to-end launcher, final export/upload. The block phase driver alone
+does not declare a whole quantization block complete or satisfy deployment.
