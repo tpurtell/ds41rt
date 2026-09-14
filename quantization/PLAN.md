@@ -194,6 +194,32 @@ with exact coverage of all non-scale, non-PLE main-block tensors. The two
 PLE full-read rejection cases also pass. dSpark source mapping/loading is
 still pending and is not covered by this test.
 
+Native source-forward work: `v41_native.V41NativeLinear` retains FP8/packed-FP4
+weights and E8M0 scales and calls the checkpoint's TileLang kernels with
+explicit BF16 output allocation (no process-global dtype dependency). Real
+block 0 loads in 3.16 seconds and uses 6.91 GiB allocated GPU memory. Individual
+FP8 and FP4 projections execute with finite BF16 output. This is not full-block
+qualification.
+
+`quantization/validate_native_block.py` compares real block 0 to the checkpoint
+reference at 32 and 129 tokens. The official sparse attention's 64-head kernel
+requires 141312 shared-memory bytes, exceeding SM120's limit; the harness calls
+the unchanged kernel on independent 16-head groups. It also uses the official
+runner's default CUDA device context for reference-generated indices. TileLang
+emits a thread-sync warning for this kernel; do not ignore this when assessing
+oracle reliability. The harness currently emits diagnostic error metrics, not
+a passing acceptance result.
+
+The initial block comparison differed by 2.16%/2.76% relative L2. A concrete
+candidate discrepancy was found: Transformers RMSNorm rounded to BF16 before
+the learned weight multiplication, while the checkpoint rounds after it.
+The separate GPTQModel definition now uses the checkpoint order. Attention
+input comparison is exactly zero after that change; block output still differs
+by 1.33%/1.34%, and attention output differs by about 1%. Next investigation:
+attention accumulation/rounding (candidate eager QK is BF16 whereas the reference
+kernel accumulates FP32), then mHC and downstream route/output differences.
+Do not begin production calibration until these numerical gates are resolved.
+
 These are component gates, not full official-reference backbone parity or
 quantization qualification. The checkpoint's `inference/model.py` remains the
 architecture oracle. Preserve necessary arithmetic while measuring allocation
