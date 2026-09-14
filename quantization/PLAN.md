@@ -261,3 +261,58 @@ environment, not yet a reproducible production image. Run component gates with:
 ```bash
 docker exec -w /workspace ds41rt-quant-dev python -m unittest discover -s quantization/tests -v
 ```
+
+### Additional real-block gates (2026-09-14)
+
+The native indexer now preserves reference BF16 score arithmetic, scale order,
+and sorted selected positions while chunking query scoring. This resolved the
+ratio-2 discrepancy; the earlier failed diagnostic log is retained as evidence.
+The following persistent reports under the run's `reports/` directory show zero
+hidden-state and mHC carry error:
+
+- `native-block2-parity-r2.log`: ratio-2 source, 32 and 129 tokens.
+- `native-block2-long-parity.log`: ratio-2 source, 2,049 tokens, exercising
+  selection from more than 512 compressed positions.
+- `native-block20-parity.log`: ratio-1 source, 32 and 129 tokens.
+- `native-block1-ple-parity.log`: first PLE block, 32 and 129 tokens.
+- `native-block14-ple-parity.log`: second PLE plus ratio-2 source, same lengths.
+
+Block 2 and block 14 also match compressed KV, index keys and selected indices
+exactly. PLE block comparisons gather actual checkpoint rows for random valid
+hash indices and compare the complete Engram arithmetic; they do **not** prove
+token-to-hash parity. All seven existing component/source tests pass again.
+Cross-layer source/consumer and reindex/candidate reuse, tokenizer/hash parity,
+dSpark and complete calibration/quantizer integration remain unqualified.
+No production quantization job is running yet.
+
+### Chained replay and durable batch frontiers
+
+`validate_native_block.py --layer N --through-layer M` now tests consecutive
+real blocks through `V41ReplayBatch.advance`, with independently owned CPU
+boundaries for candidate and reference. Reports in `reports/`:
+
+- `native-chain2-3-parity.log`: both blocks exactly match at 32, 129 and 2,049
+  tokens, including compressed KV, index keys and selected positions.
+- `native-chain20-24-parity.log`: all five blocks exactly match at 32 and 129
+  tokens, including candidate masks and the reindexing consumer at block 24.
+
+The latter lengths exercise candidate publication/reuse but do not exercise
+actual candidate pruning: the source selects up to 2,048 blocks of 8 positions,
+so a longer-than-16,384-token gate remains required. These are synthetic hidden
+inputs to real block chains, not end-to-end tokenized-model qualification.
+
+`gptqmodel.utils.v41_checkpoint` implements atomic safetensors replay snapshots:
+owned CPU tensors, explicit typed metadata (including integer PLE layer keys),
+file and directory fsync, SHA-256 verification, and exact caller-supplied
+provenance matching before loading. Linux inode-pinned reads avoid a pathname
+replacement between hashing and mapping. No pickle is used. The caller must
+bind source/corpus/recipe/code identities and journal the returned checksum only
+after save succeeds. This API does not itself commit quantized projections or
+declare a block complete; the production transaction journal is still pending.
+
+All ten component tests pass (`reports/component-tests-frontier.log`), including
+corruption and identity rejection, simulated publication failure preserving the
+old snapshot, independently owned loaded tensors, and five-layer logits exactly
+matching full forward when every boundary is saved/reloaded. This is not yet a
+full quantizer crash/resume test. dSpark, full-model input preparation, production
+worker deployment, one-shot launcher and final export/upload remain unfinished.

@@ -11,6 +11,7 @@ from transformers import DeepseekV41ForCausalLM, DeepseekV41TextConfig
 from transformers.models.deepseek_v41.modeling_deepseek_v41 import DeepseekV41EngramEmbedding
 from gptqmodel.models.definitions.deepseek_v41 import DeepSeekV41Expert, DeepSeekV41MappedEmbedding, DeepSeekV41QModel
 from gptqmodel.utils.v41_replay import V41ReplayBatch
+from gptqmodel.utils.v41_checkpoint import load_frontier, save_frontier
 
 
 def tiny_config():
@@ -42,7 +43,12 @@ class V41PrimitivesTest(unittest.TestCase):
             second = state.advance(layer, "cpu")
             torch.testing.assert_close(first.hidden, second.hidden, rtol=0, atol=0)
             torch.testing.assert_close(first.pre_mix, second.pre_mix, rtol=0, atol=0)
-            state = first
+            # Resume each boundary from disk, then compare final full-forward logits.
+            with tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / "frontier.safetensors"
+                provenance = {"test": "five-layer-replay"}
+                digest = save_frontier(first, path, provenance=provenance)
+                state = load_frontier(path, expected_sha256=digest, expected_provenance=provenance)
         hidden = model.model.layers[-1].hc_collapse(state.hidden, state.pre_mix)
         result = model.lm_head(model.model.norm(hidden))
         torch.testing.assert_close(result, reference, rtol=0, atol=0)
