@@ -220,6 +220,33 @@ attention accumulation/rounding (candidate eager QK is BF16 whereas the referenc
 kernel accumulates FP32), then mHC and downstream route/output differences.
 Do not begin production calibration until these numerical gates are resolved.
 
+### Real block 0 parity resolved
+
+The real block 0 native comparison now passes exactly at both 32 and 129 tokens:
+zero output error, zero mHC pre-mix error, and zero error at every recorded
+attention/FFN input and output. The harness now fails on a nonzero output/carry
+difference. The final run exited 0; its persistent log is
+`/home/tj/.cache/ds41rt/quantization/deepseek-v41-exl3-k325-v1/reports/native-block0-parity.log`.
+All seven existing component/source tests also pass.
+
+Additional discrepancies resolved in our separate GPTQModel implementation:
+
+- Preserve FP32 rotary coefficients and complex multiplication through the
+  final BF16 store; early rounding or separate real multiplies changed results.
+- Use the reference's sparse-attention accumulation semantics. The candidate's
+  eager BF16 QK and normalized-BF16 probability path was not equivalent.
+- Apply mHC normalization after its projection, and preserve multiply/reduce
+  order at residual expansion. Both affect low-precision downstream routing.
+
+`V41NativeAttention` owns a full-prompt forward and uses shared compressed KV
+directly, avoiding the candidate eager implementation's per-query duplicated
+selected-KV bank. It rejects decode-cache input. Compressed source/consumer
+branches are implemented but not yet numerically qualified; do not infer their
+correctness from the sliding-only block-0 result. The complete calibration
+pipeline, compressed/PLE blocks, dSpark, recovery and detached launcher remain
+unfinished. Allocation/performance tuning follows correctness qualification;
+the mHC multiply/reduce path is still a candidate for a measured fused kernel.
+
 These are component gates, not full official-reference backbone parity or
 quantization qualification. The checkpoint's `inference/model.py` remains the
 architecture oracle. Preserve necessary arithmetic while measuring allocation

@@ -7,7 +7,7 @@ import sys
 
 import torch
 from transformers import DeepseekV41Config
-from transformers.models.deepseek_v41.modeling_deepseek_v41 import DeepseekV41RotaryEmbedding
+from gptqmodel.models.definitions.deepseek_v41 import DeepSeekV41RotaryEmbedding
 from gptqmodel.utils.v41_source import V41Source, source_layer_key
 
 
@@ -16,14 +16,19 @@ def validate(snapshot, device):
     sys.path.insert(0, str(snapshot / "inference"))
     import model as reference
     import kernel
+    captures = {}
 
     # The released 64-head kernel requests 141312 shared-memory bytes, exceeding
     # SM120's per-block limit. Heads are independent: invoke the unchanged
     # reference kernel on 16-head groups, with the same KV/indices and sinks.
     def reference_attention(q, kv, sinks, indices, scale):
-        return torch.cat([kernel.sparse_attn(q[:, :, start:start + 16].contiguous(),
+        captures["reference_q"] = q.detach().clone()
+        captures["reference_kv"] = kv.detach().clone()
+        result = torch.cat([kernel.sparse_attn(q[:, :, start:start + 16].contiguous(),
                                             kv, sinks[start:start + 16].contiguous(), indices, scale)
                           for start in range(0, q.shape[2], 16)], dim=2)
+        captures["reference_core"] = result.detach().clone()
+        return result
 
     reference.sparse_attn = reference_attention
 
@@ -50,9 +55,8 @@ def validate(snapshot, device):
                 args.rope_head_dim, args.max_seq_len, 0, args.rope_theta,
                 args.rope_factor, args.beta_fast, args.beta_slow)
             original.attn.window_kv_cache = torch.zeros(1, args.window_size, args.head_dim)
-            rotary = DeepseekV41RotaryEmbedding(config)
+            rotary = DeepSeekV41RotaryEmbedding(config)
         reports = []
-        captures = {}
         def capture(name):
             def hook(module, args, output):
                 if isinstance(output, tuple):
@@ -65,6 +69,11 @@ def validate(snapshot, device):
             ("attn_output", original.attn, block.self_attn),
             ("ffn_input", original.ffn_norm, block.post_attention_layernorm),
             ("ffn_output", original.ffn, block.mlp),
+            ("qa", original.attn.wq_a, block.self_attn.q_a_proj),
+            ("qn", original.attn.q_norm, block.self_attn.q_a_norm),
+            ("qb", original.attn.wq_b, block.self_attn.q_b_proj),
+            ("kv_norm", original.attn.kv_norm, block.self_attn.kv_norm),
+            ("oa", original.attn.wo_b, block.self_attn.o_b_proj),
         ):
             original_module.register_forward_hook(capture("reference_" + label))
             candidate_module.register_forward_hook(capture("candidate_" + label))
@@ -92,12 +101,14 @@ def validate(snapshot, device):
                       "hidden_max_abs": (actual.float() - expected.float()).abs().max().item(),
                       "hidden_relative_l2": ((actual.float() - expected.float()).norm() / expected.float().norm()).item(),
                       "pre_max_abs": (actual_pre - expected_pre).abs().max().item()}
-            for label in ("attn_input", "attn_output", "ffn_input", "ffn_output"):
+            for label in ("attn_input", "attn_output", "ffn_input", "ffn_output", "qa", "qn", "qb", "kv_norm", "q", "kv", "core", "oa"):
                 if "candidate_" + label in captures:
                     left, right = captures["reference_" + label].float(), captures["candidate_" + label].float()
                     report[label + "_relative_l2"] = ((left - right).norm() / left.norm()).item()
             reports.append(report)
             print(json.dumps(report), flush=True)
+            if report["hidden_max_abs"] != 0 or report["pre_max_abs"] != 0:
+                raise AssertionError("real V4.1 block differs from the reference")
         return reports
     finally:
         torch.set_default_dtype(old_dtype)
