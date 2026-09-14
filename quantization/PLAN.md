@@ -2,6 +2,105 @@
 
 Target: `wrldsuksgo2mars/DeepSeek-V4.1-EXL3-K3.25-v1`.
 
+This is the authoritative handoff for this quantization. A new assistant or
+replicator should read this document, then inspect the repository, run records,
+and live containers before acting. Recorded intentions are not completion
+evidence. Do not restart a job because a chat ended or a tool observation timed
+out. Keep this document current as implementation and execution advance.
+
+## User requirements and operating contract
+
+- Source model: `deepseek-ai/DeepSeek-V4.1-Flash`. Start from the latest remote
+  `tpurtell/GPTQModel` main for a new run, not a sister project's older checkout;
+  pin the selected commit and subsequent qualified changes for reproducibility.
+- Vendor the fork under `third_party`, develop a separate V4.1 definition,
+  commit incrementally, and push the fork and ds41rt changes to their `main`
+  branches. This checkout currently uses local branch `dev`; publish its
+  commits with an explicit `HEAD:main` fast-forward, not the stale local `main`.
+- Build ds41rt's own documentation and scripts. `../glmrt` and `../ds4rt` are
+  references for the established corpus, calibration policy, checkpointing,
+  mixed-tier allocation, and distributed trellis machinery.
+- Quantize only routed experts in BOTH the 40-block main model and three-block
+  smaller dSpark. Use K3 candidates with error-based K4 upgrades at 3.25 routed
+  payload bpw, allocating additional bits gate:up:down = 3:5:8. Do not silently
+  omit dSpark or substitute a uniform tier. Preserve other source tensors.
+- Reuse the latest calibration set's texts; identify and hash the exact corpus
+  and render/tokenize for V4.1. Do not reuse another model's token IDs or silently
+  replace the corpus. Verify the applicable established routing-coverage policy.
+- Both RTX GPUs and all four Sparks are authorized. Activation generation and
+  causal replay use only the two RTX GPUs. Independent trellis searches may
+  run on the RTX GPUs and Sparks through the authenticated remote-worker path.
+- Treat the checkpoint's own `inference/` code as the architecture oracle.
+  A faster implementation is welcome after validation. Do not preserve wasteful
+  conversions/allocations merely because the reference does them; distinguish
+  numerical requirements from implementation inefficiencies and measure both.
+- PLE stays memory mapped and reclaimable, with bounded gathers and prefetch
+  as processing advances. Avoid hidden tensor references that retain mappings
+  or activations. Inspect anonymous memory as well as RSS/file-backed pages;
+  reclaimable PLE pages can obscure unrelated leaks.
+- Export the two PLE tables into separate files from each other and all other
+  tensors. Keep each table's necessary scales with that table, enabling later
+  PLE quantization variants and hardlink composition.
+- NVMe is approximately 14 GB/s and has limited free space. Use it for rolling
+  wavefront state and recovery. Scratch at `/mnt/scratch` is approximately
+  150 MB/s write, 500 MB/s read; use it if a full intermediate copy is necessary.
+  Prefer direct final materialization in the standard local Hugging Face cache,
+  with hardlinks to the published revision and no model redownload.
+- Publish and verify `wrldsuksgo2mars/DeepSeek-V4.1-EXL3-K3.25-v1`, and leave the
+  matching complete revision in the user's standard Hugging Face cache.
+- Launch the complete process once, detached from the assistant session. On
+  failure preserve logs/checkpoints and stop; the user will request diagnosis
+  and explicit resume, with code updates permitted during recovery.
+- After several blocks are durably committed and memory is stable, check the
+  live job only every 30 minutes to save tokens. Each check-in reports progress
+  and final ETA. Use measured rates and state assumptions; until measurements
+  exist say the ETA is unavailable rather than inventing one.
+
+## Persistent run records and reconnection
+
+Planned stable run root on NVMe:
+`/home/tj/.cache/ds41rt/quantization/deepseek-v41-exl3-k325-v1/`.
+The following layout is a required implementation contract, not a claim that
+these records or the launcher already exist:
+
+| Path under run root | Purpose |
+| --- | --- |
+| `plan.json` | Immutable source/corpus/recipe/software identities and storage paths |
+| `launch.json` | Coordinator and worker container IDs, image digests, host identities, launch command/time |
+| `status.json` | Atomically updated phase, live handles, last committed main/dSpark block, error state and ETA |
+| `logs/coordinator.log` | Persistent stdout/stderr, also available after container exit |
+| `logs/workers/` | Worker logs copied or streamed to the coordinator run root |
+| `events.jsonl` | Append-only timestamped phase/checkpoint/progress/failure events |
+| `checkpoints/` | Authenticated durable projection and batch/block commit records |
+| `reports/` | Preflight, correctness, memory, allocation, artifact and publication evidence |
+| `recoveries/` | Each explicit resume's diagnosis and bound execution/code upgrade |
+
+Do not put authentication tokens in logs, plans, commands recorded for public
+use, or published model metadata. A status file is advisory: on reconnect,
+read it and `launch.json`, then inspect those exact container IDs/processes.
+For a live job, resume monitoring it. For a terminal job, inspect its exit code,
+OOM status and failure log, then validate the last durable commit before an
+explicit resume. Never infer that the next layer completed from a partial file.
+Do not automatically restart a failed numerical job in a tight restart loop.
+Recovery must bind code changes and state compatibility explicitly; a changed
+numerical path can require invalidating affected downstream state.
+
+The one-shot script must deploy workers, run calibration/quantization through
+both namespaces, validate and export, and perform publication/cache steps
+without needing another assistant turn to trigger a later phase. It must
+preflight resources/identities and refuse to overwrite an existing run. Resume
+must be a separate mode using the existing run root. Concrete launch, status,
+log-tail and resume commands will be added here when that entry point exists.
+
+Deployment requirement: one launch script must run the complete workflow in
+detached containers, independent of this assistant session. Persist logs and
+durable checkpoints on NVMe. Failure must retain evidence and stop; recovery
+is an explicit resume after diagnosis, allowing reviewed implementation updates
+without silently accepting incompatible old numerical state. The script must
+deploy the four Spark trellis workers as well as the RTX coordinator. It must
+not require an active tool session to supervise progress or trigger later
+quantization phases/export. This deployment entry point is not implemented yet.
+
 The GPTQModel starting revision is the remote fork's main HEAD observed on
 2026-09-14: `339cccf0c4b62440b572440a7d06608ed9e4a165`. This is a new
 submodule checkout, not the older GLMRT vendor pin. V4 support exists in this
