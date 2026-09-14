@@ -1409,3 +1409,39 @@ lookup, inode sharing, interruption before ref publication, explicit retry and
 changed-export rejection. Upload receipt creation and runtime/publication wiring
 remain pending; no remote repository or user cache was changed by these tests.
 All 62 component tests pass (`reports/component-tests-cache-card.log`).
+
+### Upload receipts and publication integration
+
+`upload_model.py` uses qualified `huggingface_hub==1.26.1` with Xet enabled.
+Its lazy upload metadata reads only a bounded file sample at operation creation;
+Xet computes the large-file SHA during transfer rather than a separate hashing
+pass. Completed preuploads persist their returned blob ID, size, upload mode and
+local file fingerprint. Explicit resume restores those operation records without
+hashing or uploading completed shards again. Regular Git-file IDs require only
+bounded small-file hashing. No routine full-weight SHA verification was added.
+
+All files are preuploaded before a single parent-guarded model commit. The writer
+refuses to overwrite a populated repository, compares the committed remote file
+inventory/IDs/sizes against its exact prepared inventory, and writes the durable
+upload receipt only after this check. If the commit response is lost, explicit
+resume accepts the new head only when its complete inventory matches; otherwise
+it stops instead of overwriting another writer. Application-level failures stop
+the script; normal bounded SDK/transport retries are not an automatic job restart.
+The implementation follows the documented preupload/commit API:
+https://huggingface.co/docs/huggingface_hub/guides/upload
+
+Runtime manifests can now provide `publication.repo_id` (restricted to the user's
+requested repository) and an absolute `publication.cache_root`. After structural
+validation, runtime uploads, hard-link materializes the standard HF cache, and
+writes `upload-complete.json`, `cache-complete.json`, and
+`publication-complete.json` outside the artifact. Without that manifest section
+the entry point remains an export-only stage, not a completed deployment.
+
+All 66 component tests pass (`reports/component-tests-upload.log`). Upload tests
+use a fake remote API with real SDK operations and cover interrupted preupload,
+lost commit response, populated-repository refusal, and receipt-to-cache handoff.
+They do not claim a real transport qualification. A read-only authentication check
+confirmed account `wrldsuksgo2mars`; the target repository is not yet created.
+The dev container needs `HF_TOKEN_PATH=/hf/token` to use the existing read-only
+credential mount; no credential value was logged. Detached launcher, real launch
+smoke testing and rebuilt-image qualification remain outstanding.

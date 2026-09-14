@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Manifest-driven two-RTX/four-Spark quantization and weight export stage.
+"""Manifest-driven two-RTX/four-Spark quantization, export and publication.
 
-Not yet the complete deployment/validation/upload launcher. Failures propagate;
+Detached deployment is separate. A publication manifest enables upload/cache.
+Failures propagate;
 there is no automatic restart or retry. Logs survive the invoking chat session.
 """
 import argparse
@@ -31,6 +32,8 @@ from export_inventory import build_inventory
 from export_config import model_metadata
 from export_assets import plan_assets
 from model_card import model_card_asset
+from upload_model import upload_artifact
+from materialize_cache import materialize_cache
 from run_store import RunStore
 from write_export import write_export
 from validate_export import validate_export
@@ -129,6 +132,11 @@ def validate_manifest(manifest):
     for name in ("snapshot", "source_attestation", "corpus", "input_attestation", "run_root", "output", "export_state", "token_file"):
         if not Path(manifest[name]).is_absolute():
             raise ValueError("runtime paths must be absolute")
+    if "publication" in manifest:
+        publication = manifest["publication"]
+        if (publication.get("repo_id") != "wrldsuksgo2mars/DeepSeek-V4.1-EXL3-K3.25-v1"
+                or not Path(publication.get("cache_root", "")).is_absolute()):
+            raise ValueError("publication requires the requested repository and absolute HF cache root")
 
 
 def run(manifest, *, resume=False):
@@ -208,6 +216,17 @@ def run(manifest, *, resume=False):
                 from write_export import _publish_json
                 _publish_json(Path(manifest["export_state"]) / "structure-validation.json", validation)
                 progress(dict(event="export_structure_validated", **validation))
+                if "publication" in manifest:
+                    publication = manifest["publication"]
+                    receipt = upload_artifact(manifest["output"], manifest["export_state"],
+                        publication["repo_id"], resume=resume, progress=progress)
+                    cached = materialize_cache(manifest["output"], publication["cache_root"], receipt)
+                    _publish_json(Path(manifest["export_state"]) / "cache-complete.json", cached)
+                    result = dict(status="complete", repo_id=receipt["repo_id"], commit=receipt["commit"],
+                                  snapshot=cached["snapshot"], numerical_validation="deferred-to-inference-engine-integration")
+                    _publish_json(Path(manifest["export_state"]) / "publication-complete.json", result)
+                    progress(dict(event="runtime_complete", **result))
+                    return result
                 progress(dict(event="runtime_stage_complete", **result))
                 return result
             except BaseException as error:
