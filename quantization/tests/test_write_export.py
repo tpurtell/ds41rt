@@ -39,7 +39,9 @@ class WriteExportTest(unittest.TestCase):
             output, state = root / "artifact", root / "state"
             def stop(event):
                 raise RuntimeError("injected interruption")
-            kwargs = dict(identity={"test": 1}, target_bytes=32)
+            kwargs = dict(identity={"test": 1}, target_bytes=32,
+                          metadata={"config.json": {"model_type": "deepseek_v41"},
+                                    "quantize_config.json": {"quant_method": "exl3"}})
             with self.assertRaisesRegex(RuntimeError, "injected"):
                 write_export(inventory, output, state, progress=stop, **kwargs)
             self.assertFalse((output / "model.safetensors.index.json").exists())
@@ -52,6 +54,8 @@ class WriteExportTest(unittest.TestCase):
             self.assertEqual(first.stat().st_ino, old_stat.st_ino)
             self.assertEqual(first.stat().st_mtime_ns, old_stat.st_mtime_ns)
             index = json.loads((output / "model.safetensors.index.json").read_text())
+            for filename, value in kwargs["metadata"].items():
+                self.assertEqual(json.loads((output / filename).read_text()), value)
             for name, filename in index["weight_map"].items():
                 torch.testing.assert_close(load_file(output / filename)[name], tensors[name], rtol=0, atol=0)
             with patch("write_export.repack", side_effect=AssertionError("must not recopy")):

@@ -78,7 +78,7 @@ def _write_shard(destination, names, entries):
 
 
 def write_export(inventory, output, state_root, *, identity, resume=False,
-                 target_bytes=5_000_000_000, progress=None):
+                 target_bytes=5_000_000_000, progress=None, metadata=None):
     """Write/explicitly resume a frozen inventory under an exclusive state lock.
 
     Resume checks source identity metadata and shard headers/sizes, not payload
@@ -91,13 +91,16 @@ def write_export(inventory, output, state_root, *, identity, resume=False,
     if output == state_root or output.is_relative_to(state_root) or state_root.is_relative_to(output):
         raise ValueError("export state and artifact must be separate directory trees")
     progress = progress or (lambda event: None)
+    metadata = metadata or {}
+    if set(metadata) - {"config.json", "quantize_config.json"}:
+        raise ValueError("unsupported export metadata filename")
     entries = inventory["tensors"]
     layout = plan_shards(entries, target_bytes=target_bytes)
     sources = {str(Path(item["path"]).resolve(strict=True)) for item in entries.values()}
     if any(Path(path).is_relative_to(output) for path in sources):
         raise ValueError("export cannot overwrite or contain its inputs")
     fingerprints = {path: _fingerprint(Path(path)) for path in sorted(sources)}
-    plan = dict(version=1, identity=identity, output=str(output), inventory=inventory,
+    plan = dict(version=1, identity=identity, output=str(output), inventory=inventory, metadata=metadata,
                 layout=layout, sources=fingerprints)
     # JSON round-trip freezes types and rejects non-serializable state before IO.
     plan = json.loads(json.dumps(plan, allow_nan=False))
@@ -114,7 +117,7 @@ def write_export(inventory, output, state_root, *, identity, resume=False,
                 raise ValueError("new export requires an empty artifact directory")
             _publish_json(plan_path, plan)
         output.mkdir(parents=True, exist_ok=True)
-        unknown = {p.name for p in output.iterdir()} - set(layout["files"]) - {"model.safetensors.index.json"}
+        unknown = {p.name for p in output.iterdir()} - set(layout["files"]) - {"model.safetensors.index.json"} - set(metadata)
         if unknown:
             raise ValueError("unexpected export files; inspect before recovery: " + ", ".join(sorted(unknown)))
         for filename, names in layout["files"].items():
@@ -129,6 +132,8 @@ def write_export(inventory, output, state_root, *, identity, resume=False,
         if any(_fingerprint(Path(path)) != expected for path, expected in fingerprints.items()):
             raise ValueError("source file metadata changed during export")
         _publish_json(output / "model.safetensors.index.json", layout["index"])
+        for filename, value in metadata.items():
+            _publish_json(output / filename, value)
         report = dict(status="weights-index-complete-model-validation-pending", files=len(layout["files"]),
                       tensors=len(entries), payload_bytes=layout["index"]["metadata"]["total_size"],
                       verification="source metadata and complete shard headers/sizes; no payload hashes")

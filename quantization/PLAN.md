@@ -1128,3 +1128,25 @@ matches exactly (`reports/export-reload-probe.log`). The temporary test exports
 are cleaned up; the fixture is unchanged. No large model copy/hash pass was made.
 Complete model config/tokenizer packaging, public loader/full-model validation,
 production runtime and the end-to-end launcher remain unfinished.
+
+### Export configuration assembly
+
+`export_config.py` builds metadata using the fork's actual `EXL3Config`
+serializer. The embedded discovery declaration contains only `quant_method`,
+`format`, `checkpoint_format` and integer base `bits=3`; the routed average
+`13/4` is explicit recipe metadata, not an invalid fractional per-matrix width.
+The standalone `quantize_config.json` holds storage descriptors and actual K3/K4
+widths for all 47,232 routed projections, checked against the exact recipe and
+buffer geometry. The original source FP8/FP4 declaration is retained under
+`meta.ds41rt.native_quantization_config`; it is not incorrectly left as the active
+declaration for the newly EXL3 routed weights. Architecture fields remain copied
+unchanged. Source-native naming and the requirement for loader validation are
+explicit; this metadata does not itself confer compatibility on an unmodified
+Transformers or GPTQModel loader.
+
+The shard writer now freezes both generated config objects into its external
+resume plan and publishes them without overwrite after the weights/index pass.
+Its completion status remains model-validation-pending. Tests exercise complete
+main+draft storage coverage, exact K4 count, source config preservation, wrong-tier
+geometry rejection and metadata publication/resume. Tokenizer/assets packaging,
+full loader validation, production runtime and detached launcher remain pending.
