@@ -379,3 +379,32 @@ target ordering, P+1 token selection, noise placement, and future-feature exclus
 Remaining production integration includes tokenizer/hash qualification, corpus
 preparation, main-to-draft replay, EXL3 wavefront/worker scheduling, transaction
 journaling and detached one-shot orchestration, isolated PLE export and upload.
+
+### Corpus tokenizer and PLE hash attestation
+
+The latest GLM-5.3 NEXT corpus is reused as unchanged raw prompt text from
+`/home/tj/.cache/glmrt/calibration/glm-5.3-exl3-k4-next-v1/calibration.jsonl`.
+Do not reuse its GLM token IDs/count as V4.1 identity. The original manifest is
+`a4d51c98ca76f57d58d18b61779ba6ca79936f002f1812ca2ef4482d91824da5` (SHA-256).
+`quantization/attest_inputs.py` records V4.1 tokenization and checks the checkpoint
+hash implementation without loading model weights. Its contract is raw prompt
+text, add_special_tokens=True, no chat rendering, padding, truncation or packing.
+
+The completed attestation (`reports/input-attestation.log`) records:
+
+- 1,441 prompts, 1,056,269 V4.1 tokens, longest prompt 1,074 tokens.
+- Corpus SHA-256: `003686eedf3e533b016e939bb6bb462529b95322c2c44a222f0d8208c63f41ba`.
+- Token-stream SHA-256: `5b8d681bead24b23f2ef97797c9b93b54f562cf3e6a73712ed5ce5dd66b6314a`.
+- Tokenicer 0.0.14 agrees with direct loading on every corpus record and six
+  boundary probes. Tokenicer supplies the existing EOS-as-padding default; the
+  unpadded input IDs and masks agree. No normalization patch was necessary.
+- All tokenizer entries map identically to the 99,092-entry compressed vocabulary;
+  primes, offsets and multipliers match. Two 1,024-token sequences with and without
+  DEAD masks produce exact reference hashes on CPU and both RTX GPUs.
+
+The development environment has stale installed Transformers distribution
+metadata (5.14.1) while PYTHONPATH loads vendored 5.18.0.dev0. The report explicitly
+records both identities plus the imported modeling-file hash. The production
+image must make the dependency installation reproducible, not trust distribution
+metadata alone. This is an input/hash gate, not dense-model quality evaluation.
+Full main-model corpus replay and quantization remain pending.
