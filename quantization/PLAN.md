@@ -1573,3 +1573,26 @@ development tests pass (`reports/component-tests-recovery-identity.log`). The
 recovery image is
 `sha256:0c269ec34f859f5527f8abcc16ba07f04880874e786ce225192e748658e2fc81`;
 production remains stopped while its numerical/identity qualifications finish.
+
+### Repaired production resume — 2026-09-14
+
+The exact recovery image passed all 74 component tests
+(`reports/coordinator-recovery-component-tests.log`), the 32-wave two-worker
+memory/byte-compatibility probe with cyclic GC disabled (120 KiB post-warmup RSS
+spread; `reports/coordinator-recovery-memory-qualification.log`), six-device
+search with exact serial results and durable assignments (21.16 seconds;
+`reports/coordinator-recovery-search-qualification.log`), and dual-RTX mixed
+activation/reload comparison (`reports/coordinator-recovery-activation-qualification.log`).
+A read-only smoke check confirms the recovery manifest preserves the actual
+stopped journal's data identity and matches the new qualified execution identity
+(`reports/coordinator-recovery-identity-smoke.log`).
+
+The explicit `--resume` launch uses run-root `production-recovery-manifest.json`,
+which references the unchanged original manifest and checksum-pinned memory
+report. New attempt `e8983b98e3c54311b6da645aef4a0cbc` is container
+`217cc7704799839ffbbca240f28f3a064490adfc317c5436bdd2225f4b6683a7`
+(`ds41rt-quant-e8983b98e3c54311b6da645aef4a0cbc`). Its log is
+`attempts/e8983b98e3c54311b6da645aef4a0cbc.log` under the run root. Preserve the
+original stopped attempt and all committed inputs. Launch does not establish
+stable production memory; monitor input reuse and subsequent blocks closely
+before switching to the requested 30-minute cadence.
