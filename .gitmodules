@@ -9,3 +9,6 @@
 	path = third_party/gptqmodel
 	url = git@github.com:tpurtell/GPTQModel.git
 	branch = main
+[submodule "third_party/transformers"]
+	path = third_party/transformers
+	url = https://github.com/malaiwah/transformers.git

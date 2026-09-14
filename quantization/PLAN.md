@@ -43,3 +43,45 @@ completed blocks, memory, throughput, and estimated final completion time.
 Completion requires full main+dSpark quantization, exact tier/payload audit,
 quality and recovery verification, separate PLE files, successful Hub upload,
 remote object verification, and the matching local standard-cache snapshot.
+
+## Implementation evidence (2026-09-14)
+
+The user authorized both RTX GPUs and all four Sparks. Activation generation
+and causal replay stay on the RTX GPUs; distribute independent trellis searches
+using the fork's authenticated `exl3_remote` scheduler. Remote-worker support
+exists but needs qualification for this run before launch.
+
+Transformers is pinned to the unmerged V4.1 text implementation from PR 48721,
+revision `62d7ebd7de4938e072b7aaeb881593b79dc56835`, under
+`third_party/transformers`. It reports `5.18.0.dev0` and imports with the
+current GPTQModel fork after upgrading the quantization Python environment's
+tokenizers to 0.23.1. It omits dSpark and vision execution. Preserve vision
+source tensors; implement dSpark in our separate GPTQModel V4.1 definition.
+No production auto-dispatch registration yet: stateful layerwise capture,
+bounded source loading, and complete dSpark support are prerequisites.
+
+The separate `deepseek_v41.py` currently provides unfused routed experts and
+a parameter-free mapped PLE embedding. Tests pass for:
+
+- exact five-layer FP32 logits before/after expert conversion, with eager
+  expert dispatch on both sides (default grouped dispatch differs by 1.8e-7);
+- exact expert outputs against the checkpoint's unchanged `Expert` body in
+  FP32 and BF16 on CPU and each RTX GPU;
+- exact mapped FP8+E8M0 embedding gathers against the Transformers lookup on
+  CPU and both RTX GPUs, including chunking, repeats, and empty inputs;
+- mapping lifetime, explicit prefetch/release, owned rows, and bounds.
+
+These are component gates, not full official-reference backbone parity or
+quantization qualification. The checkpoint's `inference/model.py` remains the
+architecture oracle. Preserve necessary arithmetic while measuring allocation
+and conversion costs; reference implementation inefficiencies are not required.
+
+Development container: `ds41rt-quant-dev`, based on local image
+`sha256:6213ea40c79617373562d7f2d3cc5fa25ca9d03e27dd213361b216c3e315e9f4`.
+It mounts this checkout at `/workspace`, source HF cache read-only at `/hf`,
+and uses both vendored Python source trees through PYTHONPATH. It is a development
+environment, not yet a reproducible production image. Run component gates with:
+
+```bash
+docker exec -w /workspace ds41rt-quant-dev python -m unittest discover -s quantization/tests -v
+```
