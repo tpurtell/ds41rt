@@ -81,6 +81,20 @@ with the quantizer's layer loop still remain to be implemented and tested.
 TileLang 0.1.14 was built in the development container for direct checkpoint
 reference tests; the production dependency lock is still pending.
 
+`gptqmodel.utils.v41_source.V41Source` now reads source tensors individually
+and can assemble one decoded main block on a chosen device. Loading real
+block 0 completed in 6.02 seconds: 1,174 tensors and 25.62 GiB allocated on
+GPU 0. The process exited successfully and GPU allocation returned to idle.
+This decoded representation is for diagnostics and trellis weights, not yet
+the calibration forward baseline: native FP8 activation quantization still
+needs integration. No full source rewrite was made.
+
+The source header test validates every runtime parameter/buffer name and
+logical shape for all 40 main blocks against the actual 48-shard checkpoint,
+with exact coverage of all non-scale, non-PLE main-block tensors. The two
+PLE full-read rejection cases also pass. dSpark source mapping/loading is
+still pending and is not covered by this test.
+
 These are component gates, not full official-reference backbone parity or
 quantization qualification. The checkpoint's `inference/model.py` remains the
 architecture oracle. Preserve necessary arithmetic while measuring allocation
