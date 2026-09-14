@@ -751,3 +751,41 @@ compilation, returning the expected 320x144x48 trellis and finite error metrics.
 The probe container exited normally; no worker service is running yet. Authenticated
 real-weight cross-device qualification and deployment on all four hosts remain
 required, as does the complete detached coordinator workflow.
+
+### Four live authenticated workers and real-weight execution qualification
+
+All four hosts now run a detached container named `ds41rt-quant-worker`, serving
+port 17841 with authentication and persistent `ds41rt-quant-worker-state` and
+`ds41rt-quant-jit` Docker volumes. Restart policy is `no`: failure recovery remains
+explicit. No production quantization coordinator is running. Container/image IDs
+are saved in the run root's `workers.json`; inspect these containers and preserve
+their state rather than starting duplicates. Their Docker logs remain on each
+host, and startup logs are copied into `reports/<host>-worker-start.log`.
+
+`quantization/qualify_worker.py` ran through the authenticated tensor protocol on
+each host. All 48 cases pass: real checkpoint expert-0 weights from main block 0
+and mtp block 0, each w1/w3/w2 at K3 and K4. Every packed tensor exactly matches
+the RTX reference and an immediate repeat request is a worker checkpoint hit
+with identical tensors. Evidence: `reports/<host>-worker-qualification.log`, each
+ending in `qualification_passed` with 12 cases. The Hessian in this test is a
+synthetic raw diagonal matrix at count 1024. This establishes sampled execution
+equivalence, not full-corpus Hessian qualification or quantized-model quality.
+
+All worker runtimes report the same combined Python/CUDA source hash
+`0262b1e8593e25b06617e8ed36e5863f8e14a027e69749c69a2de6f487062a5c`.
+Platform-local final image IDs differ because builds occurred on separate hosts;
+each endpoint is bound to its own inspected image and live runtime identity.
+
+`python quantization/deploy_workers.py --run-root <RUN_ROOT>` reconstructs the
+worker deployment from our repository. It binds the inspected base image ID,
+builds on all four hosts with bounded parallelism, creates/reuses a private token,
+starts missing workers, and refuses mismatched or stopped existing containers.
+It never removes containers or volumes. Running it against this deployment
+successfully rebuilt from cache and reused all four original container IDs;
+`reports/workers-deployment.log` records that check. It produces `workers.json`
+atomically, but deliberately does not claim numerical qualification from running
+state alone. The private `<RUN_ROOT>/worker-token` must not be committed or logged.
+
+This deployment command is only a component of the required one-shot workflow.
+Automatic identity collection/qualification gates, full-corpus two-RTX capture,
+coordinator orchestration/retention, final export and upload still need integration.
