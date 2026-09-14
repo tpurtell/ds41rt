@@ -1,6 +1,7 @@
 """Real checkpoint header contract, without allocating checkpoint weights."""
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 import torch
 from safetensors import safe_open
@@ -15,6 +16,27 @@ SNAPSHOT = Path("/hf/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/"
 
 
 class V41SourceTest(unittest.TestCase):
+    def test_packed_reload_rejects_native_mix_and_invalid_geometry(self):
+        source = V41Source.__new__(V41Source)
+        name = "layers.0.ffn.experts.0.w1"
+        packed = dict(trellis=torch.zeros(320, 144, 48, dtype=torch.int16),
+                      suh=torch.ones(5120, dtype=torch.float16),
+                      svh=torch.ones(2304, dtype=torch.float16), mcg=torch.tensor(1, dtype=torch.int32))
+        source._projection_buffers = {name: set(packed)}
+        with patch.object(source, "tensor", side_effect=lambda key, device: packed[key.rsplit(".", 1)[1]]):
+            self.assertEqual(set(source.packed_projection(name)), set(packed))
+            source._projection_buffers[name].add("weight")
+            with self.assertRaisesRegex(ValueError, "exactly four"):
+                source.packed_projection(name)
+            source._projection_buffers[name].remove("weight")
+            packed["svh"] = torch.ones(2303, dtype=torch.float16)
+            with self.assertRaisesRegex(ValueError, "geometry"):
+                source.packed_projection(name)
+            with self.assertRaisesRegex(ValueError, "restricted"):
+                source.packed_projection("layers.0.ffn.shared_experts.w1")
+            with self.assertRaisesRegex(ValueError, "outside"):
+                source.packed_projection("mtp.3.ffn.experts.0.w1")
+
     def test_all_main_block_names_and_shapes(self):
         source = V41Source(SNAPSHOT)
         config = DeepseekV41Config.from_dict(source.config).get_text_config()

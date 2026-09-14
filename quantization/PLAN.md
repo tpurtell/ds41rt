@@ -1106,3 +1106,25 @@ The writer's terminal status is deliberately
 `weights-index-complete-model-validation-pending`. It does not yet write the final
 model config/tokenizer, establish V4.1/EXL3 model-loader compatibility, upload to
 HF, or launch production. No production quantization or large export has started.
+
+### Indexed EXL3 reference reload
+
+The fork's `V41Source.packed_projection` now reads source-native routed EXL3
+buffers from ordinary indexed safetensors shards. It validates main/draft
+architecture bounds, exact four-buffer coverage (rejecting mixed source weight
+or scale payloads), K3/K4 geometry/dtypes and finite scales. Routed buffer suffixes
+are indexed once at source initialization rather than scanning the full checkpoint
+index for every expert. `decoded` recognizes these projections and reconstructs
+the serialized EXL3 weights in source `[out, in]` BF16 layout. Existing native
+attention/shared paths and mapped PLE loading are unchanged. This enables the
+existing block loader's dense reference replay, not yet public GPTQModel full-model
+loading or a qualified fused serving path.
+
+`probe_export_reload.py` reads the old mtp0 fixture journal in read-only mode,
+verifies six small candidate recovery artifacts (w1/w3/w2 at K3 and K4), repacks
+them into ordinary named/indexed safetensors files in temporary directories and
+reloads through `V41Source`. Every packed tensor and BF16 reconstructed weight
+matches exactly (`reports/export-reload-probe.log`). The temporary test exports
+are cleaned up; the fixture is unchanged. No large model copy/hash pass was made.
+Complete model config/tokenizer packaging, public loader/full-model validation,
+production runtime and the end-to-end launcher remain unfinished.
