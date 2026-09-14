@@ -7,6 +7,7 @@ hashing. Temporary rewritten recovery checkpoints are removed after the probe.
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 import gc
+import hashlib
 import json
 from pathlib import Path
 import sqlite3
@@ -89,6 +90,7 @@ def run(journal_root):
             if enabled:
                 gc.enable()
         print(json.dumps(dict(event="checkpoint_memory_probe_passed", gc_disabled=True,
+            serializer_sha256=hashlib.sha256(Path(checkpoint.__file__).read_bytes()).hexdigest(),
             workers=2, waves=32, byte_exact_inputs=checked, rss_kib=readings,
             post_warmup_spread_kib=max(readings[8:]) - min(readings[8:]))), flush=True)
 

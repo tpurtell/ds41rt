@@ -34,6 +34,7 @@ from export_assets import plan_assets
 from model_card import model_card_asset
 from upload_model import upload_artifact
 from materialize_cache import materialize_cache
+from recovery_identity import resolve_identity, authorize_input_recovery
 from run_store import RunStore
 from write_export import write_export
 from validate_export import validate_export
@@ -141,6 +142,9 @@ def validate_manifest(manifest):
 
 def run(manifest, *, resume=False):
     validate_manifest(manifest)
+    if "recovery" in manifest and not resume:
+        raise ValueError("compatible recovery requires explicit --resume")
+    data_manifest, recovery_evidence = resolve_identity(manifest)
     torch.backends.cuda.matmul.allow_tf32 = False
     root = Path(manifest["run_root"])
     root.mkdir(parents=True, exist_ok=True)
@@ -186,10 +190,11 @@ def run(manifest, *, resume=False):
                 source = V41Source(snapshot)
                 # Bind the complete manifest as well as caller provenance, so a
                 # topology/path change cannot silently resume old work.
-                identity = dict(runtime=manifest, input_attestation=attestation, source_manifest_sha256=source_digest)
+                identity = dict(runtime=data_manifest, input_attestation=attestation, source_manifest_sha256=source_digest)
                 journal = RunStore(root, identity)
                 search = DistributedSearch(source, client, identity)
                 driver = BlockDriver(source, journal, identity, device="cuda:0", search=search, progress=progress)
+                authorize_input_recovery(driver, recovery_evidence)
                 sys.path.insert(0, str(snapshot / "inference"))
                 kernels = importlib.import_module("kernel")
                 if Path(kernels.__file__).resolve() != (snapshot / "inference/kernel.py").resolve():

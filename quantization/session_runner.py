@@ -20,6 +20,10 @@ def main():
     root = Path(manifest["run_root"]) / "attempts"
     root.mkdir(parents=True, exist_ok=True)
     descriptor = os.open(root / (args.attempt + ".log"), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    # Docker runs as root; keep the private log readable by the manifest owner.
+    if os.geteuid() == 0:
+        owner = args.manifest.stat()
+        os.fchown(descriptor, owner.st_uid, owner.st_gid)
     os.dup2(descriptor, 1)
     os.dup2(descriptor, 2)
     os.close(descriptor)

@@ -1547,3 +1547,29 @@ explicitly preserve the original input/data identity while recording the new
 execution identity; do not discard the committed inputs or silently bypass the
 existing identity checks. No quantization/search assignments need migration at
 this input-only boundary.
+
+### Explicit input-only compatible recovery
+
+`recovery_identity.py` allows the repaired coordinator image to reuse the original
+input provenance without rewriting large recovery payloads. The recovery manifest
+must preserve every original runtime field except coordinator image/preflight IDs;
+GPU identities, worker topology, model, corpus, recipe, paths and publication
+target cannot change. A bounded, checksum-pinned memory report must identify the
+exact running serializer source and prove two-worker release with GC disabled
+and three byte-identical existing inputs. The original manifest remains the data
+identity checked by the existing journal; actual execution uses the newly
+qualified slots and reports their new image/preflight IDs in search metrics.
+
+A durable recovery authorization records the new execution manifest. Its first
+creation requires all input records committed, zero block artifacts, and no
+search-assignment store. Once recorded, that exact authorization can resume later
+blocks normally; changing it is rejected. This is deliberately not a blanket
+permission to change quantization code after search has started. Read-only checks
+confirmed zero block artifacts and no assignment file in the stopped run.
+
+The attempt runner also gives its private log the manifest owner's UID/GID so
+host-side monitoring does not require changing permissions after launch. All 74
+development tests pass (`reports/component-tests-recovery-identity.log`). The
+recovery image is
+`sha256:0c269ec34f859f5527f8abcc16ba07f04880874e786ce225192e748658e2fc81`;
+production remains stopped while its numerical/identity qualifications finish.
