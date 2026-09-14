@@ -977,3 +977,35 @@ production throughput estimate. The probe uses native weights; selected mixed
 replica propagation and full-corpus performance remain integration gates.
 No production quantization job has started.
 All 39 component tests pass (`reports/component-tests-parallel-guarded.log`).
+
+### Mixed-weight replica integration and full source hashing
+
+The two-RTX probe now accepts `--mixed-fixture` to read the original synthetic
+mtp0 phase-search results through a read-only SQLite connection. It verifies
+each old packed payload/provenance, installs the 384 selected projections into
+the primary block, then exercises the actual `Wavefront.process` replica restore,
+parallel output propagation, block commitment and completed-block reload. The
+fixture is never mutated or relabeled as calibration from the new probe inputs.
+
+This integration passes on four joint draft input batches: mixed outputs on
+both RTX GPUs exactly match serial replay using the selected primary weights,
+and completed reload is unchanged. Evidence:
+`reports/parallel-mixed-replica-probe.log`, event `mixed_replica_exact` with
+384 selected projections. No new search was performed in this test; packed
+candidates came from the earlier real quantizer diagnostic, not production data.
+
+`quantization/attest_source.py` hashes all indexed checkpoint shards plus all
+checkpoint-provided non-weight assets/reference files with four bounded readers.
+It rejects unexpected weight shards, file mutation while hashing and mismatches
+against 64-character Hugging Face blob addresses. The completed manifest is
+published atomically outside the source checkpoint. Tests exercise full inventory,
+blob mismatch, unexpected-shard rejection and output path safety. All 40 component
+tests pass (`reports/component-tests-source-attestation.log`).
+
+A full source hash run completed successfully in `reports/source-attestation.log`,
+publishing `<RUN_ROOT>/source-attestation.json`: 48 shards, 96,085 indexed tensors,
+88 files and 510,313,353,565 total bytes. Manifest SHA-256 is
+`cde39e3b2392c5b16cd51f092b40f5081cc12287563ef15a4cd7270bb3706080`.
+The hash process exited normally. Production
+CLI/runtime assembly, final export/upload and the complete one-shot launcher are
+still unfinished. No production quantization has started.
