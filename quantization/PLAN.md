@@ -1009,3 +1009,35 @@ publishing `<RUN_ROOT>/source-attestation.json`: 48 shards, 96,085 indexed tenso
 The hash process exited normally. Production
 CLI/runtime assembly, final export/upload and the complete one-shot launcher are
 still unfinished. No production quantization has started.
+
+### Export layout and large-file integrity policy (user clarification)
+
+The deliverable is a standard Hugging Face sharded safetensors checkpoint with
+the normal `model.safetensors.index.json` tensor-to-file mapping, not a custom
+PLE container. Keep each PLE's table and associated scale tensors in its own
+dedicated group of shard files. Never mix either PLE group with ordinary model
+weights or with the other PLE. A group may contain multiple complete safetensors
+files; do not require one file per PLE. This permits materializing another model
+by hard-linking unchanged PLE files as a group, without copying their payloads.
+Hard-linked files must remain immutable; replacements use new files and an
+updated index, never in-place writes to shared inodes.
+
+Standard HF sharding assigns each complete tensor to one file; it does not
+split a single tensor across files. Preserve tensor names and shapes and allow
+an individual large tensor to exceed the usual target shard size. Do not invent
+chunked tensor keys or a custom reconstruction format just to cap file sizes.
+The model's V4.1/EXL3 loader compatibility remains a separate export validation
+gate: a valid safetensors container alone does not establish model compatibility.
+
+Avoid routine hashing of huge source, PLE, or final model shards. The full source
+attestation above has already completed and must not be repeated on ordinary
+startup/resume. Reuse that identity with file metadata, bounded header/index and
+size checks; these are structural checks, not claims of cryptographic payload
+verification. Reserve checksums for small manifests/recovery artifacts where
+useful, or an explicit corruption investigation. Account separately for any
+unavoidable transfer-client integrity requirements; do not add redundant passes.
+
+`stream_shard.py` provides bounded raw-byte safetensors repacking without tensor
+decoding, dtype conversion, whole-payload mapping or SHA calculation. It publishes
+files atomically without replacement. This is an export primitive, not yet the
+complete exporter or a completed HF model checkpoint.
