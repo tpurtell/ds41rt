@@ -26,6 +26,7 @@ class RunStore:
         self.db.execute("PRAGMA synchronous=FULL")
         self.db.execute("CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
         self.db.execute("CREATE TABLE IF NOT EXISTS artifacts (key TEXT PRIMARY KEY, record TEXT NOT NULL)")
+        self.db.execute("CREATE TABLE IF NOT EXISTS retirements (key TEXT PRIMARY KEY, barrier TEXT NOT NULL, intent TEXT NOT NULL)")
         try:
             with self.db:
                 self.db.execute("INSERT OR IGNORE INTO metadata VALUES ('identity', ?)", (canonical(identity),))
@@ -89,6 +90,8 @@ class RunStore:
             return None
         record = json.loads(row[0])
         if verify:
+            if self.db.execute("SELECT 1 FROM retirements WHERE key=?", (key,)).fetchone():
+                raise ValueError(f"artifact payload has been retired: {key}")
             for parent, checksum in record["parents"].items():
                 parent_row = self.db.execute("SELECT record FROM artifacts WHERE key=?", (parent,)).fetchone()
                 if parent_row is None or hashlib.sha256(parent_row[0].encode()).hexdigest() != checksum:
@@ -97,3 +100,66 @@ class RunStore:
             if path.stat().st_size != record["bytes"] or self._hash(path) != record["sha256"]:
                 raise ValueError(f"committed artifact is corrupt: {key}")
         return record
+
+    def retire_files(self, keys, *, barrier):
+        """Retire explicit temporary ancestors of a durable completed block.
+
+        The caller must validate that the barrier's outputs and selected weights
+        are usable and exclude anything still needed. Immutable artifact records
+        survive retirement. Durable intents precede unlink, making interrupted
+        retirement retryable without confusing missing files with corruption.
+        """
+        keys = tuple(keys)
+        if not keys or len(set(keys)) != len(keys) or barrier in keys:
+            raise ValueError("retirement requires distinct explicit payload keys")
+        barrier_record = self.get(barrier)
+        if barrier_record is None or barrier_record["kind"] != "block":
+            raise ValueError("retirement requires a completed block barrier")
+        ancestors, pending = set(), list(barrier_record["parents"].items())
+        while pending:
+            key, expected_hash = pending.pop()
+            record = self.get(key, verify=False)
+            if record is None or hashlib.sha256(canonical(record).encode()).hexdigest() != expected_hash:
+                raise ValueError("barrier has a corrupt dependency record")
+            if key in ancestors:
+                continue
+            ancestors.add(key)
+            pending.extend(record["parents"].items())
+        path_keys = {}
+        for other, encoded in self.db.execute("SELECT key, record FROM artifacts"):
+            path_keys.setdefault(json.loads(encoded)["path"], []).append(other)
+        intents = []
+        for key in keys:
+            record = self.get(key, verify=False)
+            if key not in ancestors or record["kind"] not in {"hessian", "routed", "replay", "projection"}:
+                raise ValueError("payload is not a temporary ancestor of the barrier")
+            intent = canonical(dict(record=record, barrier_record=barrier_record))
+            old = self.db.execute("SELECT barrier, intent FROM retirements WHERE key=?", (key,)).fetchone()
+            if old is not None and old != (barrier, intent):
+                raise ValueError("retirement identity changed")
+            path = self.root / record["path"]
+            if path.is_symlink() or not path.resolve().is_relative_to(self.root):
+                raise ValueError("retirement target must be a regular internal payload")
+            # One payload path must not simultaneously represent a retained key.
+            if path_keys[record["path"]] != [key]:
+                raise ValueError("retirement payload has an aliased artifact key")
+            if path.exists():
+                if not path.is_file() or self._hash(path) != record["sha256"] or path.stat().st_size != record["bytes"]:
+                    raise ValueError("retirement target is corrupt")
+            elif old is None:
+                raise ValueError("retirement target was missing before intent")
+            intents.append((key, intent, path))
+        with self.db:
+            self.db.executemany("INSERT OR IGNORE INTO retirements VALUES (?, ?, ?)",
+                                [(key, barrier, intent) for key, intent, _ in intents])
+        removed = 0
+        for key, intent, path in intents:
+            if path.exists():
+                removed += path.stat().st_size
+                path.unlink()
+            descriptor = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+        return removed

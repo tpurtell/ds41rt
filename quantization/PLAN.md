@@ -789,3 +789,41 @@ state alone. The private `<RUN_ROOT>/worker-token` must not be committed or logg
 This deployment command is only a component of the required one-shot workflow.
 Automatic identity collection/qualification gates, full-corpus two-RTX capture,
 coordinator orchestration/retention, final export and upload still need integration.
+
+### Journaled rolling-storage retirement
+
+NVMe free space measured about 1007 GiB before this change. Retaining all old
+frontiers and raw Hessians would consume that during the run, so
+`quantization/retention.py` now provides an explicit completed-block cleanup
+component. It verifies every replacement frontier and selected projection before
+retiring the block's original inputs, routed batches, Hessians and unselected
+candidate payloads. Selected weights, current outputs, phase/tier metadata and
+all original artifact/dependency records remain intact.
+
+`RunStore.retire_files` requires an explicit distinct key list and a committed
+block barrier, checks transitive dependency-record hashes, rejects external or
+symlink targets and aliased artifact paths, and verifies payload bytes before
+deletion. Retirement intents commit durably before unlink, so an interrupted
+cleanup can resume even after some files have disappeared. The same retirement
+is idempotent. Normal verified reads reject retired payloads explicitly; metadata
+reads remain available to validate descendants. Disk payloads are removed, not
+archived, so regeneration would require replay/search from an earlier retained
+boundary or source; the caller must preserve every still-required boundary.
+
+This API requires exclusive coordinator ownership, not concurrent mutation of
+the artifact tree. It is not called automatically yet. The forthcoming coordinator
+must resume from its latest retained frontier rather than replaying completed
+blocks whose old outputs have been intentionally retired. No existing diagnostic
+or production payloads were removed while implementing this change; only test
+temporary directories exercised deletion.
+
+Tests cover interrupted unlink, immutable records after retirement, repeated
+cleanup, unrelated-target rejection, and preservation of selected weights/current
+frontiers. The wrapper test uses small synthetic metadata/frontiers; full-corpus
+storage-retention integration remains required.
+
+`Wavefront.latest(namespace)` supplies the resume boundary without reading older
+retired payloads: completed block markers must form a contiguous prefix, and only
+the newest output frontiers are loaded/verified. Corrupt newest outputs or a gap
+in completion markers fail closed rather than silently selecting an older state.
+All 32 component tests pass (`reports/component-tests-retention.log`).

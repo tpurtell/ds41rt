@@ -25,6 +25,29 @@ class Wavefront:
             raise ValueError("wavefront input is at the wrong layer")
         return state
 
+    def latest(self, namespace):
+        """Find the newest retained frontier without reading retired predecessors.
+
+        Completed markers must form a contiguous prefix. Missing/corrupt newest
+        output is a recovery error, never permission to fall back and recompute
+        from an older (possibly retired) boundary.
+        """
+        if namespace not in NAMESPACES:
+            raise ValueError("invalid wavefront namespace")
+        latest, gap = None, False
+        for layer in range(NAMESPACES[namespace][1]):
+            complete = self.driver._load(f"blocks/{namespace}/{layer:03d}/complete", "block")
+            if complete is None:
+                gap = True
+                continue
+            if gap or complete.get("next_layer") != layer + 1 or not complete.get("output_keys"):
+                raise ValueError("completed wavefront markers are not a valid contiguous prefix")
+            latest = complete
+        if latest is not None:
+            for key in latest["output_keys"]:
+                self._input(key, latest["output_provenance"][key], latest["next_layer"])
+        return latest
+
     @torch.inference_mode()
     def process(self, block, namespace, layer, input_keys, *, input_provenance):
         if namespace not in NAMESPACES or type(layer) is not int or not 0 <= layer < NAMESPACES[namespace][1]:

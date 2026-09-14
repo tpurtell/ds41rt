@@ -71,5 +71,10 @@ class WavefrontTest(unittest.TestCase):
             before = len(events)
             self.assertEqual(wavefront.process(block, "base", 0, keys, input_provenance=provenance), result)
             self.assertEqual(len(events), before)
+            self.assertEqual(wavefront.latest("base"), result)
+            self.assertIsNone(wavefront.latest("mtp"))
+            driver._publish("blocks/base/002/complete", "block", {**result, "next_layer": 3}, ())
+            with self.assertRaisesRegex(ValueError, "contiguous prefix"):
+                wavefront.latest("base")
             with self.assertRaisesRegex(ValueError, "inventory changed"):
                 wavefront.process(block, "base", 0, list(reversed(keys)), input_provenance=provenance)
