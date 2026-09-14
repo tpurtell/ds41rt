@@ -316,3 +316,37 @@ old snapshot, independently owned loaded tensors, and five-layer logits exactly
 matching full forward when every boundary is saved/reloaded. This is not yet a
 full quantizer crash/resume test. dSpark, full-model input preparation, production
 worker deployment, one-shot launcher and final export/upload remain unfinished.
+
+### dSpark core loader and numerical gates
+
+The checkpoint's `DSparkAttention` is not ordinary causal main-model attention:
+prefill seeds a 128-position main-history ring without running the experts;
+subsequent draft execution attends to that ring and all five draft positions.
+Our `V41NativeDSparkAttention` reconstructs the ring from explicit projected main
+history, preserving reference key order while projecting only the last window.
+It carries no hidden mutable decode cache between quantization evaluations.
+
+`V41Source.load_decoded_block(..., namespace="mtp", native_kernels=kernel)` now
+loads the three dSpark core blocks with 128 experts and top-3 routing each,
+without PLE or compressed attention. It excludes main_proj/main_norm and the
+shared embedding/auxiliary heads; these still require explicit input preparation
+and preservation in the exporter. Do not infer complete dSpark support from the
+core loader or pass the whole mtp namespace through unquantized at export.
+
+`quantization/validate_dspark.py` compares the real three-stage chain with the
+checkpoint's original dSpark blocks, seeding the reference cache via its prefill
+path and then executing a draft. Synthetic projected main features and synthetic
+draft embeddings isolate core math. All stages have exactly zero hidden/carry
+error at main lengths 2, 129 and 257 on RTX 0, and 1,025 on RTX 1, including
+multiple window wraps. Persistent reports:
+
+- `reports/dspark-core-parity.log`
+- `reports/dspark-core-long-parity.log`
+- `reports/component-tests-dspark.log`: all eleven tests pass; the new header
+  gate covers every dSpark core name/shape and all 1,152 routed projections.
+
+Still required: derive actual draft inputs from main-model target-layer **inputs**
+(the reference collects stream means before blocks 37, 38 and 39, not their
+outputs), qualify main_proj/main_norm and token/noise embeddings, integrate both
+namespaces with calibration and quantization, and test durable end-to-end resume.
+There is still no production quantization run or finished detached launcher.

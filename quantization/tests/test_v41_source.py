@@ -50,6 +50,39 @@ class V41SourceTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 source.tensor(f"layers.{index}.engram.embed.weight")
 
+    def test_dspark_core_names_shapes_and_routed_count(self):
+        source = V41Source(SNAPSHOT)
+        config = source.block_config("mtp")
+        self.assertEqual((config.num_hidden_layers, config.n_routed_experts, config.num_experts_per_tok),
+                         (3, 128, 3))
+        shapes = {}
+        shards = {shard for key, shard in source.weight_map.items() if key.startswith("mtp.")}
+        for shard_name in shards:
+            with safe_open(SNAPSHOT / shard_name, framework="pt") as shard:
+                for key in shard.keys():
+                    item = shard.get_slice(key)
+                    shape = item.get_shape()
+                    if item.get_dtype() == "I8" and ".ffn.experts." in key and key.endswith(".weight"):
+                        shape[-1] *= 2
+                    shapes[key] = tuple(shape)
+        mapped = set()
+        for stage in range(3):
+            with torch.device("meta"):
+                block = DeepseekV41DecoderLayer(config, stage)
+                block.mlp.experts = DeepSeekV41Experts.from_fused(block.mlp.experts)
+            self.assertIsNone(block.engram)
+            self.assertIsNone(block.self_attn.indexer)
+            for key, value in block.state_dict().items():
+                name = source_layer_key(stage, key, "mtp")
+                self.assertEqual(tuple(value.shape), shapes[name], name)
+                mapped.add(name)
+        core = {key for key in source.weight_map if key.startswith("mtp.")
+                and key.split(".")[2] in ("attn", "ffn", "attn_norm", "ffn_norm")
+                and not key.endswith(".scale")}
+        core |= {key for key in source.weight_map if key.startswith("mtp.") and key.split(".")[2].startswith("hc_")}
+        self.assertEqual(mapped, core)
+        self.assertEqual(sum(".ffn.experts." in key for key in mapped), 3 * 128 * 3)
+
 
 if __name__ == "__main__":
     unittest.main()
