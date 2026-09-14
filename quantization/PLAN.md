@@ -1476,3 +1476,29 @@ exact serial reference and durable assignments, 21.65 seconds
 (`reports/coordinator-launch-search-qualification.log`). This is still diagnostic
 work, not production quantization. Frozen-image activation/component checks and
 the production manifest/launch smoke check are being completed before launch.
+
+### Production launch — 2026-09-14
+
+The frozen launch image passed all 69 component tests with the source snapshot
+mounted and GPUs exposed (`reports/coordinator-launch-component-tests.log`). Two
+earlier diagnostic container invocations omitted those required mounts/devices
+and failed accordingly; the correctly configured invocation exited 0. The same
+image passed dual-RTX routed/output activation comparison, mixed selected-weight
+replay, and completed reload (`reports/coordinator-launch-activation-qualification.log`).
+The previously reviewed sparse-attention compiler warning remains unchanged.
+
+The exact production mount smoke test passed source attestation reuse, qualified
+code/GPU identity, and hard-link creation between export staging and HF cache
+(`reports/coordinator-launch-mount-smoke.log`). Its tiny owned test files were
+removed automatically; no model payloads were modified. Before launch both RTX
+GPUs were idle, RAM available was 174 GiB, and NVMe free space was 1,002 GiB.
+
+Production was launched through the detached one-shot entry point with manifest
+`/home/tj/.cache/ds41rt/quantization/deepseek-v41-exl3-k325-v1/production-manifest.json`.
+Attempt `20a7062c30244474aead819b422f57af` uses container
+`48b9c21b0ee41b6f48bde92863a01fe3defcb1a3eb0385eecb772c740bb8a384`
+(`ds41rt-quant-20a7062c30244474aead819b422f57af`). Its full log is under the run
+root at `attempts/20a7062c30244474aead819b422f57af.log`. Launch is not evidence of
+committed layers or completion; inspect runtime events and Docker state for
+current progress. Stay on close monitoring until several blocks commit safely
+and memory stabilizes, then use the requested 30-minute cadence with ETA.
