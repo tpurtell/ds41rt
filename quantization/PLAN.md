@@ -1041,3 +1041,20 @@ unavoidable transfer-client integrity requirements; do not add redundant passes.
 decoding, dtype conversion, whole-payload mapping or SHA calculation. It publishes
 files atomically without replacement. This is an export primitive, not yet the
 complete exporter or a completed HF model checkpoint.
+
+`export_layout.py` now plans deterministic standard HF file inventories and an
+index from final tensor descriptors, with independent filename numbering for
+ordinary weights and each PLE. It requires both PLE table/scale pairs, rejects
+unexpected PLE names, and keeps oversized tensors whole. A header-only dry run
+over all 96,085 source tensors passes (`reports/export-layout-source-dry-run.json`).
+At the 5 GB target, each PLE gets two files: its roughly 98.3 GB table and its
+roughly 3.07 GB scale tensor. The dry-run ordinary-weight layout is not a final
+quantized inventory and no large output files were created.
+
+The fork's mapped PLE reader and V4.1 input adapter now accept independently
+indexed weight/scale files, preserving the original shared-file path. Both
+mappings support bounded owned gathers, prefetch and page reclamation, and are
+closed together. Tests cover split-file gathers/repeats/release/close plus
+standard safetensors shard round trips and PLE filename stability when ordinary
+weights change. Final packed-weight export, model-loader integration, production
+runtime assembly and the detached end-to-end launcher remain unfinished.

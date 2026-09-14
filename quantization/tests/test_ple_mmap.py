@@ -13,6 +13,30 @@ spec.loader.exec_module(module)
 
 
 class PLETest(unittest.TestCase):
+    def test_separate_weight_scale_shards(self):
+        with tempfile.TemporaryDirectory() as root:
+            paths = []
+            for suffix, dtype, width, payload in (
+                    ("weight", "F8_E4M3", 32, bytes(range(128))),
+                    ("scale", "F8_E8M0", 1, bytes(range(128, 132)))):
+                header = json.dumps({f"embed.{suffix}": dict(
+                    dtype=dtype, shape=[4, width], data_offsets=[0, len(payload)])}).encode()
+                header += b" " * (-len(header) % 8)
+                path = Path(root) / (suffix + ".safetensors")
+                path.write_bytes(struct.pack("<Q", len(header)) + header + payload)
+                paths.append(path)
+            with module.MappedPLETable(paths[0], "embed", scale_path=paths[1]) as table:
+                table.prefetch([3, 0, 3])
+                weight, scale = table.gather([3, 0, 3])
+                table.release()
+                self.assertEqual(weight, bytes(range(96, 128)) + bytes(range(32)) + bytes(range(96, 128)))
+                self.assertEqual(scale, bytes([131, 128, 131]))
+                self.assertEqual(table.gather([]), (b"", b""))
+            self.assertEqual(scale, bytes([131, 128, 131]))
+            table.close()
+            with self.assertRaises(RuntimeError):
+                table.gather([0])
+
     def test_owned_rows_prefetch_release_and_bounds(self):
         header = json.dumps({
             "embed.weight": {"dtype": "F8_E4M3", "shape": [4, 32], "data_offsets": [0, 128]},
