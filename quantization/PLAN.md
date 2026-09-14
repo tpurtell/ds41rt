@@ -1691,3 +1691,21 @@ is container `e3860a0a92da54bb5555e759ce2f363786ed64ad9ff091d16d53947085c10e62`
 `attempts/175fe546bf71472fa12d79e5d64980ad.log`. Initial Docker inspection shows
 running, OOM false. This launch record alone does not establish successful
 recovery or stable layer throughput/memory; inspect subsequent durable events.
+
+### First complete block and memory release — 2026-09-14
+
+Block 0 committed all 1,441 outputs at 14:55:52 UTC. Its cycle completed at
+14:59:19 UTC, retiring 157,990,825,200 bytes (147.14 GiB) of obsolete rolling
+payloads. Current outputs and selected weights remain; retired payloads are not
+retained for final replay. Block 1 subsequently began routing normally.
+The resumed block-0 cycle took 2,053.32 seconds; it reused earlier gate/up
+candidates, so this is not a clean full-layer timing or final ETA.
+
+During down capture, RTX 0 used about 34.8 GiB versus RTX 1's 11.4 GiB:
+selected gate/up weights are reconstructed in BF16 on the primary first, while
+the replica is updated only after both phases. Output propagation raised the
+replica to about 30.5 GiB. At block cleanup the primary's actual PyTorch live
+allocation fell to 2,328,038,400 bytes (2.17 GiB), despite high cached memory in
+`nvidia-smi`. This verifies primary block-tensor release, not a measurement of
+the replica's live allocation or multi-layer stability. Host peak RSS was
+8,420,972 KiB. Report system RAM and VRAM separately in future check-ins.
