@@ -917,3 +917,31 @@ bitwise-equivalent substitute. The earlier divergent single-anchor results remai
 recorded, not relabeled as parity. These are synthetic target features and real
 weights, not final-corpus quality evidence. Full-corpus handoff and two-RTX
 orchestration remain to connect before production starts.
+
+### Durable main-to-dSpark handoff and combined namespace sequence
+
+`quantization/draft_inputs.py` binds the completed mixed main-model frontier to
+the original committed corpus and deterministic anchor selection. It creates one
+joint draft input per selected source record, with two independently owned RTX
+adapters and at most two preparations pending. The worker threads read verified
+main checkpoints and save owned draft states; only the coordinator writes SQLite.
+Each published draft input depends on its original main output and the frozen
+handoff inventory. Partial handoffs resume only missing records; changed counts,
+selection or main outputs reject recovery. No main-output payloads are retired by
+this handoff, so the final target features remain available for validation.
+
+`coordinator.quantize_namespaces` now connects initial main preparation, all main
+blocks, the joint draft handoff and all draft blocks under one exclusive run lock.
+Adapter factories are lazy, allowing completed-input resumes to skip allocation
+and avoid attempting to read already-retired initial payloads. Main mapped-table
+handles close after preparation. The final marker explicitly says
+`namespaces-quantized-export-pending`; it is not a claim that export, upload or
+the user's entire objective is complete.
+
+Tests inject an interruption after one durable draft input, verify joint groups
+and skip-on-resume behavior, reject changed selections, and confirm that a
+completed-input resume never recreates adapters. These use small CPU adapters or
+mocked namespace execution, not full-corpus integration. Production CLI/runtime
+assembly, parallel two-RTX block activation execution, export/validation and the
+detached one-shot end-to-end launcher remain required.
+All 39 component tests pass (`reports/component-tests-coordinator-handoff.log`).

@@ -8,10 +8,33 @@ from unittest.mock import patch
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from coordinator import exclusive_run, run_namespace
+from coordinator import exclusive_run, run_namespace, quantize_namespaces
 
 
 class CoordinatorTest(unittest.TestCase):
+    def test_completed_namespace_resume_does_not_recreate_retired_inputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            records = [dict(id="a", input_ids=(1, 2, 3, 4))]
+            attestation = {"test": True}
+            initial = dict(output_keys=("old-input",), output_provenance={}, next_layer=0)
+            draft_initial = dict(output_keys=("old-draft",), output_provenance={}, next_layer=0)
+            main, draft = {"stage": "main"}, {"stage": "draft"}
+            from draft_anchors import select_anchors
+            stored = {"inputs/inventory": dict(records=records, attestation=attestation),
+                      "inputs/complete": initial, "draft-inputs/complete": draft_initial,
+                      "draft-inputs/inventory": dict(selection=select_anchors(records, count=2), main_frontier=main)}
+            driver = SimpleNamespace(journal=SimpleNamespace(root=Path(directory)),
+                _load=lambda key, kind: stored.get(key),
+                _publish=lambda key, kind, state, parents: stored.__setitem__(key, state))
+            def forbidden():
+                raise AssertionError("must not recreate consumed input adapters")
+            with patch("coordinator.run_namespace", side_effect=[main, draft]) as run:
+                result = quantize_namespaces(driver, records, attestation, main_adapters=forbidden,
+                    draft_adapters=forbidden, native_kernels=None, anchor_count=2)
+                self.assertEqual([call.args[1] for call in run.call_args_list], ["base", "mtp"])
+                self.assertEqual(result["status"], "namespaces-quantized-export-pending")
+                self.assertIn("quantization/complete", stored)
+
     def test_exclusive_lock_and_release(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
