@@ -945,3 +945,35 @@ mocked namespace execution, not full-corpus integration. Production CLI/runtime
 assembly, parallel two-RTX block activation execution, export/validation and the
 detached one-shot end-to-end launcher remain required.
 All 39 component tests pass (`reports/component-tests-coordinator-handoff.log`).
+
+### Two-RTX activation replay and guarded native kernel dispatch
+
+`Wavefront` now supports an independently loaded second block on the other RTX.
+Routed activation preparation and output propagation use bounded two-batch
+windows; immutable original ordinals determine device assignment even after a
+partial resume. Journal reads/publications stay on the coordinator thread.
+The activation-device tuple is part of the block input inventory, so changing
+single/dual-device topology cannot silently reuse old block work. After search,
+the replica loads every selected packed projection before output propagation.
+`run_namespace(..., replica_device="cuda:1")` connects replica lifetime to each
+block; both copies are released at the boundary. Hessian accumulation itself
+still occurs on the driver's GPU over committed routed batches.
+
+The first real dual-RTX probe failed in TileLang/TVM imported-module lookup
+under simultaneous host dispatch (`reports/parallel-activation-probe.log`).
+`quantization/native_kernels.py` guards kernel factory creation and callable
+dispatch with a shared reentrant host lock. It does not synchronize CUDA devices;
+GPU launches remain asynchronous. The coordinator supplies this guarded module
+to both native block loads and input-adapter factories. Factories now accept the
+kernel module as their argument, ensuring they do not accidentally retain an
+unguarded reference. This serializes host registry access, not whole GPU forwards.
+
+The guarded real-weight diagnostic passes on four joint dSpark batches across
+both RTX devices: routed hidden/logits/weights/indices and propagated hidden/carry
+exactly match serial RTX0 execution. Evidence:
+`reports/parallel-activation-probe-guarded.log`; measured publication passes were
+0.494s routed and 0.187s output for these small cached diagnostic batches, not a
+production throughput estimate. The probe uses native weights; selected mixed
+replica propagation and full-corpus performance remain integration gates.
+No production quantization job has started.
+All 39 component tests pass (`reports/component-tests-parallel-guarded.log`).

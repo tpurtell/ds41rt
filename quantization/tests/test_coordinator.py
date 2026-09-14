@@ -55,7 +55,7 @@ class CoordinatorTest(unittest.TestCase):
                 pass
             def latest(self, namespace):
                 return latest[0]
-            def process(self, block, namespace, layer, keys, *, input_provenance):
+            def process(self, block, namespace, layer, keys, *, input_provenance, replica=None):
                 processed.append(layer)
                 key = f"output-{layer}"
                 latest[0] = dict(output_keys=(key,), output_provenance={key: {}}, next_layer=layer + 1)

@@ -17,6 +17,7 @@ from wavefront import Wavefront
 from corpus_inputs import prepare_frontiers
 from draft_inputs import prepare_draft_frontiers
 from draft_anchors import select_anchors
+from native_kernels import SerializedHostKernels
 
 
 @contextmanager
@@ -35,7 +36,9 @@ def exclusive_run(root):
 
 
 @torch.inference_mode()
-def run_namespace(driver, namespace, initial_frontier, *, native_kernels):
+def run_namespace(driver, namespace, initial_frontier, *, native_kernels, replica_device=None):
+    if replica_device is not None and not isinstance(native_kernels, SerializedHostKernels):
+        native_kernels = SerializedHostKernels(native_kernels)
     if namespace not in NAMESPACES or initial_frontier.get("next_layer") != 0:
         raise ValueError("namespace requires its own initial layer-zero frontier")
     if not initial_frontier.get("output_keys"):
@@ -59,11 +62,15 @@ def run_namespace(driver, namespace, initial_frontier, *, native_kernels):
         started = time.monotonic()
         block = driver.source.load_decoded_block(layer, driver.device,
                     native_kernels=native_kernels, namespace=source_namespace)
+        replica = None
         try:
+            if replica_device is not None:
+                replica = (driver.source.load_decoded_block(layer, replica_device,
+                    native_kernels=native_kernels, namespace=source_namespace), torch.device(replica_device))
             frontier = wavefront.process(block, namespace, layer, frontier["output_keys"],
-                                          input_provenance=frontier["output_provenance"])
+                                          input_provenance=frontier["output_provenance"], replica=replica)
         finally:
-            del block
+            del block, replica
             gc.collect()
         removed = retire_block_temporaries(driver, namespace, layer)
         driver.progress(dict(event="block_cycle_complete", namespace=namespace, layer=layer,
@@ -81,19 +88,22 @@ def run_namespace(driver, namespace, initial_frontier, *, native_kernels):
 
 
 def quantize_namespaces(driver, records, attestation, *, main_adapters, draft_adapters,
-                        native_kernels, anchor_count=327680, anchor_seed=20260809):
+                        native_kernels, anchor_count=327680, anchor_seed=20260809, replica_device=None):
     """Run both quantized namespaces; factories allocate adapters only if needed.
 
-    Each factory returns two independently owned RTX adapters. This entry point
+    Each factory accepts the guarded kernel module and returns two independently
+    owned RTX adapters. This entry point
     owns the run lock. It does not deploy workers or export/upload the result.
     """
     with exclusive_run(driver.journal.root):
+        if not isinstance(native_kernels, SerializedHostKernels):
+            native_kernels = SerializedHostKernels(native_kernels)
         corpus = driver._load("inputs/inventory", "inventory")
         if corpus is not None and (corpus["records"] != records or corpus["attestation"] != attestation):
             raise ValueError("coordinator corpus differs from committed input attestation")
         initial = driver._load("inputs/complete", "inputs")
         if initial is None:
-            adapters = main_adapters()
+            adapters = main_adapters(native_kernels)
             try:
                 initial = prepare_frontiers(driver, records, attestation, adapters)
             finally:
@@ -101,21 +111,21 @@ def quantize_namespaces(driver, records, attestation, *, main_adapters, draft_ad
                     adapters[index].close()
                 del adapters
                 gc.collect()
-        main = run_namespace(driver, "base", initial, native_kernels=native_kernels)
+        main = run_namespace(driver, "base", initial, native_kernels=native_kernels, replica_device=replica_device)
         draft_inventory = driver._load("draft-inputs/inventory", "inventory")
         selection = select_anchors(records, count=anchor_count, seed=anchor_seed)
         if draft_inventory is not None and draft_inventory != dict(selection=selection, main_frontier=main):
             raise ValueError("coordinator draft selection differs from committed handoff")
         draft_initial = driver._load("draft-inputs/complete", "inputs")
         if draft_initial is None:
-            adapters = draft_adapters()
+            adapters = draft_adapters(native_kernels)
             try:
                 draft_initial = prepare_draft_frontiers(driver, main, records, adapters,
                                                         count=anchor_count, seed=anchor_seed)
             finally:
                 del adapters
                 gc.collect()
-        draft = run_namespace(driver, "mtp", draft_initial, native_kernels=native_kernels)
+        draft = run_namespace(driver, "mtp", draft_initial, native_kernels=native_kernels, replica_device=replica_device)
         result = dict(main=main, draft=draft, status="namespaces-quantized-export-pending")
         previous = driver._load("quantization/complete", "quantization")
         if previous is None:
