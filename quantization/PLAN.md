@@ -534,3 +534,28 @@ candidate selection, unit-weight down construction and true-zero identity case.
 Production still needs to bind stream identity and recovery parameters into the
 durable journal, stage gate/up then down capture correctly, and deploy the full
 corpus/distributed/one-shot workflow. No production quantization has started.
+
+### Reusable routed FFN frontier and phase-specific capture
+
+`V41RoutedBatch.from_replay` now runs the block's attention and router once,
+capturing owned CPU FFN input/logits/weights/indices and stopping before any
+expert GEMM. Expert subsets reuse this frontier instead of repeating complete
+block execution. This is an input-capture artifact, not a propagated output.
+
+`V41Capture(..., phase="gate_up" | "down")` allocates only that phase's Hessians.
+`capture_routed` computes gate/up raw Hessians directly from routed inputs without
+expert GEMMs. Down capture evaluates only selected experts' current gate/up
+weights, with exact V4.1 clamping, FP32 SiLU, route multiplication and BF16 store;
+it never executes their down projection. The block driver must install all
+selected gate/up tiers before initiating down capture. `V41Recovery.observe_routed`
+likewise reuses the same logits/inputs and evaluates rankings on the router's
+device, without a second attention/FFN run.
+
+The real block-0 diagnostic at 129 tokens matches full-forward hook capture
+exactly for all three projections of experts 0–3, including a zero-row expert.
+Block output/carry also remain exactly equal to the checkpoint reference:
+`reports/native-direct-capture-parity.log`. Twenty-one component tests pass;
+they include phase-specific allocation, no expert execution during frontier
+capture, exact direct-vs-hook Hessians, and identical direct recovery evidence.
+Durable routed-batch storage, the full block phase driver, corpus scheduling and
+the detached distributed launcher are still pending production integration.

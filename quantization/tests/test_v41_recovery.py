@@ -6,6 +6,7 @@ from torch.nn import functional as F
 from gptqmodel.models.definitions.deepseek_v41 import DeepSeekV41Expert, DeepSeekV41Experts
 from gptqmodel.utils.v41_capture import V41Capture
 from gptqmodel.utils.v41_recovery import V41Recovery
+from gptqmodel.utils.v41_routed_batch import V41RoutedBatch
 
 
 class Router(torch.nn.Module):
@@ -58,3 +59,11 @@ class RecoveryTest(unittest.TestCase):
         torch.testing.assert_close(warm["H"], inputs.T @ inputs)
         self.assertEqual(evidence["identity_rows"], 0)
         self.assertEqual(len(recovery.coordinates[1, 2]), 2)
+        logits, weights, indices = block.mlp.gate(inputs)
+        direct = V41Recovery(block, [0, 1, 2, 3], target_count=4)
+        direct.observe_routed(V41RoutedBatch(inputs, logits, weights, indices))
+        for expert in range(4):
+            left, le = direct.projection(capture, expert, "w1")
+            right, re = recovery.projection(capture, expert, "w1")
+            torch.testing.assert_close(left["H"], right["H"], rtol=0, atol=0)
+            self.assertEqual(le, re)

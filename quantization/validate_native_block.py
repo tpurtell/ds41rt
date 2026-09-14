@@ -153,6 +153,19 @@ def validate(snapshot, device, layer_index=0, lengths=(32, 129), frontier=None, 
                       "hidden_relative_l2": ((actual.float() - expected.float()).norm() / expected.float().norm()).item(),
                       "pre_max_abs": (actual_pre - expected_pre).abs().max().item()}
             if capture_state is not None:
+                from gptqmodel.utils.v41_routed_batch import V41RoutedBatch
+                routed = V41RoutedBatch.from_replay(block, state, device)
+                report["direct_capture_exact"] = True
+                for phase, projections in (("gate_up", ("w1", "w3")), ("down", ("w2",))):
+                    direct = V41Capture(block, capture_experts, device=device, phase=phase)
+                    direct.capture_routed(routed)
+                    for expert in capture_experts:
+                        for projection in projections:
+                            left, le = direct.projection(expert, projection)
+                            right, re = capture_state.projection(expert, projection)
+                            if not torch.equal(left["H"], right["H"]) or left["count"] != right["count"] or le != re:
+                                report["direct_capture_exact"] = False
+                    del direct
                 report["captured_experts"] = {}
                 for expert in capture_experts:
                     for projection in ("w1", "w3", "w2"):

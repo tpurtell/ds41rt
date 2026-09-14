@@ -5,9 +5,40 @@ import torch
 
 from gptqmodel.models.definitions.deepseek_v41 import DeepSeekV41Expert, DeepSeekV41Experts
 from gptqmodel.utils.v41_capture import V41Capture
+from gptqmodel.utils.v41_routed_batch import V41RoutedBatch
 
 
 class V41CaptureTest(unittest.TestCase):
+    def test_direct_phases_match_hook_capture(self):
+        from test_v41_primitives import tiny_config
+        from transformers import DeepseekV41ForCausalLM
+        from gptqmodel.models.definitions.deepseek_v41 import DeepSeekV41QModel
+        from gptqmodel.utils.v41_replay import V41ReplayBatch
+        torch.manual_seed(125)
+        model = DeepseekV41ForCausalLM(tiny_config()).eval()
+        DeepSeekV41QModel.convert_model_structure(model)
+        state = V41ReplayBatch.prepare(model, torch.randint(0, 128, (2, 17)))
+        block = model.model.layers[0]
+        expected = V41Capture(block, [0, 1, 2, 3], device="cpu", chunk_rows=3)
+        with expected:
+            state.advance(block, "cpu")
+        calls = []
+        handle = block.mlp.experts.register_forward_pre_hook(lambda *args: calls.append(True))
+        batch = V41RoutedBatch.from_replay(block, state, "cpu")
+        handle.remove()
+        self.assertEqual(calls, [])
+        for phase, projections in (("gate_up", ("w1", "w3")), ("down", ("w2",))):
+            actual = V41Capture(block, [0, 1, 2, 3], device="cpu", chunk_rows=3, phase=phase)
+            actual.capture_routed(batch)
+            self.assertEqual(len(actual.hessians), 4)
+            for expert in range(4):
+                for projection in projections:
+                    left, le = actual.projection(expert, projection)
+                    right, re = expected.projection(expert, projection)
+                    torch.testing.assert_close(left["H"], right["H"], rtol=0, atol=0)
+                    self.assertEqual(left["count"], right["count"])
+                    self.assertEqual(le, re)
+
     def test_raw_hessians_route_mass_and_zero_expert(self):
         torch.manual_seed(55)
         block = torch.nn.Module()
