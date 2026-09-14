@@ -5,3 +5,7 @@
 [submodule "third_party/xgrammar"]
 	path = third_party/xgrammar
 	url = https://github.com/mlc-ai/xgrammar.git
+[submodule "third_party/gptqmodel"]
+	path = third_party/gptqmodel
+	url = git@github.com:tpurtell/GPTQModel.git
+	branch = main
