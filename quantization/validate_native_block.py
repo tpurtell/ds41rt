@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 import sys
+import tempfile
 from contextlib import nullcontext
 
 import torch
@@ -154,7 +155,25 @@ def validate(snapshot, device, layer_index=0, lengths=(32, 129), frontier=None, 
                       "pre_max_abs": (actual_pre - expected_pre).abs().max().item()}
             if capture_state is not None:
                 from gptqmodel.utils.v41_routed_batch import V41RoutedBatch
+                from gptqmodel.utils.v41_checkpoint import save_frontier, save_routed_batch, load_routed_batch
+                from run_store import RunStore
                 routed = V41RoutedBatch.from_replay(block, state, device)
+                with tempfile.TemporaryDirectory(prefix="ds41rt-routed-gate-") as directory:
+                    root = Path(directory)
+                    provenance = dict(diagnostic="routed-roundtrip", layer=layer_index, length=length,
+                                      snapshot=snapshot.name)
+                    journal = RunStore(root, provenance)
+                    try:
+                        save_frontier(state, root / "input.safetensors", provenance=provenance)
+                        journal.record_file("input", "replay", "input.safetensors")
+                        save_routed_batch(routed, root / "routed.safetensors", provenance=provenance)
+                        journal.record_file("routed", "routed", "routed.safetensors", parents=("input",))
+                        record = journal.get("routed")
+                        routed = load_routed_batch(root / record["path"], expected_sha256=record["sha256"],
+                                                   expected_provenance=provenance)
+                    finally:
+                        journal.close()
+                report["journaled_routed_reload"] = True
                 report["direct_capture_exact"] = True
                 for phase, projections in (("gate_up", ("w1", "w3")), ("down", ("w2",))):
                     direct = V41Capture(block, capture_experts, device=device, phase=phase)

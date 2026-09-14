@@ -7,10 +7,27 @@ from unittest.mock import patch
 import torch
 
 from gptqmodel.utils.v41_checkpoint import load_frontier, save_frontier
+from gptqmodel.utils.v41_checkpoint import load_routed_batch, save_routed_batch
+from gptqmodel.utils.v41_routed_batch import V41RoutedBatch
 from gptqmodel.utils.v41_replay import V41ReplayBatch
 
 
 class V41CheckpointTest(unittest.TestCase):
+    def test_routed_roundtrip_cannot_be_confused_with_replay(self):
+        batch = V41RoutedBatch(torch.randn(3, 8), torch.randn(3, 4), torch.rand(3, 2),
+                               torch.tensor([[0, 1], [1, 2], [2, 3]]))
+        digest = save_routed_batch(batch, self.path, provenance=self.provenance)
+        loaded = load_routed_batch(self.path, expected_sha256=digest, expected_provenance=self.provenance)
+        for name in vars(batch):
+            torch.testing.assert_close(getattr(loaded, name), getattr(batch, name), rtol=0, atol=0)
+        with self.assertRaisesRegex(ValueError, "kind mismatch"):
+            self.load(digest)
+        batch.indices[0, 1] = 0
+        with self.assertRaisesRegex(ValueError, "duplicate"):
+            save_routed_batch(batch, self.path, provenance=self.provenance)
+        # Validation failed before publication: previous durable bytes survive.
+        load_routed_batch(self.path, expected_sha256=digest, expected_provenance=self.provenance)
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)

@@ -559,3 +559,31 @@ they include phase-specific allocation, no expert execution during frontier
 capture, exact direct-vs-hook Hessians, and identical direct recovery evidence.
 Durable routed-batch storage, the full block phase driver, corpus scheduling and
 the detached distributed launcher are still pending production integration.
+
+### Durable routed batches and artifact journal
+
+The atomic safetensors checkpoint writer now distinguishes `replay` from
+`routed` payloads. Routed batches validate tensor geometry/dtypes, finite values,
+expert bounds and duplicate assignments before publication and after loading.
+Legacy version-1 snapshots without a kind field remain replay-only. A routed
+batch can never load as a completed replay state.
+
+`quantization/run_store.py` provides a SQLite WAL/FULL-synchronous artifact
+journal with immutable run identity and records. Payloads are fsynced before
+record commitment; records bind kind, path, bytes, SHA-256 and hashes of committed
+dependency records. Missing dependencies reject the transaction; orphan payloads
+are retained but not counted as completed work. Reopening verifies identity,
+and artifact reads verify payload/checksum and immediate dependency-record hashes.
+Only payload paths inside the run root are accepted. This is not yet the phase
+driver: the caller must freeze source/corpus/recipe/code identity, choose unique
+artifact paths, define phase dependencies, and implement explicit recovery.
+
+`reports/native-journaled-capture-parity.log` passes the real block-0 capture gate
+after input/routed publication, journal commitment and routed reload: exact raw
+Hessians, route evidence and checkpoint-reference block outputs. Twenty-four
+component tests pass (`reports/component-tests-run-store.log`), including kind
+separation, invalid routed publication preserving old bytes, journal reopen and
+idempotence, missing dependencies, identity mismatch and payload corruption.
+The diagnostic still discards its temporary files; production retention and
+end-to-end crash/resume orchestration remain unfinished. No production quantizer
+is running.
