@@ -70,3 +70,22 @@ the terminal state before explicitly resuming the same script/identity. No
 numerical-quality claim follows from completion; the requested check is only
 an individual row. Publication/cache receipts are separate from conversion
 completion and must exist before treating the target repo as finished.
+
+Launch note: the first attempt stopped before conversion because the existing
+`ds41rt-exports` parent is root-owned. A separate CPU/no-network setup container
+created only the new target directory and assigned it to 1000:1000; the same
+terminal job was then explicitly restarted. The run root was already owned by
+tj. Do not change ownership of the whole HF home or other model repositories.
+
+## Conversion completed; publication in progress
+
+Both tables converted in the CPU-only job. The independent middle-row checks
+matched packed bytes and block scales exactly: layer 1 relative L2 error
+0.08876550, layer 14 0.09830786 (256 values each). This does not assess whole
+model quality. No whole-model replay, calibration or quality check was run.
+All 94 variant files are assembled; tensor payload is 349,178,352,752 bytes.
+86 unchanged files (including all 48 base weight shards) are local hardlinks
+and planned server-side cross-repository copies. Only eight changed files are
+uploaded: four PLE shards, index, two configs, and model card. The first new PLE
+scale shard transferred at approximately 85 MB/s; publication/cache completion
+is not established until the final receipts exist.
