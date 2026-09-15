@@ -1,6 +1,7 @@
 # NVFP4 PLE-only variant
 
 Target: `wrldsuksgo2mars/DeepSeek-V4.1-EXL3-K3.25-FP4PLE-v1` (public).
+Completed public revision: `04cada4d3f38584f069e0a7debc53720832d738e`.
 Base: `wrldsuksgo2mars/DeepSeek-V4.1-EXL3-K3.25-v1`, pinned revision
 `cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88`.
 
@@ -89,3 +90,31 @@ and planned server-side cross-repository copies. Only eight changed files are
 uploaded: four PLE shards, index, two configs, and model card. The first new PLE
 scale shard transferred at approximately 85 MB/s; publication/cache completion
 is not established until the final receipts exist.
+
+## Publication complete — 2026-09-16 Taipei
+
+The detached CPU-only coordinator exited 0, with no OOM and no GPU device
+requests. Public repository:
+https://huggingface.co/wrldsuksgo2mars/DeepSeek-V4.1-EXL3-K3.25-FP4PLE-v1
+
+Revision: `04cada4d3f38584f069e0a7debc53720832d738e`.
+Anonymous Hub inspection confirms this head, `private=false`, and 94 files.
+All eight changed files were uploaded and committed together with 86 unchanged
+server-side copies from the pinned base. Base weight upload bytes: **zero**.
+New file content submitted totals 110,627,438,017 bytes; Xet may deduplicate
+parts of that new content. No additional full weight-hash pass was performed.
+
+The standard local HF cache is complete at:
+`/home/tj/.cache/huggingface/hub/models--wrldsuksgo2mars--DeepSeek-V4.1-EXL3-K3.25-FP4PLE-v1/snapshots/04cada4d3f38584f069e0a7debc53720832d738e`.
+`ds41rt-fp4ple-offline-audit` exited 0 with networking disabled as uid 1000:
+all 94 files resolve through `main`, are readable, and share inodes with the
+export; all 86 reused files retain the original remote blob IDs and local
+hardlinks. Every base export fingerprint is unchanged. This audit only checks
+file identity/metadata and reads eight bytes per file; no tensor computation.
+
+Run-root evidence: `publication-complete.json`, `upload-complete.json`,
+`cache-complete.json`, `offline-cache-audit.json`, `artifact.json`, per-table
+`complete.json`/`row-check.json`, and `events.jsonl`. Docker logs preserve the
+full upload history. The source model, base quantization, old snapshots and
+inference server were left intact. Only the requested micro-scale numerical
+checks were run; whole-model quality remains untested by design.

@@ -6,6 +6,10 @@ scripts are references, not production dependencies.
 
 The CPU-only NVFP4 PLE variation is documented separately in
 [FP4PLE_PLAN.md](FP4PLE_PLAN.md); it reuses the published EXL3 base weights.
+It is now public as
+[`DeepSeek-V4.1-EXL3-K3.25-FP4PLE-v1`](https://huggingface.co/wrldsuksgo2mars/DeepSeek-V4.1-EXL3-K3.25-FP4PLE-v1),
+revision `04cada4d3f38584f069e0a7debc53720832d738e`, with a complete hardlinked
+standard HF cache. No base weights were re-uploaded.
 
 ## Completed v1 artifact
 
