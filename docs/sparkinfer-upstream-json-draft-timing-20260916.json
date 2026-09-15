@@ -1,0 +1,71 @@
+{
+  "scope": "Identical cold C1 JSON request; debug timing is intrusive and is not a throughput qualification.",
+  "arms": {
+    "legacy-attention": {
+      "raw_sha256": "30a4de17ea249602ee9790670df437cc7add01e52467755b35ed5bb9b31abb1a",
+      "rounds": 10,
+      "totals": {
+        "proposed": 44,
+        "accepted": 36,
+        "emitted": 45,
+        "draft_us": 27471,
+        "prepared_us": 27678,
+        "verify_us": 353379,
+        "total_us": 385768
+      },
+      "median_us": {
+        "draft_us": 2352.5,
+        "prepared_us": 2368.0,
+        "verify_us": 34520.5,
+        "total_us": 37288.5
+      },
+      "accepted_fraction": 0.8181818181818182,
+      "emitted_per_round": 4.5,
+      "output": "{\"path\": \"src/cache.rs\", \"operation\": \"replace\", \"line_start\": 41, \"line_end\": 47, \"rationale\": \"Removing a redundant copy to avoid unnecessary duplication.\"}",
+      "usage": {
+        "prompt_tokens": 67,
+        "completion_tokens": 46,
+        "total_tokens": 113,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 67
+      },
+      "matches_uninstrumented_output": true
+    },
+    "attention": {
+      "raw_sha256": "068af607796e74972f140f4853caec718ad0177ff2a71b80f91e59df357a6135",
+      "rounds": 10,
+      "totals": {
+        "proposed": 43,
+        "accepted": 31,
+        "emitted": 40,
+        "draft_us": 27308,
+        "prepared_us": 27534,
+        "verify_us": 366877,
+        "total_us": 399018
+      },
+      "median_us": {
+        "draft_us": 2329.0,
+        "prepared_us": 2350.0,
+        "verify_us": 34710.0,
+        "total_us": 37459.5
+      },
+      "accepted_fraction": 0.7209302325581395,
+      "emitted_per_round": 4.0,
+      "output": "{\"path\":\"src/cache.rs\",\"operation\":\"replace\",\"line_start\":41,\"line_end\":47,\"rationale\":\"Removing a redundant copy to simplify the code and avoid unnecessary duplication.\"}",
+      "usage": {
+        "prompt_tokens": 67,
+        "completion_tokens": 41,
+        "total_tokens": 108,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 67
+      },
+      "matches_uninstrumented_output": true
+    }
+  }
+}

@@ -337,6 +337,17 @@ despite the small aggregate short-context C1 gain. These results justify keeping
 the new attention candidate under investigation while examining numerical
 effects on speculative acceptance and completing the remaining component work.
 
+The [exact JSON request trace](sparkinfer-upstream-json-draft-timing-20260916.json)
+reproduces each arm's uninstrumented output. Both execute 10 verification rounds.
+Old attention emits 46 completion tokens and accepts 36/44 proposed drafts;
+new attention emits 41 tokens and accepts 31/43. Output includes different JSON
+spacing and rationale text, while both pass the existing checks. The new path
+therefore emits 4.0 tokens per logged round versus 4.5. Debug timing is intrusive
+(roughly 35 ms verification rounds) and must not replace normal serving TPS.
+This explains much of the observed token-throughput difference through output
+length and speculative efficiency; it does not establish a quality regression
+or prove that every attention shape is faster.
+
 ## Future parallelism and Trellis: analysis only
 
 These observations are retained for subsequent releases at the user's request.
