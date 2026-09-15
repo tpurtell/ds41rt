@@ -1,0 +1,255 @@
+{
+  "scope": "Single-pass C1-C16 warm-prompt diagnostics, unchanged baseline Spark workers. Not formal release qualification.",
+  "cases": {
+    "code": {
+      "prompt": "upstream-baseline-dual upstream-20260916. Write a Python function merge_intervals(intervals) that merges overlapping integer intervals. Include type hints, a short docstring, and three assert-based examples. Return only one Python code block.",
+      "arms": {
+        "baseline": {
+          "summaries": [
+            {
+              "concurrency": 1,
+              "samples": 1,
+              "median_aggregate_tps": 157.91426788061094,
+              "min_aggregate_tps": 157.91426788061094,
+              "max_aggregate_tps": 157.91426788061094
+            },
+            {
+              "concurrency": 2,
+              "samples": 1,
+              "median_aggregate_tps": 208.90769822800658,
+              "min_aggregate_tps": 208.90769822800658,
+              "max_aggregate_tps": 208.90769822800658
+            },
+            {
+              "concurrency": 4,
+              "samples": 1,
+              "median_aggregate_tps": 447.93850240392123,
+              "min_aggregate_tps": 447.93850240392123,
+              "max_aggregate_tps": 447.93850240392123
+            },
+            {
+              "concurrency": 8,
+              "samples": 1,
+              "median_aggregate_tps": 650.7180799841981,
+              "min_aggregate_tps": 650.7180799841981,
+              "max_aggregate_tps": 650.7180799841981
+            },
+            {
+              "concurrency": 16,
+              "samples": 1,
+              "median_aggregate_tps": 1074.9448821332105,
+              "min_aggregate_tps": 1074.9448821332105,
+              "max_aggregate_tps": 1074.9448821332105
+            }
+          ],
+          "raw_sha256": "00fce979447207ae1842e94c7b5472e643814e42f096c0a1e7c7f71d7db6ab14"
+        },
+        "candidate_legacy_attention": {
+          "summaries": [
+            {
+              "concurrency": 1,
+              "samples": 1,
+              "median_aggregate_tps": 155.76698510930427,
+              "min_aggregate_tps": 155.76698510930427,
+              "max_aggregate_tps": 155.76698510930427
+            },
+            {
+              "concurrency": 2,
+              "samples": 1,
+              "median_aggregate_tps": 207.70917567977685,
+              "min_aggregate_tps": 207.70917567977685,
+              "max_aggregate_tps": 207.70917567977685
+            },
+            {
+              "concurrency": 4,
+              "samples": 1,
+              "median_aggregate_tps": 441.6780093580275,
+              "min_aggregate_tps": 441.6780093580275,
+              "max_aggregate_tps": 441.6780093580275
+            },
+            {
+              "concurrency": 8,
+              "samples": 1,
+              "median_aggregate_tps": 656.6995938959973,
+              "min_aggregate_tps": 656.6995938959973,
+              "max_aggregate_tps": 656.6995938959973
+            },
+            {
+              "concurrency": 16,
+              "samples": 1,
+              "median_aggregate_tps": 1064.0912431477625,
+              "min_aggregate_tps": 1064.0912431477625,
+              "max_aggregate_tps": 1064.0912431477625
+            }
+          ],
+          "raw_sha256": "7ace5fa78589e016c986d0c8e0c624a5eb4b4a3168426977f78a27a47b01708f"
+        },
+        "candidate_attention": {
+          "summaries": [
+            {
+              "concurrency": 1,
+              "samples": 1,
+              "median_aggregate_tps": 151.95783068399996,
+              "min_aggregate_tps": 151.95783068399996,
+              "max_aggregate_tps": 151.95783068399996
+            },
+            {
+              "concurrency": 2,
+              "samples": 1,
+              "median_aggregate_tps": 205.50585814166627,
+              "min_aggregate_tps": 205.50585814166627,
+              "max_aggregate_tps": 205.50585814166627
+            },
+            {
+              "concurrency": 4,
+              "samples": 1,
+              "median_aggregate_tps": 442.14049692169243,
+              "min_aggregate_tps": 442.14049692169243,
+              "max_aggregate_tps": 442.14049692169243
+            },
+            {
+              "concurrency": 8,
+              "samples": 1,
+              "median_aggregate_tps": 692.3976165074171,
+              "min_aggregate_tps": 692.3976165074171,
+              "max_aggregate_tps": 692.3976165074171
+            },
+            {
+              "concurrency": 16,
+              "samples": 1,
+              "median_aggregate_tps": 1167.1991241131807,
+              "min_aggregate_tps": 1167.1991241131807,
+              "max_aggregate_tps": 1167.1991241131807
+            }
+          ],
+          "raw_sha256": "96eedd95af92ba34523869f2526ba3f17f2f89ac862a0d7782ff967e41f3dc23"
+        }
+      }
+    },
+    "topic": {
+      "prompt": "upstream-baseline-dual upstream-20260916. Explain virtual memory to a junior programmer in five concise bullet points, including paging, page faults, and the role of the TLB.",
+      "arms": {
+        "baseline": {
+          "summaries": [
+            {
+              "concurrency": 1,
+              "samples": 1,
+              "median_aggregate_tps": 81.42499833934019,
+              "min_aggregate_tps": 81.42499833934019,
+              "max_aggregate_tps": 81.42499833934019
+            },
+            {
+              "concurrency": 2,
+              "samples": 1,
+              "median_aggregate_tps": 138.96299590863669,
+              "min_aggregate_tps": 138.96299590863669,
+              "max_aggregate_tps": 138.96299590863669
+            },
+            {
+              "concurrency": 4,
+              "samples": 1,
+              "median_aggregate_tps": 243.2776267321435,
+              "min_aggregate_tps": 243.2776267321435,
+              "max_aggregate_tps": 243.2776267321435
+            },
+            {
+              "concurrency": 8,
+              "samples": 1,
+              "median_aggregate_tps": 431.0727065318486,
+              "min_aggregate_tps": 431.0727065318486,
+              "max_aggregate_tps": 431.0727065318486
+            },
+            {
+              "concurrency": 16,
+              "samples": 1,
+              "median_aggregate_tps": 612.5070840115013,
+              "min_aggregate_tps": 612.5070840115013,
+              "max_aggregate_tps": 612.5070840115013
+            }
+          ],
+          "raw_sha256": "e657b236a0938160246c9dffca2e6c03fb772f89e33878cb7cfc1d813b0a44fc"
+        },
+        "candidate_legacy_attention": {
+          "summaries": [
+            {
+              "concurrency": 1,
+              "samples": 1,
+              "median_aggregate_tps": 82.51235318974756,
+              "min_aggregate_tps": 82.51235318974756,
+              "max_aggregate_tps": 82.51235318974756
+            },
+            {
+              "concurrency": 2,
+              "samples": 1,
+              "median_aggregate_tps": 140.68521346835644,
+              "min_aggregate_tps": 140.68521346835644,
+              "max_aggregate_tps": 140.68521346835644
+            },
+            {
+              "concurrency": 4,
+              "samples": 1,
+              "median_aggregate_tps": 247.95687748725882,
+              "min_aggregate_tps": 247.95687748725882,
+              "max_aggregate_tps": 247.95687748725882
+            },
+            {
+              "concurrency": 8,
+              "samples": 1,
+              "median_aggregate_tps": 443.8530064439898,
+              "min_aggregate_tps": 443.8530064439898,
+              "max_aggregate_tps": 443.8530064439898
+            },
+            {
+              "concurrency": 16,
+              "samples": 1,
+              "median_aggregate_tps": 630.9045293486598,
+              "min_aggregate_tps": 630.9045293486598,
+              "max_aggregate_tps": 630.9045293486598
+            }
+          ],
+          "raw_sha256": "3f5ee3573212052d38eaa39dabd96a2113bd72cd38176fb29090ffd2082bfddd"
+        },
+        "candidate_attention": {
+          "summaries": [
+            {
+              "concurrency": 1,
+              "samples": 1,
+              "median_aggregate_tps": 83.3348628994802,
+              "min_aggregate_tps": 83.3348628994802,
+              "max_aggregate_tps": 83.3348628994802
+            },
+            {
+              "concurrency": 2,
+              "samples": 1,
+              "median_aggregate_tps": 143.57350408956535,
+              "min_aggregate_tps": 143.57350408956535,
+              "max_aggregate_tps": 143.57350408956535
+            },
+            {
+              "concurrency": 4,
+              "samples": 1,
+              "median_aggregate_tps": 249.13159806747737,
+              "min_aggregate_tps": 249.13159806747737,
+              "max_aggregate_tps": 249.13159806747737
+            },
+            {
+              "concurrency": 8,
+              "samples": 1,
+              "median_aggregate_tps": 431.4001360020526,
+              "min_aggregate_tps": 431.4001360020526,
+              "max_aggregate_tps": 431.4001360020526
+            },
+            {
+              "concurrency": 16,
+              "samples": 1,
+              "median_aggregate_tps": 680.6507248491752,
+              "min_aggregate_tps": 680.6507248491752,
+              "max_aggregate_tps": 680.6507248491752
+            }
+          ],
+          "raw_sha256": "540cc66199ea516da738b03365c746927af10518d1f0a3fda2dde3260ab45efd"
+        }
+      }
+    }
+  }
+}

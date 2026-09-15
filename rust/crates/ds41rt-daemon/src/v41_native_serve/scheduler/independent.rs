@@ -207,7 +207,7 @@ async fn lane<'a, P: VerificationTarget<'a>, C: DraftChain<'a>>(lane: usize, lib
                 }
                 tracing::debug!(target: "ds41rt::timing", lane, requests=members.len(),
                     proposed=inputs.iter().map(|r| r.len()-1).sum::<usize>(), accepted, emitted,
-                    prepared_us, verify_us, total_us=started.elapsed().as_micros() as u64,
+                    draft_us, prepared_us, verify_us, total_us=started.elapsed().as_micros() as u64,
                     "native independent lane round");
                 Ok(())
             }.await;

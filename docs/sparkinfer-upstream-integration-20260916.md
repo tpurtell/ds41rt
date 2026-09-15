@@ -327,6 +327,16 @@ and measures only 103.76 TPS on JSON, so attention alone is not a sufficient
 explanation for all observed differences. Draft/verification timing and
 concurrency comparisons remain necessary before selecting the final policy.
 
+The [C1–C16 warm-prompt comparison](sparkinfer-upstream-candidate-concurrency-20260916.json)
+uses identical prompts across baseline, merged coordinator with old attention,
+and merged coordinator with new attention. Each arm has one sample per point.
+At C16, code is **1074.94 / 1064.09 / 1167.20 TPS** and topic is
+**612.51 / 630.90 / 680.65 TPS**, respectively. The full candidate therefore
+shows approximately 9% code and 11% topic improvement at C16 in this diagnostic,
+despite the small aggregate short-context C1 gain. These results justify keeping
+the new attention candidate under investigation while examining numerical
+effects on speculative acceptance and completing the remaining component work.
+
 ## Future parallelism and Trellis: analysis only
 
 These observations are retained for subsequent releases at the user's request.
