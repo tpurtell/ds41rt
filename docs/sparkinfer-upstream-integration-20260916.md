@@ -142,7 +142,13 @@ graph replay. A stale request explicitly writes zero partials and negative-
 infinity normalization. This preserves the native malformed-request contract;
 upstream's ordinary all-masked key path otherwise retains a finite negative
 sentinel. The producer test, address tests and complete focused DS4.1 attention
-file report **36 passed**. A new producer memcheck run is pending. Next qualify
+file report **36 passed**. The first producer memcheck test passed numerically
+but exited 99 with 40 CUDA API lookup diagnostics: installed `cuda-bindings`
+13.4.1 probes API versions 13030/13041 while the driver advertises 13020. That
+log reports no invalid/uninitialized device accesses, but is not a clean
+sanitizer pass. A separate run with `--report-api-errors no` is pending to
+isolate device-memory checking; the original API diagnostics are retained.
+Next qualify
 native export/binding, final merge and live-row/capacity handling, then measure
 the adapted chain; the earlier 2× timing remains evidence for the unadapted
 interleaved kernel only. Candidate lock advances to `de950111`; old evidence
