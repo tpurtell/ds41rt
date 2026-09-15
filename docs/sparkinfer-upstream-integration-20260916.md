@@ -235,14 +235,29 @@ remain synthetic attention tests, with an independent closed-form oracle:
 | 16 × 1 | 23.9 | 19.7 |
 | 16 × 4 | 80.4 | 58.7 |
 
-**Unresolved tradeoff:** empty-tile detection improves sparse batches (the
+**Measured tradeoff:** empty-tile detection improves sparse batches (the
 64-row candidate was previously 107 µs), but adds overhead with all 512 selected
 keys populated. [Latest populated-key measurements](sparkinfer-upstream-attention-populated-20260916.json)
 are 12.0, 44.0 and 146.4 µs at 1/16/64 rows, versus 11.1, 37.7 and 127.1 µs
 before the guard. The first-key shortcut did not recover that cost. These remain
-faster than the old native baseline, but the guard needs investigation before
-final policy selection. Do not present the earlier 37.7 µs figure as current
-candidate performance. Release defaults and published images remain unchanged.
+faster than the old native baseline. Resource inspection found 168 registers
+and a 136-byte stack with the guard, versus 167 registers and no stack without
+it. The user chose to prioritize populated attention; candidate `928fd465`
+removes the guard. The tables above retain the discarded guarded experiment.
+
+[Restored native-interface measurements](sparkinfer-upstream-attention-restored-20260916.json)
+pass numerical and graph-mutation checks and recover 11.09 / 37.71 / 127.12 µs
+at 1 / 16 / 64 rows, versus baseline 21.87 / 76.94 / 267.73 µs. These are
+attention timings, not end-to-end serving gains. Release defaults and published
+images remain unchanged.
+
+Sparse selection occurs with short context, not just the tail of long requests.
+The saved code baseline has 54 prompt plus 216 output tokens; topic has 42 plus
+213. Both remain below the approximately 512/1,024-token populated-selection
+thresholds. Serving comparisons will retain those cases and add a fixed,
+approximately 2k-token cached prefix, using identical content and cache warmup
+for baseline and candidate. Report warm-prefix results separately; do not replace
+the short-context baseline merely because a populated case is faster.
 
 ## Future parallelism and Trellis: analysis only
 

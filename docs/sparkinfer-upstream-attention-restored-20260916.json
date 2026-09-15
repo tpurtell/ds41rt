@@ -1,0 +1,124 @@
+{
+  "scope": "native direct producer+merge; no repacking; baseline then candidate",
+  "provenance": {
+    "candidate_revision": "928fd4653799389fe5114777e7f2d9ef6849b3b9",
+    "native_revision": "10ea0f84341cd45cef3d2e8c97eab60c9571084a",
+    "native_library_sha256": "30ddbfd02d6c7fda772d80bd9c295b977de847feb1a2ee53ac5a683c5ba50615",
+    "gpu": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+    "torch_version": "2.13.0+cu130",
+    "gpu_state": "index, uuid, power.limit [W], clocks.current.memory [MHz]\n0, GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, 400.00 W, 405 MHz\n1, GPU-95f8f212-9131-df99-fd53-7535965197d7, 400.00 W, 13365 MHz\n",
+    "launches_per_graph": 20,
+    "replays_per_sample": 50,
+    "repetitions": 5,
+    "candidate_library_sha256": "d4ce3dba7db9cd082deebf1a92919f56b00555a07e4a962dde2785fabe70ade1",
+    "candidate_manifest_sha256": "aba51db3ad42ecb8b1fd1aef500eabf1c00efd52424ecac683cdb0611a9cd0fa",
+    "production_native_abi": true
+  },
+  "results": [
+    {
+      "rows": 1,
+      "native_parts": 10,
+      "mode": "decode",
+      "errors": [
+        {
+          "max_abs": 0.0005677789449691772,
+          "rms": 9.365364530822262e-05
+        },
+        {
+          "max_abs": 0.005736708641052246,
+          "rms": 0.0013570580631494522
+        }
+      ],
+      "median_us": [
+        21.86854362487793,
+        11.086848258972168
+      ],
+      "samples_us": [
+        [
+          21.8603515625,
+          21.86444854736328,
+          21.86854362487793,
+          21.86854362487793,
+          21.86854362487793
+        ],
+        [
+          11.081695556640625,
+          11.096063613891602,
+          11.083776473999023,
+          11.086848258972168,
+          11.101183891296387
+        ]
+      ]
+    },
+    {
+      "rows": 16,
+      "native_parts": 10,
+      "mode": "decode",
+      "errors": [
+        {
+          "max_abs": 0.0006198734045028687,
+          "rms": 9.465147741138935e-05
+        },
+        {
+          "max_abs": 0.006528392434120178,
+          "rms": 0.001328569371253252
+        }
+      ],
+      "median_us": [
+        76.93619537353516,
+        37.71392059326172
+      ],
+      "samples_us": [
+        [
+          76.821533203125,
+          76.93619537353516,
+          76.93209838867188,
+          76.95462036132812,
+          76.95465850830078
+        ],
+        [
+          37.705726623535156,
+          37.68521499633789,
+          37.71392059326172,
+          37.720062255859375,
+          37.740543365478516
+        ]
+      ]
+    },
+    {
+      "rows": 64,
+      "native_parts": 10,
+      "mode": "decode",
+      "errors": [
+        {
+          "max_abs": 0.0006873458623886108,
+          "rms": 9.661566582508385e-05
+        },
+        {
+          "max_abs": 0.006775643676519394,
+          "rms": 0.0013480385532602668
+        }
+      ],
+      "median_us": [
+        267.73297119140625,
+        127.1173095703125
+      ],
+      "samples_us": [
+        [
+          267.71661376953125,
+          268.2347106933594,
+          267.73297119140625,
+          268.273681640625,
+          267.7145690917969
+        ],
+        [
+          126.84697723388672,
+          131.57373046875,
+          127.08457946777344,
+          131.74989318847656,
+          127.1173095703125
+        ]
+      ]
+    }
+  ]
+}
