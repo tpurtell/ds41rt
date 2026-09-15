@@ -362,6 +362,16 @@ boundaries and input mutation under graph replay against quantized accumulation.
 The oracle checkout matches the export's `c69d3725` revision. This adds numerical
 coverage; it is not yet a WO-A/WO-B chain performance comparison.
 
+The [native Spark consumer qualification](sparkinfer-upstream-spark-native-20260916.json)
+passes ten capacity/live-row combinations at capacities 1/16/80/256, comparing
+the actual native pointer ABI against independent quantized expert math.
+It includes graph replay, changed input/routes, poisoned payloads, and both
+per-route FP32 output and the larger-capacity token-accumulation ABI. Relative
+L2 error is approximately 0.0017 with cosine above 0.999998. Native packing also
+matches the tensor converter for TP4, TP2 and full-width layouts on Spark.
+The ARM release daemon builds successfully; its artifacts are staged separately
+from the preserved release containers for the upcoming four-worker comparison.
+
 ## Future parallelism and Trellis: analysis only
 
 These observations are retained for subsequent releases at the user's request.

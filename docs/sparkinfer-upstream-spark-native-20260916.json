@@ -1,0 +1,78 @@
+{
+  "revision": "ee591ded8321f36937a44262badd0e7bc567b700",
+  "cases": [
+    {
+      "capacity": 1,
+      "rows": 1,
+      "token_accumulation": false,
+      "relative_l2": 0.001676463638432324,
+      "cosine": 0.9999985694885254
+    },
+    {
+      "capacity": 16,
+      "rows": 1,
+      "token_accumulation": false,
+      "relative_l2": 0.0016506208339706063,
+      "cosine": 0.9999986290931702
+    },
+    {
+      "capacity": 16,
+      "rows": 7,
+      "token_accumulation": false,
+      "relative_l2": 0.0016434105345979333,
+      "cosine": 0.9999986290931702
+    },
+    {
+      "capacity": 16,
+      "rows": 16,
+      "token_accumulation": false,
+      "relative_l2": 0.0016483995132148266,
+      "cosine": 0.9999986290931702
+    },
+    {
+      "capacity": 80,
+      "rows": 1,
+      "token_accumulation": false,
+      "relative_l2": 0.0016841394826769829,
+      "cosine": 0.9999985694885254
+    },
+    {
+      "capacity": 80,
+      "rows": 7,
+      "token_accumulation": false,
+      "relative_l2": 0.0016673769569024444,
+      "cosine": 0.9999985694885254
+    },
+    {
+      "capacity": 80,
+      "rows": 80,
+      "token_accumulation": false,
+      "relative_l2": 0.001657707616686821,
+      "cosine": 0.9999986886978149
+    },
+    {
+      "capacity": 256,
+      "rows": 1,
+      "token_accumulation": true,
+      "relative_l2": 0.0016590346349403262,
+      "cosine": 0.9999987483024597
+    },
+    {
+      "capacity": 256,
+      "rows": 7,
+      "token_accumulation": true,
+      "relative_l2": 0.00167237245477736,
+      "cosine": 0.9999985694885254
+    },
+    {
+      "capacity": 256,
+      "rows": 256,
+      "token_accumulation": true,
+      "relative_l2": 0.0016629912424832582,
+      "cosine": 0.9999986886978149
+    }
+  ],
+  "library_sha256": "9dd7115e8e520ad7fee5ebdf8a540c9f406a77d0219428c686fdad5c8ae95f07",
+  "gpu": "a7c503f0-bb16-4333-4f44-92e331dbcf2e",
+  "scope": "Qualify the Spark native packed-FP8 consumer against quantized expert math."
+}
