@@ -230,6 +230,21 @@ geometry defaults are restored. `ruff check --select F821` passes for the
 resolved query/mHC packages, dense GEMM, row quantization and four attention
 files. This is static validation only, not GPU or end-to-end acceptance.
 
+The WO/block-FP8/expert checkpoint leaves **29 conflicted paths**. WO keeps both
+local binding metadata and upstream launcher retention. Shared W4A16 compile
+results retain full-rotation output dtype alongside upstream broadcast metadata.
+EP retains its rotation scratch/dtype contracts while accepting upstream's
+prepared launcher and route-ID workspace. This preserves existing capabilities;
+it does not enable new Trellis serving in DS41RT.
+
+Block-FP8 now declares `activation_block_size` in its prepared caps/query
+(query schema 7), preserving K128 as well as K32. Binding rejects a different
+activation-scale recipe. Upstream preparation callers also needed the merged
+quantizer's scale-block argument: all seven direct call sites now bind to the
+merged signature in an AST/signature audit. The touched files parse and their
+undefined-name checks pass. Actual preparation, export, GPU numerics, scratch
+lifetime and performance remain unqualified until the full package is usable.
+
 Code/topic concurrency baseline collection completed sequentially at
 C1/C2/C4/C8/C16 with one repetition each. C16 aggregate throughput was 1074.94
 TPS for code and 612.51 TPS for topic. These warm, same-prompt concurrency
