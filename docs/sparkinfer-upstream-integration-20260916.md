@@ -245,6 +245,22 @@ merged signature in an AST/signature audit. The touched files parse and their
 undefined-name checks pass. Actual preparation, export, GPU numerics, scratch
 lifetime and performance remain unqualified until the full package is usable.
 
+The fused-MoE implementation/API checkpoint leaves **27 conflicted paths**.
+The implementation retains native prequantized-input compilation identity and
+rotation workspace controls while consuming upstream's concrete decode config.
+The public API uses canonical prepared weights; the obsolete compatibility
+module and its local tests still require migration review. A missing
+`variant_for` import in the automatically merged API is repaired.
+
+Upstream's compact N64 grouped-route restriction would reject the fork's
+existing `silu_v41` direct route. Its exact Spark capacity-one geometry guard
+is now carried into the new tuning validator, with config schema bumped to 5;
+the upstream SiLU restriction remains. An isolated execution of the actual
+validator accepted the native direct and upstream grouped cases and rejected
+nine incompatible configurations. The fused-MoE package passes F821 static
+checks. These checks do not establish whole-package import, prepared launch,
+GPU correctness or performance; all remain pending.
+
 Code/topic concurrency baseline collection completed sequentially at
 C1/C2/C4/C8/C16 with one repetition each. C16 aggregate throughput was 1074.94
 TPS for code and 612.51 TPS for topic. These warm, same-prompt concurrency
