@@ -30,7 +30,7 @@ class View(C.Structure):
 
 
 @torch.inference_mode()
-def compare(lib, rows, candidate=None):
+def compare(lib, rows, candidate=None, native_abi=False):
     torch.manual_seed(4100 + rows)
     q = (torch.randn(rows, 64, 512, device="cuda") * .2).bfloat16()
     sink = torch.randn(64, device="cuda")
@@ -108,13 +108,18 @@ def compare(lib, rows, candidate=None):
             partials = torch.empty(rows, 64, 10, 512, dtype=torch.bfloat16, device="cuda")
             lses = torch.empty(rows, 64, 10, dtype=torch.float32, device="cuda")
             upstream_output = outputs[1].clone()
-            candidate_fn = candidate.ds41rt_attention_probe
-            candidate_fn.argtypes = [C.c_void_p]*9 + [C.c_int32, C.c_void_p]
+            candidate_fn = candidate.ds41rt_v41_sparse_attention_split if native_abi else candidate.ds41rt_attention_probe
+            candidate_fn.argtypes = fn.argtypes if native_abi else [C.c_void_p]*9 + [C.c_int32, C.c_void_p]
 
             def upstream():
-                rc = candidate_fn(q.data_ptr(), descriptors.data_ptr(), metadata.data_ptr(),
-                    selected.data_ptr(), bounds.data_ptr(), sink.data_ptr(), partials.data_ptr(),
-                    lses.data_ptr(), outputs[1].data_ptr(), rows, torch.cuda.current_stream().cuda_stream)
+                if native_abi:
+                    rc = candidate_fn(q.data_ptr(), sink.data_ptr(), metadata.data_ptr(), selected.data_ptr(),
+                        outputs[1].data_ptr(), rows, 128, C.byref(view), torch.cuda.current_stream().cuda_stream,
+                        scratch.data_ptr(), scratch.numel()*4, 10)
+                else:
+                    rc = candidate_fn(q.data_ptr(), descriptors.data_ptr(), metadata.data_ptr(),
+                        selected.data_ptr(), bounds.data_ptr(), sink.data_ptr(), partials.data_ptr(),
+                        lses.data_ptr(), outputs[1].data_ptr(), rows, torch.cuda.current_stream().cuda_stream)
                 assert rc == 0, rc
 
             upstream()
@@ -178,6 +183,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--native-library", required=True)
     parser.add_argument("--candidate-library", help="Qualify/timing the native AOT producer+merge instead of the interleaved kernel")
+    parser.add_argument("--candidate-native-abi", action="store_true", help="Use the production sparse-attention split entry, including descriptor staging")
+    parser.add_argument("--candidate-manifest", type=Path)
     parser.add_argument("--rows", nargs="+", type=int, default=[1, 2, 7, 16, 32])
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -186,11 +193,14 @@ def main():
     assert lib.ds41rt_v41_sparse_attention_initialize() == 0
     candidate = C.CDLL(args.candidate_library) if args.candidate_library else None
     if candidate is not None:
-        manifest_path = Path(args.candidate_library).parent / "v41_attention.json"
+        manifest_path = args.candidate_manifest or Path(args.candidate_library).parent / "v41_attention.json"
         manifest = json.loads(manifest_path.read_text())
         for name, expected_hash in manifest["artifacts"].items():
             assert hashlib.sha256((manifest_path.parent/name).read_bytes()).hexdigest() == expected_hash, name
-        candidate.ds41rt_attention_probe_initialize()
+        if args.candidate_native_abi:
+            assert candidate.ds41rt_v41_sparse_attention_initialize() == 0
+        else:
+            candidate.ds41rt_attention_probe_initialize()
     source = Path(b12x.__file__).resolve().parent.parent
     provenance = dict(
         candidate_revision=subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip(),
@@ -202,12 +212,13 @@ def main():
         candidate_library_sha256=(hashlib.sha256(Path(args.candidate_library).read_bytes()).hexdigest()
                                   if args.candidate_library else None),
         candidate_manifest_sha256=(hashlib.sha256(manifest_path.read_bytes()).hexdigest() if candidate else None),
+        production_native_abi=args.candidate_native_abi,
     )
     if candidate:
         assert manifest["sparkinfer_revision"] == provenance["candidate_revision"]
     results = []
     for rows in args.rows:
-        result = compare(lib, rows, candidate)
+        result = compare(lib, rows, candidate, args.candidate_native_abi)
         results.append(result)
         print(json.dumps(result), flush=True)
         args.output.write_text(json.dumps(dict(scope=("native direct producer+merge; no repacking; baseline then candidate" if candidate else "kernel-only; repacking excluded; native then upstream"),

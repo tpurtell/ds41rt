@@ -1,4 +1,7 @@
 #include "ds41rt_v41_sparse_attention.h"
+#ifdef DS41RT_HAVE_V41_ATTENTION_AOT
+#include "ds41rt_v41_attention_aot_internal.h"
+#endif
 #include <cuda_runtime.h>
 #include <cuda_bf16.h>
 #include <cuda_fp8.h>
@@ -341,6 +344,10 @@ template<bool FP4> static int32_t initialize_format() {
   return cudaFuncSetAttribute(attend<false,4,FP4>,cudaFuncAttributeMaxDynamicSharedMemorySize,kFourSharedBytes);
 }
 extern "C" int32_t ds41rt_v41_sparse_attention_initialize(void) {
+#ifdef DS41RT_HAVE_V41_ATTENTION_AOT
+  const auto aot_status=ds41rt_v41_attention_aot_initialize();
+  if(aot_status!=cudaSuccess)return aot_status;
+#endif
   const auto status=initialize_format<false>();
   return status==cudaSuccess?initialize_format<true>():status;
 }
@@ -406,6 +413,20 @@ static int32_t validate_attention(const uint16_t* query,const float* sink,
   }
   return cudaSuccess;
 }
+#ifdef DS41RT_HAVE_V41_ATTENTION_AOT
+// Small lane-local descriptor staging; all storage comes from the existing
+// validated FP32 split workspace. No allocation or host metadata download.
+__global__ void stage_aot_view(ds41rt_v41_sparse_kv_t view,
+    ds41rt_v41_sparse_kv_t* views,uint64_t* zero_bounds,int rows) {
+  const int row=blockIdx.x*blockDim.x+threadIdx.x;
+  if(row<rows){views[row]=view;zero_bounds[row]=0;}
+}
+static bool aot_aligned(const ds41rt_v41_sparse_kv_t& v) {
+  for(int i=0;i<4;++i)
+    if((reinterpret_cast<uintptr_t>(v.values[i]) | reinterpret_cast<uintptr_t>(v.scales[i]))%16)return false;
+  return true;
+}
+#endif
 static int32_t launch_attention(const uint16_t* query,const float* sink,
     const uint64_t* metadata,const int32_t* selected,uint16_t* output,int32_t rows,
     int32_t window_width,const ds41rt_v41_sparse_kv_t* view,void* stream,float* partial,
@@ -414,6 +435,22 @@ static int32_t launch_attention(const uint16_t* query,const float* sink,
       window_width,view,stream,partial,scratch_bytes,parts,window_begins);
   if(status!=cudaSuccess)return status;
   const auto& v=*view;
+#ifdef DS41RT_HAVE_V41_ATTENTION_AOT
+  if(v.compressed==2 && partial && parts==10 && rows<=64 &&
+      (window_width==0 || window_width==128) && aot_aligned(v) &&
+      reinterpret_cast<uintptr_t>(partial)%16==0) {
+    auto* bytes=reinterpret_cast<uint8_t*>(partial);
+    auto* lses=bytes+uint64_t(rows)*655360;
+    auto* views=reinterpret_cast<ds41rt_v41_sparse_kv_t*>(lses+uint64_t(rows)*2560);
+    auto* zero_bounds=reinterpret_cast<uint64_t*>(views+rows);
+    // 658048 bytes/row fits the validated 1315840-byte/row split allocation.
+    stage_aot_view<<<(rows+31)/32,32,0,reinterpret_cast<cudaStream_t>(stream)>>>(v,views,zero_bounds,rows);
+    const auto staged=cudaGetLastError();
+    if(staged!=cudaSuccess)return staged;
+    return ds41rt_v41_attention_aot_launch(query,views,metadata,selected,
+        window_begins?window_begins:zero_bounds,sink,bytes,lses,output,rows,stream);
+  }
+#endif
   return v.compressed==2?
       dispatch_attention<true>(query,sink,metadata,selected,output,rows,window_width,v,stream,partial,parts,window_begins):
       dispatch_attention<false>(query,sink,metadata,selected,output,rows,window_width,v,stream,partial,parts,window_begins);

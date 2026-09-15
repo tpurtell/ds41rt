@@ -184,6 +184,28 @@ above. Still required: production validation/loading/dispatch, window-only and
 prefill paths, diverse request/cache geometries, full engine performance and
 real-weight quality gates. The production source pin remains unchanged.
 
+The native build now has an opt-in `DS41RT_ENABLE_V41_ATTENTION_AOT` CMake
+option, with verified export dependencies, CuTe runtime linkage and per-device
+module loading during initialization. The existing uniform split/bounded ABI
+dispatches aligned FP4 requests of up to 64 rows and 10 partitions to the new
+chain. A small lane-local GPU launch writes row descriptors and optional zero
+bounds into unused space in the existing split scratch. It allocates nothing
+and does not join lanes. Other layouts, window-only requests, larger rows and
+non-split calls retain the baseline. This option remains off for the old
+production source pin until release qualification is complete.
+
+The clean candidate CMake configure and full `ds41rt_native` build passed with
+CUDA enabled, candidate attention enabled and XGrammar disabled for this
+isolated build check. [CMake-built dispatch measurements](sparkinfer-upstream-attention-dispatch-20260916.json)
+include the descriptor launch: **21.87 → 11.11 µs** at one row,
+**76.93 → 37.71 µs** at 16 rows and **267.70 → 127.13 µs** at 64 rows.
+Native-ABI changed-query and malformed-metadata graph checks passed. The
+existing `ds41rt_v41_fp4_attention_selftest` also passed all **96 closed-form
+checks**, including unaligned payload planes and larger rows exercising the
+fallback. These are attention-component results, not serving TPS. The
+multi-request batch entry still uses the baseline and needs an explicit
+eligibility-aware connection before the engine comparison.
+
 ## Future parallelism and Trellis: analysis only
 
 These observations are retained for subsequent releases at the user's request.
