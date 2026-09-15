@@ -304,6 +304,27 @@ worktree. The selected GPU tests are
 They establish correctness only for those shapes/contracts, not serving
 acceptance, startup behavior or a measured speedup.
 
+The mHC/attention test checkpoint leaves **6 conflicted paths**. mHC tests now
+use upstream preparation for pre/post execution and retain the fork's head
+oracles through its caller-output API. Initial epsilon/head selection reported
+**7 passed**. Added DS4.1 hidden-size 5120 coverage required correcting the test
+split count from the old fixed 64 to `hidden_size / 64`. The subsequent selected
+run passed five cases (DS4.1 norm/head, GLM `1e-5` norm, high-slot graph replay,
+and scratch binding) before exposing stale expectations in another upstream
+test: unprepared plans now lazily prepare defaults, and excess rows report a
+capacity error. The test now verifies rejection with kernel resolution frozen
+and rejection above capacity; it does not require eager rejection outside that
+guard.
+
+The final combined scratch/attention check reports **4 passed**: both mHC
+scratch/ownership checks, DSV4 NVFP4 record traits, and the fork's 128-head DSV4
+compressed-attention graph replay migrated to the prepared API. This is not
+DS4.1 FP8-attention numerical acceptance. The W4A16 test conflict also uses the
+new prepared binding's explicit output buffer; its GPU cases remain pending.
+All touched test files pass F821 checks. Tests ran on RTX0 with the same Python
+environment as the preceding checkpoint. No throughput claims follow from
+these correctness checks.
+
 Code/topic concurrency baseline collection completed sequentially at
 C1/C2/C4/C8/C16 with one repetition each. C16 aggregate throughput was 1074.94
 TPS for code and 612.51 TPS for topic. These warm, same-prompt concurrency
