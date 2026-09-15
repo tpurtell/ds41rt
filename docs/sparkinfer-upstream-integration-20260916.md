@@ -348,6 +348,20 @@ This explains much of the observed token-throughput difference through output
 length and speculative efficiency; it does not establish a quality regression
 or prove that every attention shape is faster.
 
+On SM121, the full expert numerical file reports **13 passed**. The separate
+prequantized-input test wrapper needed `attach_programs` for both compiled
+branches under upstream preparation; candidate `ee591ded` makes that test-only
+change. All **three prequantized-input cases pass** on Spark, including graph
+replay, changed routes and poisoned payloads. The Spark native build with
+expert AOT, SparkInfer AOT, RDMA and XGrammar then links successfully. Worker
+runtime/ABI qualification and four-worker serving comparison remain pending.
+
+[Native WO-B qualification](sparkinfer-upstream-native-wo-b-20260916.json)
+passes capacities 1/16/80/256 through the real C interface, checking live-row
+boundaries and input mutation under graph replay against quantized accumulation.
+The oracle checkout matches the export's `c69d3725` revision. This adds numerical
+coverage; it is not yet a WO-A/WO-B chain performance comparison.
+
 ## Future parallelism and Trellis: analysis only
 
 These observations are retained for subsequent releases at the user's request.

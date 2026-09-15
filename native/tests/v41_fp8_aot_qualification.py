@@ -23,6 +23,10 @@ def main():
     parser.add_argument("library", type=Path)
     parser.add_argument("manifest", type=Path)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--projection", action="append",
+                        choices=("q_a", "q_b", "kv", "o_b", "index_q", "ffn_up",
+                                 "ffn_down", "ffn_tp2_up", "ffn_tp2_down", "engram", "main"))
+    parser.add_argument("--capacity", type=int, action="append")
     args = parser.parse_args()
     manifest = json.loads(args.manifest.read_text())
     source_root = Path(b12x.__file__).resolve().parent.parent
@@ -59,9 +63,11 @@ def main():
     results = []
     for variant in manifest["variants"]:
         if not any(variant["label"].startswith(f"v41_{name}_fp8_m")
-                   for name in ("q_a", "kv", "ffn_tp2_up", "ffn_tp2_down")):
+                   for name in (args.projection or ("q_a", "kv", "ffn_tp2_up", "ffn_tp2_down"))):
             continue
         capacity, k, n = variant["capacity"], variant["input_dim"], variant["output_dim"]
+        if args.capacity and capacity not in args.capacity:
+            continue
         torch.manual_seed(41000 + k + n + capacity)
         info, handle = Info(), ptr()
         info_fn(capacity, k, n, C.byref(info))

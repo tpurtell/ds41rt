@@ -1,0 +1,39 @@
+{
+  "revision": "c69d37255efc95c74bad15c62f249308e3e5d503",
+  "cases": [
+    {
+      "label": "v41_o_b_fp8_m1",
+      "live_rows": [
+        1
+      ]
+    },
+    {
+      "label": "v41_o_b_fp8_m16",
+      "live_rows": [
+        1,
+        7,
+        16
+      ]
+    },
+    {
+      "label": "v41_o_b_fp8_m80",
+      "live_rows": [
+        1,
+        7,
+        80
+      ]
+    },
+    {
+      "label": "v41_o_b_fp8_m256",
+      "live_rows": [
+        1,
+        7,
+        256
+      ]
+    }
+  ],
+  "manifest_sha256": "8316f833c3127160181681e97e983604b5f1514c8cb78de14118d0f3bdda82f8",
+  "library_sha256": "c2332ac7582c189bc618b2245f09b626a020f3397153a7e73f53d5afb0084aef",
+  "gpu": "fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0",
+  "torch_version": "2.13.0+cu130"
+}
