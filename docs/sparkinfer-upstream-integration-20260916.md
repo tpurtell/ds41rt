@@ -114,6 +114,18 @@ planes, committed and private sources, row-specific descriptors and replay
 bounds. Avoid a full-cache repack or extra lane synchronization. Then compare
 the adapted complete chain and serving behavior before choosing a winner.
 
+The first adapter component is committed on the fork integration branch as
+`06102ecc`: `native_v41_records.py` resolves existing native 120-byte descriptors
+directly to value and scale addresses using CuTe. It does not copy payloads or
+allocate scratch. Two GPU address-oracle tests pass for FP4 and legacy FP8
+source layouts, including private stride-two proposals, stale metadata, bounded
+window replay, an older committed-only prefix, invalid physical pages, graph
+replay after page-table changes, and offsets beyond 2 GiB. Payload addresses in
+these tests are synthetic; this verifies address arithmetic, not payload reads
+or attention numerics. Wiring this helper into the producer remains unfinished.
+The candidate source lock now identifies this commit; prior AOT and attention
+timing evidence continues to identify its original `37ff0dbd` revision.
+
 ## Future parallelism and Trellis: analysis only
 
 These observations are retained for subsequent releases at the user's request.
