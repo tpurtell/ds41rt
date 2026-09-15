@@ -192,12 +192,27 @@ the image/source identities, controls, samples and raw artifact hashes.
 
 The merge is in progress on local branch `integrate/upstream-20260916` in
 `/home/tj/.cache/ds41rt-upstream-20260916/sparkinfer`. Four of the original 48
-conflicted paths are staged as resolved; 44 remain. Dense-GEMM artifact handles
+conflicted paths were initially staged as resolved. Dense-GEMM artifact handles
 now coexist with upstream retained-program metadata. The quantizer combines
 upstream source-width padding with a fixed-width AOT entry point, preserving
 the engine's existing exported signature. The native `silu_v41` activation
 floor remains distinct from upstream generic quantization. These edits have
 only syntax validation so far; they are not an accepted kernel revision.
+
+The next checkpoint resolves four attention files, leaving **40 conflicted
+paths**. It preserves legacy NVFP4 gather and inline-scale storage while adding
+upstream V4.1 FP8-PV handling, preserves row-shared indexed views and main/index
+format checks, and carries NVFP4 fast-path exclusions into the new decode
+preparation function. The new preparation function also needs our per-token
+record-width normalization for two-dimensional paged storage; copying only the
+old runtime guard would leave the prepared path wrong.
+
+All four attention files parse. A CPU-only direct import of the real traits,
+layout and typed-storage helpers constructed four BF16-QK cases successfully:
+DSV4 UE8M0, legacy DSV4 NVFP4, V4.1 BF16-PV and V4.1 FP8-PV. Their scale-footer
+strides were respectively 8, 0, 0 and 8 bytes. This narrowly checks layout/struct
+agreement; it does **not** prove package integration, launch correctness or GPU
+attention numerics. Prepared API compatibility and GPU tests remain open.
 
 Code/topic concurrency baseline collection completed sequentially at
 C1/C2/C4/C8/C16 with one repetition each. C16 aggregate throughput was 1074.94
