@@ -261,6 +261,23 @@ nine incompatible configurations. The fused-MoE package passes F821 static
 checks. These checks do not establish whole-package import, prepared launch,
 GPU correctness or performance; all remain pending.
 
+The policy-removal checkpoint leaves **14 conflicted paths**. The obsolete
+policy/profile tree is removed after auditing its fork delta: the native route
+guard moved to tuning, GDN/KDA already have upstream preparation registrations,
+and the two fork-native cache producers retain local plans. The fork's
+`docs/gpu-profiles.md` now explains that boundary. Empty legacy profile rules
+and their tests no longer apply to upstream's selection-cache format.
+
+The fused-MoE, query projection, mHC and compressed-attention public API modules
+import from the merged worktree. All 20 b12x import names in DS41RT's V4.1 AOT
+exporters resolve using their actual import statements. This proves import
+compatibility only, not exporter compilation or native ABI compatibility.
+The new `tests/moe/test_v41_prepared_route_contract.py` runs through the real
+package: **10 passed**, covering native direct eligibility and preserving the
+upstream compact-SiLU grouped restriction. BMM/QSA test conflicts now use the
+prepared APIs and supported QSA geometry; **129 tests collect** successfully,
+with F821 checks passing. Their GPU tests have not run.
+
 Code/topic concurrency baseline collection completed sequentially at
 C1/C2/C4/C8/C16 with one repetition each. C16 aggregate throughput was 1074.94
 TPS for code and 612.51 TPS for topic. These warm, same-prompt concurrency
