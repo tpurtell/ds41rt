@@ -176,6 +176,36 @@ goal, not something proven by completing a merge or passing correctness tests.
 
 ## Reproducing this source review
 
+### First implementation checkpoint
+
+The original v3 baseline is now serving through `run.sh` on port 8000 with
+dual RTX, twenty TP2 resident encoder expert layers, four Spark workers,
+C16, 24 retained turns, and the default 14M-token pool target. Submodule
+registrations were repaired without changing either pinned revision.
+
+One initial decode pass completed all eight weighted cases plus counting,
+passing the benchmark's bounded completion/format checks. Observed TPS was
+140.05 code, 80.19 topic, 176.35 counting and 87.10 weighted. This is a baseline
+measurement, not a new implementation or a final statistical comparison.
+[Compact baseline evidence](sparkinfer-upstream-baseline-20260916.json) records
+the image/source identities, controls, samples and raw artifact hashes.
+
+The merge is in progress on local branch `integrate/upstream-20260916` in
+`/home/tj/.cache/ds41rt-upstream-20260916/sparkinfer`. Four of the original 48
+conflicted paths are staged as resolved; 44 remain. Dense-GEMM artifact handles
+now coexist with upstream retained-program metadata. The quantizer combines
+upstream source-width padding with a fixed-width AOT entry point, preserving
+the engine's existing exported signature. The native `silu_v41` activation
+floor remains distinct from upstream generic quantization. These edits have
+only syntax validation so far; they are not an accepted kernel revision.
+
+Code/topic concurrency baseline collection was launched sequentially at
+C1/C2/C4/C8/C16 with one repetition each. Inspect its live process or completed
+JSON files before resuming; do not rerun based only on this note. Working
+artifacts for this integration live under the single cache directory above.
+Next steps are remaining semantic merge resolutions, native ABI/GPU tests,
+and measured kernel comparisons. The production submodule pin is unchanged.
+
 Run from `third_party/sparkinfer` after fetching upstream:
 
 ```bash

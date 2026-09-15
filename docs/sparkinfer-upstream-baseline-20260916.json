@@ -1,0 +1,234 @@
+{
+  "schema": 1,
+  "scope": "Initial single-pass old-image dual-RTX decode baseline; not final qualification or speedup evidence",
+  "source_revision": "533f86aa1b2faecee01e727b9c1925fcc1bb75b9",
+  "baseline_image": "sha256:354561f06863b5f5ce9632edddee4a2d4e008a90d2d61d2ab8c309a3dc371f43",
+  "baseline_image_labels": {
+    "com.nvidia.build.id": "313520559",
+    "com.nvidia.build.ref": "30a5fc6cbfce157e75fae3d0cf1fd8e273a3dc25",
+    "com.nvidia.cublas.version": "13.4.1.1",
+    "com.nvidia.cublasmp.version": "0.8.1.2360",
+    "com.nvidia.cuda.version": "9.0",
+    "com.nvidia.cudla.version": "13.2.75",
+    "com.nvidia.cudnn.version": "9.22.0.52",
+    "com.nvidia.cufft.version": "12.2.0.46",
+    "com.nvidia.curand.version": "10.4.2.55",
+    "com.nvidia.cusolver.version": "12.2.0.1",
+    "com.nvidia.cusolvermp.version": "0.8.0.3126",
+    "com.nvidia.cusparse.version": "12.7.10.1",
+    "com.nvidia.cusparselt.version": "0.9.1.1",
+    "com.nvidia.nccl.version": "2.30.4",
+    "com.nvidia.npp.version": "13.1.0.48",
+    "com.nvidia.nsightcompute.version": "2026.1.1.2",
+    "com.nvidia.nsightsystems.version": "2026.2.1.210",
+    "com.nvidia.nvjpeg.version": "13.1.0.48",
+    "com.nvidia.nvvm.version": "13.2.78",
+    "com.nvidia.pytorch.version": "2.12.0a0+5aff392",
+    "com.nvidia.tensorrt.version": "10.16.1.11",
+    "com.nvidia.tensorrtoss.version": "",
+    "com.nvidia.volumes.needed": "nvidia_driver",
+    "io.ds41rt.cuda_arch": "120",
+    "io.ds41rt.role": "coordinator",
+    "io.ds41rt.sparkinfer.revision": "3882b935ede761d6c73a5d6fd68e690f1e3f5380",
+    "org.opencontainers.image.description": "DeepSeek V4.1 Flash inference for one or two RTX PRO 6000 GPUs and four DGX Spark expert workers",
+    "org.opencontainers.image.licenses": "MIT",
+    "org.opencontainers.image.revision": "c38746aeac9204eff12b7d2f0433013ed24526c4",
+    "org.opencontainers.image.source": "https://github.com/tpurtell/ds41rt",
+    "org.opencontainers.image.title": "DS41RT inference",
+    "org.opencontainers.image.version": "v3"
+  },
+  "fork_revision": "3882b935ede761d6c73a5d6fd68e690f1e3f5380",
+  "upstream_revision": "92cd3800932539c947c9a8e06123fe5f36c9eae4",
+  "hardware": "uuid, name, power.limit [W], clocks.max.memory [MHz], clocks.current.memory [MHz], memory.used [MiB]\nGPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, NVIDIA RTX PRO 6000 Blackwell Workstation Edition, 400.00 W, 14001 MHz, 13365 MHz, 95356 MiB\nGPU-95f8f212-9131-df99-fd53-7535965197d7, NVIDIA RTX PRO 6000 Blackwell Workstation Edition, 400.00 W, 14001 MHz, 13365 MHz, 95598 MiB",
+  "controls": {
+    "temperature": 0,
+    "thinking": "disabled"
+  },
+  "nonce_seed": 91601,
+  "corpus_sha256": "e14ff2894de9290827a07aef2ff55e2bb5c792abe91dcdc029fa9d6ed97990bc",
+  "tokenizer_sha256": "c90dfa01249db1be4245780a052ede752e1361c612ac6d08e2bdada7d599476b",
+  "repeats": 1,
+  "passed": true,
+  "repeat_summaries": [
+    {
+      "repeat": 1,
+      "weighted_cases": 8,
+      "serving_completed": 8,
+      "objective_checks_passed": 4,
+      "objective_checks_assessed": 4,
+      "weighted_observed_decode_tokens_per_second": 87.09746346521221,
+      "partial_weighted_observed_decode_tokens_per_second": 87.09746346521221,
+      "complete_weighted_corpus": true,
+      "all_samples_passed": true
+    }
+  ],
+  "samples": [
+    {
+      "case": "code",
+      "observed_decode_tokens_per_second": 140.05310456186888,
+      "usage": {
+        "prompt_tokens": 54,
+        "completion_tokens": 216,
+        "total_tokens": 270,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 54
+      },
+      "finish_reason": "stop",
+      "content_sha256": "4d089138dd932c060b8e418961ad305180dad616bd955d13230d794e7e9424e5",
+      "passed": true
+    },
+    {
+      "case": "math",
+      "observed_decode_tokens_per_second": 141.07949073489752,
+      "usage": {
+        "prompt_tokens": 48,
+        "completion_tokens": 60,
+        "total_tokens": 108,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 48
+      },
+      "finish_reason": "stop",
+      "content_sha256": "a48dea7f021d030f526c1103a0a447d600b9aa3143b879dd03e94fcd1479728d",
+      "passed": true
+    },
+    {
+      "case": "fable",
+      "observed_decode_tokens_per_second": 56.107351387888066,
+      "usage": {
+        "prompt_tokens": 49,
+        "completion_tokens": 134,
+        "total_tokens": 183,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 49
+      },
+      "finish_reason": "stop",
+      "content_sha256": "0480ede0b492edfd89207e7f454c186b2c0cccc8c2de7826c00b6e91787be8f3",
+      "passed": true
+    },
+    {
+      "case": "hello",
+      "observed_decode_tokens_per_second": 85.94192212116498,
+      "usage": {
+        "prompt_tokens": 15,
+        "completion_tokens": 10,
+        "total_tokens": 25,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 15
+      },
+      "finish_reason": "stop",
+      "content_sha256": "fda564ba3f7a0f028106d468420f674898ed99ac5bf2765ac9586206e39d73c5",
+      "passed": true
+    },
+    {
+      "case": "topic",
+      "observed_decode_tokens_per_second": 80.19333708957907,
+      "usage": {
+        "prompt_tokens": 42,
+        "completion_tokens": 213,
+        "total_tokens": 255,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 42
+      },
+      "finish_reason": "stop",
+      "content_sha256": "d433f89d44a25c8ba9d40cba8cd92e3fb69985e541e634c266a7e5f12e7305a7",
+      "passed": true
+    },
+    {
+      "case": "structured-json",
+      "observed_decode_tokens_per_second": 125.67197958490986,
+      "usage": {
+        "prompt_tokens": 67,
+        "completion_tokens": 46,
+        "total_tokens": 113,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 67
+      },
+      "finish_reason": "stop",
+      "content_sha256": "77c445b272173fd5df8700e4f998ec188a28e7545e868c543027e84c1f239943",
+      "passed": true
+    },
+    {
+      "case": "structured-json-schema",
+      "observed_decode_tokens_per_second": 125.82820160158323,
+      "usage": {
+        "prompt_tokens": 67,
+        "completion_tokens": 46,
+        "total_tokens": 113,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 67
+      },
+      "finish_reason": "stop",
+      "content_sha256": "77c445b272173fd5df8700e4f998ec188a28e7545e868c543027e84c1f239943",
+      "passed": true
+    },
+    {
+      "case": "multilingual",
+      "observed_decode_tokens_per_second": 76.20635498880674,
+      "usage": {
+        "prompt_tokens": 53,
+        "completion_tokens": 182,
+        "total_tokens": 235,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 53
+      },
+      "finish_reason": "stop",
+      "content_sha256": "d269ebabd53abd0b361ce2505275bc964612a533b395582d2ffae9b20d25c786",
+      "passed": true
+    },
+    {
+      "case": "counting",
+      "observed_decode_tokens_per_second": 176.34993077681415,
+      "usage": {
+        "prompt_tokens": 21,
+        "completion_tokens": 599,
+        "total_tokens": 620,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 21
+      },
+      "finish_reason": "stop",
+      "content_sha256": "d92f809bf43027881e5c4f50091f59982e572557f84c2cb6464304bf028ced0b",
+      "passed": true
+    }
+  ],
+  "raw_evidence": {
+    "baseline-dual-decode.json": {
+      "path": "/home/tj/.cache/ds41rt-upstream-20260916/baseline-dual-decode.json",
+      "sha256": "b7087ae60b004bb6ac8c6ef2e4c8e8b927a697860b4e5cac99b62afaa21f2957"
+    },
+    "baseline-identity.json": {
+      "path": "/home/tj/.cache/ds41rt-upstream-20260916/baseline-identity.json",
+      "sha256": "dd36de795f381c377ed69fc82b8101fb71d9e570c474f61b42a5684da9662979"
+    },
+    "baseline-launch.log": {
+      "path": "/home/tj/.cache/ds41rt-upstream-20260916/baseline-launch.log",
+      "sha256": "95d5e1052ce856d8dff0e311a15ba310e8bb21c4d20c2631ddd9b4b62904d7a9"
+    }
+  }
+}
