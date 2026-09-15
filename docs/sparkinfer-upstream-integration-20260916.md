@@ -259,6 +259,23 @@ approximately 2k-token cached prefix, using identical content and cache warmup
 for baseline and candidate. Report warm-prefix results separately; do not replace
 the short-context baseline merely because a populated case is faster.
 
+## Complete candidate build and expert preparation checks
+
+The coordinator native library now builds with expert, full-width RTX, TP2,
+FP8 projection, router, index, attention and XGrammar support; the optimized
+Rust daemon also builds. Candidate `b9168bda` repairs the draft slice quantizer's
+call to the merged MXFP8 interface by supplying its 5120-element source width.
+
+Candidate `c69d3725` keeps native `silu_v41` on padded expert weights rather than
+upstream's compact N64 materialized layout. Weight preparation, compiler
+arguments and route selection now agree on that boundary. The migrated expert
+numerical suite reports **13 passed**, covering native target/draft shapes,
+changed inputs and routes under graph replay, and tiny-activation floors.
+These tests ran on RTX; Spark hardware and full serving acceptance remain
+required. The complete native library was rebuilt at this revision, and a
+dual-RTX candidate startup uses the baseline's 20 TP2 encoder expert layers,
+C16, 2048-token prefill batches, 24 snapshots and default KV budget.
+
 ## Future parallelism and Trellis: analysis only
 
 These observations are retained for subsequent releases at the user's request.
