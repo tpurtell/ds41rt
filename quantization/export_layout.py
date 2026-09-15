@@ -19,8 +19,8 @@ def plan_shards(tensors, *, target_bytes=5_000_000_000):
     """Return file inventories and an HF index, preserving each tensor whole.
 
     Input maps final tensor names to descriptors containing payload `bytes`.
-    Every PLE group must contain its weight and scale. Filenames are stable
-    within each group, independent of changes to the other groups.
+    Every PLE group must contain its weight and scale. File boundaries isolate
+    groups, but filenames use one global sequence with PLE groups last.
     """
     if type(target_bytes) is not int or target_bytes < 1 or not tensors:
         raise ValueError("nonempty inventory and positive shard target required")
@@ -36,7 +36,7 @@ def plan_shards(tensors, *, target_bytes=5_000_000_000):
         expected = {f"layers.{layer}.engram.embed.{suffix}" for suffix in ("weight", "scale")}
         if set(groups[f"ple-{layer}"]) != expected:
             raise ValueError(f"incomplete PLE group {layer}")
-    files, weight_map = {}, {}
+    files, weight_map, all_shards = {}, {}, []
     for group, names in groups.items():
         shards, current, size = [], [], 0
         for name in names:
@@ -48,10 +48,11 @@ def plan_shards(tensors, *, target_bytes=5_000_000_000):
             size += length
         if current:
             shards.append(current)
-        for ordinal, members in enumerate(shards, 1):
-            filename = f"{group}-{ordinal:05d}-of-{len(shards):05d}.safetensors"
-            files[filename] = members
-            weight_map.update((name, filename) for name in members)
+        all_shards.extend(shards)
+    for ordinal, members in enumerate(all_shards, 1):
+        filename = f"model-{ordinal:05d}-of-{len(all_shards):05d}.safetensors"
+        files[filename] = members
+        weight_map.update((name, filename) for name in members)
     return dict(files=files, index=dict(
         metadata=dict(total_size=sum(item["bytes"] for item in tensors.values())),
         weight_map=weight_map))

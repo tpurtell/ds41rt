@@ -11,6 +11,18 @@ from write_export import _fingerprint
 
 
 class CacheTest(unittest.TestCase):
+    def test_guarded_revision_advance_preserves_old_snapshot(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output, cache, receipt = self.fixture(Path(directory))
+            old = materialize_cache(output, cache, receipt)
+            new = dict(receipt, commit='b' * 40)
+            with self.assertRaisesRegex(ValueError, 'authorized previous'):
+                materialize_cache(output, cache, new, previous_commit='c' * 40)
+            result = materialize_cache(output, cache, new, previous_commit=receipt['commit'])
+            self.assertEqual((cache / 'models--test--model/refs/main').read_text(), new['commit'])
+            self.assertTrue(Path(old['snapshot']).is_dir())
+            self.assertEqual(materialize_cache(output, cache, new, previous_commit=receipt['commit']), result)
+
     def test_explicit_owner_covers_refs_without_following_symlinks(self):
         with tempfile.TemporaryDirectory() as directory:
             output, cache, receipt = self.fixture(Path(directory))

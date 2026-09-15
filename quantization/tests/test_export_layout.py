@@ -25,6 +25,7 @@ class ExportLayoutTest(unittest.TestCase):
                          for name, item in header.items()}
             plan = plan_shards(inventory, target_bytes=32)
             self.assertEqual(len(plan["files"]), 5)
+            self.assertEqual(list(plan['files']), [f'model-{i:05d}-of-00005.safetensors' for i in range(1, 6)])
             self.assertEqual(plan["index"]["metadata"]["total_size"], 240)
             for filename, names in plan["files"].items():
                 self.assertEqual(len({tensor_group(name) for name in names}), 1)
@@ -37,7 +38,8 @@ class ExportLayoutTest(unittest.TestCase):
             changed = plan_shards({**inventory, "extra.weight": dict(bytes=500)}, target_bytes=32)
             for name in inventory:
                 if tensor_group(name) != "model":
-                    self.assertEqual(plan["index"]["weight_map"][name], changed["index"]["weight_map"][name])
+                    self.assertEqual(plan['files'][plan['index']['weight_map'][name]],
+                                     changed['files'][changed['index']['weight_map'][name]])
             with self.assertRaisesRegex(ValueError, "incomplete PLE"):
                 plan_shards({"embed.weight": dict(bytes=10)})
             with self.assertRaisesRegex(ValueError, "unexpected PLE"):

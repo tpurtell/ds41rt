@@ -12,9 +12,12 @@ import re
 from export_assets import asset_target, publish_asset
 from write_export import _fingerprint, _sync_dir
 import hashlib
+import tempfile
 
 
-def materialize_cache(output, cache_root, receipt, *, owner=None):
+def materialize_cache(output, cache_root, receipt, *, owner=None, previous_commit=None):
+    if previous_commit is not None and not re.fullmatch(r'[0-9a-f]{40}', previous_commit):
+        raise ValueError('invalid previous cache commit')
     if owner is not None and (len(owner) != 2 or any(type(value) is not int or value < 0 for value in owner)):
         raise ValueError('cache owner must be a nonnegative uid/gid pair')
     output, cache_root = Path(output).resolve(strict=True), Path(cache_root).resolve()
@@ -42,6 +45,9 @@ def materialize_cache(output, cache_root, receipt, *, owner=None):
     lock_path = asset_target(repo_root, ".ds41rt-materialize.lock")
     with lock_path.open("a+") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        ref = asset_target(repo_root, 'refs/main')
+        if previous_commit is not None and (not ref.is_file() or ref.read_text() not in (previous_commit, commit)):
+            raise ValueError('cache main differs from authorized previous commit')
         blobs = asset_target(repo_root, "blobs")
         snapshot = asset_target(repo_root, "snapshots/" + commit)
         blobs.mkdir(exist_ok=True)
@@ -83,8 +89,24 @@ def materialize_cache(output, cache_root, receipt, *, owner=None):
         payload = commit.encode()
         # Ref publication is last, so an interrupted run never advertises an
         # incomplete snapshot through main. A conflicting ref requires review.
-        publish_asset(repo_root, "refs/main", dict(content=commit, bytes=len(payload),
-                      sha256=hashlib.sha256(payload).hexdigest()))
+        if previous_commit is not None and ref.read_text() != commit:
+            if ref.read_text() != previous_commit:
+                raise ValueError('cache main changed during materialization')
+            fd, temporary = tempfile.mkstemp(prefix='.ref-', dir=ref.parent)
+            try:
+                with os.fdopen(fd, 'wb') as stream:
+                    stream.write(payload)
+                    os.fchmod(stream.fileno(), 0o644)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                os.replace(temporary, ref)
+                _sync_dir(ref.parent)
+            finally:
+                if os.path.exists(temporary):
+                    os.unlink(temporary)
+        else:
+            publish_asset(repo_root, "refs/main", dict(content=commit, bytes=len(payload),
+                          sha256=hashlib.sha256(payload).hexdigest()))
         _sync_dir(cache_root)
     if owner is not None:
         # A root coordinator must leave the user a readable/writable artifact

@@ -1823,3 +1823,40 @@ metadata. Never mutate an existing hardlinked file in place.
 Rolling recovery frontiers were retired after their authorized handoffs; no
 final activation replay was retained or performed. Numerical/tool-call serving
 validation remains explicitly deferred to the user's inference-engine work.
+
+### User-requested global shard numbering — 2026-09-16 Taipei
+
+Superseding the earlier filename acceptance, the user requested one global
+`model-NNNNN-of-00052.safetensors` sequence. Published commit
+`cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88` implements this with unchanged
+tensor payloads and file boundaries. Ordinary files are 1–48; PLE 1 scale/weight
+are 49/50; PLE 14 scale/weight are 51/52. Future exports use the same global
+numbering policy while retaining independent PLE file boundaries. Adding shards
+can therefore change filenames; hardlink reuse depends on tensor groups/blobs,
+not fixed filenames across independently exported variants.
+
+`rename_shards.py` first built and structurally validated a separate hardlinked
+export ending in `-numbered`. A single parent-guarded Hub commit copied all
+52 shard references server-side, removed their old names from the new revision,
+and uploaded only the updated 13,398,375-byte index. No weight hashing,
+re-quantization, repacking, weight transfer, or payload copying occurred.
+The original remote commit and local export/snapshot remain intact.
+
+Current receipts, authorization/mapping, revised plan, and structural validation
+are under `export-state/numbered-shards-v1/`. Historical top-level receipts are
+not rewritten. See README for the exact migration arguments. The first local
+preparation attempt as uid 1000 stopped at the root-owned export-state directory
+before any remote writes; preparation and publication then ran through the
+existing root coordinator environment, with final new files restored to uid
+1000. `ds41rt-numbered-shards-publish` exited 0 and retains persistent logs.
+
+Cache `refs/main` now points to the new revision. The materializer supports an
+explicit previous-commit guard, creates the complete snapshot first, and then
+atomically advances the ref; it never renames entries inside the old snapshot.
+`ds41rt-numbered-shards-offline-audit` passed with networking disabled as uid
+1000: all 94 files resolve, all 52 weight inodes and blob IDs match the original,
+all old snapshot fingerprints are unchanged, and the index names exactly the
+52 new shards with PLE tensors in the final four. Anonymous Hub inspection
+confirms the new public head, 94 files and only the numbered shard names.
+The updated component suite passed 83 tests, including numbering/group isolation
+and guarded cache ref advancement with old-snapshot preservation.
