@@ -214,6 +214,22 @@ strides were respectively 8, 0, 0 and 8 bytes. This narrowly checks layout/struc
 agreement; it does **not** prove package integration, launch correctness or GPU
 attention numerics. Prepared API compatibility and GPU tests remain open.
 
+The projection/mHC checkpoint leaves **33 conflicted paths**. Query projection
+now combines the prepared main API with the fork's separate GLM H64 contract;
+its prepared BF16 launch explicitly supplies the fork's `ZERO_ROPE` parameter.
+mHC retains terminal head collapse/RMSNorm and optional collapsed output while
+adopting upstream's prepared pre/post/collapse entry points. Obsolete allocating
+pre/post functional wrappers were removed in favor of those upstream paths.
+The head's preparation and graph-lifetime contract still needs runtime review.
+
+Undefined-name checking exposed additional automatic-merge errors: upstream
+prepared GEMM referenced the replaced two-slice reducer, and retained mHC
+geometry branches referenced removed K-split constants. Prepared GEMM now calls
+the fork's generalized reducer with an explicit slice count; existing mHC
+geometry defaults are restored. `ruff check --select F821` passes for the
+resolved query/mHC packages, dense GEMM, row quantization and four attention
+files. This is static validation only, not GPU or end-to-end acceptance.
+
 Code/topic concurrency baseline collection completed sequentially at
 C1/C2/C4/C8/C16 with one repetition each. C16 aggregate throughput was 1074.94
 TPS for code and 612.51 TPS for topic. These warm, same-prompt concurrency
