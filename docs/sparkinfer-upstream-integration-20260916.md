@@ -325,6 +325,29 @@ All touched test files pass F821 checks. Tests ran on RTX0 with the same Python
 environment as the preceding checkpoint. No throughput claims follow from
 these correctness checks.
 
+All **textual merge conflicts are resolved**. EP's migrated native weight and
+workspace tests report **14 passed**; retained full-rotation Trellis metadata,
+weight-plan and caps checks report **7 passed**. The fork-added planning tests
+now call native APIs explicitly, with the full-rotation backend's packed route
+config: **23 CPU cases passed**, plus **one GPU weight-preparation case**.
+This preserves existing functionality without enabling Trellis serving. Both
+mixed-Trellis conflict sides remain. The obsolete vLLM wrapper and WO's obsolete
+mock-only scratch tests are removed; WO caller-arena identity and changed-input
+replay are exercised by the migrated GPU tests above. Upstream removed the old
+fused-MoE planning suite; fork-added native contract checks are retained in that
+file, while retired policy/vLLM API checks are not kept as compatibility shims.
+
+A package-wide F821 audit found nine unresolved names. Missing `os`, CUDA IPC,
+Engram type-only imports and a startup-test `dataclass` import are fixed, along
+with the missing GLM indexer declaration in the startup corpus builder. One
+remaining unresolved name is also present in the pinned fork:
+`decode_trellis_sqg_cheb_normal_e4m3_rank_lut` in `_lib/intrinsics.py`.
+Its applicability and disposition still need review. Whole-package acceptance
+is not established by the selected tests, and no merge commit or production
+pin update has been made yet. Remaining work includes automatic-merge semantic
+audits, native ABI/export qualification, DS4.1 attention numerics and measured
+serving comparisons.
+
 Code/topic concurrency baseline collection completed sequentially at
 C1/C2/C4/C8/C16 with one repetition each. C16 aggregate throughput was 1074.94
 TPS for code and 612.51 TPS for topic. These warm, same-prompt concurrency
