@@ -1,0 +1,588 @@
+{
+  "scope": "Run the preserved eight-type and counting release decode workloads.",
+  "label": "upstream-full-candidate-dual",
+  "base_url": "http://127.0.0.1:8000",
+  "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+  "corpus_sha256": "e14ff2894de9290827a07aef2ff55e2bb5c792abe91dcdc029fa9d6ed97990bc",
+  "tokenizer_sha256": "c90dfa01249db1be4245780a052ede752e1361c612ac6d08e2bdada7d599476b",
+  "repeats": 1,
+  "nonce_seed": 91601,
+  "selected_cases": [
+    "code",
+    "math",
+    "fable",
+    "hello",
+    "topic",
+    "structured-json",
+    "structured-json-schema",
+    "multilingual"
+  ],
+  "include_orchid": false,
+  "include_counting": true,
+  "remote_reference": false,
+  "controls": {
+    "temperature": 0,
+    "thinking": "disabled"
+  },
+  "samples": [
+    {
+      "repeat": 1,
+      "case": "code",
+      "category": "code",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "毒 request nonce 91601-0.\n",
+        "marker": "毒",
+        "first_content_token_id": 4634
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "毒 request nonce 91601-0.\nWrite a Python function merge_intervals(intervals) that merges overlapping integer intervals. Include type hints, a short docstring, and three assert-based examples. Return only one Python code block."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 320,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789516544818663380,
+      "first_content_seconds": 0.8682698520133272,
+      "finish_seconds": 2.331895638955757,
+      "observed_decode_tokens_per_second": 145.52900194862318,
+      "usage": {
+        "prompt_tokens": 54,
+        "completion_tokens": 214,
+        "total_tokens": 268,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 54
+      },
+      "content": "```python\ndef merge_intervals(intervals: list[tuple[int, int]]) -> list[tuple[int, int]]:\n    \"\"\"Merge overlapping integer intervals and return them sorted by start.\"\"\"\n    if not intervals:\n        return []\n    sorted_intervals = sorted(intervals)\n    merged = [sorted_intervals[0]]\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1] = (last_start, max(last_end, end))\n        else:\n            merged.append((start, end))\n    return merged\n\n\nassert merge_intervals([(1, 3), (2, 6), (8, 10), (15, 18)]) == [(1, 6), (8, 10), (15, 18)]\nassert merge_intervals([(1, 4), (4, 5)]) == [(1, 5)]\nassert merge_intervals([]) == []\n```",
+      "content_sha256": "aea30d7d3de93624c30a56d11825a2469affb700c2a55b977d0fec727d31faba",
+      "finish_reason": "stop",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {
+        "python_structure": {
+          "passed": true,
+          "issues": []
+        }
+      },
+      "objective_checks_passed": true,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 1,
+      "case": "math",
+      "category": "reasoning",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "毓 request nonce 91601-1.\n",
+        "marker": "毓",
+        "first_content_token_id": 81660
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "毓 request nonce 91601-1.\nA shop discounts a $240 jacket by 25%, then applies 8% sales tax to the discounted price. What is the final price? Show the calculation briefly."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 128,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789516547154969774,
+      "first_content_seconds": 0.10970306594390422,
+      "finish_seconds": 0.5300925519550219,
+      "observed_decode_tokens_per_second": 140.34604090559884,
+      "usage": {
+        "prompt_tokens": 48,
+        "completion_tokens": 60,
+        "total_tokens": 108,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 48
+      },
+      "content": "Discount: 25% of $240 = $60, so discounted price = $240 − $60 = $180.  \nSales tax: 8% of $180 = $14.40.  \nFinal price = $180 + $14.40 = **$194.40**.",
+      "content_sha256": "a48dea7f021d030f526c1103a0a447d600b9aa3143b879dd03e94fcd1479728d",
+      "finish_reason": "stop",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {
+        "arithmetic_answer_and_calculation": {
+          "passed": true,
+          "issues": []
+        }
+      },
+      "objective_checks_passed": true,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 1,
+      "case": "fable",
+      "category": "creative-prose",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "比 request nonce 91601-2.\n",
+        "marker": "比",
+        "first_content_token_id": 1318
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "比 request nonce 91601-2.\nWrite a self-contained fable of about 150 words about two parrots who disagree about sharing credit. Output no title or preamble. End with a one-sentence moral."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 256,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789516547686558534,
+      "first_content_seconds": 0.11474958702456206,
+      "finish_seconds": 2.5242146709933877,
+      "observed_decode_tokens_per_second": 67.64987012449646,
+      "usage": {
+        "prompt_tokens": 49,
+        "completion_tokens": 164,
+        "total_tokens": 213,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 49
+      },
+      "content": "Two parrots, Crimson and Jade, found a mango. Crimson cracked it; Jade carried it to the branch. “I opened it,” said Crimson. “I delivered it,” said Jade. Neither would eat first. A monkey passing below called, “Drop it, and I’ll judge.” They did. The monkey ate the mango, then said, “You both worked, but neither shared. So the fruit belongs to no one.” The parrots flew off hungry, each blaming the other. That night, a storm soaked them both. Huddled together, Crimson whispered, “I couldn’t have carried it.” Jade replied, “I couldn’t have opened it.” They never found another mango, but they never again fought over credit. Pride divides the labor, but hunger teaches the lesson.",
+      "content_sha256": "48f21dc99601d9aafb87ce5d05557c3847d990bd29ee81eed8ab1430aea8e656",
+      "finish_reason": "stop",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {},
+      "objective_checks_passed": null,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 1,
+      "case": "hello",
+      "category": "short-response",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "毕 request nonce 91601-3.\n",
+        "marker": "毕",
+        "first_content_token_id": 5464
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "毕 request nonce 91601-3.\nhi"
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 32,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789516550211874519,
+      "first_content_seconds": 0.06723506201524287,
+      "finish_seconds": 0.41196050704456866,
+      "observed_decode_tokens_per_second": 89.9266371165692,
+      "usage": {
+        "prompt_tokens": 15,
+        "completion_tokens": 32,
+        "total_tokens": 47,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 15
+      },
+      "content": "Hi! I see you're trying to make a request with a nonce, but I'm not sure what you're asking for. Could you clarify what you",
+      "content_sha256": "1b09436378eac8483d1445ecb7d1712ea962e93fae0091cf5890984c2e2b070e",
+      "finish_reason": "length",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {},
+      "objective_checks_passed": null,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 1,
+      "case": "topic",
+      "category": "exposition",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "毗 request nonce 91601-4.\n",
+        "marker": "毗",
+        "first_content_token_id": 77301
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "毗 request nonce 91601-4.\nExplain virtual memory to a junior programmer in five concise bullet points, including paging, page faults, and the role of the TLB."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 384,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789516550625019875,
+      "first_content_seconds": 0.10409046697895974,
+      "finish_seconds": 3.310053286026232,
+      "observed_decode_tokens_per_second": 80.78696311174562,
+      "usage": {
+        "prompt_tokens": 42,
+        "completion_tokens": 260,
+        "total_tokens": 302,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 42
+      },
+      "content": "Here you go:\n\n- **Virtual memory gives each process its own private, contiguous address space**, even though physical RAM is shared and fragmented. The OS maps virtual addresses to physical ones via **page tables**, so programs don't need to know where data actually lives.\n- **Memory is divided into fixed-size blocks called pages** (virtual) and **frames** (physical), typically 4 KB. Paging lets the OS load only the pages a program is actively using, keeping the rest on disk.\n- **A page fault happens when a program accesses a page not currently in RAM.** The CPU traps to the OS, which loads the page from disk into a free frame, updates the page table, and resumes the instruction — the program never notices.\n- **The TLB (Translation Lookaside Buffer) is a small, fast cache of recent virtual-to-physical translations.** It avoids walking the page table on every memory access; a TLB miss falls back to the page table (or a page fault if the page isn't resident).\n- **The payoff:** processes get isolation and more address space than physical RAM, while the OS + hardware (MMU, TLB) handle translation and swapping transparently — at the cost of page-fault latency when data isn't in memory.",
+      "content_sha256": "a46422d3c0cca337698424430f7d0fdf6630d3bd269aab2104bbfd5353ab695a",
+      "finish_reason": "stop",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {},
+      "objective_checks_passed": null,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 1,
+      "case": "structured-json",
+      "category": "structured-output-natural",
+      "weight": 0.5,
+      "nonce": {
+        "prefix": "毙 request nonce 91601-5.\n",
+        "marker": "毙",
+        "first_content_token_id": 67257
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "毙 request nonce 91601-5.\nReturn only a JSON object describing a file edit with keys path, operation, line_start, line_end, and rationale. Use path src/cache.rs, operation replace, lines 41 through 47, and a one-sentence rationale about removing a redundant copy."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 128,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789516553936241085,
+      "first_content_seconds": 0.13443116599228233,
+      "finish_seconds": 0.49473016103729606,
+      "observed_decode_tokens_per_second": 111.01890527061455,
+      "usage": {
+        "prompt_tokens": 67,
+        "completion_tokens": 41,
+        "total_tokens": 108,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 67
+      },
+      "content": "{\"path\":\"src/cache.rs\",\"operation\":\"replace\",\"line_start\":41,\"line_end\":47,\"rationale\":\"Removing a redundant copy to simplify the code and avoid unnecessary duplication.\"}",
+      "content_sha256": "82812d02ff3f36df4024ce15cb724e077632b10c7cc44668f002f2ea4d54d062",
+      "finish_reason": "stop",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {
+        "json_edit_fields": {
+          "passed": true,
+          "issues": []
+        }
+      },
+      "objective_checks_passed": true,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 1,
+      "case": "structured-json-schema",
+      "category": "structured-output-constrained",
+      "weight": 0.5,
+      "nonce": {
+        "prefix": "毛 request nonce 91601-6.\n",
+        "marker": "毛",
+        "first_content_token_id": 5091
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "毛 request nonce 91601-6.\nReturn only a JSON object describing a file edit with keys path, operation, line_start, line_end, and rationale. Use path src/cache.rs, operation replace, lines 41 through 47, and a one-sentence rationale about removing a redundant copy."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 128,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        },
+        "response_format": {
+          "type": "json_schema",
+          "json_schema": {
+            "name": "file_edit",
+            "strict": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "operation": {
+                  "type": "string"
+                },
+                "line_start": {
+                  "type": "integer"
+                },
+                "line_end": {
+                  "type": "integer"
+                },
+                "rationale": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "operation",
+                "line_start",
+                "line_end",
+                "rationale"
+              ],
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "started_ns": 1789516554433219142,
+      "first_content_seconds": 0.28408201201818883,
+      "finish_seconds": 0.6595184119651094,
+      "observed_decode_tokens_per_second": 119.86051434107648,
+      "usage": {
+        "prompt_tokens": 67,
+        "completion_tokens": 46,
+        "total_tokens": 113,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 67
+      },
+      "content": "{\"path\": \"src/cache.rs\", \"operation\": \"replace\", \"line_start\": 41, \"line_end\": 47, \"rationale\": \"Removing a redundant copy to avoid unnecessary duplication.\"}",
+      "content_sha256": "77c445b272173fd5df8700e4f998ec188a28e7545e868c543027e84c1f239943",
+      "finish_reason": "stop",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {
+        "json_edit_fields": {
+          "passed": true,
+          "issues": []
+        }
+      },
+      "objective_checks_passed": true,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 1,
+      "case": "multilingual",
+      "category": "multilingual",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "毡 request nonce 91601-7.\n",
+        "marker": "毡",
+        "first_content_token_id": 97851
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "毡 request nonce 91601-7.\n請用繁體中文，以四個簡短條列解釋什麼是寫入時複製（copy-on-write），並包含一個行程 fork 後修改記憶體頁面的例子。"
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 384,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789516555094109775,
+      "first_content_seconds": 0.11106252891477197,
+      "finish_seconds": 2.989669030997902,
+      "observed_decode_tokens_per_second": 75.73108719175139,
+      "usage": {
+        "prompt_tokens": 53,
+        "completion_tokens": 219,
+        "total_tokens": 272,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 53
+      },
+      "content": "- 寫入時複製（copy-on-write，COW）是一種延遲複製策略：多個行程先共享同一份實體記憶體頁面，只有當某方嘗試寫入時才真正複製。\n- 共享期間頁面被標記為唯讀；任何寫入會觸發保護例外，由作業系統介入處理。\n- 作業系統在例外發生時，為寫入方配置新頁面、複製原內容，並將該頁改為可寫，其他行程仍指向原頁。\n- 好處是節省記憶體與加快 fork，因為不必立刻複製整個位址空間。\n\n例子：行程 A 呼叫 `fork()` 產生子行程 B。A 與 B 起初共享同一實體頁面 P（唯讀）。若 B 修改 P 中的變數，核心會複製 P 成 P' 給 B，B 此後寫入 P'；A 仍使用原來的 P，兩者互不影響。",
+      "content_sha256": "92d8433c751d0848759a0e2e244873e579349b877355f555c3dfb2ecf941baa8",
+      "finish_reason": "stop",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {},
+      "objective_checks_passed": null,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 1,
+      "case": "counting",
+      "category": "low-entropy",
+      "weight": 0.0,
+      "nonce": null,
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Count from 1 to 200, separated by commas. Output only the sequence."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 640,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789516558085213180,
+      "first_content_seconds": 0.07305958098731935,
+      "finish_seconds": 3.4337277780286968,
+      "observed_decode_tokens_per_second": 177.94080371470758,
+      "usage": {
+        "prompt_tokens": 21,
+        "completion_tokens": 599,
+        "total_tokens": 620,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 21
+      },
+      "content": "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200",
+      "content_sha256": "d92f809bf43027881e5c4f50091f59982e572557f84c2cb6464304bf028ced0b",
+      "finish_reason": "stop",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "quality_contract_passed": true,
+      "quality_contract_issues": [],
+      "bounded_static_prefix_hit": true,
+      "serving_completed": true,
+      "passed": true
+    }
+  ],
+  "repeat_summaries": [
+    {
+      "repeat": 1,
+      "weighted_cases": 8,
+      "serving_completed": 8,
+      "objective_checks_passed": 4,
+      "objective_checks_assessed": 4,
+      "weighted_observed_decode_tokens_per_second": 88.85869069477738,
+      "partial_weighted_observed_decode_tokens_per_second": 88.85869069477738,
+      "complete_weighted_corpus": true,
+      "all_samples_passed": true
+    }
+  ],
+  "passed": true,
+  "median_weighted_observed_decode_tokens_per_second": 88.85869069477738
+}

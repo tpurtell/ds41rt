@@ -372,6 +372,17 @@ matches the tensor converter for TP4, TP2 and full-width layouts on Spark.
 The ARM release daemon builds successfully; its artifacts are staged separately
 from the preserved release containers for the upcoming four-worker comparison.
 
+All four candidate workers now run the hash-verified ARM daemon and native
+library in separately named containers, retaining the baseline containers for
+rollback. Ranks 0–3 keep capacity 4096, layers 20–39 and the original device
+budgets. The [complete-candidate cold-prompt corpus](sparkinfer-upstream-full-candidate-decode-20260916.json)
+passes all serving/applicable objective checks with zero cache hits. Every
+output exactly matches the earlier merged-coordinator/baseline-worker result.
+Weighted throughput is 88.86 TPS versus 88.13 for that hybrid and 87.10 for the
+original baseline; code is 145.53 and topic 80.79 TPS. These remain single-pass
+diagnostics. The worker update preserves observed numerics here; remaining
+kernel comparisons, quality qualification and release work are still required.
+
 ## Future parallelism and Trellis: analysis only
 
 These observations are retained for subsequent releases at the user's request.
