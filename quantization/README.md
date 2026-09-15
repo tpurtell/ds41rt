@@ -4,6 +4,27 @@ The authoritative recipe, user constraints and qualification evidence are in
 [PLAN.md](PLAN.md). This directory contains our implementation; sister-project
 scripts are references, not production dependencies.
 
+## Completed v1 artifact
+
+Public model: https://huggingface.co/wrldsuksgo2mars/DeepSeek-V4.1-EXL3-K3.25-v1
+
+Published revision: `076c0dcf88436e1d6f69ca50f3557c307439f2ef`.
+The standard local cache snapshot is
+`/home/tj/.cache/huggingface/hub/models--wrldsuksgo2mars--DeepSeek-V4.1-EXL3-K3.25-v1/snapshots/076c0dcf88436e1d6f69ca50f3557c307439f2ef`.
+All 40 main and three dSpark blocks are complete: 47,232 routed projections,
+11,808 at K4. All 94 published files (52 safetensors shards) are materialized
+with hardlinks and were verified offline as uid 1000. No weight redownload,
+second payload copy, full final weight-hash pass, or final activation replay
+was used. Inference integration and behavioral validation remain deferred.
+
+`model.safetensors.index.json` maps each tensor name to its shard filename.
+The `model-*`, `ple-1-*`, and `ple-14-*` files form one indexed checkpoint,
+not separate models. Each PLE has one scale tensor (~3.07 GB) and one encoded
+weight tensor (~98.3 GB), each in its own file. The 5 GB shard target is soft:
+individual tensors are not split. This file split is packaging, not a GPU
+upload requirement. Swap both files for a PLE, retaining a matching index and
+representation metadata; never modify shared hardlinked payloads in place.
+
 ## Detached one-shot entry point
 
 After preparing a manifest and qualifying its immutable coordinator image:
@@ -44,6 +65,8 @@ in place after materialization.
 
 On failure, inspect the log and Docker exit/OOM state, fix the cause, and rerun
 the same launch command with `--resume`. No automatic job restart is configured.
+Exception: the completed v1 needed the publication-only recovery below; do not
+resume its original coordinator after that metadata revision.
 The launcher refuses to create another coordinator while a prior attempt is
 nonterminal. An ambiguous launch error leaves the exact container name in its
 durable launch intent; inspect that name before retrying. Old containers/logs
@@ -66,3 +89,37 @@ Old assignment files and completed candidates remain intact; new assignments
 are recorded separately in `search-assignments-continuous-v1.json`. Only
 unfinished searches may be recomputed. Resume the same repaired manifest with
 `--resume`; do not replace the old assignment directory or relabel old results.
+
+## v1 publication-only recovery record
+
+The original coordinator exited after the public commit because Hugging Face
+appended two JSON LFS rules to `.gitattributes`. All other 93 remote files
+matched the upload receipts exactly. `recover_publication.py` verified the
+pinned public commit, accepted only those exact appended rules, updated the
+small local attributes file, revalidated the export, and materialized the cache.
+It performs no GPU work, weight hashing, retransmission, or remote writes.
+Future exports predeclare the rules and assign cache ownership to the run user.
+
+The executed recovery command (already completed; not a pending step) was:
+
+```bash
+docker run --name ds41rt-publication-recovery --network host \
+  -v /home/tj/Developer/ds41rt/quantization:/recovery-code:ro \
+  -v /home/tj/.cache/ds41rt/quantization/deepseek-v41-exl3-k325-v1:/home/tj/.cache/ds41rt/quantization/deepseek-v41-exl3-k325-v1 \
+  -v /home/tj/.cache/huggingface:/home/tj/.cache/huggingface \
+  -e HF_TOKEN_PATH=/home/tj/.cache/huggingface/token \
+  -e PYTHONPATH=/recovery-code:/opt/ds41rt/third_party/gptqmodel \
+  --entrypoint /opt/glmrt/quant-venv/bin/python \
+  sha256:bdd15949d70120fa42e4f9188da727f288ca0617e58b04f4ec97fdc5aa6f88f9 \
+  /recovery-code/recover_publication.py \
+  /home/tj/.cache/ds41rt/quantization/deepseek-v41-exl3-k325-v1/production-continuous-manifest.json \
+  --commit 076c0dcf88436e1d6f69ca50f3557c307439f2ef
+```
+
+Under that run root, `export-state/hub-json-lfs-recovery-v1/` holds the explicit
+authorization, revised export plan and passing structural validation. Original
+plans and preupload receipts remain intact. Standard `upload-complete.json`,
+`cache-complete.json` and `publication-complete.json` are in `export-state/`.
+`reports/publication-recovery.log`, `reports/final-cache-audit.log` and
+`reports/final-component-tests.log` record successful recovery, the network-free
+94-file hardlink/readability audit, and 81 passing component tests respectively.

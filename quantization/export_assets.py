@@ -6,6 +6,21 @@ from pathlib import Path, PurePosixPath
 import tempfile
 
 
+JSON_LFS_RULES = ('model.safetensors.index.json filter=lfs diff=lfs merge=lfs -text\n'
+                  'quantize_config.json filter=lfs diff=lfs merge=lfs -text\n')
+
+
+def quantization_attributes(payload):
+    text = payload.decode('utf-8')
+    if text and not text.endswith('\n'):
+        text += '\n'
+    lines = text.splitlines()
+    for rule in JSON_LFS_RULES.splitlines():
+        if rule not in lines:
+            text += rule + '\n'
+    return text.encode('utf-8')
+
+
 def asset_target(root, name):
     relative = PurePosixPath(name)
     if not name or str(relative) != name or relative.is_absolute() or any(part in (".", "..") for part in name.split("/")) or "\\" in name:
@@ -35,6 +50,14 @@ def plan_assets(snapshot, attestation):
         assets[destination] = dict(path=str(source), bytes=record["bytes"], sha256=record["sha256"])
     if not {"tokenizer.json", "tokenizer_config.json", "LICENSE", "inference/kernel.py"}.issubset(assets):
         raise ValueError("checkpoint asset inventory is incomplete")
+    if '.gitattributes' in assets:
+        record = assets['.gitattributes']
+        payload = Path(record['path']).read_bytes()
+        if hashlib.sha256(payload).hexdigest() != record['sha256']:
+            raise ValueError('source attributes checksum differs')
+        payload = quantization_attributes(payload)
+        assets['.gitattributes'] = dict(content=payload.decode(), bytes=len(payload),
+                                       sha256=hashlib.sha256(payload).hexdigest())
     return assets
 
 

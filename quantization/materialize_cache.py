@@ -14,7 +14,9 @@ from write_export import _fingerprint, _sync_dir
 import hashlib
 
 
-def materialize_cache(output, cache_root, receipt):
+def materialize_cache(output, cache_root, receipt, *, owner=None):
+    if owner is not None and (len(owner) != 2 or any(type(value) is not int or value < 0 for value in owner)):
+        raise ValueError('cache owner must be a nonnegative uid/gid pair')
     output, cache_root = Path(output).resolve(strict=True), Path(cache_root).resolve()
     repo = receipt["repo_id"]
     commit = receipt["commit"]
@@ -84,5 +86,13 @@ def materialize_cache(output, cache_root, receipt):
         publish_asset(repo_root, "refs/main", dict(content=commit, bytes=len(payload),
                       sha256=hashlib.sha256(payload).hexdigest()))
         _sync_dir(cache_root)
+    if owner is not None:
+        # A root coordinator must leave the user a readable/writable artifact
+        # and cache, including private-mode JSON refs. Do not follow symlinks.
+        for root in (output, repo_root):
+            for path in (root, *root.rglob('*')):
+                stat = path.lstat()
+                if (stat.st_uid, stat.st_gid) != tuple(owner):
+                    os.chown(path, *owner, follow_symlinks=False)
     return dict(status="materialized", repo_id=repo, commit=commit,
                 snapshot=str(snapshot), files=len(files), payload_copied_bytes=0)

@@ -1774,3 +1774,52 @@ unchanged. This makes subsequently hard-linked payloads user-readable without
 copying them. After materialization, also verify/fix ownership of the new repo
 cache metadata, especially refs/main, and publication receipts; do not alter
 other cache repositories. End-to-end completion must include a cache read as tj.
+
+### Publication and cache complete — 2026-09-16 Taipei
+
+The public artifact is complete at
+`wrldsuksgo2mars/DeepSeek-V4.1-EXL3-K3.25-v1`, commit
+`076c0dcf88436e1d6f69ca50f3557c307439f2ef`. Anonymous repository inspection
+confirms this revision, `private=false`, and 94 files. All 40 main and three
+dSpark blocks completed; final validation covers all 190,549 tensors,
+47,232 routed projections and 11,808 K4 selections with the prescribed quotas.
+Only routed experts were replaced. The final payload is 441,341,094,744 bytes;
+the complete 94-file artifact is 441,402,497,635 bytes including metadata.
+
+The coordinator exited 1 after committing the upload: the Hub added exactly
+two LFS rules for `model.safetensors.index.json` and `quantize_config.json` to
+`.gitattributes`, causing strict post-commit inventory comparison to fail.
+All other 93 files matched their original upload receipts. This was a metadata
+reconciliation failure, not a failed quantization or missing weight upload.
+
+The explicit `recover_publication.py` repair is publication-only, pinned to the
+reviewed repository/commit, and accepts only the exact two appended rules. It
+preserves original plans/receipts, records authorization and a revised plan in
+`export-state/hub-json-lfs-recovery-v1/`, revalidates the complete export, writes
+the upload receipt and materializes the standard cache. No weights were hashed
+again, retransmitted, copied, or re-quantized. Recovery exited 0. Do not resume
+the original coordinator after this metadata revision. The exact executed
+command and evidence paths are in [README.md](README.md).
+
+The final network-disabled cache audit ran as uid 1000 and passed for all
+94 files: readable, exact receipt device/inode/size/mtime, same inode as the
+export, and resolvable by offline `hf_hub_download` through `main`. Snapshot:
+`/home/tj/.cache/huggingface/hub/models--wrldsuksgo2mars--DeepSeek-V4.1-EXL3-K3.25-v1/snapshots/076c0dcf88436e1d6f69ca50f3557c307439f2ef`.
+Receipts and cache metadata are user-owned. Future exports predeclare both JSON
+LFS rules, and normal materialization explicitly restores the run user's
+ownership without following symlinks. The final component suite passed 81 tests.
+
+PLE packaging clarification accepted by the user: each table is isolated from
+other tensors and the other PLE, but its scale and encoded weight occupy two
+files (~3.07 GB and ~98.3 GB). The 5 GB target cannot split a single tensor.
+Separate files are not a GPU upload requirement. The shared
+`model.safetensors.index.json` explicitly maps `layers.1.engram.embed.scale`
+and `.weight` to the two `ple-1-*` files, and the corresponding layer-14 tensors
+to `ple-14-*`. These are one indexed model, not independently loaded models;
+no renaming or repacking was requested after that clarification. Later PLE
+experiments must swap both files and maintain matching index/representation
+metadata. Never mutate an existing hardlinked file in place.
+
+Rolling recovery frontiers were retired after their authorized handoffs; no
+final activation replay was retained or performed. Numerical/tool-call serving
+validation remains explicitly deferred to the user's inference-engine work.

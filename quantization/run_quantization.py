@@ -241,7 +241,9 @@ def run(manifest, *, resume=False):
                     publication = manifest["publication"]
                     receipt = upload_artifact(manifest["output"], manifest["export_state"],
                         publication["repo_id"], resume=resume, progress=progress)
-                    cached = materialize_cache(manifest["output"], publication["cache_root"], receipt)
+                    run_owner = root.stat()
+                    cached = materialize_cache(manifest["output"], publication["cache_root"], receipt,
+                                               owner=(run_owner.st_uid, run_owner.st_gid))
                     _publish_json(Path(manifest["export_state"]) / "cache-complete.json", cached)
                     result = dict(status="complete", repo_id=receipt["repo_id"], commit=receipt["commit"],
                                   snapshot=cached["snapshot"], numerical_validation="deferred-to-inference-engine-integration")

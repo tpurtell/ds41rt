@@ -11,6 +11,16 @@ from write_export import _fingerprint
 
 
 class CacheTest(unittest.TestCase):
+    def test_explicit_owner_covers_refs_without_following_symlinks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output, cache, receipt = self.fixture(Path(directory))
+            with patch('materialize_cache.os.chown') as chown:
+                materialize_cache(output, cache, receipt, owner=(98765, 98765))
+            self.assertTrue(any(str(call.args[0]).endswith('/refs/main') for call in chown.call_args_list))
+            self.assertTrue(all(call.kwargs == {'follow_symlinks': False} for call in chown.call_args_list))
+            with self.assertRaises(ValueError):
+                materialize_cache(output, cache, receipt, owner=(-1, 0))
+
     def fixture(self, root):
         output = root / "export"
         output.mkdir()
