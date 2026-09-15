@@ -348,6 +348,30 @@ pin update has been made yet. Remaining work includes automatic-merge semantic
 audits, native ABI/export qualification, DS4.1 attention numerics and measured
 serving comparisons.
 
+DS4.1 attention qualification exposed a semantic merge defect: the DSV4 NVFP4
+inline-scale guard also excluded DS4.1's separate scale staging and second
+head-group tail. The first H16 FP8 decode preparation failed with an illegal
+address; Compute Sanitizer localized out-of-bounds shared writes in
+`UnifiedDecodeKernel`. Decode layout, typed storage and launch addressing now
+include those buffers for DS4.1 while retaining the legacy DSV4 NVFP4 exclusion.
+Both DS4.1 compute modes are included in import-time layout assertions, and two
+new CPU regression cases distinguish their layout from legacy inline scales.
+
+After the fix, the H16 FP8 decode and H64 BF16-QK/FP8-PV extend tests report
+**2 passed**, including changed live rows, page mappings, source lengths and
+graph replay against the numerical oracle; the two CPU layout cases also pass.
+The post-fix Compute Sanitizer run is still active at this checkpoint and must
+finish before claiming sanitizer acceptance. Raw logs are
+`v41-decode-memcheck.log` (original failure),
+`v41-decode-memcheck-fixed.log` and corresponding `*-pytest.log` files under the
+integration cache directory. High-offset pool cases and wider shape coverage
+remain pending.
+
+The pre-existing unresolved Trellis helper was in an unused shared-table
+experimental branch with no scalar implementation. That branch now raises an
+explicit `NotImplementedError`; the implemented global-table path is unchanged.
+Package-wide F821 checks now pass. This adds no Trellis numerical implementation.
+
 Code/topic concurrency baseline collection completed sequentially at
 C1/C2/C4/C8/C16 with one repetition each. C16 aggregate throughput was 1074.94
 TPS for code and 612.51 TPS for topic. These warm, same-prompt concurrency
