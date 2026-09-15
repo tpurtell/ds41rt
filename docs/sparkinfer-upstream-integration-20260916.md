@@ -126,6 +126,28 @@ or attention numerics. Wiring this helper into the producer remains unfinished.
 The candidate source lock now identifies this commit; prior AOT and attention
 timing evidence continues to identify its original `37ff0dbd` revision.
 
+The producer connection follows in candidate `de950111`. Its internal
+`UnifiedDecodeKernel.call_native_v41` entry reads the native descriptor,
+metadata, selected IDs and replay bounds directly. The IO warps copy existing
+FP8-window/FP4-source payload planes into upstream's shared-memory stage and
+derive canonical FP8 scale metadata from the separate scale planes. It creates
+no global payload repack and adds no cross-lane synchronization. The initial
+entry requires validated, aligned FP4 descriptors and the H16 decode geometry;
+it is not yet a public native export or an engine replacement.
+
+Actual-payload comparison against upstream's interleaved producer gives
+**bit-identical valid partial outputs and normalization values** through private
+window/source proposals, query and payload changes, page recycling and bounded
+graph replay. A stale request explicitly writes zero partials and negative-
+infinity normalization. This preserves the native malformed-request contract;
+upstream's ordinary all-masked key path otherwise retains a finite negative
+sentinel. The producer test, address tests and complete focused DS4.1 attention
+file report **36 passed**. A new producer memcheck run is pending. Next qualify
+native export/binding, final merge and live-row/capacity handling, then measure
+the adapted chain; the earlier 2× timing remains evidence for the unadapted
+interleaved kernel only. Candidate lock advances to `de950111`; old evidence
+and production source pins retain their original revisions.
+
 ## Future parallelism and Trellis: analysis only
 
 These observations are retained for subsequent releases at the user's request.
