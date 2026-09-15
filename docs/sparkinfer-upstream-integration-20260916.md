@@ -78,6 +78,42 @@ They may still require mechanical merge/import/test fixes when shared library
 surfaces change. Attention/projection parallelization across GPUs is deferred;
 retain the current ownership and expert parallelism in comparisons.
 
+## Initial attention kernel comparison (September 16)
+
+The candidate's H16 FP8 decode regression now passes Compute Sanitizer memcheck:
+**1 passed, 0 errors**, 892.41 seconds. This closes the pending sanitizer check
+for the repaired shared-memory layout, not all engine memory-safety coverage.
+
+[Reproducible comparison tool](../python/tools/compare_v41_upstream_attention.py)
+and [raw measurements](sparkinfer-upstream-attention-comparison-20260916.json)
+compare identical quantized FP8 window/FP4 indexed values, 64 query heads,
+128 window keys and 512 selected keys, including attention sinks. Native uses
+10 key partitions. Upstream uses its default prepared decode plan. Each timing
+sample contains 50 replays of a 20-launch graph; five samples alternate order.
+The GPU was RTX PRO 6000 at a 400 W limit; observed memory clock at collection
+was 13,365 MHz. No memory-clock adjustment was made by this experiment.
+
+| Query rows (not serving concurrency) | Native attention, µs | Candidate upstream, µs | Kernel speed ratio |
+| --- | ---: | ---: | ---: |
+| 1 | 21.95 | 10.98 | 2.00× |
+| 2 | 21.90 | 11.26 | 1.95× |
+| 7 | 39.73 | 18.74 | 2.12× |
+| 16 | 77.10 | 35.16 | 2.19× |
+| 32 | 137.74 | 60.58 | 2.27× |
+
+This is **kernel-only opportunity evidence**, not a serving speedup. Packing
+and layout conversion occur before timing. Queries share one synthetic cache;
+multi-request ownership, bounds, private compressed proposals, source recycling
+and prefill remain to be compared. Against FP32 attention over the dequantized
+cache, native RMS error was approximately 0.000095 and upstream approximately
+0.00134 (maximum absolute error up to 0.00664). These differences require
+real-model quality checks; the tool reports them without claiming acceptance.
+
+Next implement native cache access for the candidate: separate value/scale
+planes, committed and private sources, row-specific descriptors and replay
+bounds. Avoid a full-cache repack or extra lane synchronization. Then compare
+the adapted complete chain and serving behavior before choosing a winner.
+
 ## Future parallelism and Trellis: analysis only
 
 These observations are retained for subsequent releases at the user's request.
