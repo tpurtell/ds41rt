@@ -316,6 +316,17 @@ disables only candidate attention to separate its numerical/speculative effects
 from other merged coordinator components. Preserve the full-attention binary
 and its hash while building that comparison variant.
 
+The [short-context attention ablation](sparkinfer-upstream-attention-ablation-20260916.json)
+keeps all merged coordinator components and disables only candidate attention.
+All nine outputs then exactly match baseline; weighted throughput is 88.96 TPS,
+code 147.15 and structured JSON 130.81. With candidate attention, the same
+short-context JSON request measured 109.77 TPS. This associates that result with
+the attention change but does not separate numerical/speculative effects from
+kernel timing. The retained 2k ablation still changes several baseline outputs
+and measures only 103.76 TPS on JSON, so attention alone is not a sufficient
+explanation for all observed differences. Draft/verification timing and
+concurrency comparisons remain necessary before selecting the final policy.
+
 ## Future parallelism and Trellis: analysis only
 
 These observations are retained for subsequent releases at the user's request.

@@ -1,0 +1,279 @@
+{
+  "scope": "Single-pass coordinator attention ablation. Identical short-context requests, cold prompts, baseline workers. Not a release result.",
+  "rows": [
+    {
+      "case": "code",
+      "baseline_tps": 140.05310456186888,
+      "candidate_attention_tps": 144.6917481500047,
+      "candidate_legacy_attention_tps": 147.1472238881652,
+      "legacy_attention_matches_baseline_output": true,
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "\u6bd2 request nonce 91601-0.\nWrite a Python function merge_intervals(intervals) that merges overlapping integer intervals. Include type hints, a short docstring, and three assert-based examples. Return only one Python code block."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 320,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      }
+    },
+    {
+      "case": "math",
+      "baseline_tps": 141.07949073489752,
+      "candidate_attention_tps": 140.04473198034228,
+      "candidate_legacy_attention_tps": 149.2454818902912,
+      "legacy_attention_matches_baseline_output": true,
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "\u6bd3 request nonce 91601-1.\nA shop discounts a $240 jacket by 25%, then applies 8% sales tax to the discounted price. What is the final price? Show the calculation briefly."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 128,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      }
+    },
+    {
+      "case": "fable",
+      "baseline_tps": 56.107351387888066,
+      "candidate_attention_tps": 67.8225773092851,
+      "candidate_legacy_attention_tps": 56.56310060139266,
+      "legacy_attention_matches_baseline_output": true,
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "\u6bd4 request nonce 91601-2.\nWrite a self-contained fable of about 150 words about two parrots who disagree about sharing credit. Output no title or preamble. End with a one-sentence moral."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 256,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      }
+    },
+    {
+      "case": "hello",
+      "baseline_tps": 85.94192212116498,
+      "candidate_attention_tps": 90.24872563704493,
+      "candidate_legacy_attention_tps": 85.66438981963952,
+      "legacy_attention_matches_baseline_output": true,
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "\u6bd5 request nonce 91601-3.\nhi"
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 32,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      }
+    },
+    {
+      "case": "topic",
+      "baseline_tps": 80.19333708957907,
+      "candidate_attention_tps": 80.35741075140326,
+      "candidate_legacy_attention_tps": 81.17147847820307,
+      "legacy_attention_matches_baseline_output": true,
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "\u6bd7 request nonce 91601-4.\nExplain virtual memory to a junior programmer in five concise bullet points, including paging, page faults, and the role of the TLB."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 384,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      }
+    },
+    {
+      "case": "structured-json",
+      "baseline_tps": 125.67197958490986,
+      "candidate_attention_tps": 109.77019921008156,
+      "candidate_legacy_attention_tps": 130.80822718279643,
+      "legacy_attention_matches_baseline_output": true,
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "\u6bd9 request nonce 91601-5.\nReturn only a JSON object describing a file edit with keys path, operation, line_start, line_end, and rationale. Use path src/cache.rs, operation replace, lines 41 through 47, and a one-sentence rationale about removing a redundant copy."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 128,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      }
+    },
+    {
+      "case": "structured-json-schema",
+      "baseline_tps": 125.82820160158323,
+      "candidate_attention_tps": 118.91959013959341,
+      "candidate_legacy_attention_tps": 125.12821297089282,
+      "legacy_attention_matches_baseline_output": true,
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "\u6bdb request nonce 91601-6.\nReturn only a JSON object describing a file edit with keys path, operation, line_start, line_end, and rationale. Use path src/cache.rs, operation replace, lines 41 through 47, and a one-sentence rationale about removing a redundant copy."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 128,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        },
+        "response_format": {
+          "type": "json_schema",
+          "json_schema": {
+            "name": "file_edit",
+            "strict": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "operation": {
+                  "type": "string"
+                },
+                "line_start": {
+                  "type": "integer"
+                },
+                "line_end": {
+                  "type": "integer"
+                },
+                "rationale": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "operation",
+                "line_start",
+                "line_end",
+                "rationale"
+              ],
+              "additionalProperties": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "case": "multilingual",
+      "baseline_tps": 76.20635498880674,
+      "candidate_attention_tps": 73.96272737322333,
+      "candidate_legacy_attention_tps": 77.91951506008621,
+      "legacy_attention_matches_baseline_output": true,
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "\u6be1 request nonce 91601-7.\n\u8acb\u7528\u7e41\u9ad4\u4e2d\u6587\uff0c\u4ee5\u56db\u500b\u7c21\u77ed\u689d\u5217\u89e3\u91cb\u4ec0\u9ebc\u662f\u5beb\u5165\u6642\u8907\u88fd\uff08copy-on-write\uff09\uff0c\u4e26\u5305\u542b\u4e00\u500b\u884c\u7a0b fork \u5f8c\u4fee\u6539\u8a18\u61b6\u9ad4\u9801\u9762\u7684\u4f8b\u5b50\u3002"
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 384,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      }
+    },
+    {
+      "case": "counting",
+      "baseline_tps": 176.34993077681415,
+      "candidate_attention_tps": 177.25802836022027,
+      "candidate_legacy_attention_tps": 186.79387471958134,
+      "legacy_attention_matches_baseline_output": true,
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Count from 1 to 200, separated by commas. Output only the sequence."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 640,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      }
+    }
+  ],
+  "weighted_tps": [
+    87.09746346521221,
+    88.13155636779733,
+    88.96437005768709
+  ],
+  "inputs": {
+    "baseline-dual-decode": "b7087ae60b004bb6ac8c6ef2e4c8e8b927a697860b4e5cac99b62afaa21f2957",
+    "candidate-dual-decode-clean": "1f4b9bc7738b6b06c96276106f1ca937c5dab24f2fe17e51afbd1e5f41c3727f",
+    "candidate-legacy-attention-decode": "de42f45fca7a7f8e3d0c98c0af3b3e8a48f55b1ee4222bffe1f003e04c1e4fa1"
+  },
+  "libraries": {
+    "libcandidate-attention.so": "c2332ac7582c189bc618b2245f09b626a020f3397153a7e73f53d5afb0084aef",
+    "libcandidate-legacy-attention.so": "6398abc8b4d9736469e5a4c9c586843c68d97ec551cc7c750c9829b09a3ef961"
+  }
+}
