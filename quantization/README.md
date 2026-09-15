@@ -4,6 +4,9 @@ The authoritative recipe, user constraints and qualification evidence are in
 [PLAN.md](PLAN.md). This directory contains our implementation; sister-project
 scripts are references, not production dependencies.
 
+The CPU-only NVFP4 PLE variation is documented separately in
+[FP4PLE_PLAN.md](FP4PLE_PLAN.md); it reuses the published EXL3 base weights.
+
 ## Completed v1 artifact
 
 Public model: https://huggingface.co/wrldsuksgo2mars/DeepSeek-V4.1-EXL3-K3.25-v1
