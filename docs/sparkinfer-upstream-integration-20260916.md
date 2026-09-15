@@ -305,6 +305,17 @@ investigation. The retained-context comparison uses a frozen README source
 and exactly 2048 prompt tokens. Benchmark result labels no longer enter the
 prompt: the separate `--context-tag` stays identical between arms.
 
+The [paired 2k retained-context diagnostic](sparkinfer-upstream-retained-2k-20260916.json)
+passes on both servers with identical seed and per-case requests. Each request
+reuses 2050 tokens, including the seed response. Code improves 135.51 → 145.99
+TPS and topic 81.19 → 84.34; math 112.82 → 131.48 and fable 57.35 → 61.74.
+Structured JSON still regresses 129.93 → 114.24, while schema-constrained JSON
+improves 112.05 → 124.36. Hello is 85.84 → 85.07 and multilingual 82.77 → 79.64.
+These are single passes with changed output sequences, so the next diagnostic
+disables only candidate attention to separate its numerical/speculative effects
+from other merged coordinator components. Preserve the full-attention binary
+and its hash while building that comparison variant.
+
 ## Future parallelism and Trellis: analysis only
 
 These observations are retained for subsequent releases at the user's request.
