@@ -199,9 +199,13 @@ the engine's existing exported signature. The native `silu_v41` activation
 floor remains distinct from upstream generic quantization. These edits have
 only syntax validation so far; they are not an accepted kernel revision.
 
-Code/topic concurrency baseline collection was launched sequentially at
-C1/C2/C4/C8/C16 with one repetition each. Inspect its live process or completed
-JSON files before resuming; do not rerun based only on this note. Working
+Code/topic concurrency baseline collection completed sequentially at
+C1/C2/C4/C8/C16 with one repetition each. C16 aggregate throughput was 1074.94
+TPS for code and 612.51 TPS for topic. These warm, same-prompt concurrency
+workloads differ from the single-client weighted corpus; do not compare their
+per-request numbers as if the prompts/protocol were identical.
+[Concurrency baseline evidence](sparkinfer-upstream-baseline-concurrency-20260916.json)
+retains all five concurrency summaries and the raw artifact hashes. Working
 artifacts for this integration live under the single cache directory above.
 Next steps are remaining semantic merge resolutions, native ABI/GPU tests,
 and measured kernel comparisons. The production submodule pin is unchanged.

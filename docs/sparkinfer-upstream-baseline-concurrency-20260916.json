@@ -1,0 +1,116 @@
+{
+  "code": {
+    "scope": "Concurrent warm counting, code, or topic decode through C16, including admission gaps.",
+    "case": "code",
+    "concurrency": [
+      1,
+      2,
+      4,
+      8,
+      16
+    ],
+    "repeats": 1,
+    "summaries": [
+      {
+        "concurrency": 1,
+        "samples": 1,
+        "median_aggregate_tps": 157.91426788061094,
+        "min_aggregate_tps": 157.91426788061094,
+        "max_aggregate_tps": 157.91426788061094
+      },
+      {
+        "concurrency": 2,
+        "samples": 1,
+        "median_aggregate_tps": 208.90769822800658,
+        "min_aggregate_tps": 208.90769822800658,
+        "max_aggregate_tps": 208.90769822800658
+      },
+      {
+        "concurrency": 4,
+        "samples": 1,
+        "median_aggregate_tps": 447.93850240392123,
+        "min_aggregate_tps": 447.93850240392123,
+        "max_aggregate_tps": 447.93850240392123
+      },
+      {
+        "concurrency": 8,
+        "samples": 1,
+        "median_aggregate_tps": 650.7180799841981,
+        "min_aggregate_tps": 650.7180799841981,
+        "max_aggregate_tps": 650.7180799841981
+      },
+      {
+        "concurrency": 16,
+        "samples": 1,
+        "median_aggregate_tps": 1074.9448821332105,
+        "min_aggregate_tps": 1074.9448821332105,
+        "max_aggregate_tps": 1074.9448821332105
+      }
+    ],
+    "passed": true,
+    "corpus_sha256": "e14ff2894de9290827a07aef2ff55e2bb5c792abe91dcdc029fa9d6ed97990bc",
+    "prompt": "upstream-baseline-dual upstream-20260916. Write a Python function merge_intervals(intervals) that merges overlapping integer intervals. Include type hints, a short docstring, and three assert-based examples. Return only one Python code block.",
+    "max_tokens": 320,
+    "raw_evidence": {
+      "path": "/home/tj/.cache/ds41rt-upstream-20260916/baseline-dual-code-concurrency.json",
+      "sha256": "00fce979447207ae1842e94c7b5472e643814e42f096c0a1e7c7f71d7db6ab14"
+    }
+  },
+  "topic": {
+    "scope": "Concurrent warm counting, code, or topic decode through C16, including admission gaps.",
+    "case": "topic",
+    "concurrency": [
+      1,
+      2,
+      4,
+      8,
+      16
+    ],
+    "repeats": 1,
+    "summaries": [
+      {
+        "concurrency": 1,
+        "samples": 1,
+        "median_aggregate_tps": 81.42499833934019,
+        "min_aggregate_tps": 81.42499833934019,
+        "max_aggregate_tps": 81.42499833934019
+      },
+      {
+        "concurrency": 2,
+        "samples": 1,
+        "median_aggregate_tps": 138.96299590863669,
+        "min_aggregate_tps": 138.96299590863669,
+        "max_aggregate_tps": 138.96299590863669
+      },
+      {
+        "concurrency": 4,
+        "samples": 1,
+        "median_aggregate_tps": 243.2776267321435,
+        "min_aggregate_tps": 243.2776267321435,
+        "max_aggregate_tps": 243.2776267321435
+      },
+      {
+        "concurrency": 8,
+        "samples": 1,
+        "median_aggregate_tps": 431.0727065318486,
+        "min_aggregate_tps": 431.0727065318486,
+        "max_aggregate_tps": 431.0727065318486
+      },
+      {
+        "concurrency": 16,
+        "samples": 1,
+        "median_aggregate_tps": 612.5070840115013,
+        "min_aggregate_tps": 612.5070840115013,
+        "max_aggregate_tps": 612.5070840115013
+      }
+    ],
+    "passed": true,
+    "corpus_sha256": "e14ff2894de9290827a07aef2ff55e2bb5c792abe91dcdc029fa9d6ed97990bc",
+    "prompt": "upstream-baseline-dual upstream-20260916. Explain virtual memory to a junior programmer in five concise bullet points, including paging, page faults, and the role of the TLB.",
+    "max_tokens": 384,
+    "raw_evidence": {
+      "path": "/home/tj/.cache/ds41rt-upstream-20260916/baseline-dual-topic-concurrency.json",
+      "sha256": "e657b236a0938160246c9dffca2e6c03fb772f89e33878cb7cfc1d813b0a44fc"
+    }
+  }
+}
