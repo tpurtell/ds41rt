@@ -1751,3 +1751,26 @@ For reference, measured layer-9 sequential timing was 88.23 s load/routing,
 151.83 s replica installation/output propagation, and 179.14 s verification
 and retirement. Capture and search overlap; do not add their independently
 estimated durations or claim isolated device timing from these stage events.
+
+### Quantization/export complete; public upload running — 2026-09-15 23:52 Taipei
+
+All three dSpark blocks completed (1,156.41, 1,140.59, and 1,122.01 seconds).
+The final dSpark rolling frontiers were retired at 23:42:27 Taipei. Export
+finished with 48 model shards plus two shards per isolated PLE table (52 total
+safetensors files, 94 total artifact files). Structural validation passed at
+23:50:59: 190,549 tensors, 47,232 routed projections, 11,808 K4 projections,
+441,341,094,744 payload bytes. Validation used complete headers/index/config,
+native descriptors and small-asset checksums, not a full weight-hash pass or
+final replay. Numerical serving validation remains deferred to engine work.
+
+Public upload began and the first 5 GB model shard was prepared in about 49 s;
+the second shard was actively transferring at this check. Publication and HF
+cache materialization are NOT yet complete. Leave this detached process running.
+
+The root container created export payloads with mode 0600. All 94 artifact
+files were checked as non-symlink, single-link files, then the new export tree
+was chowned to tj (1000:1000). Device/inode/size/mtime fingerprints were verified
+unchanged. This makes subsequently hard-linked payloads user-readable without
+copying them. After materialization, also verify/fix ownership of the new repo
+cache metadata, especially refs/main, and publication receipts; do not alter
+other cache repositories. End-to-end completion must include a cache read as tj.
