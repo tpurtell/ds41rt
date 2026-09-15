@@ -148,11 +148,41 @@ but exited 99 with 40 CUDA API lookup diagnostics: installed `cuda-bindings`
 log reports no invalid/uninitialized device accesses, but is not a clean
 sanitizer pass. A separate run with `--report-api-errors no` is pending to
 isolate device-memory checking; the original API diagnostics are retained.
+That separate check subsequently completed: **1 passed, 0 memory errors**,
+55.85 seconds. API-error reporting was disabled for this second run only.
 Next qualify
 native export/binding, final merge and live-row/capacity handling, then measure
 the adapted chain; the earlier 2× timing remains evidence for the unadapted
 interleaved kernel only. Candidate lock advances to `de950111`; old evidence
 and production source pins retain their original revisions.
+
+Candidate `b2dcfdcd` now exports the producer and sink-aware final merge through
+a single native pointer ABI. The [exporter](../python/tools/export_b12x_v41_attention_aot.py)
+verifies the source lock, generated argument order and artifact hashes. The
+[qualification bridge](../native/tests/v41_attention_aot_probe.cc) links the
+generated object against the CuTe runtime. This remains a qualification bridge,
+not the production serving wrapper. The same binary passed C-level launches and
+graph replay at 1, 2, 7, 16 and 32 live rows, including changed queries and
+malformed metadata producing zero final outputs. Scratch is 657,920 bytes per
+row (BF16 partials plus FP32 normalization), versus 1,315,840 bytes for native
+10-way FP32 partials. There is no global KV repack in the timed path.
+
+[Direct native-chain measurements](sparkinfer-upstream-native-attention-20260916.json):
+
+| Query rows | Baseline native producer + merge, µs | Candidate native producer + merge, µs |
+| --- | ---: | ---: |
+| 1 | 21.86 | 10.44 |
+| 2 | 21.90 | 10.74 |
+| 7 | 39.74 | 19.62 |
+| 16 | 76.95 | 37.13 |
+| 32 | 137.57 | 64.79 |
+
+These synthetic, resident-cache attention-chain measurements include native
+metadata lookup and final merge, but do not establish serving TPS or real-model
+quality. Numerical errors against the FP32 reference remain those reported
+above. Still required: production validation/loading/dispatch, window-only and
+prefill paths, diverse request/cache geometries, full engine performance and
+real-weight quality gates. The production source pin remains unchanged.
 
 ## Future parallelism and Trellis: analysis only
 
