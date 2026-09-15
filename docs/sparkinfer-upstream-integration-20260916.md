@@ -276,6 +276,35 @@ required. The complete native library was rebuilt at this revision, and a
 dual-RTX candidate startup uses the baseline's 20 TP2 encoder expert layers,
 C16, 2048-token prefill batches, 24 snapshots and default KV budget.
 
+## First complete coordinator serving comparison
+
+The rebuilt coordinator at candidate `c69d3725` serves with unchanged baseline
+Spark workers. A fresh process avoids smoke-test prefix hits. The
+[single-pass candidate corpus](sparkinfer-upstream-candidate-decode-20260916.json)
+passes serving and applicable objective checks; every request has zero cached
+tokens and the same nonce as the saved baseline. This is diagnostic evidence,
+not full release qualification or evidence that all upstream components won.
+
+| Short-context workload | Baseline TPS | Candidate TPS |
+| --- | ---: | ---: |
+| Weighted | 87.10 | 88.13 |
+| Code | 140.05 | 144.69 |
+| Math | 141.08 | 140.04 |
+| Fable | 56.11 | 67.82 |
+| Hello | 85.94 | 90.25 |
+| Topic | 80.19 | 80.36 |
+| Structured JSON | 125.67 | 109.77 |
+| Structured JSON schema | 125.83 | 118.92 |
+| Multilingual | 76.21 | 73.96 |
+| Counting | 176.35 | 177.26 |
+
+The approximately 1% weighted improvement does not establish the requested
+broad performance gain. Changed output sequences and speculative acceptance
+can affect these single-pass timings; structured-output regressions need
+investigation. The retained-context comparison uses a frozen README source
+and exactly 2048 prompt tokens. Benchmark result labels no longer enter the
+prompt: the separate `--context-tag` stays identical between arms.
+
 ## Future parallelism and Trellis: analysis only
 
 These observations are retained for subsequent releases at the user's request.
