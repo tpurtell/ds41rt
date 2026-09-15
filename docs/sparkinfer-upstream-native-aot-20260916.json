@@ -1,0 +1,65 @@
+{
+  "revision": "37ff0dbd9348b369f5c7a1469891a8d8399926db",
+  "cases": [
+    {
+      "label": "v41_q_a_fp8_m1",
+      "live_rows": [
+        1
+      ]
+    },
+    {
+      "label": "v41_q_a_fp8_m16",
+      "live_rows": [
+        1,
+        7,
+        16
+      ]
+    },
+    {
+      "label": "v41_kv_fp8_m1",
+      "live_rows": [
+        1
+      ]
+    },
+    {
+      "label": "v41_kv_fp8_m16",
+      "live_rows": [
+        1,
+        7,
+        16
+      ]
+    },
+    {
+      "label": "v41_ffn_tp2_up_fp8_m1",
+      "live_rows": [
+        1
+      ]
+    },
+    {
+      "label": "v41_ffn_tp2_up_fp8_m16",
+      "live_rows": [
+        1,
+        7,
+        16
+      ]
+    },
+    {
+      "label": "v41_ffn_tp2_down_fp8_m1",
+      "live_rows": [
+        1
+      ]
+    },
+    {
+      "label": "v41_ffn_tp2_down_fp8_m16",
+      "live_rows": [
+        1,
+        7,
+        16
+      ]
+    }
+  ],
+  "manifest_sha256": "83bba3625a404d33c200563a81de6ecf794a18be4f26b872efdc30432240df33",
+  "library_sha256": "a105b17cf694601a457e33f9bf317d45794f9264666f17bc7b2646368f293a20",
+  "gpu": "95f8f212-9131-df99-fd53-7535965197d7",
+  "torch_version": "2.13.0+cu130"
+}

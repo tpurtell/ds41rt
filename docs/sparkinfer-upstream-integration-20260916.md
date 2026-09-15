@@ -372,6 +372,36 @@ experimental branch with no scalar implementation. That branch now raises an
 explicit `NotImplementedError`; the implemented global-table path is unchanged.
 Package-wide F821 checks now pass. This adds no Trellis numerical implementation.
 
+The resolved merge is committed and pushed as candidate
+[`37ff0dbd`](https://github.com/tpurtell/sparkinfer-glmrt/commit/37ff0dbd9348b369f5c7a1469891a8d8399926db)
+on `integrate/upstream-20260916`. The fork's `master` and DS41RT production lock
+are not advanced until acceptance. A separate candidate lock in the integration
+cache passes the real source verifier, enabling reproducible native exports.
+The FP8 and router exporters now record the verified override lock rather than
+accidentally labeling candidate artifacts with the production revision.
+
+Twelve native projection variants exported at capacities 1/16: Q-A, KV, WO-A,
+WO-B, and TP2 shared up/down, plus the mHC projection. Generated headers pass
+the production ABI verifier. The actual `v41_fp8.cc`/`v41_fp8.cu` wrapper links
+against these objects and the CuTe runtime. The new native qualification tool
+checks artifact hashes and source revision, launches Q-A/KV/TP2 up/down through
+the C ABI, captures CUDA graphs, changes inputs and compares against an
+independent quantized-operand accumulation oracle. **Eight variants pass**,
+with live rows 1 for capacity 1 and 1/7/16 for capacity 16.
+[Native AOT evidence](sparkinfer-upstream-native-aot-20260916.json) records the
+candidate revision, GPU UUID and artifact identities. WO native numerical
+qualification and larger capacities remain pending.
+
+The idle baseline coordinator was stopped to free memory for large-pool tests.
+On RTX1, both default DS4.1 modes passed with indexed pages beyond the 2 GiB
+offset boundary. The complete focused
+`tests/attention/test_compressed_sparse_mla_v41.py` then reports **33 passed**,
+covering varied head counts, BF16/FP8 arithmetic, heterogeneous sources, live
+rows and graph replay. Raw output is `v41-attention-qualification.log` in the
+integration cache. This is kernel correctness evidence, not real-weight needle
+or tool-evaluation acceptance. The original post-fix sanitizer process remains
+live and has not produced a terminal result; its completion is still pending.
+
 Code/topic concurrency baseline collection completed sequentially at
 C1/C2/C4/C8/C16 with one repetition each. C16 aggregate throughput was 1074.94
 TPS for code and 612.51 TPS for topic. These warm, same-prompt concurrency

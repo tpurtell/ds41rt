@@ -102,7 +102,7 @@ def export(output: Path, rows: tuple[int, ...], projections=PROJECTIONS) -> None
                 'projections': [{'name': name, 'n': n, 'k': k, 'weight_block': [32,32],
                                  'groups': 8 if name == 'o_a' else 1,
                                  'activation_block': 32, 'activation_amax_floor': 0.0 if name == 'o_a' else 1e-4} for name,n,k in projections],
-                'sparkinfer_revision': json.loads((Path(__file__).resolve().parents[2] / 'third_party/sparkinfer.lock.json').read_text())['revision'],
+                'sparkinfer_revision': _pinned_sparkinfer.REVISION,
                 'variants': []}
     for name, n, k in projections:
         for capacity in rows:
