@@ -1,0 +1,122 @@
+{
+  "scope": "synthetic mixed-request batch attention only",
+  "provenance": {
+    "gpu": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+    "torch_version": "2.13.0+cu130",
+    "main_revision": "84f5bca59c68a3581fb30ca1fadcd9e80c82a793",
+    "gpu_state": "index, uuid, power.limit [W], clocks.current.memory [MHz]\n0, GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, 400.00 W, 405 MHz\n1, GPU-95f8f212-9131-df99-fd53-7535965197d7, 400.00 W, 13365 MHz\n",
+    "launches_per_graph": 20,
+    "replays_per_sample": 20,
+    "repetitions": 5
+  },
+  "library_sha256": [
+    "30ddbfd02d6c7fda772d80bd9c295b977de847feb1a2ee53ac5a683c5ba50615",
+    "11817dbed81b7cf001b5c98a7005ba9042650e12b5f6735d64a80334f13250ec"
+  ],
+  "results": [
+    {
+      "requests": 2,
+      "rows_per_request": 1,
+      "rows": 2,
+      "median_us": [
+        21.251919269561768,
+        11.673599481582642
+      ],
+      "samples_us": [
+        [
+          21.268959045410156,
+          21.251919269561768,
+          21.244559288024902,
+          21.242799758911133,
+          21.252000331878662
+        ],
+        [
+          11.682480573654175,
+          11.670000553131104,
+          11.674480438232422,
+          11.669679880142212,
+          11.673599481582642
+        ]
+      ],
+      "checks": "closed-form FP4/FP8 values, private proposals, mixed bounds, recycled pages, malformed request, missing first key and graph replay"
+    },
+    {
+      "requests": 2,
+      "rows_per_request": 4,
+      "rows": 8,
+      "median_us": [
+        22.02672004699707,
+        14.232480525970459
+      ],
+      "samples_us": [
+        [
+          22.033839225769043,
+          22.0249605178833,
+          22.02080011367798,
+          22.02672004699707,
+          22.02888011932373
+        ],
+        [
+          14.227679967880249,
+          14.228800535202026,
+          14.235759973526001,
+          14.232480525970459,
+          14.23359990119934
+        ]
+      ],
+      "checks": "closed-form FP4/FP8 values, private proposals, mixed bounds, recycled pages, malformed request, missing first key and graph replay"
+    },
+    {
+      "requests": 16,
+      "rows_per_request": 1,
+      "rows": 16,
+      "median_us": [
+        23.86863946914673,
+        19.741840362548828
+      ],
+      "samples_us": [
+        [
+          23.87608051300049,
+          23.869199752807617,
+          23.86863946914673,
+          23.86647939682007,
+          23.863520622253418
+        ],
+        [
+          19.7542405128479,
+          19.72216010093689,
+          19.7325599193573,
+          19.741840362548828,
+          19.746400117874146
+        ]
+      ],
+      "checks": "closed-form FP4/FP8 values, private proposals, mixed bounds, recycled pages, malformed request, missing first key and graph replay"
+    },
+    {
+      "requests": 16,
+      "rows_per_request": 4,
+      "rows": 64,
+      "median_us": [
+        80.43543815612793,
+        58.66352081298828
+      ],
+      "samples_us": [
+        [
+          80.38472175598145,
+          80.35096168518066,
+          80.43543815612793,
+          80.55272102355957,
+          80.62664031982422
+        ],
+        [
+          58.66951942443848,
+          58.652801513671875,
+          58.66352081298828,
+          58.66312026977539,
+          58.67527961730957
+        ]
+      ],
+      "checks": "closed-form FP4/FP8 values, private proposals, mixed bounds, recycled pages, malformed request, missing first key and graph replay"
+    }
+  ]
+}

@@ -82,6 +82,14 @@ int32_t ds41rt_v41_sparse_attention_batch(
     const int32_t* selected,uint16_t* output,int32_t rows,
     const ds41rt_v41_sparse_kv_t* device_views,void* stream,const uint64_t* begins,
     float* partial,int32_t parts,int32_t compressed);
+// Optional AOT symbol: same prevalidation/ownership contract as batch above,
+// additionally requiring FP4, 16-byte-aligned value/scale planes and scratch.
+// A captured graph must retain this eligibility; include backend in its key.
+int32_t ds41rt_v41_sparse_attention_batch_aot(
+    const uint16_t* query,const float* sink,const uint64_t* metadata,
+    const int32_t* selected,uint16_t* output,int32_t rows,
+    const ds41rt_v41_sparse_kv_t* device_views,void* stream,const uint64_t* begins,
+    float* partial,int32_t parts,int32_t compressed);
 #ifdef __cplusplus
 }
 #endif

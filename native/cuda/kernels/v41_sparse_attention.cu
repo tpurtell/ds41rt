@@ -536,3 +536,18 @@ extern "C" int32_t ds41rt_v41_sparse_attention_batch(
   return compressed==2?dispatch_batch<true>(query,sink,metadata,selected,output,rows,device_views,stream,begins,partial,parts):
       dispatch_batch<false>(query,sink,metadata,selected,output,rows,device_views,stream,begins,partial,parts);
 }
+#ifdef DS41RT_HAVE_V41_ATTENTION_AOT
+extern "C" int32_t ds41rt_v41_sparse_attention_batch_aot(
+    const uint16_t* query,const float* sink,const uint64_t* metadata,
+    const int32_t* selected,uint16_t* output,int32_t rows,
+    const ds41rt_v41_sparse_kv_t* device_views,void* stream,const uint64_t* begins,
+    float* partial,int32_t parts,int32_t compressed) {
+  // Host validation has checked every current descriptor before upload/replay.
+  if(rows<1 || rows>64 || compressed!=2 || parts!=10 || !query || !sink ||
+     !metadata || !selected || !output || !device_views || !begins || !partial ||
+     reinterpret_cast<uintptr_t>(partial)%16)return cudaErrorInvalidValue;
+  auto* bytes=reinterpret_cast<uint8_t*>(partial);
+  return ds41rt_v41_attention_aot_launch(query,device_views,metadata,selected,begins,
+      sink,bytes,bytes+uint64_t(rows)*655360,output,rows,stream);
+}
+#endif

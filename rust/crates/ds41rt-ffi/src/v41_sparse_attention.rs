@@ -80,8 +80,12 @@ type BatchLaunch = unsafe extern "C" fn(
 pub struct V41SparseBatch {
     views: Vec<RawView>,
     compressed: i32,
+    aot: bool,
 }
 impl V41SparseBatch {
+    /// Include in captured graph identity: device descriptors may change their
+    /// alignment/format eligibility between replays without changing shape.
+    pub fn backend_key(&self) -> usize { usize::from(self.aot) }
     pub fn bytes(&self) -> &[u8] {
         // repr(C), 120 bytes with no padding, all fields initialized by checked_view.
         unsafe { std::slice::from_raw_parts(self.views.as_ptr().cast(), self.views.len() * 120) }
@@ -94,6 +98,7 @@ pub struct V41SparseAttention<'a> {
     bounded_launch: Option<BoundedLaunch>,
     batch_validate: Option<BatchValidate>,
     batch_launch: Option<BatchLaunch>,
+    batch_aot_launch: Option<BatchLaunch>,
 }
 impl NativeLibrary {
     pub fn v41_sparse_attention(&self) -> Result<V41SparseAttention<'_>> {
@@ -113,6 +118,7 @@ impl NativeLibrary {
             split_launch: unsafe { *self.lib.get(b"ds41rt_v41_sparse_attention_split")? },
             batch_validate: unsafe { self.lib.get(b"ds41rt_v41_sparse_attention_batch_validate").ok().map(|symbol| *symbol) },
             batch_launch: unsafe { self.lib.get(b"ds41rt_v41_sparse_attention_batch").ok().map(|symbol| *symbol) },
+            batch_aot_launch: unsafe { self.lib.get(b"ds41rt_v41_sparse_attention_batch_aot").ok().map(|symbol| *symbol) },
             bounded_launch: unsafe { self.lib.get(b"ds41rt_v41_sparse_attention_bounded").ok().map(|symbol| *symbol) },
         })
     }
@@ -258,7 +264,11 @@ impl V41SparseAttention<'_> {
             views.as_ptr(), descriptors.ptr.cast(), bounds.ptr.cast(), scratch.ptr.cast(),
             scratch.bytes as u64, parts as i32, compressed) };
         ensure!(status == 0, "native sparse batch validation status {status}");
-        Ok(V41SparseBatch { views, compressed })
+        let aot = self.batch_aot_launch.is_some() && compressed == 2
+            && scratch.ptr as usize % 16 == 0
+            && views.iter().all(|view| view.values.iter().chain(view.scales.iter())
+                .all(|pointer| *pointer as usize % 16 == 0));
+        Ok(V41SparseBatch { views, compressed, aot })
     }
     /// # Safety
     /// All buffers and dimensions must match prepare_batch; upload batch.bytes()
@@ -271,7 +281,8 @@ impl V41SparseAttention<'_> {
         output: Ds41rtDeviceBuffer, descriptors: Ds41rtDeviceBuffer,
         bounds: Ds41rtDeviceBuffer, scratch: Ds41rtDeviceBuffer, stream: *mut c_void,
     ) -> Result<()> {
-        let launch = self.batch_launch.context("native library lacks sparse batch attention")?;
+        let launch = if batch.aot { self.batch_aot_launch } else { self.batch_launch }
+            .context("native library lacks selected sparse batch attention")?;
         let status = unsafe { launch(query.ptr.cast(), sink.ptr.cast(), metadata.ptr.cast(),
             selected.map_or(std::ptr::null(), |b| b.ptr.cast()), output.ptr.cast(), batch.views.len() as i32,
             descriptors.ptr.cast(), stream, bounds.ptr.cast(), scratch.ptr.cast(),

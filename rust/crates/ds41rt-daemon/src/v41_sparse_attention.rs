@@ -580,7 +580,7 @@ impl<'a> SparseAttentionWave<'a> {
             // cache pointers or request row counts. Selection is lane-owned and
             // stable; still include its address to guard any future owner change.
             fingerprint = vec![usize::MAX, layer, rows, sink.ptr as usize,
-                selected.map_or(0, |buffer| buffer.ptr as usize)];
+                selected.map_or(0, |buffer| buffer.ptr as usize), batch.backend_key()];
             Some(batch)
         } else { None };
         for (i, m) in metadata.into_iter().enumerate() {

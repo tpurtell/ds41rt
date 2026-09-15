@@ -206,6 +206,44 @@ fallback. These are attention-component results, not serving TPS. The
 multi-request batch entry still uses the baseline and needs an explicit
 eligibility-aware connection before the engine comparison.
 
+The optional native batch symbol is now connected through the Rust FFI.
+Preparation selects it only for FP4 batches with aligned value/scale planes and
+scratch; otherwise it retains the existing batch kernel. The daemon's graph
+fingerprint includes the selected backend, so changed descriptor eligibility
+cannot reuse the wrong captured graph. Current descriptors still undergo the
+existing host validation before upload/replay. No cross-lane decision was added.
+The native build and `cargo check -p ds41rt-ffi -p ds41rt-daemon` pass. The host
+build needed NASM for libjpeg-turbo; NASM is now installed via Homebrew, and the
+release development Dockerfile already installs it for both target platforms.
+
+Mixed-request GPU checks cover four-source payloads, request-specific values,
+private proposal stride, mixed replay bounds, page recycling, malformed requests,
+an invalid first selected key with later valid keys, and graph replay. They
+exposed a sparse-selection regression: with only five selected compressed keys,
+the initial candidate processed all eight compressed tiles. Candidate `1835d2a8`
+skips empty tiles; `5ef6db08` tries checking the first selected key before scanning
+the tile. Both changes are on the fork integration branch; the candidate lock
+now identifies `5ef6db08`.
+
+[Latest mixed-request results](sparkinfer-upstream-attention-batch-20260916.json)
+remain synthetic attention tests, with an independent closed-form oracle:
+
+| Requests × rows per request | Baseline, µs | Latest candidate, µs |
+| --- | ---: | ---: |
+| 2 × 1 | 21.3 | 11.7 |
+| 2 × 4 | 22.0 | 14.2 |
+| 16 × 1 | 23.9 | 19.7 |
+| 16 × 4 | 80.4 | 58.7 |
+
+**Unresolved tradeoff:** empty-tile detection improves sparse batches (the
+64-row candidate was previously 107 µs), but adds overhead with all 512 selected
+keys populated. [Latest populated-key measurements](sparkinfer-upstream-attention-populated-20260916.json)
+are 12.0, 44.0 and 146.4 µs at 1/16/64 rows, versus 11.1, 37.7 and 127.1 µs
+before the guard. The first-key shortcut did not recover that cost. These remain
+faster than the old native baseline, but the guard needs investigation before
+final policy selection. Do not present the earlier 37.7 µs figure as current
+candidate performance. Release defaults and published images remain unchanged.
+
 ## Future parallelism and Trellis: analysis only
 
 These observations are retained for subsequent releases at the user's request.
