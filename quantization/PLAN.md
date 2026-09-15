@@ -1728,3 +1728,26 @@ tensor allocation or restarting the progressing job without cause.
 Recent throughput projects roughly 18.5 hours for the remaining main blocks
 (around 22:50 Taipei September 15); dSpark/export/upload time remains additional
 and this is not a verified final publication ETA.
+
+### Main-model completion — 2026-09-15 22:40 Taipei
+
+The same detached attempt completed main block 39 and cleanup at 22:37:27
+Taipei (14:37:27 UTC). A read-only journal query confirms all 40 main block
+commits, `namespaces/base/complete`, all 1,441 dSpark input frontiers,
+`draft-inputs/complete`, and the authorized main-frontier retirement marker.
+At this check, retirement was still running and dSpark namespace inputs were
+not yet committed. All three dSpark blocks, export, public upload, and cache
+materialization remain outstanding; main completion is not goal completion.
+
+Late main blocks were about 36–38 minutes. Host peak RSS largely plateaued
+around 30–31 GiB (32,615,020 KiB at block 39), versus earlier steady growth.
+Every main cycle still reported 2,328,038,400 primary live GPU bytes after
+cleanup. The process remained running without OOM; file-cache reclaim had
+occurred. Available NVMe was 620 GiB before main-frontier retirement completed.
+
+For reference, measured layer-9 sequential timing was 88.23 s load/routing,
+915.39 s gate/up capture plus K3, 62.40 s gate/up selection/K4/install,
+742.03 s down capture plus K3, 44.58 s down selection/K4/install,
+151.83 s replica installation/output propagation, and 179.14 s verification
+and retirement. Capture and search overlap; do not add their independently
+estimated durations or claim isolated device timing from these stage events.
