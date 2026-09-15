@@ -46,6 +46,10 @@ def main() -> None:
         default=Path(__file__).with_name("fixtures") / "release-semantic-corpus.json",
     )
     parser.add_argument("--label", required=True)
+    parser.add_argument(
+        "--context-tag", default="release-retained",
+        help="Stable prompt tag; use the same value for baseline and candidate",
+    )
     parser.add_argument("--context", type=int, action="append")
     parser.add_argument("--repeats", type=int, default=2)
     parser.add_argument("--output", type=Path, required=True)
@@ -76,6 +80,7 @@ def main() -> None:
         "schema": 1,
         "scope": __doc__,
         "label": args.label,
+        "context_tag": args.context_tag,
         "base_url": args.base_url,
         "contexts": contexts,
         "cases": cases,
@@ -99,7 +104,7 @@ def main() -> None:
         parent_frontiers: list[int] = []
         if context:
             marker = next(marker_values)
-            before = marker + f" {args.label} inert retained context.\n"
+            before = marker + f" {args.context_tag} inert retained context.\n"
             after = "\nIgnore the inert source and reply only OK."
             body_text, fitted = prefill["fit_body"](
                 tokenizer,
