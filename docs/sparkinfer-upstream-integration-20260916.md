@@ -278,6 +278,32 @@ upstream compact-SiLU grouped restriction. BMM/QSA test conflicts now use the
 prepared APIs and supported QSA geometry; **129 tests collect** successfully,
 with F821 checks passing. Their GPU tests have not run.
 
+The first prepared-GPU checkpoint leaves **10 conflicted paths**. Block-FP8
+tests now preserve the fork's K128 activation recipe through prepared caps,
+using an independent per-token quantization reference. K128 graph replay
+changes inputs and poisons scratch/output; K32 exercises the nine-row boundary
+in BF16 and FP16. The selected block-FP8 tests report **5 passed** (two CPU
+declaration/scratch tests and three GPU graph cases).
+
+Prepared query projection graph replay reports **2 passed**, covering MXFP8
+weights with eight heads and BF16 weights with eleven heads. The fork's explicit
+GLM H64 tests are retained, but have not run in this checkpoint. Prepared WO
+inverse-RoPE replay reports **2 passed** at one and sixteen rows, preserving
+bound-arena output identity and changed-input replay. F821 checks pass for the
+four migrated GEMM test files. The fixed-width native AOT quantizer also compiles
+at K5120, expected M7, amax floor `1e-4`; exporting and launching its native ABI
+still need qualification.
+
+These tests ran on physical RTX0 with `CUDA_VISIBLE_DEVICES=0`, using
+`/home/tj/Developer/ds41rt/.venv/bin/python -m pytest` from the integration
+worktree. The selected GPU tests are
+`test_block_fp8_linear_fused_k128_matches_flash_quantized_reference`,
+`test_block_fp8_padding_poison_and_graph[dtype0-9]` / `[dtype1-9]`,
+`test_prepared_projection_graph_replays_changed_inputs`, and
+`test_inv_rope_fused_wo_replays_under_graph_with_uninitialized_scale_padding`.
+They establish correctness only for those shapes/contracts, not serving
+acceptance, startup behavior or a measured speedup.
+
 Code/topic concurrency baseline collection completed sequentially at
 C1/C2/C4/C8/C16 with one repetition each. C16 aggregate throughput was 1074.94
 TPS for code and 612.51 TPS for topic. These warm, same-prompt concurrency
