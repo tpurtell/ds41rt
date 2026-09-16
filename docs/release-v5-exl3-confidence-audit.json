@@ -1,0 +1,112 @@
+{
+  "scope": "Offline conditional-confidence audit; odd code/mixed train, even code/mixed and all topic/reasoning held out. No policy changes.",
+  "trace_sha256": {
+    "paired-calibration-v2-rtx2-k1": "5cd96d7951abd41ad33a6fc4d9854e7a244b246b33547f51c1ffb68fb6efb0b8",
+    "paired-calibration-v2-rtx2-k2": "8484a9c9d006a4a6052fcef85d9e03feb38e0d5743684d119bcc411009d6618d",
+    "paired-calibration-v2-rtx2-k3": "14d992ecba29c43efcb7a2ec94a234609c80b374f86fcf4f50192bcff6f18aa3",
+    "paired-calibration-v2-rtx2-k4": "67d87221e08abd23afad7e3558dffa8be2b5a28eb9d714b70c612dafd1f06a57",
+    "paired-calibration-v2-rtx2-k5": "d284994b965adc42781ebc702ff3f159c89f368bf58a91f47b0aa6fd18ae193d",
+    "paired-calibration-v2-rtx2-k6": "cb26e36c75e100e4e712a917faacc8ea5ea8cf2a11c7f0cca73adbf2ac06fbb0",
+    "paired-calibration-v2-rtx2-k7": "44eb5f7860fd81addc7a569233098c6bdd0fbede9f00a73af29c65418122e3ac",
+    "paired-reasoning-rtx2-k7": "665839c417e345f05d608d5859aa7399d05ae5f7c92d81f2e44d40c5ac3f9b2d"
+  },
+  "training_observations": 12171,
+  "training_conditional_labels": 29099,
+  "logit_affine": [
+    -0.11056569496517486,
+    0.9411806266684768
+  ],
+  "cohorts": [
+    {
+      "workload": "code",
+      "parity": "even",
+      "training": false,
+      "observations": 4019,
+      "conditional_labels": 12879,
+      "raw_brier": 0.03687417189559815,
+      "fitted_brier": 0.03651892235169148,
+      "mean_actual_emitted": 4.0022393630256285,
+      "mean_raw_expected_emitted": 4.073543842508063,
+      "mean_fitted_expected_emitted": 4.023536006026793
+    },
+    {
+      "workload": "code",
+      "parity": "odd",
+      "training": true,
+      "observations": 6258,
+      "conditional_labels": 16662,
+      "raw_brier": 0.04664404745166231,
+      "fitted_brier": 0.04572201555986785,
+      "mean_actual_emitted": 3.446308724832215,
+      "mean_raw_expected_emitted": 3.56979426391232,
+      "mean_fitted_expected_emitted": 3.522179297738204
+    },
+    {
+      "workload": "code-reasoning",
+      "parity": "odd",
+      "training": false,
+      "observations": 6282,
+      "conditional_labels": 25493,
+      "raw_brier": 0.11901584009393062,
+      "fitted_brier": 0.11933802169336682,
+      "mean_actual_emitted": 4.213467048710601,
+      "mean_raw_expected_emitted": 4.19506779634664,
+      "mean_fitted_expected_emitted": 4.0520392901206534
+    },
+    {
+      "workload": "mixed",
+      "parity": "even",
+      "training": false,
+      "observations": 4168,
+      "conditional_labels": 9899,
+      "raw_brier": 0.11674112800927104,
+      "fitted_brier": 0.11701830690545187,
+      "mean_actual_emitted": 2.7248080614203456,
+      "mean_raw_expected_emitted": 2.727231482376272,
+      "mean_fitted_expected_emitted": 2.669107386755147
+    },
+    {
+      "workload": "mixed",
+      "parity": "odd",
+      "training": true,
+      "observations": 5913,
+      "conditional_labels": 12437,
+      "raw_brier": 0.11641571177522911,
+      "fitted_brier": 0.11704353595413777,
+      "mean_actual_emitted": 2.542026044309149,
+      "mean_raw_expected_emitted": 2.5280969954959804,
+      "mean_fitted_expected_emitted": 2.4760683854593437
+    },
+    {
+      "workload": "topic",
+      "parity": "even",
+      "training": false,
+      "observations": 9322,
+      "conditional_labels": 20879,
+      "raw_brier": 0.1659105041720073,
+      "fitted_brier": 0.16683002439377126,
+      "mean_actual_emitted": 2.4670671529714654,
+      "mean_raw_expected_emitted": 2.4370563072194362,
+      "mean_fitted_expected_emitted": 2.3554683333111535
+    },
+    {
+      "workload": "topic",
+      "parity": "odd",
+      "training": false,
+      "observations": 12666,
+      "conditional_labels": 25374,
+      "raw_brier": 0.16636415598272258,
+      "fitted_brier": 0.16794622704952103,
+      "mean_actual_emitted": 2.33380704247592,
+      "mean_raw_expected_emitted": 2.2555989721538303,
+      "mean_fitted_expected_emitted": 2.1878996741733525
+    }
+  ],
+  "limitations": [
+    "Fixed short-context corpus; correlations among repeated requests remain.",
+    "Conditional labels stop at first mismatch; terminal/constrained/first seven generated tokens excluded.",
+    "This audit does not establish serving benefit or justify changing confidence defaults."
+  ],
+  "decision": "Keep raw confidence: fitted correction slightly improves held-out code but worsens Brier score and emitted-token bias on mixed, topic, and reasoning code. No runtime confidence transform adopted.",
+  "archive_note": "Filtered archived traces reproduce the fit and every reported cohort exactly; original full trace hashes above remain the collection identities."
+}

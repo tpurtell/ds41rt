@@ -482,3 +482,25 @@ forbids excluding any completed verification round. Corrected K2/K4/K6 traces
 need no exclusions. Evidence: `release-v5-exl3-paired-adaptive-cost-fit.json` and
 its archive. Filtered archived cost traces reproduce every original parsed
 observation exactly; source hashes and the explicit exclusion are retained.
+
+### Confidence audit and reasoning-budget incident
+
+An offline audit fits one affine logit correction on warm odd-width code/mixed
+conditional labels, holding out even widths plus all topic and reasoning code.
+The fitted intercept/slope are −0.1106 / 0.9412. Raw confidence already predicts
+mean emitted tokens closely: held-out code actual/raw = 4.00/4.07, mixed =
+2.72/2.73, and reasoning code = 4.21/4.20. The correction slightly improves code
+Brier score but worsens mixed, topic and reasoning scores and their mean-emission
+bias. **Keep raw confidence; no correction is adopted.** Archived filtered
+observations reproduce the fit and every cohort exactly. Evidence:
+`release-v5-exl3-confidence-audit.json` and its archive.
+
+The first calibrated serving arm stopped at reasoning-code C8 when at least one
+request exhausted its 4,096-token budget without a final answer. The old client
+reported this as incomplete SSE and failed to retain that response. The client
+now distinguishes a completed reasoning-only stream from transport failure and
+preserves all responses in failed batches while keeping code checks failed.
+A fresh calibrated repetition passed all code/topic/reasoning C1/C8/C16 and
+mixed C4/C16 samples without reproducing the exhaustion. This does not erase
+the original incident or establish a cause. The remaining comparison arms and
+final serving-policy decision are pending; the reasoning budget is unchanged.
