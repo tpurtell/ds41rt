@@ -1,0 +1,141 @@
+{
+  "scope": "Native full top512 versus upstream selection-only lower bound; upstream excludes position sorting and carry merge, so not an equivalent serving replacement.",
+  "native_sha256": "37ec39843b24c52680e8da78ce7bf4b251f1e21a02f3ea1353eebb226b854284",
+  "device": "_CudaDeviceProperties(name='NVIDIA RTX PRO 6000 Blackwell Workstation Edition', major=12, minor=0, total_memory=97249MB, multi_processor_count=188, uuid=fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, pci_bus_id=17, pci_device_id=0, pci_domain_id=0, L2_cache_size=128MB)",
+  "results": [
+    {
+      "rows": 1,
+      "width": 512,
+      "checks": [
+        {
+          "cycle": 0,
+          "native_exact": true,
+          "upstream_set_exact": true,
+          "upstream_score_multiset_exact": true,
+          "upstream_unique_valid_indices": true
+        },
+        {
+          "cycle": 1,
+          "native_exact": true,
+          "upstream_set_exact": true,
+          "upstream_score_multiset_exact": true,
+          "upstream_unique_valid_indices": true
+        },
+        {
+          "cycle": 2,
+          "native_exact": true,
+          "upstream_set_exact": true,
+          "upstream_score_multiset_exact": true,
+          "upstream_unique_valid_indices": true
+        }
+      ],
+      "native_us": [
+        30.17280101776123,
+        30.08255958557129,
+        29.834558963775635,
+        30.04960060119629,
+        29.744319915771484,
+        29.92863893508911
+      ],
+      "upstream_selection_only_us": [
+        2.08639994263649,
+        2.025279998779297,
+        2.0656000077724457,
+        2.022079974412918,
+        2.0947200059890747,
+        2.024960070848465
+      ]
+    },
+    {
+      "rows": 1,
+      "width": 4096,
+      "checks": [
+        {
+          "cycle": 0,
+          "native_exact": true,
+          "upstream_set_exact": true,
+          "upstream_score_multiset_exact": true,
+          "upstream_unique_valid_indices": true
+        },
+        {
+          "cycle": 1,
+          "native_exact": true,
+          "upstream_set_exact": true,
+          "upstream_score_multiset_exact": true,
+          "upstream_unique_valid_indices": true
+        },
+        {
+          "cycle": 2,
+          "native_exact": true,
+          "upstream_set_exact": false,
+          "upstream_score_multiset_exact": true,
+          "upstream_unique_valid_indices": true
+        }
+      ],
+      "native_us": [],
+      "upstream_selection_only_us": []
+    },
+    {
+      "rows": 16,
+      "width": 4096,
+      "checks": [
+        {
+          "cycle": 0,
+          "native_exact": true,
+          "upstream_set_exact": false,
+          "upstream_score_multiset_exact": true,
+          "upstream_unique_valid_indices": true
+        },
+        {
+          "cycle": 1,
+          "native_exact": true,
+          "upstream_set_exact": false,
+          "upstream_score_multiset_exact": true,
+          "upstream_unique_valid_indices": true
+        },
+        {
+          "cycle": 2,
+          "native_exact": true,
+          "upstream_set_exact": false,
+          "upstream_score_multiset_exact": true,
+          "upstream_unique_valid_indices": true
+        }
+      ],
+      "native_us": [],
+      "upstream_selection_only_us": []
+    },
+    {
+      "rows": 16,
+      "width": 16384,
+      "checks": [
+        {
+          "cycle": 0,
+          "native_exact": true,
+          "upstream_set_exact": false,
+          "upstream_score_multiset_exact": true,
+          "upstream_unique_valid_indices": true
+        },
+        {
+          "cycle": 1,
+          "native_exact": true,
+          "upstream_set_exact": false,
+          "upstream_score_multiset_exact": true,
+          "upstream_unique_valid_indices": true
+        },
+        {
+          "cycle": 2,
+          "native_exact": true,
+          "upstream_set_exact": false,
+          "upstream_score_multiset_exact": true,
+          "upstream_unique_valid_indices": true
+        }
+      ],
+      "native_us": [],
+      "upstream_selection_only_us": []
+    }
+  ],
+  "fork_revision": "e157965b24b3f9c522b05c50910aaefa87e9fcc8",
+  "probe_sha256": "90366bdc5ba3c7296d3f564aeccb83138e3fe54cbdf39e10283fbfb1e9e81988",
+  "qualification_exit_code": 1,
+  "interpretation": "Exact position-set gate fails because tied scores choose different valid indices; score multisets match in all tested cases. Timing omitted for failing shapes. Width512 selects all candidates, so timing is a lower-bound diagnostic only."
+}

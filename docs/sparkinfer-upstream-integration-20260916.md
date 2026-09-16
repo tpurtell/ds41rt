@@ -78,6 +78,36 @@ They may still require mechanical merge/import/test fixes when shared library
 surfaces change. Attention/projection parallelization across GPUs is deferred;
 retain the current ownership and expert parallelism in comparisons.
 
+## Index selection contract and first comparison (September 16)
+
+[GPU comparison evidence](sparkinfer-upstream-index-topk-20260916.json) and
+[reproducible probe](../python/tools/compare_v41_index_topk.py) compare our native
+`top512` with upstream `run_row_topk`, using BF16-rounded scores at rows/widths
+1/512, 1/4096, 16/4096 and 16/16384. Changed-input graph replay and stable
+allocation checks pass. Native selected positions match an independent stable
+score-sort oracle in every case. Upstream selects unique valid indices with
+exactly the correct score multiset in every case, but differs on position sets
+at tied scores, including ordinary rounded random inputs at 16 rows. All-zero
+scores also expose the difference. This is a contract mismatch, not evidence
+that upstream returns incorrect top-k scores.
+
+The native contract prefers lower logical positions on ties and returns the
+selected positions ascending. It also merges carry between bounded chunks.
+Upstream row selection alone omits that final ordering and carry merge. The
+probe therefore reports it only as a selection-cost lower bound and deliberately
+returns failure when exact positions differ; no timings are collected for those
+shapes. At width 512, where every candidate is selected, native full selection
+costs approximately 30 us versus approximately 2 us for upstream selection only.
+That degenerate case identifies overhead worth investigating, not an equivalent
+replacement or serving speedup. Next: retain deterministic tie handling and
+measure the complete sorting/carry chain before considering adoption.
+
+The existing engine already derives score width from visible source length,
+rounds it to eight, caps each chunk at 16384, and uses multiple chunks for longer
+sources (`v41_index_selection.rs`). Thus upstream visible-length bounding is
+not automatically a new engine optimization. Native scoring additionally needs
+separate data/scale pools and append-only speculative overlays.
+
 ## Repeated narrow-policy serving comparison (September 16)
 
 [Preserved requests, outputs, artifact identities and telemetry summary](sparkinfer-upstream-narrow-repeats-20260916.json)
