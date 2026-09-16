@@ -31,6 +31,19 @@ partial reuse, completed-turn resume and sixteen-image exact reuse. Image,
 source, launch arguments, hardware settings and raw report hashes are recorded
 in [clean-serving evidence](sparkinfer-upstream-clean-serving-20260916.json).
 Long-context needle and the remaining release qualification are still pending.
+
+The upcoming performance collection preserves the published concurrency prompt
+label/nonce (`phase2-release-final`, `20260914`), direct-corpus seed 61001 and
+mixed seed 56001. The semantic corpus hash is unchanged. The original prefill
+and retained-context source was recovered from the archived request bodies;
+its SHA-256 is exactly
+`9fd051edae59a6b4263a690fbdd70816c78c9671a50d6976903b51b4386593b0`.
+The [compressed source](evidence/phase2-performance-context.md.gz) now preserves
+those bytes explicitly. Keep the existing five retained contexts and their
+markers unchanged; collect the additional 2K context separately. Commands are
+prepared in `clean-performance-commands.json` under the integration cache, but
+performance collection has not started.
+
 The normal launcher uses the current binary K5 default; K7 calibration and
 comparison runs above selected K7 explicitly.
 
