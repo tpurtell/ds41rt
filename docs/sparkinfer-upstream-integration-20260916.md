@@ -78,6 +78,39 @@ They may still require mechanical merge/import/test fixes when shared library
 surfaces change. Attention/projection parallelization across GPUs is deferred;
 retain the current ownership and expert parallelism in comparisons.
 
+## Target-only and cold-request repeatability controls (September 16)
+
+[Target-only evidence](sparkinfer-upstream-index-target-repeatability-20260916.json)
+uses the same old-sort candidate library with dSpark disabled. Two fresh servers
+run the identical retained 2K/32K corpus. Requests and seed replies match, all
+cache and assessed objective checks pass, but **8 of 16 output hashes differ**
+(four cases at each context). Target-only snapshots resume at 2049/32769 tokens,
+versus 2050/32770 in the speculative control; comparisons here are strictly
+between the two target-only runs, not an assertion of identical cache boundaries
+across modes.
+
+| Same target-only library | First restart | Second restart |
+| --- | ---: | ---: |
+| Weighted TPS, retained 2K | 47.96 | 47.68 |
+| Weighted TPS, retained 32K | 47.75 | 46.76 |
+
+A narrower control then sends the exact saved 2K fable request directly to two
+further fresh target-only servers, without priming any cache. Both report
+**2089 prompt tokens and zero cached tokens**, but produce different responses
+(142 versus 166 completion tokens). The full cold requests/responses are saved
+in the evidence. Thus neither prefix reuse nor speculation is necessary for
+this variability; attributing it to adaptive verification or cache restoration
+alone would be unsupported.
+
+This remains the old-sort candidate library (new attention, lagged mHC and
+narrow projection policy), not the original published implementation. Next
+compare the older attention/mHC library on the same cold request across fresh
+starts to determine whether this behavior predates those integrations. These
+text differences are not automatically quality failures; the purpose is to
+separate baseline numerical variability from a change-induced issue before
+interpreting fine-grained performance differences. The current diagnostic
+server is target-only, and release acceptance remains pending.
+
 ## Fixed-K5 repeatability control (September 16)
 
 [Fixed-K5 evidence](sparkinfer-upstream-index-fixed-repeatability-20260916.json)

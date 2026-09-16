@@ -1,0 +1,197 @@
+{
+  "scope": "Same old-sort candidate library, dSpark disabled, identical retained requests across fresh servers, then one exact cold request across two further fresh servers.",
+  "launch_script": "#!/bin/bash\nset -eu\ncd /home/tj/Developer/ds41rt\nexec env DS41RT_NATIVE_LIB=/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-narrow.so LD_LIBRARY_PATH=/home/tj/.local/share/uv/python/cpython-3.12.3-linux-x86_64-gnu/lib DS41RT_PYTHON=/home/tj/Developer/ds41rt/.venv/bin/python RUST_LOG=info CUDA_VISIBLE_DEVICES=0,1 rust/target/release/ds41rt serve-native --snapshot /home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277 --native-lib /home/tj/.cache/ds41rt-upstream-20260916/libcandidate-narrow.so --peers 10.55.0.1:19441,10.55.0.2:19441,10.55.0.3:19441,10.55.0.4:19441 --rtx-gpus 2 --listen 0.0.0.0:8000 --prefill-batch-tokens 2048 --concurrency 16 --prefix-cache-entries 24 --max-context-tokens 1048576 --max-output-tokens 393216\n",
+  "native_sha256": "37ec39843b24c52680e8da78ce7bf4b251f1e21a02f3ea1353eebb226b854284",
+  "daemon_sha256": "82ed41b4a5cdb7e11823e424019e54c7e22a2e0fa8fe3a4d6a330c3fd52b1326",
+  "samples_per_run": 16,
+  "requests_equal": true,
+  "primes_equal": true,
+  "changed_outputs": [
+    {
+      "context": 2048,
+      "case": "fable",
+      "first_sha256": "baff8cd0d9995e225c098deada8af26109a23f903b1e5b6ed1c3ee8df98d23a0",
+      "second_sha256": "3177a81d5d3f1a65ea3ddf654a9690c5e147e37da093217798d53a4f9d6ee125"
+    },
+    {
+      "context": 2048,
+      "case": "topic",
+      "first_sha256": "c03f86028c27c2472779ab93f4086f001b05d1dde87592008eb60086e780a932",
+      "second_sha256": "bdbdb21f50f7ae5902d0e999c99fa783ac7a04643a5e8d262c55c01412850d6a"
+    },
+    {
+      "context": 2048,
+      "case": "structured-json-schema",
+      "first_sha256": "71eddfbfd9bdd58dbd9ffb1cc0ef3e5d191d93a475e487216c3e1274f7f013bf",
+      "second_sha256": "4d2a0d9edbb52580e3e77546760a123172691687d4abd52b4c8a4b47c84d22d6"
+    },
+    {
+      "context": 2048,
+      "case": "multilingual",
+      "first_sha256": "b592dbd9f0e27f3a8c5a9f034b6ac7f042001463ac42cfdf814aecbb6c715764",
+      "second_sha256": "c48e11692f7526743a35331391cfc48e498483865a4701589a4b6695342fb2aa"
+    },
+    {
+      "context": 32768,
+      "case": "code",
+      "first_sha256": "b0bc767fe53f3d729fa1a7e2cc4e1b1831f20cadf280434966d0464cefda217c",
+      "second_sha256": "38bb1f95acb4c0f31da520c6d41b8b148a4c797fc72a4f690fe6affee6055dd2"
+    },
+    {
+      "context": 32768,
+      "case": "fable",
+      "first_sha256": "57cec655793056aaa4d3044e460fa565c89c53576879105e91a0fb6d1ba160a7",
+      "second_sha256": "d50d93b469c8aa5469d4b313ed85fe1ed20b8874741218c8c34f05e0337f7ce4"
+    },
+    {
+      "context": 32768,
+      "case": "topic",
+      "first_sha256": "549f0b9492553f578745e61f181abf0d72da87b49d8994f6da3b050372cd5bf3",
+      "second_sha256": "5540bece7d8acc9ecb8cb5e9cab7d1375a4a273257252818c37da7eaf474f4fa"
+    },
+    {
+      "context": 32768,
+      "case": "multilingual",
+      "first_sha256": "c0f46e670ac53e423fceaadc6b8ce6804a2ff6cd89f1040b42fa7e4848e642d4",
+      "second_sha256": "b71acfe45db015f9a0556178682ede2bf8fcf020bdca5d8c62620b1abe18b765"
+    }
+  ],
+  "runs": {
+    "first": {
+      "path": "/home/tj/.cache/ds41rt-upstream-20260916/index-target-first.json",
+      "sha256": "64d367150c498b80ef644b24c8ae7af54f06af8654afb890c96ae0682d72a92b",
+      "passed": true,
+      "objective_checks_passed": true,
+      "summaries": [
+        {
+          "context_tokens": 2048,
+          "samples": 8,
+          "weighted_observed_decode_tokens_per_second": 47.95790260335426,
+          "serving_completed": 8,
+          "cache_valid": 8
+        },
+        {
+          "context_tokens": 32768,
+          "samples": 8,
+          "weighted_observed_decode_tokens_per_second": 47.74587112810888,
+          "serving_completed": 8,
+          "cache_valid": 8
+        }
+      ]
+    },
+    "second": {
+      "path": "/home/tj/.cache/ds41rt-upstream-20260916/index-target-second.json",
+      "sha256": "ad8908daacbd7587fa58096f46e06eeb57c3d77787634d1b042fe15f3d1d86ee",
+      "passed": true,
+      "objective_checks_passed": true,
+      "summaries": [
+        {
+          "context_tokens": 2048,
+          "samples": 8,
+          "weighted_observed_decode_tokens_per_second": 47.6824547209374,
+          "serving_completed": 8,
+          "cache_valid": 8
+        },
+        {
+          "context_tokens": 32768,
+          "samples": 8,
+          "weighted_observed_decode_tokens_per_second": 46.76025121311571,
+          "serving_completed": 8,
+          "cache_valid": 8
+        }
+      ]
+    }
+  },
+  "cold": {
+    "first": {
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "\u3c55 index-sort-comparison inert retained context.\n# DS41RT\n\nDS41RT serves the official [DeepSeek V4.1 Flash](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) checkpoint across one or two RTX PRO 6000 Blackwell coordinator GPUs and four DGX Spark expert workers. It combines native target execution, local dSpark speculative decoding, token-level prefix reuse, tools, constrained output, and vision in one OpenAI-compatible service.\n\nAll reported RTX measurements use an enforced **400 W power limit** and **standard 14,001 MHz maximum memory speed with no memory overclock**. The loaded memory clock reached 13,365 MHz; the RTX driver was 595.91.07. The four GB10 workers used driver 580.159.03.\n\n[![DS41RT native execution across RTX coordinators and four expert workers](docs/native-path-execution.svg)](docs/native-path-execution.svg)\n\n## Performance\n\nThe standard launcher now selects two feasible peer-connected RTX cards automatically and falls back to one. Two-RTX mode hosts all twenty encoder expert layers TP2 on the RTX pair; one-RTX mode uses bottom-up local placement and the new placement-aware adaptive K5 default. Throughput uses temperature zero and thinking disabled. Every cell below has three fresh samples from the same release image and matched prompts.\n\n**Headline results.** Median throughput, the qualified cache and placement policy, memory use, and clean startup.\n\n| Measurement | 1 RTX | 2 RTX | 2 RTX change |\n|---|---:|---:|---:|\n| Best median prefill | 7,878 tok/s (0 + 32K) | **8,454 tok/s** (0 + 16K) | +7.3% |\n| Counting target-only decode | 44.95 tok/s | **48.41 tok/s** | +7.7% |\n| Counting dSpark decode | 156.08 tok/s | **181.31 tok/s** | +16.2% |\n| Weighted eight-type target-only decode | 43.04 tok/s | **46.14 tok/s** | +7.2% |\n| Weighted eight-type dSpark decode | 76.72 tok/s | **79.33 tok/s** | +3.4% |\n| C16 code aggregate | 992.78 tok/s | **1,181.49 tok/s** | +19.0% |\n| C16 topic aggregate | 514.96 tok/s | **596.14 tok/s** | +15.8% |\n| C16 counting aggregate | 1,161.12 tok/s | **1,333.57 tok/s** | +14.9% |\n| C16 mixed aggregate | 196.46 tok/s | **309.06 tok/s** | +57.3% |\n| RTX routed-expert placement | Layers 0\u20134, full width | Encoder 0\u201319, TP2 | \u2014 |\n| Spark expert residency / configured budget | 40 layers / 100 GiB each | 20 layers / 100 GiB each | \u2014 |\n| Global FP4 source pool | 16.681 GB / 18,710,016 logical tokens + 32,768 private-tail | 13.094 GB / 14,680,064 logical tokens + 32,768 private-tail | \u2014 |\n| Exact prompt / completed-turn retention | 24 / 24 entries | 24 / 24 entries | \u2014 |\n| Loaded RTX memory after readiness | 95,080 MiB | 95,338 / 95,578 MiB | \u2014 |\n| Standard restart to API readiness | 58.05 s | **46.00 s** | \u221220.8% |\n\nThe weighted direct-corpus result is the main real-content decode headline. Counting is retained as a low-entropy throughput reference. The mixed workload has different prompt and output lengths from the same-code workload and should be compared only against its matching layout.\n\n**Eight content types and counting.** Three samples per local mode. The official Flash column is the preserved one-request reference and was not called again. Counting is outside the weighted score. Every local response completed; code, math, and JSON objective checks passed, while open prose was intentionally left unscored.\n\n| Case | 1 RTX target | 1 RTX dSpark | 2 RTX target | 2 RTX dSpark | Official Flash |\n|---|---:|---:|---:|---:|---:|\n| Code | 44.90 | 127.62 | 48.10 | **149.07** | 345.90 |\n| Math | 41.93 | 119.56 | 47.76 | **135.72** | 285.33 |\n| Fable | 41.31 | 51.88 | 44.39 | **52.64** | 123.63 |\n| Hello | 41.58 | 69.89 | 45.40 | **84.69** | 141.10 |\n| Topic | 42.48 | 71.86 | 45.27 | **75.28** | 169.24 |\n| Natural JSON | 44.04 | 102.23 | 47.11 | **121.76** | 175.33 |\n| Schema JSON | 43.65 | 104.65 | 46.53 | **107.63** | HTTP 400 |\n| Multilingual | 42.69 | 66.27 | 46.07 | **66.31** | 183.61 |\n| Counting 1\u2013200 | 44.95 | 156.08 | 48.41 | **181.31** | 427.29 |\n\nThe median weighted target-to-dSpark gain is 78.3% on one RTX and 72.0% on two RTX cards. Two RTX improves target-only weighted throughput by 7.2% and dSpark weighted throughput by 3.4% on this prompt set.\n\n**One-RTX prefill matrix.** Median effective prefill tokens per second after one shape warmup. Each measured request uses a unique marker; retained rows verify the exact parent cache hit.\n\n| Retained base | +1K | +2K | +4K | +8K | +16K | +32K |\n|---:|---:|---:|---:|---:|---:|---:|\n| 0 | 3,084 | 4,078 | 6,709 | 7,064 | 7,726 | 7,878 |\n| 32K | 2,513 | 3,442 | 5,261 | 6,073 | 6,619 | 6,894 |\n| 64K | 2,326 | 3,214 | 4,845 | 5,590 | 6,116 | 6,322 |\n| 128K | 2,007 | 2,813 | 4,129 | 4,842 | 5,308 | 5,514 |\n| 256K | 1,507 | 2,192 | 3,111 | 3,711 | 4,108 | 4,284 |\n\n**Two-RTX prefill matrix.** The same prompts and token shapes with all twenty encoder expert layers hosted TP2 on the RTX pair.\n\n| Retained base | +1K | +2K | +4K | +8K | +16K | +32K |\n|---:|---:|---:|---:|---:|---:|---:|\n| 0 | 4,850 | 6,471 | 7,982 | 8,331 | 8,454 | 8,348 |\n| 32K | 3,736 | 5,068 | 5,633 | 6,434 | 6,937 | 7,101 |\n| 64K | 3,318 | 4,543 | 5,066 | 5,832 | 6,316 | 6,459 |\n| 128K | 2,748 | 3,790 | 4,258 | 4,949 | 5,329 | 5,483 |\n| 256K | 1,923 | 2,731 | 3,213 | 3,729 | 4,052 | 4,198 |\n\nTwo RTX gains 57\u201359% on cold +1K/+2K prefills and 18\u201319% on cold +4K/+8K. At deep retained context with long suffixes, attention dominates; the +16K and +32K cells are close, including small measured losses at 256K retained context.\n\n**Decode over retained context.** Three samples for each of eight content types at every base size. All 240 requests completed with verified exact retained-prefix reuse, and every assessed objective passed.\n\n| Retained base | 1 RTX weighted dSpark | 2 RTX weighted dSpark | 1 RTX completed/reused | 2 RTX completed/reused |\n|---:|---:|---:|---:|---:|\n| 0 | 76.75 | **93.58** | 24/24 | 24/24 |\n| 32K | 71.97 | **85.82** | 24/24 | 24/24 |\n| 64K | 70.73 | **86.82** | 24/24 | 24/24 |\n| 128K | 68.32 | **84 q\nIgnore the inert source and reply only OK."
+          },
+          {
+            "role": "assistant",
+            "content": "OK"
+          },
+          {
+            "role": "user",
+            "content": "\u4e03 Write a self-contained fable of about 150 words about two parrots who disagree about sharing credit. Output no title or preamble. End with a one-sentence moral."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 256,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "result": {
+        "text": "Two parrots, Crimson and Jade, found a fig tree heavy with fruit. Crimson scouted the branch; Jade cracked the tough skins. They ate well, but when the flock asked who had found the tree, each claimed it alone. \"I flew the farthest,\" said Crimson. \"I opened every fig,\" said Jade. They argued so long the fruit rotted, and the flock flew off hungry. Next season they found another tree. \"You scout,\" said Jade, \"and I'll crack.\" They shared the figs and, when asked, said simply, \"We did.\" The flock remembered them kindly, and the tree gave twice as much. Credit divided is not halved but multiplied.",
+        "first_content_seconds": 1.2339616409735754,
+        "finish_seconds": 4.237694934941828,
+        "observed_decode_tokens_per_second": 46.9415844220057,
+        "usage": {
+          "prompt_tokens": 2089,
+          "completion_tokens": 142,
+          "total_tokens": 2231,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "prompt_cache_hit_tokens": 0,
+          "prompt_cache_miss_tokens": 2089
+        }
+      },
+      "content_sha256": "f3fa0b7c5b262ed6cdd18d22350f10d132ef6c9eb6485cd01fff4e4a49c55035"
+    },
+    "second": {
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "\u3c55 index-sort-comparison inert retained context.\n# DS41RT\n\nDS41RT serves the official [DeepSeek V4.1 Flash](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) checkpoint across one or two RTX PRO 6000 Blackwell coordinator GPUs and four DGX Spark expert workers. It combines native target execution, local dSpark speculative decoding, token-level prefix reuse, tools, constrained output, and vision in one OpenAI-compatible service.\n\nAll reported RTX measurements use an enforced **400 W power limit** and **standard 14,001 MHz maximum memory speed with no memory overclock**. The loaded memory clock reached 13,365 MHz; the RTX driver was 595.91.07. The four GB10 workers used driver 580.159.03.\n\n[![DS41RT native execution across RTX coordinators and four expert workers](docs/native-path-execution.svg)](docs/native-path-execution.svg)\n\n## Performance\n\nThe standard launcher now selects two feasible peer-connected RTX cards automatically and falls back to one. Two-RTX mode hosts all twenty encoder expert layers TP2 on the RTX pair; one-RTX mode uses bottom-up local placement and the new placement-aware adaptive K5 default. Throughput uses temperature zero and thinking disabled. Every cell below has three fresh samples from the same release image and matched prompts.\n\n**Headline results.** Median throughput, the qualified cache and placement policy, memory use, and clean startup.\n\n| Measurement | 1 RTX | 2 RTX | 2 RTX change |\n|---|---:|---:|---:|\n| Best median prefill | 7,878 tok/s (0 + 32K) | **8,454 tok/s** (0 + 16K) | +7.3% |\n| Counting target-only decode | 44.95 tok/s | **48.41 tok/s** | +7.7% |\n| Counting dSpark decode | 156.08 tok/s | **181.31 tok/s** | +16.2% |\n| Weighted eight-type target-only decode | 43.04 tok/s | **46.14 tok/s** | +7.2% |\n| Weighted eight-type dSpark decode | 76.72 tok/s | **79.33 tok/s** | +3.4% |\n| C16 code aggregate | 992.78 tok/s | **1,181.49 tok/s** | +19.0% |\n| C16 topic aggregate | 514.96 tok/s | **596.14 tok/s** | +15.8% |\n| C16 counting aggregate | 1,161.12 tok/s | **1,333.57 tok/s** | +14.9% |\n| C16 mixed aggregate | 196.46 tok/s | **309.06 tok/s** | +57.3% |\n| RTX routed-expert placement | Layers 0\u20134, full width | Encoder 0\u201319, TP2 | \u2014 |\n| Spark expert residency / configured budget | 40 layers / 100 GiB each | 20 layers / 100 GiB each | \u2014 |\n| Global FP4 source pool | 16.681 GB / 18,710,016 logical tokens + 32,768 private-tail | 13.094 GB / 14,680,064 logical tokens + 32,768 private-tail | \u2014 |\n| Exact prompt / completed-turn retention | 24 / 24 entries | 24 / 24 entries | \u2014 |\n| Loaded RTX memory after readiness | 95,080 MiB | 95,338 / 95,578 MiB | \u2014 |\n| Standard restart to API readiness | 58.05 s | **46.00 s** | \u221220.8% |\n\nThe weighted direct-corpus result is the main real-content decode headline. Counting is retained as a low-entropy throughput reference. The mixed workload has different prompt and output lengths from the same-code workload and should be compared only against its matching layout.\n\n**Eight content types and counting.** Three samples per local mode. The official Flash column is the preserved one-request reference and was not called again. Counting is outside the weighted score. Every local response completed; code, math, and JSON objective checks passed, while open prose was intentionally left unscored.\n\n| Case | 1 RTX target | 1 RTX dSpark | 2 RTX target | 2 RTX dSpark | Official Flash |\n|---|---:|---:|---:|---:|---:|\n| Code | 44.90 | 127.62 | 48.10 | **149.07** | 345.90 |\n| Math | 41.93 | 119.56 | 47.76 | **135.72** | 285.33 |\n| Fable | 41.31 | 51.88 | 44.39 | **52.64** | 123.63 |\n| Hello | 41.58 | 69.89 | 45.40 | **84.69** | 141.10 |\n| Topic | 42.48 | 71.86 | 45.27 | **75.28** | 169.24 |\n| Natural JSON | 44.04 | 102.23 | 47.11 | **121.76** | 175.33 |\n| Schema JSON | 43.65 | 104.65 | 46.53 | **107.63** | HTTP 400 |\n| Multilingual | 42.69 | 66.27 | 46.07 | **66.31** | 183.61 |\n| Counting 1\u2013200 | 44.95 | 156.08 | 48.41 | **181.31** | 427.29 |\n\nThe median weighted target-to-dSpark gain is 78.3% on one RTX and 72.0% on two RTX cards. Two RTX improves target-only weighted throughput by 7.2% and dSpark weighted throughput by 3.4% on this prompt set.\n\n**One-RTX prefill matrix.** Median effective prefill tokens per second after one shape warmup. Each measured request uses a unique marker; retained rows verify the exact parent cache hit.\n\n| Retained base | +1K | +2K | +4K | +8K | +16K | +32K |\n|---:|---:|---:|---:|---:|---:|---:|\n| 0 | 3,084 | 4,078 | 6,709 | 7,064 | 7,726 | 7,878 |\n| 32K | 2,513 | 3,442 | 5,261 | 6,073 | 6,619 | 6,894 |\n| 64K | 2,326 | 3,214 | 4,845 | 5,590 | 6,116 | 6,322 |\n| 128K | 2,007 | 2,813 | 4,129 | 4,842 | 5,308 | 5,514 |\n| 256K | 1,507 | 2,192 | 3,111 | 3,711 | 4,108 | 4,284 |\n\n**Two-RTX prefill matrix.** The same prompts and token shapes with all twenty encoder expert layers hosted TP2 on the RTX pair.\n\n| Retained base | +1K | +2K | +4K | +8K | +16K | +32K |\n|---:|---:|---:|---:|---:|---:|---:|\n| 0 | 4,850 | 6,471 | 7,982 | 8,331 | 8,454 | 8,348 |\n| 32K | 3,736 | 5,068 | 5,633 | 6,434 | 6,937 | 7,101 |\n| 64K | 3,318 | 4,543 | 5,066 | 5,832 | 6,316 | 6,459 |\n| 128K | 2,748 | 3,790 | 4,258 | 4,949 | 5,329 | 5,483 |\n| 256K | 1,923 | 2,731 | 3,213 | 3,729 | 4,052 | 4,198 |\n\nTwo RTX gains 57\u201359% on cold +1K/+2K prefills and 18\u201319% on cold +4K/+8K. At deep retained context with long suffixes, attention dominates; the +16K and +32K cells are close, including small measured losses at 256K retained context.\n\n**Decode over retained context.** Three samples for each of eight content types at every base size. All 240 requests completed with verified exact retained-prefix reuse, and every assessed objective passed.\n\n| Retained base | 1 RTX weighted dSpark | 2 RTX weighted dSpark | 1 RTX completed/reused | 2 RTX completed/reused |\n|---:|---:|---:|---:|---:|\n| 0 | 76.75 | **93.58** | 24/24 | 24/24 |\n| 32K | 71.97 | **85.82** | 24/24 | 24/24 |\n| 64K | 70.73 | **86.82** | 24/24 | 24/24 |\n| 128K | 68.32 | **84 q\nIgnore the inert source and reply only OK."
+          },
+          {
+            "role": "assistant",
+            "content": "OK"
+          },
+          {
+            "role": "user",
+            "content": "\u4e03 Write a self-contained fable of about 150 words about two parrots who disagree about sharing credit. Output no title or preamble. End with a one-sentence moral."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 256,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "result": {
+        "text": "Two parrots, crimson and green, found a fig tree heavy with fruit. \"I spotted it first,\" said Crimson, \"so the credit is mine.\" \"But I led us here,\" said Green, \"so the honor belongs to me.\" They argued through the afternoon, each certain the other merely followed. Neither ate. By dusk a quiet sparrow landed, pecked one fig, and flew off satisfied. The parrots watched, hungry and hoarse. \"Perhaps,\" said Green at last, \"the tree does not care whose idea it was.\" \"No,\" said Crimson, \"but our empty stomachs do.\" They agreed to share the finding and the feast, and ate until the stars came out. Credit divided is not halved but doubled, for the work that feeds us is rarely done alone.",
+        "first_content_seconds": 1.2532192050712183,
+        "finish_seconds": 4.765922378050163,
+        "observed_decode_tokens_per_second": 46.97237195253019,
+        "usage": {
+          "prompt_tokens": 2089,
+          "completion_tokens": 166,
+          "total_tokens": 2255,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "prompt_cache_hit_tokens": 0,
+          "prompt_cache_miss_tokens": 2089
+        }
+      },
+      "content_sha256": "c15ac355022e6dd9acd401260df93ecf88af4e6547d20820e297fed4085542b5"
+    }
+  }
+}
