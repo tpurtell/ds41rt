@@ -572,3 +572,17 @@ audit. `summarize-ds41-decode-profile.py` now validates forecast shapes and
 reports backend-specific count errors. Every pre-existing summary metric was
 reproduced unchanged; both input files match the published evidence archive
 byte for byte. Evidence: `release-v5-exl3-route-forecast-audit.json`.
+
+### Reproducing calibration evidence
+
+`scripts/archive-ds41-calibration.py` packages completed fixed-width runs with
+both timing and acceptance records. It requires passing code, topic, reasoning
+code and mixed collections plus a recorded coordinator restoration. Filtering
+retains cost-model, draft-observation and lane-round records in every content
+window, remaps byte offsets, and records the original and filtered trace hashes.
+Before writing the archive it compares every parsed cost record and every
+parsed acceptance observation/round against the original, then checks saved
+acceptance summaries. The archive includes clients' results, run configuration,
+parsers and a file-hash manifest. A single-RTX K5 trial reproduced all 3,089 cost
+rounds and all content acceptance summaries exactly. This validates evidence
+preservation; instrumented timings remain unsuitable for release TPS tables.
