@@ -5,11 +5,27 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import io
 import json
 import re
 import runpy
 from pathlib import Path
+
+
+def validate_decode_corpus(report: dict, corpus: dict) -> None:
+    """Require the actual requests, including reasoning controls, to match."""
+    expected = set(corpus["weighted_case_ids"]) | {"counting"}
+    samples = report["samples"]
+    assert {sample["case"] for sample in samples} == expected
+    for case in expected:
+        selected = [sample for sample in samples if sample["case"] == case]
+        assert len(selected) == 3 and {sample["repeat"] for sample in selected} == {1, 2, 3}
+        definition = corpus["cases"][case] if case != "counting" else {"thinking": "disabled"}
+        for sample in selected:
+            request = sample["request"]
+            assert request["thinking"] == {"type": definition.get("thinking", "disabled")}
+            assert request.get("reasoning_effort") == definition.get("reasoning_effort")
 
 
 def summarize_readiness(campaign: dict, build: dict) -> dict:
@@ -85,7 +101,7 @@ def summarize_deployment(metadata: dict, log: Path) -> dict:
     assert len(pages) == 4 and pages == [pages[0]] * 3 + [2 * pages[0]]
     assert pages[0] > tails
     if metadata["layout"] == "dual":
-        layers = int(re.search(r"encoder_layers=(\d+)", line).group(1))
+        layers = int(re.search(r"(?:rtx_expert_layers|encoder_layers)=(\d+)", line).group(1))
         tp = 2
     else:
         placement = next(line for line in text.splitlines() if "bottom-up RTX expert placement" in line)
@@ -95,6 +111,7 @@ def summarize_deployment(metadata: dict, log: Path) -> dict:
     budgets = {option(w["args"], "--device-budget-bytes") for w in workers}
     first = {option(w["args"], "--first-layer") for w in workers}
     assert len(budgets) == len(first) == 1
+    assert next(iter(first)) == layers, "RTX/Spark expert partition disagrees"
     return {"global_pool_bytes": pool_bytes, "logical_pool_tokens": (pages[0] - tails) * 512,
             "runtime_headroom_bytes_per_gpu": runtime_headroom,
             "private_tail_tokens": tails * 512, "source_pages": pages,
@@ -108,9 +125,18 @@ def main() -> None:
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--build-record", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--corpus", type=Path,
+                        help="Explicit release corpus; omit to reproduce the historical eight-category report")
+    parser.add_argument("--model", choices=("full", "exl3"), default="full")
     args = parser.parse_args()
     if args.output.exists():
         parser.error("output already exists")
+    historical_cases = ["code", "math", "fable", "hello", "topic", "structured-json",
+                        "structured-json-schema", "multilingual"]
+    corpus = json.loads(args.corpus.read_text()) if args.corpus else None
+    weighted_cases = corpus["weighted_case_ids"] if corpus else historical_cases
+    assert len(weighted_cases) == len(set(weighted_cases)) and "counting" not in weighted_cases
+    expected_cases = set(weighted_cases) | {"counting"}
     required = [
         args.input / f"{layout}-{phase}-metadata.record"
         for layout in ("single", "dual")
@@ -130,6 +156,8 @@ def main() -> None:
     report = {
         "schema": 1,
         "scope": "Upstream-integration release performance; quality evidence is separate",
+        "model": args.model,
+        "weighted_case_ids": weighted_cases,
         "engine_commit": build["source"]["engine_revision"],
         "source_manifest_sha256": build["source"]["manifest_sha256"],
         "build_record": helpers["artifact"](args.build_record),
@@ -147,6 +175,14 @@ def main() -> None:
         "deployment": {},
     }
     artifacts = set()
+    if corpus:
+        report["controls"]["thinking"] = "per-case"
+        report["controls"]["case_controls"] = {
+            case: {"thinking": corpus["cases"][case].get("thinking", "disabled"),
+                   "reasoning_effort": corpus["cases"][case].get("reasoning_effort"),
+                   "weight": corpus["cases"][case]["weight"]}
+            for case in weighted_cases}
+        report["corpus_artifact"] = helpers["artifact"](args.corpus)
     binary_hashes = set()
     context_hashes = set()
     corpus_hashes = set()
@@ -221,8 +257,11 @@ def main() -> None:
         }
         for key in ("decode", "target_decode"):
             assert result[key]["passed"] and result[key]["repeats"] == 3
-            assert len(result[key]["cases"]) == 9
+            assert set(result[key]["cases"]) == expected_cases, "release content cases differ from corpus"
             assert all(case["samples"] == 3 for case in result[key]["cases"].values())
+            if corpus:
+                filename = f"{layout}-{'target-' if key == 'target_decode' else ''}decode.json"
+                validate_decode_corpus(load(args.input / filename), corpus)
         assert result["retained_decode"]["contexts"] == [0, 32768, 65536, 131072, 262144]
         assert result["retained_decode_2k"]["contexts"] == [2048]
         assert result["prefill"]["bases"] == [0, 32768, 65536, 131072, 262144]
@@ -233,6 +272,9 @@ def main() -> None:
     report["binary_sha256"] = next(iter(binary_hashes))
     report["context_sha256"] = next(iter(context_hashes))
     report["corpus_sha256"] = next(iter(corpus_hashes))
+    if args.corpus:
+        assert report["corpus_sha256"] == hashlib.sha256(args.corpus.read_bytes()).hexdigest(), \
+            "measured corpus differs from requested release corpus"
     campaign_path = args.input / "campaign.record"
     campaign = load(campaign_path)
     report["readiness_memory"] = summarize_readiness(campaign, build)
