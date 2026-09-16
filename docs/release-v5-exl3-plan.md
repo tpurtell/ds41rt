@@ -724,3 +724,37 @@ worker with v4 native libraries plus the EXL3 wire addon and rebuilt modules.
 The next step is full-model EXL3 serving assembly; GPU target reduction in that
 complete path, FP4 PLE gathering, generic tier coverage, optimization and all
 release qualification remain required.
+
+## Full-model dual-RTX EXL3 serving
+
+[Dual serving evidence](release-v5-exl3-dual-serving.json) now passes full-model
+functional requests with the FP8-PLE EXL3 checkpoint: encoder expert layers 0–19
+are TP2 on RTX, layers 20–39 are TP4 on the four Sparks, and compressed K7 dSpark
+runs with two independent lanes. The candidate uses C16 admission, 24 retained
+entries, a 1M per-request context limit and 2048-token prefill steps. Its default
+KV target is 14 × 1,048,576 tokens plus 32,768 tokens of page-group headroom,
+occupying 13,094,420,480 global cache bytes. Placement and adaptive timings are
+still the initial integration settings, not the final optimized configuration.
+
+Arithmetic and concurrent code/topic requests produce coherent output. Exact
+prompt reuse reports all 18 tokens cached; JSON schema output is `{"answer":42}`.
+High-effort thinking produces the correct weather function/Paris arguments, and
+continuing with the synthetic tool result reuses 364 cached tokens. A 4822-token
+prefill retrieves an embedded verification code, and its follow-up retrieves the
+same code with 4828 cached tokens. Closing a stream after eight SSE events is
+followed by a successful recovery request. The code response reaches its explicit
+128-token cap; this bounded smoke test does not score it as a complete answer.
+
+The first debug startup overflowed the default target-thread stack while building
+the draft runtime. The optimized binary completed startup without increasing the
+stack. Debug full-serving support remains an open limitation. The observed
+19,477 ms serving-owner initialization log is not a comparative loading benchmark
+and excludes earlier setup. This run combines an optimized host coordinator,
+debug ARM workers, v4 native libraries plus wire addons and the new EXL3 packages;
+it is not clean-image, throughput, full-quality or one-RTX qualification.
+
+The temporary candidate and four temporary workers were stopped; the existing
+coordinator is restored with HTTP health 200. Next work is one-RTX serving and
+FP4 PLE gathering, followed by kernel/workspace/residency optimization and the
+required adaptive, quality, performance and release checks. Top-1 comparison
+remains deferred until the engine is ready for publication.
