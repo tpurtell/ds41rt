@@ -25,6 +25,14 @@ int32_t ds41rt_v41_hc_project_initialize();
 int32_t ds41rt_v41_hc_mixes_workspace(const uint16_t* residual, const float* fn,
     const float* scale, const float* base, float* pre, float* post, float* comb,
     void* scratch, uint64_t scratch_bytes, int32_t rows, void* stream);
+// Optional AOT begin entry point, available only in lagged-mHC builds. All
+// pointers are 16-byte aligned; outputs and scratch are disjoint from every
+// input and each other. rows=1..80, scratch_bytes>=rows*8000. Initialize on
+// each device with ds41rt_v41_hc_project_initialize before capture.
+int32_t ds41rt_v41_hc_begin(const void* residual, const void* fn,
+    const void* scale, const void* base, const void* incoming, const void* norm,
+    void* predicted, void* post, void* comb, void* normalized, void* scratch,
+    uint64_t scratch_bytes, int32_t rows, void* stream);
 #ifdef __cplusplus
 }
 #endif

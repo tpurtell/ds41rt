@@ -15,6 +15,9 @@ def main():
     p.add_argument('--b12x-root', type=Path, required=True)
     p.add_argument('--native', type=Path, required=True)
     p.add_argument('--output', type=Path, required=True)
+    p.add_argument('--snapshot', type=Path, help='Also compare every real mHC weight set against upstream')
+    p.add_argument('--device', type=int, default=0)
+    p.add_argument('--native-bridge', action='store_true', help='Use serving begin ABI from --aot library')
     p.add_argument('--aot', type=Path, help='Optional native lagged-pre probe shared library')
     p.add_argument('--rows', type=int, nargs='+', default=[1,8,16,80,512])
     args = p.parse_args()
@@ -24,6 +27,7 @@ def main():
     from b12x.preparation import PreparationSession
     from tests.norm._mhc import prepare, bind
     from tests.norm.test_mhc_lagged import _lagged_reference
+    torch.cuda.set_device(args.device)
     torch.manual_seed(731)
     lib = C.CDLL(str(args.native.resolve()))
     lib.ds41rt_v41_hc_mixes_workspace.argtypes = [C.c_void_p]*8 + [C.c_uint64, C.c_int32, C.c_void_p]
@@ -32,14 +36,22 @@ def main():
     assert lib.ds41rt_v41_hc_project_initialize() == 0
     aot = C.CDLL(str(args.aot.resolve())) if args.aot else None
     if aot:
-        aot.launch.argtypes = [C.c_void_p]*11 + [C.c_int32,C.c_void_p]
-        assert aot.initialize() == 0
+        aot_launch = aot.ds41rt_v41_hc_begin if args.native_bridge else aot.launch
+        aot_launch.argtypes = [C.c_void_p]*11 + ([C.c_uint64] if args.native_bridge else []) + [C.c_int32,C.c_void_p]
+        initialize = aot.ds41rt_v41_hc_project_initialize if args.native_bridge else aot.initialize
+        assert initialize() == 0
+        assert initialize() == 0
     report = {'scope': 'Native begin versus upstream prepared lagged pre; warm component diagnostic, not serving',
               'command': sys.argv, 'native_sha256': hashlib.sha256(args.native.read_bytes()).hexdigest(),
               'revision': subprocess.check_output(['git','-C',str(args.b12x_root),'rev-parse','HEAD'], text=True).strip(),
               'gpu': subprocess.check_output(['nvidia-smi','--query-gpu=uuid,name,power.limit,clocks.mem','--format=csv'],text=True), 'cases': []}
     if args.aot:
         report['aot_sha256'] = hashlib.sha256(args.aot.read_bytes()).hexdigest()
+    weight_map = json.loads((args.snapshot / 'model.safetensors.index.json').read_text())['weight_map'] if args.snapshot else {}
+    real_names = sorted(name for name in weight_map if name.endswith(('hc_attn_fn','hc_ffn_fn')))
+    if args.snapshot:
+        assert aot and real_names
+        from safetensors import safe_open
     for rows in args.rows:
         residual = torch.randn((rows,4,5120), device='cuda', dtype=torch.bfloat16)
         fn = torch.randn((24,20480), device='cuda') * 0.01
@@ -58,7 +70,15 @@ def main():
             aot_scratch = torch.empty((rows*2000+16,),device='cuda')
             def native_aot():
                 post,comb,y,pre = aot_outputs
-                assert aot.launch(*[t.data_ptr() for t in (residual,fn,scale,bias,incoming,weight,pre,post,comb,y,aot_scratch)],rows,torch.cuda.current_stream().cuda_stream) == 0
+                assert aot_launch(*[t.data_ptr() for t in (residual,fn,scale,bias,incoming,weight,pre,post,comb,y,aot_scratch)],*([aot_scratch.numel()*4] if args.native_bridge else []),rows,torch.cuda.current_stream().cuda_stream) == 0
+            if args.native_bridge:
+                post,comb,y,pre = aot_outputs
+                pointers = [t.data_ptr() for t in (residual,fn,scale,bias,incoming,weight,pre,post,comb,y,aot_scratch)]
+                for count, size in ((0,rows*8000),(81,rows*8000),(rows,rows*8000-1)):
+                    assert aot_launch(*pointers,size,count,torch.cuda.current_stream().cuda_stream) == 1
+                for index, replacement in ((0,0),(6,pointers[4]),(10,pointers[9]),(9,pointers[0]),(10,pointers[10]+4)):
+                    invalid = pointers.copy(); invalid[index] = replacement
+                    assert aot_launch(*invalid,rows*8000,rows,torch.cuda.current_stream().cuda_stream) == 1
         opts = dict(pre_mix=incoming,norm_weight=weight,norm_eps=1e-20,rms_eps=1e-20,hc_eps=1e-6,sinkhorn_iters=20)
         with PreparationSession(device=residual.device,autotune=False,compile_workers=2) as session:
             plan = prepare(session,'pre',(residual,fn,scale,bias),opts)
@@ -115,8 +135,28 @@ def main():
                         except AssertionError as error:
                             failures.append({'component':component,'error':str(error)})
                     errors.append({'amplitude':amplitude,'path':name,'oracle_pass':not failures,'failures':failures})
+            real_checks = []
+            if args.snapshot:
+                saved_weights = [t.clone() for t in (fn,scale,bias,weight)]
+                residual.normal_()
+                for name in real_names:
+                    prefix, kind = name.rsplit('hc_',1)
+                    kind = kind.removesuffix('_fn')
+                    keys = (name,name.removesuffix('_fn')+'_scale',name.removesuffix('_fn')+'_base',prefix+kind+'_norm.weight')
+                    for target, key in zip((fn,scale,bias,weight),keys,strict=True):
+                        with safe_open(args.snapshot / weight_map[key],framework='pt',device='cpu') as file:
+                            target.copy_(file.get_tensor(key).to(dtype=target.dtype,device=target.device))
+                    graphs['upstream'].replay()
+                    graphs['aot'].replay()
+                    torch.cuda.synchronize()
+                    for output, reference in zip(aot_outputs,(*actual[1:],predicted),strict=True):
+                        assert torch.isfinite(output).all()
+                        torch.testing.assert_close(output,reference,rtol=0,atol=0)
+                    real_checks.append(name)
+                for target, original in zip((fn,scale,bias,weight),saved_weights,strict=True):
+                    target.copy_(original)
             if any(not check['oracle_pass'] for check in errors):
-                case = {'rows':rows,'aot_exact_replay_and_scratch_guard':bool(aot),'checks':errors,'timing_skipped':'Numerical gate failed'}
+                case = {'rows':rows,'aot_exact_replay_and_scratch_guard':bool(aot),'real_weight_exact_checks':real_checks,'checks':errors,'timing_skipped':'Numerical gate failed'}
                 report['cases'].append(case)
                 args.output.write_text(json.dumps(report,indent=2)+'\n')
                 print(json.dumps(case),flush=True)
@@ -135,7 +175,7 @@ def main():
                     end.record(); end.synchronize()
                     samples[name].append(start.elapsed_time(end))
             assert torch.cuda.memory_allocated() == allocated
-            case = {'rows':rows,'aot_exact_replay_and_scratch_guard':bool(aot),'checks':errors,'warm_us':samples,
+            case = {'rows':rows,'aot_exact_replay_and_scratch_guard':bool(aot),'real_weight_exact_checks':real_checks,'checks':errors,'warm_us':samples,
                     'median_us':{k:statistics.median(v) for k,v in samples.items()}}
             report['cases'].append(case)
             args.output.write_text(json.dumps(report,indent=2)+'\n')

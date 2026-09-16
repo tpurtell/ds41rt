@@ -26,6 +26,9 @@ def validate_abi(path: Path, label: str, kind: str) -> dict:
     stream = 'stream' if kind in ('quant', 'group_quant') else 'current_stream'
     if kind == 'hc_project':
         pointers, scalars, stream = ('r', 'w', 'p'), ('m',), 's'
+    if kind == 'hc_lagged':
+        pointers = ('residual','fn','scale','bias','incoming','norm','predicted','post','comb','normalized','scratch')
+        scalars, stream = ('rows',), 'stream'
     expected = [f'ds41rt_{label}_Kernel_Module_t *module']
     expected += [f'void *{name}' for name in pointers]
     expected += [f'int32_t {name}' for name in scalars] + [f'cudaStream_t {stream}']
@@ -52,6 +55,10 @@ def dispatch_header(output: Path, manifest: dict) -> None:
     lines.append('#define DS41RT_V41_HC_PROJECT_MODULE {' + ','.join((
         prefix + '_cuda_init', prefix + '_cuda_load_to_device',
         manifest['hc_project']['abi']['symbol'])) + '}')
+    if 'hc_lagged' in manifest:
+        lines.append('#include "v41_hc_lagged.h"')
+        prefix = '_mlir_ds41rt_v41_hc_lagged'
+        lines.append('#define DS41RT_V41_HC_LAGGED_MODULE {' + ','.join((prefix + '_cuda_init', prefix + '_cuda_load_to_device', manifest['hc_lagged']['abi']['symbol'])) + '}')
     variants = []
     for variant in manifest['variants']:
         label, capacity = variant['label'], variant['capacity']
@@ -155,6 +162,11 @@ def export(output: Path, rows: tuple[int, ...], projections=PROJECTIONS) -> None
     compile_v41_mhc_project_aot().export_to_c(str(output), 'v41_hc_project', 'ds41rt_v41_hc_project')
     manifest['hc_project'] = {'split_k': 8, 'scratch_bytes_per_row': 1536,
         'abi': validate_abi(output / 'v41_hc_project.h', 'v41_hc_project', 'hc_project')}
+    if os.environ.get('DS41RT_EXPORT_HC_LAGGED') == '1':
+        from b12x.norm.mhc._v41_lagged_aot import compile_v41_lagged_aot
+        compile_v41_lagged_aot().export_to_c(str(output), 'v41_hc_lagged', 'ds41rt_v41_hc_lagged')
+        manifest['hc_lagged'] = {'scratch_bytes_per_row': 8000, 'max_rows': 80,
+            'abi': validate_abi(output / 'v41_hc_lagged.h', 'v41_hc_lagged', 'hc_lagged')}
     dispatch_header(output, manifest)
     artifacts = {"v41_fp8_variants.h": hashlib.sha256((output / "v41_fp8_variants.h").read_bytes()).hexdigest()}
     for variant in manifest['variants']:
@@ -165,6 +177,10 @@ def export(output: Path, rows: tuple[int, ...], projections=PROJECTIONS) -> None
     for suffix in ('.h', '.o'):
         path = output / ('v41_hc_project' + suffix)
         artifacts[path.name] = hashlib.sha256(path.read_bytes()).hexdigest()
+    if 'hc_lagged' in manifest:
+        for suffix in ('.h', '.o'):
+            path = output / ('v41_hc_lagged' + suffix)
+            artifacts[path.name] = hashlib.sha256(path.read_bytes()).hexdigest()
     manifest['artifacts'] = artifacts
     (output / 'v41_fp8.json').write_text(json.dumps(manifest, indent=2) + '\n')
 

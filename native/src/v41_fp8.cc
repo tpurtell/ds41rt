@@ -27,6 +27,9 @@ struct Variant {
 Variant variants[] = {DS41RT_V41_FP8_VARIANTS};
 Variant peer_variants[] = {DS41RT_V41_FP8_VARIANTS};
 Module hc_project = DS41RT_V41_HC_PROJECT_MODULE;
+#ifdef DS41RT_V41_HC_LAGGED_MODULE
+Module hc_lagged = DS41RT_V41_HC_LAGGED_MODULE;
+#endif
 int hc_device[] = {-1, -1};
 int owner_device[] = {-1, -1};
 std::mutex mutex;
@@ -195,6 +198,9 @@ extern "C" int32_t ds41rt_v41_hc_project_initialize() {
   if(slot<0) return cudaErrorInvalidDevice;
   if(hc_device[slot]>=0) return hc_device[slot]==device ? 0 : int(cudaErrorInvalidDevice);
   int result=load(hc_project,device);
+#ifdef DS41RT_V41_HC_LAGGED_MODULE
+  if(!result) result=load(hc_lagged,device);
+#endif
   if(!result) hc_device[slot]=device;
   return result;
 }
@@ -212,3 +218,25 @@ extern "C" int32_t ds41rt_v41_hc_project_launch(const uint16_t* residual,
   hc_project.launch(args,6);
   return status;
 }
+
+#ifdef DS41RT_V41_HC_LAGGED_MODULE
+extern "C" int32_t ds41rt_v41_hc_begin(const void* residual, const void* fn,
+    const void* scale, const void* bias, const void* incoming, const void* norm,
+    void* predicted, void* post, void* comb, void* normalized, void* scratch,
+    uint64_t scratch_bytes, int32_t rows, void* stream) {
+  if(rows<1 || rows>80 || scratch_bytes<uint64_t(rows)*8000) return cudaErrorInvalidValue;
+  const void* pointers[]={residual,fn,scale,bias,incoming,norm,predicted,post,comb,normalized,scratch};
+  const uint64_t sizes[]={uint64_t(rows)*40960,24*20480*4,12,96,uint64_t(rows)*16,10240,
+    uint64_t(rows)*16,uint64_t(rows)*16,uint64_t(rows)*64,uint64_t(rows)*10240,uint64_t(rows)*8000};
+  uintptr_t starts[11],ends[11];
+  for(int i=0;i<11;++i) if(!span(pointers[i],sizes[i],starts[i],ends[i])) return cudaErrorInvalidValue;
+  for(int i=6;i<11;++i) for(int j=0;j<i;++j)
+    if(starts[i]<ends[j] && starts[j]<ends[i]) return cudaErrorInvalidValue;
+  int device=-1,status=cudaGetDevice(&device); if(status) return status;
+  if(hc_device[0]!=device && hc_device[1]!=device) return cudaErrorInvalidDevice;
+  void* args[]={&residual,&fn,&scale,&bias,&incoming,&norm,&predicted,&post,&comb,
+    &normalized,&scratch,&rows,&stream,&status};
+  hc_lagged.launch(args,14);
+  return status;
+}
+#endif

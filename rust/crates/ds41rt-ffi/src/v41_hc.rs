@@ -25,6 +25,22 @@ type MixesWorkspace = unsafe extern "C" fn(
     i32,
     *mut c_void,
 ) -> i32;
+type Begin = unsafe extern "C" fn(
+    *mut c_void,
+    *mut c_void,
+    *mut c_void,
+    *mut c_void,
+    *mut c_void,
+    *mut c_void,
+    *mut c_void,
+    *mut c_void,
+    *mut c_void,
+    *mut c_void,
+    *mut c_void,
+    u64,
+    i32,
+    *mut c_void,
+) -> i32;
 type Pre = unsafe extern "C" fn(*const u16, *const f32, *mut u16, i32, *mut c_void) -> i32;
 type Post = unsafe extern "C" fn(
     *const u16,
@@ -41,6 +57,7 @@ pub struct V41Hc<'a> {
     post: Post,
     mixes: Mixes,
     mixes_workspace: MixesWorkspace,
+    begin: Option<Begin>,
 }
 impl NativeLibrary {
     pub fn v41_hc(&self) -> Result<V41Hc<'_>> {
@@ -52,6 +69,12 @@ impl NativeLibrary {
         ensure!(status == 0, "mHC AOT initialization CUDA status {status}");
         Ok(V41Hc {
             _library: self,
+            begin: unsafe {
+                self.lib
+                    .get::<Begin>(b"ds41rt_v41_hc_begin")
+                    .ok()
+                    .map(|symbol| *symbol)
+            },
             mixes_workspace: unsafe {
                 *self
                     .lib
@@ -74,6 +97,75 @@ fn buffers(rows: usize, views: &[(Ds41rtDeviceBuffer, usize)]) -> Result<()> {
     Ok(())
 }
 impl V41Hc<'_> {
+    /// # Safety
+    /// Inputs are initialized on this device. Outputs and scratch are disjoint
+    /// from every input and each other, and remain live through stream completion.
+    /// Returns false only when this library or row count uses the legacy path.
+    pub unsafe fn try_begin(
+        &self,
+        residual: Ds41rtDeviceBuffer,
+        projection: Ds41rtDeviceBuffer,
+        scale: Ds41rtDeviceBuffer,
+        base: Ds41rtDeviceBuffer,
+        incoming: Ds41rtDeviceBuffer,
+        norm: Ds41rtDeviceBuffer,
+        predicted: Ds41rtDeviceBuffer,
+        post: Ds41rtDeviceBuffer,
+        comb: Ds41rtDeviceBuffer,
+        normalized: Ds41rtDeviceBuffer,
+        scratch: Ds41rtDeviceBuffer,
+        rows: usize,
+        stream: *mut c_void,
+    ) -> Result<bool> {
+        let Some(begin) = self.begin else {
+            return Ok(false);
+        };
+        if rows > 80 {
+            return Ok(false);
+        }
+        buffers(
+            rows,
+            &[
+                (residual, 40960),
+                (incoming, 16),
+                (predicted, 16),
+                (post, 16),
+                (comb, 64),
+                (normalized, 10240),
+                (scratch, 8000),
+            ],
+        )?;
+        buffers(
+            1,
+            &[
+                (projection, 24 * 20480 * 4),
+                (scale, 12),
+                (base, 96),
+                (norm, 10240),
+            ],
+        )?;
+        let status = unsafe {
+            begin(
+                residual.ptr,
+                projection.ptr,
+                scale.ptr,
+                base.ptr,
+                incoming.ptr,
+                norm.ptr,
+                predicted.ptr,
+                post.ptr,
+                comb.ptr,
+                normalized.ptr,
+                scratch.ptr,
+                scratch.bytes as u64,
+                rows as i32,
+                stream,
+            )
+        };
+        ensure!(status == 0, "mHC begin CUDA status {status}");
+        Ok(true)
+    }
+
     /// # Safety
     /// Inputs must be initialized on the stream device and all buffers remain
     /// live through completion; outputs must be mutually disjoint and disjoint

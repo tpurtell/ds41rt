@@ -163,37 +163,53 @@ impl HcSublayer<'_, '_> {
             "mHC rows exceed capacity"
         );
         unsafe {
-            // Mixes finish reading partials before pre writes collapsed on this
-            // same stream. Reuse its storage without adding a serving allocation.
-            self.kernel.mixes_workspace(
+            if !self.kernel.try_begin(
                 self.residual.buffer,
                 self.weights.get(&self.names[0])?,
                 self.weights.get(&self.names[1])?,
                 self.weights.get(&self.names[2])?,
+                self.incoming_pre.buffer,
+                self.weights.get(&self.names[3])?,
                 self.next_pre.buffer,
                 self.post.buffer,
                 self.comb.buffer,
-                self.collapsed.buffer,
-                rows,
-                stream,
-            )?;
-            // The newly generated pre belongs to the NEXT sublayer.
-            self.kernel.pre(
-                self.residual.buffer,
-                self.incoming_pre.buffer,
-                self.collapsed.buffer,
-                rows,
-                stream,
-            )?;
-            self.stream.library.cuda_ds4_rmsnorm_bf16_rne_async(
-                self.collapsed.buffer,
-                self.weights.get(&self.names[3])?,
                 normalized,
-                rows as i32,
-                5120,
-                1e-20,
+                self.collapsed.buffer,
+                rows,
                 stream,
-            )?;
+            )? {
+                // Mixes finish reading partials before pre writes collapsed on this
+                // same stream. Reuse its storage without adding a serving allocation.
+                self.kernel.mixes_workspace(
+                    self.residual.buffer,
+                    self.weights.get(&self.names[0])?,
+                    self.weights.get(&self.names[1])?,
+                    self.weights.get(&self.names[2])?,
+                    self.next_pre.buffer,
+                    self.post.buffer,
+                    self.comb.buffer,
+                    self.collapsed.buffer,
+                    rows,
+                    stream,
+                )?;
+                // The newly generated pre belongs to the NEXT sublayer.
+                self.kernel.pre(
+                    self.residual.buffer,
+                    self.incoming_pre.buffer,
+                    self.collapsed.buffer,
+                    rows,
+                    stream,
+                )?;
+                self.stream.library.cuda_ds4_rmsnorm_bf16_rne_async(
+                    self.collapsed.buffer,
+                    self.weights.get(&self.names[3])?,
+                    normalized,
+                    rows as i32,
+                    5120,
+                    1e-20,
+                    stream,
+                )?;
+            }
         }
         self.begun = Some(rows);
         let mut result = normalized;
@@ -254,27 +270,42 @@ impl HcSublayer<'_, '_> {
     }
     #[cfg(test)]
     pub(crate) fn rearm_finish_for_test(&mut self, rows: usize) {
-        self.begun = Some(rows); self.pending = None; self.ready = None;
+        self.begun = Some(rows);
+        self.pending = None;
+        self.ready = None;
     }
     /// # Safety
     /// A containing graph executes the same begin operations for these rows.
     /// No pending GPU work may reuse this owner from another stream.
     pub(crate) unsafe fn graph_begin_state(&mut self, rows: usize) -> Result<()> {
         ensure!(rows > 0 && rows <= self.capacity, "invalid mHC graph rows");
-        self.invalidate(); self.begun = Some(rows); Ok(())
+        self.invalidate();
+        self.begun = Some(rows);
+        Ok(())
     }
     /// # Safety
     /// The containing graph executes this owner's post for exactly these rows.
     pub(crate) unsafe fn graph_post_state(&mut self, rows: usize) -> Result<()> {
-        ensure!(self.begun == Some(rows), "mHC graph post has no matching begin");
-        self.begun = None; self.ready = None; self.pending = Some(rows); Ok(())
+        ensure!(
+            self.begun == Some(rows),
+            "mHC graph post has no matching begin"
+        );
+        self.begun = None;
+        self.ready = None;
+        self.pending = Some(rows);
+        Ok(())
     }
     pub(crate) fn graph_identity(&self) -> [usize; 3] {
-        [self.weights as *const _ as usize, self.residual.buffer.ptr as usize,
-            self.normalized.buffer.ptr as usize]
+        [
+            self.weights as *const _ as usize,
+            self.residual.buffer.ptr as usize,
+            self.normalized.buffer.ptr as usize,
+        ]
     }
     pub(crate) fn normalized_storage(&self, rows: usize) -> Ds41rtDeviceBuffer {
-        let mut value = self.normalized.buffer; value.bytes = rows * 10240; value
+        let mut value = self.normalized.buffer;
+        value.bytes = rows * 10240;
+        value
     }
     /// Raw destinations for a containing owner that serializes GPU consumers.
     pub(crate) fn output_storage(&self) -> [Ds41rtDeviceBuffer; 2] {

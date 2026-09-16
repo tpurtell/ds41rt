@@ -78,6 +78,54 @@ They may still require mechanical merge/import/test fixes when shared library
 surfaces change. Attention/projection parallelization across GPUs is deferred;
 retain the current ownership and expert parallelism in comparisons.
 
+## Serving integration of lagged mHC (September 16)
+
+The candidate build option `DS41RT_ENABLE_V41_HC_LAGGED_AOT` exports and hashes
+the pointer ABI, loads its module during per-device planning, and exposes a
+validated native begin call. The Rust HcSublayer uses it for 1–80 rows when
+available, otherwise retaining the existing sequence. The native boundary
+rejects bad row counts, insufficient scratch, misalignment and output overlap.
+It performs no module loading, host allocation or synchronization during replay.
+The experimental option remains off by default pending complete acceptance.
+
+[Serving and bridge evidence](sparkinfer-upstream-mhc-serving-20260916.json)
+contains successful synthetic bridge checks on both GPUs. On RTX1, all 86
+checkpoint target/draft mHC weight sets match upstream exactly at 1/16/80 rows
+(258 comparisons), including graph replay and the existing scratch allocation.
+Native and Rust release builds succeed. Candidate startup reached ready in
+18.1 seconds and retained the 28736-group approximately 14M-token KV pool.
+This is an observed warm startup, not a formal startup comparison.
+
+The first zero-cache, single-pass serving corpus improves weighted decode from
+88.86 to 96.70 TPS against the previous merged candidate. All nine workloads
+pass their checks. Counting improves 177.94→197.31 TPS with identical output;
+math and structured-schema output also remain identical. Other outputs change,
+so their TPS changes include model/draft behavior, not just kernel latency.
+
+Initial standalone C16 code/topic results are 1066.36/704.85 aggregate TPS.
+A same-daemon, previous-library standalone C16 code check produces 1008.84 TPS.
+Running the old library through C1→C16 then produces 1224.40 C16 TPS, showing
+that the earlier isolated C16 comparison is insufficient to establish a
+regression. The matched C1→C16 sequences give the following aggregate code TPS:
+
+| Concurrency | Previous library | Lagged mHC |
+| --- | ---: | ---: |
+| 1 | 155.77 | 163.63 |
+| 2 | 273.92 | 218.43 |
+| 4 | 445.99 | 449.18 |
+| 8 | 712.86 | 774.27 |
+| 16 | 1224.40 | 1267.17 |
+
+The same current daemon binary runs both libraries. Three targeted C2 repeats
+produce previous-library samples 204.38/251.88/251.53 TPS and mHC samples
+262.62/267.49/268.06 TPS (medians 251.53→267.49). The mHC repeats follow its
+full curve; the previous-library repeats follow a restart and the script's
+single-request warmup, so initial graph/adaptive state is not identical.
+The results do not reproduce a steady C2 regression, but expose substantial
+first-run sensitivity. Final benchmarks need consistent warmup and repeated
+measurements. Keep the feature experimental pending broader quality and
+performance acceptance; no single favorable result substitutes for that gate.
+
 ## Native lagged mHC adapter (September 16)
 
 Candidate fork revision `5bda5b2f` adds a pointer-only AOT wrapper around the
