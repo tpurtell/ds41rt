@@ -1,0 +1,136 @@
+{
+  "scope": "Native C AOT launch parity against the same B12x kernels through Python; six real layer-0 experts, hidden 5120, intermediate slice 0:640, K3/K4, BF16 input, direct routing. Not an independent numerical oracle, TP reduction, packed routing, Spark wire input, serving qualification or performance measurement.",
+  "bridge_sha256_meaning": "SHA256 of the loaded libv41_exl3_probe.so binary, not the generated C++ source.",
+  "results": {
+    "rtx": {
+      "qualification": {
+        "passed": true,
+        "scope": "native AOT versus B12x, real first six layer-0 experts; not full-model qualification",
+        "sparkinfer_revision": "c024d14ce936ddfc2c863377d033d85e1787924b",
+        "compute": [
+          12,
+          0
+        ],
+        "intermediate": 640,
+        "snapshot_revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+        "projection_tiers": [
+          [
+            3,
+            4,
+            3
+          ],
+          [
+            3,
+            3,
+            3
+          ],
+          [
+            4,
+            4,
+            4
+          ],
+          [
+            3,
+            3,
+            3
+          ],
+          [
+            4,
+            4,
+            4
+          ],
+          [
+            3,
+            3,
+            3
+          ]
+        ],
+        "aot_manifest_sha256": "821c102ec79d45ec8e84b53928ce593e2b714ed09719f94d705d8823b8886deb",
+        "bridge_sha256": "66931e09d5b0fb7852467b63423abd4c45bd13abedb87c35b6707bf85b8b394a",
+        "checks": [
+          {
+            "rows": 1,
+            "bitwise_equal": true
+          },
+          {
+            "rows": 3,
+            "bitwise_equal": true
+          },
+          {
+            "rows": 16,
+            "bitwise_equal": true
+          }
+        ],
+        "graph_changed_inputs_and_routes": true
+      },
+      "execution_buffer_bytes": 7417600,
+      "artifact": "evidence/v5-exl3-aot-rtx.tar.gz",
+      "artifact_sha256": "9e93628af526f0a6b306fe66849fcb4159e84ae3e8587bc1c9256a087054aa3c"
+    },
+    "spark": {
+      "qualification": {
+        "passed": true,
+        "scope": "native AOT versus B12x, real first six layer-0 experts; not full-model qualification",
+        "sparkinfer_revision": "c024d14ce936ddfc2c863377d033d85e1787924b",
+        "compute": [
+          12,
+          1
+        ],
+        "intermediate": 640,
+        "snapshot_revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+        "projection_tiers": [
+          [
+            3,
+            4,
+            3
+          ],
+          [
+            3,
+            3,
+            3
+          ],
+          [
+            4,
+            4,
+            4
+          ],
+          [
+            3,
+            3,
+            3
+          ],
+          [
+            4,
+            4,
+            4
+          ],
+          [
+            3,
+            3,
+            3
+          ]
+        ],
+        "aot_manifest_sha256": "dfb81c3b1545edcd78eca987169c98c03d5dfa528bcee136db5facb96712df83",
+        "bridge_sha256": "1f5f44977ef60be0502416ec860963aaa335909a1af1577ea11b2f83b4bceb92",
+        "checks": [
+          {
+            "rows": 1,
+            "bitwise_equal": true
+          },
+          {
+            "rows": 3,
+            "bitwise_equal": true
+          },
+          {
+            "rows": 16,
+            "bitwise_equal": true
+          }
+        ],
+        "graph_changed_inputs_and_routes": true
+      },
+      "execution_buffer_bytes": 6628928,
+      "artifact": "evidence/v5-exl3-aot-spark.tar.gz",
+      "artifact_sha256": "e1e5b0a428fe4165100e14529420aac58cfd27c14dfab3f3260d56dbd1c5d281"
+    }
+  }
+}

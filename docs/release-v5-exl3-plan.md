@@ -175,3 +175,25 @@ The clipped reference differs from its finite unclipped control by more than
 Repeatability and graph replay pass. [Evidence and fixture correction](release-v5-exl3-swiglu.json)
 preserve the initial overflowing control and its bounded replacement. Native
 AOT integration and model-level numerical qualification remain pending.
+
+## Native AOT launch bridge
+
+`export_b12x_v41_exl3_aot.py` exports the mixed compute and epilogue objects,
+exact buffer layout (including aliases), generated C bridge and artifact hashes.
+The bridge loads on its owning device and launches on the supplied stream;
+execution does not allocate host storage or synchronize. Export currently covers
+two or three distinct integer tiers, with direct routing limited to two tiers.
+Packed route preparation and the final typed serving ABI remain to be connected.
+
+`qualify_v41_exl3_aot.py` passed on RTX SM120 and Spark SM121 using six actual
+layer-0 experts with independently mixed K3/K4 gate/up/down projections and an
+H128-aligned 640-wide intermediate slice. Native output is bitwise equal to the
+same B12x kernels launched through Python at 1, 3 and 16 rows. CUDA graph replay
+also matches after changing both inputs and route IDs. This checks the native
+launch ABI, not an independent arithmetic reference or full-model quality.
+
+[Results and archived artifacts](release-v5-exl3-aot.json) preserve the tested
+binary hashes. Unique execution buffers for this small probe are 7,417,600 bytes
+on RTX and 6,628,928 bytes on Spark; these are not deployment memory budgets.
+Full expert inventories, TP reduction, packed prefill routing, Spark FP8 wire
+input, compressed residency and serving integration still require verification.
