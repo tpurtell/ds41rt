@@ -2,6 +2,7 @@
 """Fit exploratory placement-aware costs from fixed-prefix serving traces.
 
 Fits odd draft widths and reports held-out even widths on code and mixed workloads.
+Additional explicitly segmented workloads, such as topic, are entirely held out.
 These use observed routes, not forecasts: route-forecast error is a separate gate.
 """
 import argparse
@@ -146,7 +147,8 @@ def main():
         rows, hashes[directory.name] = observations(directory)
         records.extend(rows)
     warm = [r for r in records if r['warm'] and r['rows'] >= 2]
-    training = [r for r in warm if (args.training_workload == 'both' or r['workload'] == 'code')
+    training_workloads = {'code', 'mixed'} if args.training_workload == 'both' else {'code'}
+    training = [r for r in warm if r['workload'] in training_workloads
                 and r['width'] % 2 == 1]
     variants = {}
     for variant in ['affine', 'hinge16']:
@@ -161,14 +163,14 @@ def main():
             other[gpus] = fit([other_features(r, variant) for r in rows], [r['other_us'] for r in rows]).tolist()
         evaluations = {}
         for gpus in sorted(other):
-            for workload in ['code', 'mixed']:
+            for workload in sorted({r['workload'] for r in warm}):
                 for parity in [0, 1]:
                     rows = [r for r in warm if r['gpus'] == gpus and r['workload'] == workload and r['width'] % 2 == parity]
                     predicted = [float(np.dot(other[gpus], other_features(r, variant))) + sum(
                         float(np.dot(experts[b], expert_features(r, group, variant))) for b, group in r['groups'].items()) for r in rows]
                     old = [19864+803*r['rows']+636*sum(g['unique'] for g in r['groups'].values())/40 for r in rows]
                     key = f'rtx{gpus}_{workload}_{"even_holdout" if parity == 0 else "odd"}'
-                    evaluations[key] = dict(training=parity == 1 and (args.training_workload == 'both' or workload == 'code'),
+                    evaluations[key] = dict(training=parity == 1 and workload in training_workloads,
                                             candidate=error_summary(predicted, [r['verify_us'] for r in rows]),
                                             old=error_summary(old, [r['verify_us'] for r in rows]))
         variants[variant] = dict(experts=experts, other=other, evaluations=evaluations)

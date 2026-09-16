@@ -53,3 +53,11 @@ def test_terminal_observations_do_not_lower_acceptance():
     assert result['accepted_fraction'] == 1
     assert result['observations'] == 1
     assert result['excluded_terminal_or_constrained'] == 1
+
+
+def test_independent_lane_round_keeps_existing_cost_fields():
+    _, rounds = MODULE['parse']('native independent lane round lane=1 requests=8 '
+        'proposed=56 accepted=24 emitted=24 draft_us=6270 prepared_us=6325 '
+        'verify_us=73107 total_us=83340')
+    assert rounds == [dict(requests=8, proposed=56, accepted=24, draft_us=6270,
+                           prepare_us=6325, verify_us=73107, total_us=83340)]

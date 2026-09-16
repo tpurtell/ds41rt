@@ -30,8 +30,10 @@ def parse(text):
                 matched=matched, confidence=confidence,
                 constrained=fields['constrained'] == 'true',
                 terminal=fields['eos'] == 'true' or fields['length_limit'] == 'true'))
-        elif 'native scheduler round' in line:
+        elif 'native scheduler round' in line or 'native independent lane round' in line:
             fields = dict(FIELDS.findall(line))
+            if 'prepared_us' in fields:
+                fields['prepare_us'] = fields['prepared_us']
             rounds.append({key: int(fields[key]) for key in
                 ('requests', 'proposed', 'accepted', 'draft_us', 'prepare_us', 'verify_us', 'total_us')})
     return observations, rounds
