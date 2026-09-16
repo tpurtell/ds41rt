@@ -216,6 +216,18 @@ These are exported-kernel tests, not Rust-worker or transport tests. Evidence:
 `release-v5-exl3-paired-native.json` and its archive. Paired fixture emission is
 explicitly rejected until fixtures carry ownership metadata.
 
+Rust execution setup now cross-checks the manifest's boundary, descriptor-row
+count and native-info version against every resident layer and the loaded DSO.
+Descriptor extents must match exactly. The explicit paired launch accepts an
+already validated device ownership row and queues its copy into the prebound
+fourth descriptor row on the launch stream. Ordinary launches reject paired
+kernels, and paired launches reject disjoint kernels. Destination pointers are
+resolved during setup, with no per-launch allocation or tensor-name lookup.
+The caller must preserve ownership-buffer lifetime and exclusive descriptor
+use through stream/graph completion. This Rust launch path still needs GPU
+qualification and connection to worker request decoding; frame admission is
+not enabled by these setup changes.
+
 The current resident layout and mixed kernel assume one intermediate width
 for every expert in a launch. Supporting this proposal requires a real
 per-expert active extent and boundary-block selection inside the fused path.
