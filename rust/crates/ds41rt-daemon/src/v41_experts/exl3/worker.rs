@@ -44,6 +44,24 @@ impl<'a> Exl3Worker<'a> {
         Ok(capacities.into_iter().filter(|&c| c <= maximum).collect())
     }
 
+    /// Validate every capacity before allocating or reading resident weights.
+    pub(crate) fn partition(directory: &Path, capacity: u32, rank: usize) -> Result<ds41rt_loader::V41Exl3Partition> {
+        use ds41rt_ffi::V41Exl3Layout;
+        use ds41rt_loader::V41Exl3Partition;
+        ensure!(rank < 4, "EXL3 worker rank must be 0..3");
+        let mut selected = None;
+        for c in Self::capacities(capacity)? {
+            let layout = Exl3Execution::artifact_layout(&directory.join(format!("m{c}")))?;
+            ensure!(selected.is_none_or(|previous| previous == layout), "EXL3 capacity artifacts disagree on partition");
+            ensure!(layout == V41Exl3Layout::Disjoint || layout == if rank % 2 == 0 {
+                V41Exl3Layout::PairedLast
+            } else { V41Exl3Layout::PairedFirst }, "EXL3 artifact boundary does not match worker rank");
+            selected = Some(layout);
+        }
+        Ok(if selected == Some(V41Exl3Layout::Disjoint) { V41Exl3Partition::Disjoint }
+            else { V41Exl3Partition::PairedTp4 })
+    }
+
     pub(crate) fn plan(directory: &Path, capacity: u32) -> Result<usize> {
         let directories: Vec<_> = Self::capacities(capacity)?.into_iter()
             .map(|c| directory.join(format!("m{c}"))).collect();

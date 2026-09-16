@@ -214,3 +214,41 @@ fn exl3_worker_mapped_and_chunked_responses_match_reference() -> Result<()> {
     println!("EXL3 worker workspace payload: {workspace} bytes; 384 resident experts, six routed IDs, TP4 rank 2; host architecture {}", std::env::consts::ARCH);
     Ok(())
 }
+
+#[test]
+fn paired_worker_loading_rejects_wrong_rank_and_mixed_capacities() -> Result<()> {
+    use ds41rt_loader::V41Exl3Partition;
+    let root = tempfile::tempdir()?;
+    let original = serde_json::json!({
+        "schema":"ds41rt.v41-exl3-aot.v1", "output_dtype":"bf16", "sparkinfer_revision":"test",
+        "hidden":5120,"intermediate":640,"experts":384,"capacity":80,"top_k":6,
+        "bits":[3,4],"swiglu_limit":10.0,"direct":false,"sms":48,"blocks_per_sm":1,
+        "buffers":{},"objects":[],"trellis_lut":{"file":"lut","bytes":16,"sha256":"test"}
+    });
+    let write = |capacity, value: &serde_json::Value| -> Result<()> {
+        let directory = root.path().join(format!("m{capacity}"));
+        std::fs::create_dir_all(&directory)?;
+        std::fs::write(directory.join("v41_exl3.json"), serde_json::to_vec(value)?)?;
+        Ok(())
+    };
+    for c in [1, 16, 80] { write(c, &original)?; }
+    for rank in 0..4 {
+        assert_eq!(Exl3Worker::partition(root.path(), 80, rank)?, V41Exl3Partition::Disjoint);
+    }
+    for (boundary, ranks) in [("last", [0, 2]), ("first", [1, 3])] {
+        let mut paired = original.clone();
+        paired["paired_boundary"] = boundary.into();
+        paired["descriptor_rows"] = 4.into();
+        paired["native_info_version"] = 3.into();
+        for c in [1, 16, 80] { write(c, &paired)?; }
+        for rank in ranks {
+            assert_eq!(Exl3Worker::partition(root.path(), 80, rank)?, V41Exl3Partition::PairedTp4);
+            assert!(Exl3Worker::partition(root.path(), 80, rank ^ 1).is_err());
+        }
+        write(80, &original)?;
+        assert!(Exl3Worker::partition(root.path(), 80, ranks[0]).is_err());
+        assert_eq!(Exl3Worker::partition(root.path(), 16, ranks[0])?, V41Exl3Partition::PairedTp4);
+    }
+    assert!(Exl3Worker::partition(root.path(), 80, 4).is_err());
+    Ok(())
+}

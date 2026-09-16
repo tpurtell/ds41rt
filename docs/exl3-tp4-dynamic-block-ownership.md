@@ -247,9 +247,14 @@ including paired frame length equality, exact decoded IDs/FP32 weights,
 per-pair ownership coverage, repeated-expert conflict rejection, ordinary versus
 paired admission, and unchanged response flags. The daemon compiles with the
 new worker path. This is not yet Rust-worker GPU or distributed-serving
-qualification. Coordinator assignment/encoding, selecting paired resident
-loading and matching packages, and live rejection/cancellation/recovery tests
-remain required before deployment.
+qualification. Worker startup now selects the resident partition from the
+explicit artifact manifest and validates matching boundary orientation across
+all required capacities before reading weights. Paired plans use the existing
+banked loader with exact arena-rounded residency and staging budgets; ordinary
+RTX, dSpark and disjoint Spark callers retain the default layout. A focused
+CPU test covers all ranks, wrong boundaries and mixed capacity packages.
+Coordinator assignment/encoding, exporting matching serving packages, and live
+rejection/cancellation/recovery tests remain required before deployment.
 
 The current resident layout and mixed kernel assume one intermediate width
 for every expert in a launch. Supporting this proposal requires a real

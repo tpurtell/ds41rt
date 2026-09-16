@@ -113,16 +113,18 @@ pub(super) fn load_exl3<'a>(
     catalog: &OfficialV41Catalog,
     config: &NativeExpertServiceConfig,
 ) -> Result<(Weights<'a>, usize)> {
+    let partition = Exl3Worker::partition(&config.exl3_directory(), config.capacity, config.rank)?;
     let workspace = Exl3Worker::plan(&config.exl3_directory(), config.capacity)
         .context("EXL3 checkpoint requires matching native AOT artifacts; set --exl3-aot-dir for a custom export")?;
     let plans = (config.first_layer..40)
         .map(|layer| {
-            Exl3Weights::plan(
+            Exl3Weights::plan_with_layout(
                 catalog,
                 ExpertLayer::Backbone {
                     layer,
                     rank: config.rank,
                 },
+                partition,
             )
         })
         .collect::<Result<Vec<_>>>()?;
@@ -143,7 +145,7 @@ pub(super) fn load_exl3<'a>(
     for (index, plan) in plans.iter().enumerate() {
         let layer = config.first_layer + index;
         let started = std::time::Instant::now();
-        let weight = Exl3Weights::load(
+        let weight = Exl3Weights::load_with_layout(
             library,
             catalog,
             ExpertLayer::Backbone {
@@ -151,6 +153,7 @@ pub(super) fn load_exl3<'a>(
                 rank: config.rank,
             },
             remaining,
+            partition,
         )?;
         remaining = remaining
             .checked_sub(plan.resident_bytes)

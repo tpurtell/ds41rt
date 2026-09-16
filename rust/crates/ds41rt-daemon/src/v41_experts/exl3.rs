@@ -4,7 +4,7 @@ use super::{ExpertLayer, ExpertLoadBudget, EXPERT_READ_LANES};
 use crate::v41_memory::{DeviceAllocation, HostAllocation, LoadStream};
 use anyhow::{ensure, Context, Result};
 use ds41rt_ffi::{Ds41rtDeviceBuffer, NativeLibrary};
-use ds41rt_loader::{OfficialV41Catalog, V41Exl3Layer, V41Exl3Residency};
+use ds41rt_loader::{OfficialV41Catalog, V41Exl3Layer, V41Exl3Partition, V41Exl3Residency};
 
 const JOBS_PER_EXPERT: usize = 9;
 const BANKS: usize = 2;
@@ -35,7 +35,7 @@ fn arena_layout(plan: &V41Exl3Residency) -> Result<(Vec<usize>, usize)> {
     Ok((offsets, bytes))
 }
 
-fn layout(catalog: &OfficialV41Catalog, layer: ExpertLayer) -> Result<V41Exl3Residency> {
+fn layout(catalog: &OfficialV41Catalog, layer: ExpertLayer, partition: V41Exl3Partition) -> Result<V41Exl3Residency> {
     let (layer, world, rank) = match layer {
         ExpertLayer::Backbone { layer, rank } => (V41Exl3Layer::Backbone(layer), 4, rank),
         ExpertLayer::BackboneFull { layer } => (V41Exl3Layer::Backbone(layer), 1, 0),
@@ -45,7 +45,7 @@ fn layout(catalog: &OfficialV41Catalog, layer: ExpertLayer) -> Result<V41Exl3Res
     catalog
         .exl3()
         .context("EXL3 residency requires a routed EXL3 checkpoint")?
-        .residency(layer, world, rank)
+        .residency_with_layout(layer, world, rank, partition)
 }
 
 fn budget(catalog: &OfficialV41Catalog, plan: &V41Exl3Residency) -> Result<ExpertLoadBudget> {
@@ -83,7 +83,15 @@ impl<'a> Exl3Weights<'a> {
         catalog: &OfficialV41Catalog,
         layer: ExpertLayer,
     ) -> Result<ExpertLoadBudget> {
-        budget(catalog, &layout(catalog, layer)?)
+        Self::plan_with_layout(catalog, layer, V41Exl3Partition::Disjoint)
+    }
+
+    pub(crate) fn plan_with_layout(
+        catalog: &OfficialV41Catalog,
+        layer: ExpertLayer,
+        partition: V41Exl3Partition,
+    ) -> Result<ExpertLoadBudget> {
+        budget(catalog, &layout(catalog, layer, partition)?)
     }
 
     pub(crate) fn buffer(&self, name: &str) -> Result<Ds41rtDeviceBuffer> {
@@ -102,7 +110,17 @@ impl<'a> Exl3Weights<'a> {
         layer: ExpertLayer,
         available_device_bytes: usize,
     ) -> Result<Self> {
-        let layout = layout(catalog, layer)?;
+        Self::load_with_layout(library, catalog, layer, available_device_bytes, V41Exl3Partition::Disjoint)
+    }
+
+    pub(crate) fn load_with_layout(
+        library: &'a NativeLibrary,
+        catalog: &OfficialV41Catalog,
+        layer: ExpertLayer,
+        available_device_bytes: usize,
+        partition: V41Exl3Partition,
+    ) -> Result<Self> {
+        let layout = layout(catalog, layer, partition)?;
         let budget = budget(catalog, &layout)?;
         ensure!(
             budget.peak_device_bytes()? <= available_device_bytes,
