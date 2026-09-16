@@ -1,0 +1,76 @@
+{
+  "passed": true,
+  "scope": "Complete EXL3 draft chain K5/K7 distributed versus single-device parity and K5 runtime prefix lifecycle. Full-capacity RTX package build/ABI and selected route oracles. Not independent dSpark expert numerical reference, full-model quality or serving performance.",
+  "snapshot_revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+  "draft_widths": [
+    5,
+    7
+  ],
+  "chain_requests": [
+    1,
+    3,
+    8,
+    16,
+    3
+  ],
+  "runtime_requests_per_lane": [
+    1,
+    3,
+    8,
+    3
+  ],
+  "checks": [
+    "exact tokens/logits/confidence versus the single-device EXL3 draft path",
+    "two independent lanes, changed cache/seed/order, cold execution and graph replay",
+    "greedy and temperature 0.7 sampling",
+    "complete-chain cancellation/reuse, cache lease release and device restoration",
+    "runtime queued prefix, release/re-admission and prefix restoration"
+  ],
+  "package_capacities": [
+    1,
+    16,
+    80,
+    256,
+    1024,
+    4096
+  ],
+  "package_variants": 18,
+  "package_manifest_sha256": "7ee57ed8c0c8c7c49e20ff143558c7a45adc92a7c1f0d49d145b0c91b2d26012",
+  "route_oracles": [
+    {
+      "layout": "rtx-tp1",
+      "capacity": 80,
+      "passed": true
+    },
+    {
+      "layout": "rtx-tp1",
+      "capacity": 4096,
+      "passed": true
+    },
+    {
+      "layout": "dspark",
+      "capacity": 80,
+      "passed": true
+    },
+    {
+      "layout": "dspark",
+      "capacity": 4096,
+      "passed": true
+    }
+  ],
+  "fix": "Published packed route indices and block IDs now use the route packer canonical bucket capacity. Mixed-executor Python buffers used exact capacity, underallocating metadata at 80 rows. Compute data buffers are unchanged.",
+  "native_library_scope": "v4 native library plus wire addon and rebuilt EXL3 modules; not a clean release image.",
+  "coordinator_restored_health_http_status": 200,
+  "remaining": [
+    "independent dSpark expert reference checks",
+    "four-Spark RoCE integration and updated full-capacity SM121 package",
+    "large-capacity expert compute numerical qualification",
+    "FP4 PLE gathering",
+    "full-model serving, kernel and residency optimization",
+    "post-optimization adaptive calibration and content-type acceptance",
+    "all requested release quality/performance/quant analysis and publication"
+  ],
+  "archive": "docs/evidence/v5-exl3-dspark-chain.tar.gz",
+  "archive_sha256": "a367fdcc9ffd8ff8213109db91b0f45a589649c4ee7b9fdc3f0253ddc3529ebd",
+  "verified_at": "2026-09-16T17:05:38.767693+00:00"
+}

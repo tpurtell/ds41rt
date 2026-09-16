@@ -158,6 +158,19 @@ def export(output: Path, intermediate: int, experts: int, capacity: int,
         layouts[field.name] = {"shape": list(value.shape), "dtype": str(value.dtype),
             "bytes": value.numel() * value.element_size(), "allocation": owner,
             "zero_on_create": field.name == "workspace"}
+    # The mixed executor's Python buffers cover exact live-capacity routes,
+    # while the precompiled route packer rounds token capacity to its bucket.
+    # Its initialization kernels write that entire bucket, including padding.
+    # Publish the canonical packer's larger metadata allocations; compute data
+    # buffers still cover only the actual token capacity.
+    if not direct:
+        for name, count in (("packed_route_indices", route_slots), ("block_expert_ids", route_blocks)):
+            spec = layouts[name]
+            if spec['allocation'] != name or spec['dtype'] != 'torch.int32' or len(spec['shape']) != 1:
+                raise ValueError(f'unexpected route metadata layout: {name}')
+            if spec['bytes'] > count * 4:
+                raise ValueError(f'route metadata exceeds canonical capacity: {name}')
+            spec.update(shape=[count], bytes=count * 4)
     manifest = {"schema": "ds41rt.v41-exl3-aot.v1", "sparkinfer_revision": _pinned_sparkinfer.REVISION,
         "gpu": props.name, "compute": [props.major, props.minor], "sms": props.multi_processor_count,
         "hidden": 5120, "intermediate": intermediate, "experts": experts, "top_k": topk,

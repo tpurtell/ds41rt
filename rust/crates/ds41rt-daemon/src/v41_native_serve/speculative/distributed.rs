@@ -72,7 +72,9 @@ mod tests {
         let shards = [devices[0].own(|| VocabularyShard::load(&lib, &catalog, 0..64640, 1 << 30, 16 << 20))?,
             devices[1].own(|| VocabularyShard::load(&lib, &catalog, 64640..129280, 1 << 30, 16 << 20))?];
         let full = devices[1].own(|| VocabularyHead::load(&lib, &catalog, 2 << 30, 16 << 20))?;
-        let weights = devices[1].own(|| DsparkWeights::load(&lib, &catalog, 80, 1, 32usize << 30, 16 << 20))?;
+        let exl3_directory = std::env::var_os("DS41RT_EXL3_AOT").map(std::path::PathBuf::from);
+        let weights = devices[1].own(|| DsparkWeights::load_serving_with_width(&lib, &catalog,
+            80, 16, 32usize << 30, 16 << 20, 5, exl3_directory.as_deref()))?;
         let mut actual = DraftRuntime::with_distributed_requests(devices, &weights, &embedding,
             [&shards[0], &shards[1]], 80, 16)?;
         let mut reference = devices[1].own(|| DraftRuntime::with_requests(&lib, &weights, &embedding, &full, 80, 16))?;

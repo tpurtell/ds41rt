@@ -15,7 +15,12 @@ fn distributed_dspark_chain_matches_full_head() -> Result<()> {
     let shards = [devices[0].own(|| VocabularyShard::load(&lib, &catalog, 0..64640, 1 << 30, 16 << 20))?,
         devices[1].own(|| VocabularyShard::load(&lib, &catalog, 64640..129280, 1 << 30, 16 << 20))?];
     let full = devices[1].own(|| VocabularyHead::load(&lib, &catalog, 2 << 30, 16 << 20))?;
-    let weights = devices[1].own(|| DsparkWeights::load(&lib, &catalog, 80, 1, 32usize << 30, 16 << 20))?;
+    let exl3_directory = std::env::var_os("DS41RT_EXL3_AOT").map(std::path::PathBuf::from);
+    let width = std::env::var("DS41RT_DSPARK_TEST_WIDTH").unwrap_or_else(|_| "5".into()).parse::<usize>()?;
+    ensure!([5, 7].contains(&width), "draft qualification requires width 5 or 7");
+    let capacity = crate::v41_experts::dspark::DsparkAttentionWave::projection_capacity_with_width(16, width)?;
+    let weights = devices[1].own(|| DsparkWeights::load_with_width(&lib, &catalog, capacity,
+        1, 32usize << 30, 16 << 20, width, exl3_directory.as_deref()))?;
     let budgets = devices[1].run(|| DistributedDsparkChain::device_bytes(&weights, 16, 64640))?;
     let mut lanes = [DistributedDsparkChain::new(devices, &weights, &embedding, [&shards[0], &shards[1]], 16, budgets)?,
         DistributedDsparkChain::new(devices, &weights, &embedding, [&shards[0], &shards[1]], 16, budgets)?];
@@ -105,7 +110,7 @@ fn distributed_dspark_chain_matches_full_head() -> Result<()> {
                 }
             }
         }
-        eprintln!("PASS complete distributed draft requests={count}: exact tokens/logits/confidence, peer embedding, two lanes, changed cache/seed/order, cold/replay");
+        eprintln!("PASS complete distributed draft width={width} requests={count}: exact tokens/logits/confidence, peer embedding, two lanes, changed cache/seed/order, cold/replay");
     }
     use std::{future::Future, task::{Context, Poll, Waker}};
     let bindings: Vec<Vec<_>> = (0..3).map(|stage| (0..3).map(|row| (leases[stage][row], 9)).collect()).collect();

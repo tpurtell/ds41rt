@@ -594,3 +594,33 @@ uses the v4 native library plus the wire addon and packaged EXL3 modules.
 Adaptive profiles remain unchanged pending optimized kernel/placement timings;
 separate Spark/RTX calibration and content-type acceptance reporting remain
 required before release measurements are final.
+
+## Complete EXL3 draft chain and capacity packaging
+
+[Draft-chain evidence](release-v5-exl3-dspark-chain.json) passes K5 and K7 with
+1/3/8/16/3 requests through the complete three-stage chain. Two independent
+lanes match the single-device EXL3 path bitwise for tokens, logits and confidence,
+including changed cache/seed/order, greedy and temperature sampling, cold
+execution and graph replay. Cancellation/reuse, lease release and device scope
+restoration pass. The separate K5 runtime check passes independent lane polling,
+queued prefix capture, release/re-admission and prefix restoration with up to
+eight requests per lane. These compare EXL3 execution paths; they are not an
+independent dSpark numerical oracle or full-model quality/performance results.
+
+All 18 SM120 package variants now build for TP1, TP2 and dSpark at capacities
+1/16/80/256/1024/4096. Relocation, concurrent native ABI initialization and six
+integrity-rejection checks pass. Building capacity 80 exposed a metadata sizing
+mismatch: the mixed executor allocates exact-capacity route arrays, while the
+precompiled route packer initializes its rounded token bucket. The native export
+now publishes canonical packer capacity for route indices and block IDs, without
+expanding compute data buffers. CPU-oracle GPU route checks at 80 and 4096 rows
+pass for encoder and draft geometries, including guards, changed graph inputs,
+invalid routes and short live-input rejection. Large-capacity expert compute
+numerics still require qualification; package initialization is not that proof.
+
+The existing coordinator was restored with HTTP health 200. Evidence still uses
+the v4 native library plus the wire addon and rebuilt EXL3 modules. Next work
+includes independent dSpark references, the updated SM121 package and four-Spark
+RoCE integration, FP4 PLE gathering, then full-model serving and optimization.
+Adaptive calibration and content-type acceptance reporting remain after kernel
+and placement optimization, before final release measurements.
