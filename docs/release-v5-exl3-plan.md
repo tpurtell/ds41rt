@@ -40,8 +40,8 @@ Never overwrite a linked base file in place.
 
 | Component | Existing implementation to inspect | Required v5 treatment |
 | --- | --- | --- |
-| Catalog and metadata | `rust/crates/ds41rt-loader/src/exl3_format.rs`, existing quant publisher | Recognize routed-only V4.1 schema, validate actual projection tiers/shapes/rotations; support integer tiers 2–5 without assuming uniform gate/up/down. Preserve native non-routed tensors and both PLE formats. |
-| Weight packing and residency | Older `../ds4rt` Spark resident slabs; current RTX placement | Build exact compressed TP4 Spark, TP1 RTX and TP2 RTX slices with correct rotation axes. Account for descriptors, scratch, graphs, dSpark, KV and PLE; fill additional RTX layers from the bottom. |
+| Catalog and metadata | Production `v41_config.rs` / `v41_catalog.rs`; inherited `exl3_format.rs` as a reference | Recognize routed-only V4.1 schema, validate actual projection tiers/shapes/rotations; support integer tiers 2–5 without assuming uniform gate/up/down. Preserve native non-routed tensors and both PLE formats. |
+| Weight packing and residency | Production `v41_expert_staging.rs` and daemon `v41_experts.rs`; older `../ds4rt` slabs as a reference | Build exact compressed TP4 Spark, TP1 RTX and TP2 RTX slices with correct rotation axes. Account for descriptors, scratch, graphs, dSpark, KV and PLE; fill additional RTX layers from the bottom. |
 | Mixed expert compute | Vendored B12x mixed trellis and `../brandon-glm-5.3-flash/recipe` projection-native adapter | Reuse applicable projection-tier contracts and kernels, port native AOT ABI for V4.1 geometry, retain static route maps and fixed workspace. No full-weight dequantization fallback or allocation on replay. |
 | Numerical contracts | EXL3 dequant/rotation reference and original native routed path | Validate K2–K5, unequal projection tiers, TP reductions, routing weights, clipping, tails, changed routes, poisoned scratch, graph replay, and real checkpoint projections on both GPU types. |
 | Decode/prefill policy | Current independent lanes and adaptive dSpark | Measure actual Spark/RTX costs and retune for compressed residency; preserve independent lanes, fast loading and full-model performance. Profile structural bottlenecks before repeated tuning sweeps. |
@@ -111,5 +111,28 @@ bandwidth benefit from bits alone.
 - [ ] One-time quant analysis and bounded top-1 comparisons; evidence-based default decision.
 - [ ] Clean build/run, fork and engine commits pushed, v5 images/assets/notes published and verified.
 
-Status: inventory and implementation analysis started; no v5 runtime or quality
-acceptance is claimed yet.
+## Loader contract progress
+
+`v41_exl3.rs` adds a native V4.1 manifest reader and per-projection descriptors.
+It validates the original non-routed architecture against the existing strict
+config contract, requires matching compact/external quant metadata, and checks
+the exact backbone/dSpark projection inventory. K2–K5 are accepted individually;
+fractional per-projection tiers, incorrect shapes and rotation axes are rejected.
+Physical header validation checks tensor dtype, shape and byte length against
+the declared tier. PLE metadata is retained for its subsequent storage validator.
+
+The descriptor exposes an H128-aligned TP partition candidate. This establishes
+slice coverage, not GPU numerical equivalence or a selected performance policy.
+Both supplied local checkpoints passed checks against all 188,928 physical
+routed tensor headers: FP8 PLE in 2.48 seconds and FP4 PLE in 2.66 seconds,
+without reading weight payloads. Raw outputs are preserved in
+[FP8-PLE evidence](evidence/v5-loader-exl3-fp8ple.log.gz) and
+[FP4-PLE evidence](evidence/v5-loader-exl3-fp4ple.log.gz). The loader unit suite passed
+72 tests (two opt-in fixture tests ignored); explicit checkpoint checks are run
+separately with `DS41RT_EXL3_SNAPSHOT` and `cargo test -p ds41rt-loader
+v41_exl3 --lib -- --include-ignored --nocapture`.
+
+The production `read_official_v41_catalog` path still needs its EXL3 inventory
+branch, followed by native packing, execution and residency integration. The
+new descriptor is not yet a serving backend. No v5 runtime or quality acceptance
+is claimed yet.

@@ -14,6 +14,9 @@ pub use v41_catalog::{
     V41CoordinatorTensorReader,
 };
 mod v41_config;
+mod v41_exl3;
+pub use v41_exl3::{read_v41_exl3_manifest, V41Exl3Manifest, V41Exl3Projection,
+    V41Exl3ProjectionKind, V41_EXL3_SCHEMA};
 mod v41_image;
 pub use v41_image::{V41Image, V41ImageGrid, V41ImageSpan, V41VisionPrompt, V41ImageTokenType,
     V41_IMAGE_TOKEN_ID, V41_MAX_IMAGES};
