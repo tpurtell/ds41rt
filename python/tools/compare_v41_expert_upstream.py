@@ -186,7 +186,7 @@ def main():
                     candidate_native.run(rows)
                     check(lib.ds41rt_v41_finish_local_experts_async(candidate_native.output.data_ptr(), None, output.data_ptr(), rows, int(candidate_native.token_accumulation), torch.cuda.current_stream().cuda_stream))
                     return output
-                context = nullcontext(SimpleNamespace(run=run_candidate_native, implementation='native_compact_tp2', owners=(candidate_native, candidate_wire)))
+                context = nullcontext(SimpleNamespace(run=run_candidate_native, implementation='native_compact_tp2' if n == 1152 else 'native_compact_spark', owners=(candidate_native, candidate_wire)))
             elif use_compact:
                 from b12x.moe._shared.kernels.w4a8_compact_micro import launch_w4a8_compact_micro, micro_scratch_nbytes
                 from b12x.moe._shared.kernels.w4a16.kernel import _w4a16_topk_sum_launch_flat
@@ -246,6 +246,7 @@ def main():
                         reference_routes = native_route_references[cycle]
                         route_rel = float((route_holder[0] - reference_routes).norm() / reference_routes.norm())
                         checks[-1]['native_route_relative_l2'] = route_rel
+                        checks[-1]['native_routes_exact'] = torch.equal(route_holder[0], reference_routes)
                         assert route_rel < .01, route_rel
                 result={'rows':rows,'activation':activation,'implementation':binding.implementation,'checks':checks}
                 report['cases'].append(result);save();print(json.dumps(result),flush=True)

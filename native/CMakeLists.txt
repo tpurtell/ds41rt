@@ -11,6 +11,7 @@ option(DS41RT_ENABLE_CUDA "Build CUDA kernels and CUDA-backed ABI functions" OFF
 option(DS41RT_ENABLE_V41_LOCAL_EXPERT_AOT "Build full RTX backbone expert kernels alongside dSpark" OFF)
 option(DS41RT_ENABLE_V41_TP2_EXPERT_AOT "Build dual RTX TP2 encoder expert kernels" OFF)
 option(DS41RT_V41_TP2_COMPACT_EXPERIMENT "Use experimental native compact TP2 experts at capacities 1/16" OFF)
+option(DS41RT_V41_SPARK_COMPACT_EXPERIMENT "Use experimental compact Spark experts through two live rows" OFF)
 option(DS41RT_ENABLE_V41_EXPERT_AOT "Build native V4.1 expert AOT kernels" OFF)
 option(DS41RT_ENABLE_V41_NARROW_AOT "Use candidate V4.1 narrow projection scheduling" OFF)
 option(DS41RT_ENABLE_V41_HC_LAGGED_AOT "Build candidate native lagged mHC begin" OFF)

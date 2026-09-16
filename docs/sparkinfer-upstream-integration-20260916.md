@@ -78,6 +78,38 @@ They may still require mechanical merge/import/test fixes when shared library
 surfaces change. Attention/projection parallelization across GPUs is deferred;
 retain the current ownership and expert parallelism in comparisons.
 
+## Native live-row hybrid dispatch (September 16)
+
+Fork `4e31d0a1` implements a single compiled launcher that selects compact by
+live row count and otherwise executes the existing grouped pipeline. The
+experimental cutoffs are 8 on RTX and 2 on Spark, within capacities 1/16;
+larger capacities retain their original paths. Both branches use the existing
+grouped scratch allocation and native FP8 wire/FP32 output ABI. Spark consumes
+the real padded N640 weights rather than adapting through unpadded buffers.
+
+[Native hybrid evidence](sparkinfer-upstream-expert-hybrid-20260916.json)
+records exported C ABI comparisons on RTX and GB10. Numerical checks,
+changed-input graph replay and shared-capacity arenas pass. Above the cutoff,
+FP32 route outputs are bitwise identical to the existing grouped implementation.
+Five GPU tests also check live-row transitions back and forth, invalid routes,
+tiny activation floors, untouched tails and the actual branch selected.
+
+| Shared routes | Native warm→hybrid, µs | Native cold→hybrid, µs |
+| --- | ---: | ---: |
+| RTX, 2 rows | 92.2→34.9 | 127.3→55.3 |
+| RTX, 8 rows | 100.2→81.8 | 131.6→112.1 |
+| RTX, 16 rows | 115.0→114.8 | 147.5→147.5 |
+| Spark, 1 row | 122.3→121.8 | 204.7→196.5 |
+| Spark, 2 rows | 167.7→142.7 | 221.1→207.8 |
+| Spark, 4 rows | 151.5→157.9 | 217.0→216.9 |
+| Spark, 16 rows | 219.5→218.2 | 253.9→252.0 |
+
+The Spark padded layout removes most of the earlier prepared-path one-row
+advantage. Small fallback timing differences are diagnostic variation, not
+new kernels or arithmetic changes. Full hybrid serving comparisons and final
+backend selection remain pending. Both experimental build switches are off
+by default; no worker rollout or production-pin update is claimed here.
+
 ## Expert sharing changes the compact crossover (September 16)
 
 [GB10 and shared-route evidence](sparkinfer-upstream-expert-sharing-20260916.json)

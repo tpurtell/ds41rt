@@ -1,0 +1,2773 @@
+{
+  "scope": "Actual native C ABI qualification of live-row hybrid dispatch on RTX SM120 and Spark SM121. No hybrid serving gain is established.",
+  "candidate_lock": {
+    "schema": 1,
+    "repository": "https://github.com/tpurtell/sparkinfer-glmrt.git",
+    "revision": "4e31d0a10ea7ca24ac48d522fb65eaafbc27ad30",
+    "source_tree_sha256": "648070f81c32fe4bbf8dcfa882cb24f60e079677513d0f6db0ce9f79c769b91f"
+  },
+  "reports": [
+    {
+      "raw_path": "/home/tj/.cache/ds41rt-upstream-20260916/expert-hybrid-rtx-shared.json",
+      "sha256": "880c36fb2866ba318904db33c1714a532c9d583c0d7ffde893416342176880f0",
+      "command": [
+        "python/tools/compare_v41_expert_upstream.py",
+        "--b12x-root",
+        "/home/tj/.cache/ds41rt-upstream-20260916/sparkinfer",
+        "--intermediate",
+        "1152",
+        "--rows",
+        "2",
+        "8",
+        "16",
+        "--routing-pattern",
+        "shared",
+        "--compare-timing",
+        "--cold-timing",
+        "--shared-native-scratch",
+        "--native-lib",
+        "/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-index-sort.so",
+        "--candidate-native-lib",
+        "/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-hybrid-tp2.so",
+        "--output",
+        "/home/tj/.cache/ds41rt-upstream-20260916/expert-hybrid-rtx-shared.json"
+      ],
+      "source_revision": "4e31d0a10ea7ca24ac48d522fb65eaafbc27ad30",
+      "script_sha256": "ed9520234fdc53ae475237141a89b74f914904823e3559db5701e6ea6339b268",
+      "device": "_CudaDeviceProperties(name='NVIDIA RTX PRO 6000 Blackwell Workstation Edition', major=12, minor=0, total_memory=97249MB, multi_processor_count=188, uuid=fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, pci_bus_id=17, pci_device_id=0, pci_domain_id=0, L2_cache_size=128MB)",
+      "geometry": {
+        "experts": 384,
+        "hidden": 5120,
+        "intermediate": 1152,
+        "topk": 6
+      },
+      "baseline_library": {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-index-sort.so",
+        "sha256": "8c6cccb1c3372567a1c49cc480a9cdf2b44d776a0a69cfa7c9d823caebaf0a4c",
+        "output": "Native local FP32 routes summed and rounded once to BF16; excludes cross-device TP reduction",
+        "role": "rtx_tp2"
+      },
+      "candidate_library": {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-hybrid-tp2.so",
+        "sha256": "16793655026843d36402319a91e1176cdbd51ce89097fe8b9b1d00bbad6cf5dc"
+      },
+      "cases": [
+        {
+          "rows": 2,
+          "implementation": "native_tp2",
+          "checks": [
+            {
+              "identical_input_replay_exact": null,
+              "cycle": 0,
+              "relative_l2": 0.0023350075352936983,
+              "cosine": 0.9999973773956299,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.0023350075352936983,
+              "own_reference_cosine": 0.9999973773956299
+            },
+            {
+              "identical_input_replay_exact": null,
+              "cycle": 1,
+              "relative_l2": 0.0023115749936550856,
+              "cosine": 0.9999974370002747,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.0023115749936550856,
+              "own_reference_cosine": 0.9999974370002747
+            },
+            {
+              "identical_input_replay_exact": true,
+              "cycle": 2,
+              "relative_l2": 0.0023115749936550856,
+              "cosine": 0.9999974370002747,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.0023115749936550856,
+              "own_reference_cosine": 0.9999974370002747
+            }
+          ],
+          "timing": {
+            "scope": "Includes BF16 input quantization and route reduction; prepared graph, not native serving ABI",
+            "samples_us": [
+              92.21535682678223,
+              92.18496322631836,
+              92.14240074157715,
+              92.20992088317871,
+              92.16416358947754,
+              92.1782398223877,
+              92.19967842102051,
+              92.26016044616699
+            ],
+            "median_us": 92.19232082366943,
+            "order": "AB/BA, eight samples of 100 replays",
+            "gpu_before": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, P1, 2655 MHz, 13365 MHz, 400.00 W, 0x0000000000000000\nGPU-95f8f212-9131-df99-fd53-7535965197d7, P8, 180 MHz, 405 MHz, 400.00 W, 0x0000000000000000",
+            "gpu_after": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, P1, 2715 MHz, 13365 MHz, 400.00 W, 0x0000000000000000\nGPU-95f8f212-9131-df99-fd53-7535965197d7, P8, 180 MHz, 405 MHz, 400.00 W, 0x0000000000000000",
+            "cold_samples_us": [
+              127.6480033993721,
+              128.83200496435165,
+              126.99200212955475,
+              127.920001745224,
+              126.99200212955475,
+              126.97599828243256,
+              126.97599828243256,
+              127.77600437402725
+            ],
+            "cold_protocol": "Eight balanced samples; median of 32 individual graph replays each following a 256 MiB write, write excluded"
+          },
+          "cold_median_us": 127.32000276446342
+        },
+        {
+          "rows": 2,
+          "implementation": "native_compact_tp2",
+          "checks": [
+            {
+              "identical_input_replay_exact": null,
+              "cycle": 0,
+              "relative_l2": 0.0023350075352936983,
+              "cosine": 0.9999973773956299,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.0023350075352936983,
+              "own_reference_cosine": 0.9999973773956299,
+              "native_route_relative_l2": 1.3406035748175782e-07,
+              "native_routes_exact": false
+            },
+            {
+              "identical_input_replay_exact": null,
+              "cycle": 1,
+              "relative_l2": 0.0023115749936550856,
+              "cosine": 0.9999974370002747,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.0023115749936550856,
+              "own_reference_cosine": 0.9999974370002747,
+              "native_route_relative_l2": 5.2460265465015254e-08,
+              "native_routes_exact": false
+            },
+            {
+              "identical_input_replay_exact": true,
+              "cycle": 2,
+              "relative_l2": 0.0023115749936550856,
+              "cosine": 0.9999974370002747,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.0023115749936550856,
+              "own_reference_cosine": 0.9999974370002747,
+              "native_route_relative_l2": 5.2460265465015254e-08,
+              "native_routes_exact": false
+            }
+          ],
+          "timing": {
+            "scope": "Includes BF16 input quantization and route reduction; prepared graph, not native serving ABI",
+            "samples_us": [
+              34.87776041030884,
+              34.83936071395874,
+              34.87423896789551,
+              34.84352111816406,
+              34.84895944595337,
+              34.82815980911255,
+              35.54879903793335,
+              34.898879528045654
+            ],
+            "median_us": 34.86159920692444,
+            "order": "AB/BA, eight samples of 100 replays",
+            "gpu_before": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, P1, 2655 MHz, 13365 MHz, 400.00 W, 0x0000000000000000\nGPU-95f8f212-9131-df99-fd53-7535965197d7, P8, 180 MHz, 405 MHz, 400.00 W, 0x0000000000000000",
+            "gpu_after": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, P1, 2715 MHz, 13365 MHz, 400.00 W, 0x0000000000000000\nGPU-95f8f212-9131-df99-fd53-7535965197d7, P8, 180 MHz, 405 MHz, 400.00 W, 0x0000000000000000",
+            "cold_samples_us": [
+              55.296000093221664,
+              55.296000093221664,
+              55.296000093221664,
+              55.296000093221664,
+              55.296000093221664,
+              55.296000093221664,
+              55.296000093221664,
+              55.296000093221664
+            ],
+            "cold_protocol": "Eight balanced samples; median of 32 individual graph replays each following a 256 MiB write, write excluded"
+          },
+          "cold_median_us": 55.296000093221664
+        },
+        {
+          "rows": 8,
+          "implementation": "native_tp2",
+          "checks": [
+            {
+              "identical_input_replay_exact": null,
+              "cycle": 0,
+              "relative_l2": 0.00234093121252954,
+              "cosine": 0.9999973177909851,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.00234093121252954,
+              "own_reference_cosine": 0.9999973177909851
+            },
+            {
+              "identical_input_replay_exact": null,
+              "cycle": 1,
+              "relative_l2": 0.002351772738620639,
+              "cosine": 0.9999973177909851,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.002351772738620639,
+              "own_reference_cosine": 0.9999973177909851
+            },
+            {
+              "identical_input_replay_exact": true,
+              "cycle": 2,
+              "relative_l2": 0.002351772738620639,
+              "cosine": 0.9999973177909851,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.002351772738620639,
+              "own_reference_cosine": 0.9999973177909851
+            }
+          ],
+          "timing": {
+            "scope": "Includes BF16 input quantization and route reduction; prepared graph, not native serving ABI",
+            "samples_us": [
+              100.29439926147461,
+              99.33535575866699,
+              100.2723217010498,
+              100.27199745178223,
+              100.23903846740723,
+              100.2460765838623,
+              100.17439842224121,
+              100.2467155456543
+            ],
+            "median_us": 100.2463960647583,
+            "order": "AB/BA, eight samples of 100 replays",
+            "gpu_before": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, P1, 2805 MHz, 13365 MHz, 400.00 W, 0x0000000000000000\nGPU-95f8f212-9131-df99-fd53-7535965197d7, P8, 180 MHz, 405 MHz, 400.00 W, 0x0000000000000000",
+            "gpu_after": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, P1, 2722 MHz, 13365 MHz, 400.00 W, 0x0000000000000000\nGPU-95f8f212-9131-df99-fd53-7535965197d7, P8, 180 MHz, 405 MHz, 400.00 W, 0x0000000000000000",
+            "cold_samples_us": [
+              131.9199949502945,
+              132.09599256515503,
+              131.071999669075,
+              131.0880035161972,
+              132.4159950017929,
+              131.0880035161972,
+              131.56799972057343,
+              131.6160038113594
+            ],
+            "cold_protocol": "Eight balanced samples; median of 32 individual graph replays each following a 256 MiB write, write excluded"
+          },
+          "cold_median_us": 131.59200176596642
+        },
+        {
+          "rows": 8,
+          "implementation": "native_compact_tp2",
+          "checks": [
+            {
+              "identical_input_replay_exact": null,
+              "cycle": 0,
+              "relative_l2": 0.0023409209679812193,
+              "cosine": 0.9999973177909851,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.0023409209679812193,
+              "own_reference_cosine": 0.9999973177909851,
+              "native_route_relative_l2": 1.3363327866500185e-07,
+              "native_routes_exact": false
+            },
+            {
+              "identical_input_replay_exact": null,
+              "cycle": 1,
+              "relative_l2": 0.0023517790250480175,
+              "cosine": 0.9999973177909851,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.0023517790250480175,
+              "own_reference_cosine": 0.9999973177909851,
+              "native_route_relative_l2": 5.047458273566008e-08,
+              "native_routes_exact": false
+            },
+            {
+              "identical_input_replay_exact": true,
+              "cycle": 2,
+              "relative_l2": 0.0023517790250480175,
+              "cosine": 0.9999973177909851,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.0023517790250480175,
+              "own_reference_cosine": 0.9999973177909851,
+              "native_route_relative_l2": 5.047458273566008e-08,
+              "native_routes_exact": false
+            }
+          ],
+          "timing": {
+            "scope": "Includes BF16 input quantization and route reduction; prepared graph, not native serving ABI",
+            "samples_us": [
+              81.49184226989746,
+              81.43903732299805,
+              81.76480293273926,
+              81.7311954498291,
+              81.85312271118164,
+              81.85215950012207,
+              86.05728149414062,
+              82.56256103515625
+            ],
+            "median_us": 81.80848121643066,
+            "order": "AB/BA, eight samples of 100 replays",
+            "gpu_before": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, P1, 2805 MHz, 13365 MHz, 400.00 W, 0x0000000000000000\nGPU-95f8f212-9131-df99-fd53-7535965197d7, P8, 180 MHz, 405 MHz, 400.00 W, 0x0000000000000000",
+            "gpu_after": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, P1, 2722 MHz, 13365 MHz, 400.00 W, 0x0000000000000000\nGPU-95f8f212-9131-df99-fd53-7535965197d7, P8, 180 MHz, 405 MHz, 400.00 W, 0x0000000000000000",
+            "cold_samples_us": [
+              112.68800124526024,
+              111.61600053310394,
+              108.5439994931221,
+              114.656001329422,
+              108.22400078177452,
+              110.87999865412712,
+              114.68800157308578,
+              112.62400075793266
+            ],
+            "cold_protocol": "Eight balanced samples; median of 32 individual graph replays each following a 256 MiB write, write excluded"
+          },
+          "cold_median_us": 112.1200006455183
+        },
+        {
+          "rows": 16,
+          "implementation": "native_tp2",
+          "checks": [
+            {
+              "identical_input_replay_exact": null,
+              "cycle": 0,
+              "relative_l2": 0.0023461556993424892,
+              "cosine": 0.9999973773956299,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.0023461556993424892,
+              "own_reference_cosine": 0.9999973773956299
+            },
+            {
+              "identical_input_replay_exact": null,
+              "cycle": 1,
+              "relative_l2": 0.0023397577460855246,
+              "cosine": 0.9999971985816956,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.0023397577460855246,
+              "own_reference_cosine": 0.9999971985816956
+            },
+            {
+              "identical_input_replay_exact": true,
+              "cycle": 2,
+              "relative_l2": 0.0023397577460855246,
+              "cosine": 0.9999971985816956,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.0023397577460855246,
+              "own_reference_cosine": 0.9999971985816956
+            }
+          ],
+          "timing": {
+            "scope": "Includes BF16 input quantization and route reduction; prepared graph, not native serving ABI",
+            "samples_us": [
+              115.05791664123535,
+              114.88960266113281,
+              114.9283218383789,
+              114.92192268371582,
+              114.9516773223877,
+              115.06752014160156,
+              115.18848419189453,
+              115.07488250732422
+            ],
+            "median_us": 115.00479698181152,
+            "order": "AB/BA, eight samples of 100 replays",
+            "gpu_before": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, P1, 2722 MHz, 13365 MHz, 400.00 W, 0x0000000000000000\nGPU-95f8f212-9131-df99-fd53-7535965197d7, P8, 180 MHz, 405 MHz, 400.00 W, 0x0000000000000000",
+            "gpu_after": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, P1, 2820 MHz, 13365 MHz, 400.00 W, 0x0000000000000000\nGPU-95f8f212-9131-df99-fd53-7535965197d7, P8, 180 MHz, 405 MHz, 400.00 W, 0x0000000000000000",
+            "cold_samples_us": [
+              147.47200161218643,
+              147.45600521564484,
+              147.45600521564484,
+              147.45600521564484,
+              147.45600521564484,
+              147.45600521564484,
+              148.28800410032272,
+              147.45600521564484
+            ],
+            "cold_protocol": "Eight balanced samples; median of 32 individual graph replays each following a 256 MiB write, write excluded"
+          },
+          "cold_median_us": 147.45600521564484
+        },
+        {
+          "rows": 16,
+          "implementation": "native_compact_tp2",
+          "checks": [
+            {
+              "identical_input_replay_exact": null,
+              "cycle": 0,
+              "relative_l2": 0.0023461556993424892,
+              "cosine": 0.9999973773956299,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.0023461556993424892,
+              "own_reference_cosine": 0.9999973773956299,
+              "native_route_relative_l2": 0.0,
+              "native_routes_exact": true
+            },
+            {
+              "identical_input_replay_exact": null,
+              "cycle": 1,
+              "relative_l2": 0.0023397577460855246,
+              "cosine": 0.9999971985816956,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.0023397577460855246,
+              "own_reference_cosine": 0.9999971985816956,
+              "native_route_relative_l2": 0.0,
+              "native_routes_exact": true
+            },
+            {
+              "identical_input_replay_exact": true,
+              "cycle": 2,
+              "relative_l2": 0.0023397577460855246,
+              "cosine": 0.9999971985816956,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.0023397577460855246,
+              "own_reference_cosine": 0.9999971985816956,
+              "native_route_relative_l2": 0.0,
+              "native_routes_exact": true
+            }
+          ],
+          "timing": {
+            "scope": "Includes BF16 input quantization and route reduction; prepared graph, not native serving ABI",
+            "samples_us": [
+              114.83712196350098,
+              114.76192474365234,
+              114.71808433532715,
+              114.84543800354004,
+              114.77663993835449,
+              114.88479614257812,
+              115.00543594360352,
+              114.98175621032715
+            ],
+            "median_us": 114.84127998352051,
+            "order": "AB/BA, eight samples of 100 replays",
+            "gpu_before": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, P1, 2722 MHz, 13365 MHz, 400.00 W, 0x0000000000000000\nGPU-95f8f212-9131-df99-fd53-7535965197d7, P8, 180 MHz, 405 MHz, 400.00 W, 0x0000000000000000",
+            "gpu_after": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, P1, 2820 MHz, 13365 MHz, 400.00 W, 0x0000000000000000\nGPU-95f8f212-9131-df99-fd53-7535965197d7, P8, 180 MHz, 405 MHz, 400.00 W, 0x0000000000000000",
+            "cold_samples_us": [
+              147.45600521564484,
+              147.45600521564484,
+              147.45600521564484,
+              147.45600521564484,
+              147.45600521564484,
+              147.45600521564484,
+              147.68000692129135,
+              147.45600521564484
+            ],
+            "cold_protocol": "Eight balanced samples; median of 32 individual graph replays each following a 256 MiB write, write excluded"
+          },
+          "cold_median_us": 147.45600521564484
+        }
+      ]
+    },
+    {
+      "raw_path": "/home/tj/.cache/ds41rt-upstream-20260916/expert-hybrid-spark-shared.json",
+      "sha256": "57ba3b632858929d3adad3c0340c258f0799ad3bf966f7cd9a2062f8d2cf96ee",
+      "command": [
+        "python/tools/compare_v41_expert_upstream.py",
+        "--b12x-root",
+        "/work/sparkinfer-compact",
+        "--intermediate",
+        "576",
+        "--rows",
+        "1",
+        "2",
+        "4",
+        "16",
+        "--routing-pattern",
+        "shared",
+        "--compare-timing",
+        "--cold-timing",
+        "--shared-native-scratch",
+        "--native-lib",
+        "/work/worker-artifacts/libds41rt_native.so",
+        "--candidate-native-lib",
+        "/work/libhybrid-spark-native.so",
+        "--output",
+        "/work/expert-hybrid-spark-shared.json"
+      ],
+      "source_revision": "4e31d0a10ea7ca24ac48d522fb65eaafbc27ad30",
+      "script_sha256": "ed9520234fdc53ae475237141a89b74f914904823e3559db5701e6ea6339b268",
+      "device": "_CudaDeviceProperties(name='NVIDIA GB10', major=12, minor=1, total_memory=124546MB, multi_processor_count=48, uuid=a7c503f0-bb16-4333-4f44-92e331dbcf2e, pci_bus_id=1, pci_device_id=0, pci_domain_id=15, L2_cache_size=24MB)",
+      "geometry": {
+        "experts": 384,
+        "hidden": 5120,
+        "intermediate": 576,
+        "topk": 6
+      },
+      "baseline_library": {
+        "path": "/work/worker-artifacts/libds41rt_native.so",
+        "sha256": "9dd7115e8e520ad7fee5ebdf8a540c9f406a77d0219428c686fdad5c8ae95f07",
+        "output": "Native local FP32 routes summed and rounded once to BF16; excludes cross-device TP reduction",
+        "role": "spark"
+      },
+      "candidate_library": {
+        "path": "/work/libhybrid-spark-native.so",
+        "sha256": "f93247dbf737a19d48ac86b21246ab237ff3e088c248305046c8c2be39ddf77b"
+      },
+      "cases": [
+        {
+          "rows": 1,
+          "implementation": "native_spark",
+          "checks": [
+            {
+              "identical_input_replay_exact": null,
+              "cycle": 0,
+              "relative_l2": 0.0023753782734274864,
+              "cosine": 0.9999971389770508,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.0023753782734274864,
+              "own_reference_cosine": 0.9999971389770508
+            },
+            {
+              "identical_input_replay_exact": null,
+              "cycle": 1,
+              "relative_l2": 0.002365611493587494,
+              "cosine": 0.9999971985816956,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.002365611493587494,
+              "own_reference_cosine": 0.9999971985816956
+            },
+            {
+              "identical_input_replay_exact": true,
+              "cycle": 2,
+              "relative_l2": 0.002365611493587494,
+              "cosine": 0.9999971985816956,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.002365611493587494,
+              "own_reference_cosine": 0.9999971985816956
+            }
+          ],
+          "timing": {
+            "scope": "Includes BF16 input quantization and route reduction; prepared graph, not native serving ABI",
+            "samples_us": [
+              121.61248207092285,
+              132.00480461120605,
+              122.13024139404297,
+              122.11584091186523,
+              135.1865577697754,
+              130.1632022857666,
+              122.29120254516602,
+              122.391357421875
+            ],
+            "median_us": 122.34127998352051,
+            "order": "AB/BA, eight samples of 100 replays",
+            "gpu_before": "GPU-a7c503f0-bb16-4333-4f44-92e331dbcf2e, P0, 2418 MHz, [N/A], [N/A], 0x0000000000000000",
+            "gpu_after": "GPU-a7c503f0-bb16-4333-4f44-92e331dbcf2e, P0, 2502 MHz, [N/A], [N/A], 0x0000000000000000",
+            "cold_samples_us": [
+              204.6559974551201,
+              204.6239972114563,
+              204.70400154590607,
+              204.6239972114563,
+              204.864002764225,
+              204.75199818611145,
+              205.34399896860123,
+              204.6399936079979
+            ],
+            "cold_protocol": "Eight balanced samples; median of 32 individual graph replays each following a 256 MiB write, write excluded"
+          },
+          "cold_median_us": 204.67999950051308
+        },
+        {
+          "rows": 1,
+          "implementation": "native_compact_tp2",
+          "checks": [
+            {
+              "identical_input_replay_exact": null,
+              "cycle": 0,
+              "relative_l2": 0.0023753782734274864,
+              "cosine": 0.9999971389770508,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.0023753782734274864,
+              "own_reference_cosine": 0.9999971389770508,
+              "native_route_relative_l2": 6.958824627645299e-08,
+              "native_routes_exact": false
+            },
+            {
+              "identical_input_replay_exact": null,
+              "cycle": 1,
+              "relative_l2": 0.002365611493587494,
+              "cosine": 0.9999971985816956,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.002365611493587494,
+              "own_reference_cosine": 0.9999971985816956,
+              "native_route_relative_l2": 2.4058053327280504e-08,
+              "native_routes_exact": false
+            },
+            {
+              "identical_input_replay_exact": true,
+              "cycle": 2,
+              "relative_l2": 0.002365611493587494,
+              "cosine": 0.9999971985816956,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.002365611493587494,
+              "own_reference_cosine": 0.9999971985816956,
+              "native_route_relative_l2": 2.4058053327280504e-08,
+              "native_routes_exact": false
+            }
+          ],
+          "timing": {
+            "scope": "Includes BF16 input quantization and route reduction; prepared graph, not native serving ABI",
+            "samples_us": [
+              121.8342399597168,
+              127.76576042175293,
+              121.72703742980957,
+              121.66560173034668,
+              122.07103729248047,
+              121.73184394836426,
+              121.68352127075195,
+              122.02943801879883
+            ],
+            "median_us": 121.78304195404053,
+            "order": "AB/BA, eight samples of 100 replays",
+            "gpu_before": "GPU-a7c503f0-bb16-4333-4f44-92e331dbcf2e, P0, 2418 MHz, [N/A], [N/A], 0x0000000000000000",
+            "gpu_after": "GPU-a7c503f0-bb16-4333-4f44-92e331dbcf2e, P0, 2502 MHz, [N/A], [N/A], 0x0000000000000000",
+            "cold_samples_us": [
+              196.56000286340714,
+              196.52800261974335,
+              196.51199877262115,
+              196.51199877262115,
+              196.51199877262115,
+              196.60799950361252,
+              196.56000286340714,
+              196.54400646686554
+            ],
+            "cold_protocol": "Eight balanced samples; median of 32 individual graph replays each following a 256 MiB write, write excluded"
+          },
+          "cold_median_us": 196.53600454330444
+        },
+        {
+          "rows": 2,
+          "implementation": "native_spark",
+          "checks": [
+            {
+              "identical_input_replay_exact": null,
+              "cycle": 0,
+              "relative_l2": 0.0023229520302265882,
+              "cosine": 0.9999972581863403,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.0023229520302265882,
+              "own_reference_cosine": 0.9999972581863403
+            },
+            {
+              "identical_input_replay_exact": null,
+              "cycle": 1,
+              "relative_l2": 0.00233658030629158,
+              "cosine": 0.9999972581863403,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.00233658030629158,
+              "own_reference_cosine": 0.9999972581863403
+            },
+            {
+              "identical_input_replay_exact": true,
+              "cycle": 2,
+              "relative_l2": 0.00233658030629158,
+              "cosine": 0.9999972581863403,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.00233658030629158,
+              "own_reference_cosine": 0.9999972581863403
+            }
+          ],
+          "timing": {
+            "scope": "Includes BF16 input quantization and route reduction; prepared graph, not native serving ABI",
+            "samples_us": [
+              165.07551193237305,
+              168.19135665893555,
+              167.29312896728516,
+              167.69023895263672,
+              167.85888671875,
+              167.92831420898438,
+              167.2585678100586,
+              167.6915168762207
+            ],
+            "median_us": 167.6908779144287,
+            "order": "AB/BA, eight samples of 100 replays",
+            "gpu_before": "GPU-a7c503f0-bb16-4333-4f44-92e331dbcf2e, P0, 2502 MHz, [N/A], [N/A], 0x0000000000000000",
+            "gpu_after": "GPU-a7c503f0-bb16-4333-4f44-92e331dbcf2e, P0, 2502 MHz, [N/A], [N/A], 0x0000000000000000",
+            "cold_samples_us": [
+              221.11999988555908,
+              220.38399428129196,
+              221.0720032453537,
+              221.1040034890175,
+              220.70399671792984,
+              221.15200012922287,
+              220.5279991030693,
+              221.11999988555908
+            ],
+            "cold_protocol": "Eight balanced samples; median of 32 individual graph replays each following a 256 MiB write, write excluded"
+          },
+          "cold_median_us": 221.0880033671856
+        },
+        {
+          "rows": 2,
+          "implementation": "native_compact_tp2",
+          "checks": [
+            {
+              "identical_input_replay_exact": null,
+              "cycle": 0,
+              "relative_l2": 0.0023229520302265882,
+              "cosine": 0.9999972581863403,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.0023229520302265882,
+              "own_reference_cosine": 0.9999972581863403,
+              "native_route_relative_l2": 6.597105084438226e-08,
+              "native_routes_exact": false
+            },
+            {
+              "identical_input_replay_exact": null,
+              "cycle": 1,
+              "relative_l2": 0.00233658030629158,
+              "cosine": 0.9999972581863403,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.00233658030629158,
+              "own_reference_cosine": 0.9999972581863403,
+              "native_route_relative_l2": 2.691827738487973e-08,
+              "native_routes_exact": false
+            },
+            {
+              "identical_input_replay_exact": true,
+              "cycle": 2,
+              "relative_l2": 0.00233658030629158,
+              "cosine": 0.9999972581863403,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.00233658030629158,
+              "own_reference_cosine": 0.9999972581863403,
+              "native_route_relative_l2": 2.691827738487973e-08,
+              "native_routes_exact": false
+            }
+          ],
+          "timing": {
+            "scope": "Includes BF16 input quantization and route reduction; prepared graph, not native serving ABI",
+            "samples_us": [
+              145.84511756896973,
+              149.0828800201416,
+              142.5971221923828,
+              142.63296127319336,
+              142.49152183532715,
+              142.7945613861084,
+              142.5391960144043,
+              142.77631759643555
+            ],
+            "median_us": 142.70463943481445,
+            "order": "AB/BA, eight samples of 100 replays",
+            "gpu_before": "GPU-a7c503f0-bb16-4333-4f44-92e331dbcf2e, P0, 2502 MHz, [N/A], [N/A], 0x0000000000000000",
+            "gpu_after": "GPU-a7c503f0-bb16-4333-4f44-92e331dbcf2e, P0, 2502 MHz, [N/A], [N/A], 0x0000000000000000",
+            "cold_samples_us": [
+              207.74399489164352,
+              207.8080028295517,
+              207.88799971342087,
+              207.8080028295517,
+              207.74399489164352,
+              207.7759951353073,
+              207.85599946975708,
+              207.85599946975708
+            ],
+            "cold_protocol": "Eight balanced samples; median of 32 individual graph replays each following a 256 MiB write, write excluded"
+          },
+          "cold_median_us": 207.8080028295517
+        },
+        {
+          "rows": 4,
+          "implementation": "native_spark",
+          "checks": [
+            {
+              "identical_input_replay_exact": null,
+              "cycle": 0,
+              "relative_l2": 0.0023622652515769005,
+              "cosine": 0.9999972581863403,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.0023622652515769005,
+              "own_reference_cosine": 0.9999972581863403
+            },
+            {
+              "identical_input_replay_exact": null,
+              "cycle": 1,
+              "relative_l2": 0.002349365968257189,
+              "cosine": 0.9999972581863403,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.002349365968257189,
+              "own_reference_cosine": 0.9999972581863403
+            },
+            {
+              "identical_input_replay_exact": true,
+              "cycle": 2,
+              "relative_l2": 0.002349365968257189,
+              "cosine": 0.9999972581863403,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.002349365968257189,
+              "own_reference_cosine": 0.9999972581863403
+            }
+          ],
+          "timing": {
+            "scope": "Includes BF16 input quantization and route reduction; prepared graph, not native serving ABI",
+            "samples_us": [
+              159.96031761169434,
+              151.22943878173828,
+              161.71167373657227,
+              151.24896049499512,
+              157.3078441619873,
+              151.59520149230957,
+              151.29152297973633,
+              151.41087532043457
+            ],
+            "median_us": 151.50303840637207,
+            "order": "AB/BA, eight samples of 100 replays",
+            "gpu_before": "GPU-a7c503f0-bb16-4333-4f44-92e331dbcf2e, P0, 2502 MHz, [N/A], [N/A], 0x0000000000000000",
+            "gpu_after": "GPU-a7c503f0-bb16-4333-4f44-92e331dbcf2e, P0, 2502 MHz, [N/A], [N/A], 0x0000000000000000",
+            "cold_samples_us": [
+              218.00000220537186,
+              216.99200570583344,
+              217.13600307703018,
+              216.99200570583344,
+              217.0879989862442,
+              216.88000112771988,
+              216.92800521850586,
+              216.92800521850586
+            ],
+            "cold_protocol": "Eight balanced samples; median of 32 individual graph replays each following a 256 MiB write, write excluded"
+          },
+          "cold_median_us": 216.99200570583344
+        },
+        {
+          "rows": 4,
+          "implementation": "native_compact_tp2",
+          "checks": [
+            {
+              "identical_input_replay_exact": null,
+              "cycle": 0,
+              "relative_l2": 0.0023622652515769005,
+              "cosine": 0.9999972581863403,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.0023622652515769005,
+              "own_reference_cosine": 0.9999972581863403,
+              "native_route_relative_l2": 0.0,
+              "native_routes_exact": true
+            },
+            {
+              "identical_input_replay_exact": null,
+              "cycle": 1,
+              "relative_l2": 0.002349365968257189,
+              "cosine": 0.9999972581863403,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.002349365968257189,
+              "own_reference_cosine": 0.9999972581863403,
+              "native_route_relative_l2": 0.0,
+              "native_routes_exact": true
+            },
+            {
+              "identical_input_replay_exact": true,
+              "cycle": 2,
+              "relative_l2": 0.002349365968257189,
+              "cosine": 0.9999972581863403,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.002349365968257189,
+              "own_reference_cosine": 0.9999972581863403,
+              "native_route_relative_l2": 0.0,
+              "native_routes_exact": true
+            }
+          ],
+          "timing": {
+            "scope": "Includes BF16 input quantization and route reduction; prepared graph, not native serving ABI",
+            "samples_us": [
+              160.26336669921875,
+              164.0345573425293,
+              157.55616188049316,
+              157.41087913513184,
+              157.89152145385742,
+              157.86016464233398,
+              157.44895935058594,
+              157.92096138000488
+            ],
+            "median_us": 157.8758430480957,
+            "order": "AB/BA, eight samples of 100 replays",
+            "gpu_before": "GPU-a7c503f0-bb16-4333-4f44-92e331dbcf2e, P0, 2502 MHz, [N/A], [N/A], 0x0000000000000000",
+            "gpu_after": "GPU-a7c503f0-bb16-4333-4f44-92e331dbcf2e, P0, 2502 MHz, [N/A], [N/A], 0x0000000000000000",
+            "cold_samples_us": [
+              216.5439948439598,
+              216.92800521850586,
+              217.0880064368248,
+              216.92800521850586,
+              216.99200570583344,
+              216.8319970369339,
+              216.2880003452301,
+              216.95999801158905
+            ],
+            "cold_protocol": "Eight balanced samples; median of 32 individual graph replays each following a 256 MiB write, write excluded"
+          },
+          "cold_median_us": 216.92800521850586
+        },
+        {
+          "rows": 16,
+          "implementation": "native_spark",
+          "checks": [
+            {
+              "identical_input_replay_exact": null,
+              "cycle": 0,
+              "relative_l2": 0.0023460884112864733,
+              "cosine": 0.9999971985816956,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.0023460884112864733,
+              "own_reference_cosine": 0.9999971985816956
+            },
+            {
+              "identical_input_replay_exact": null,
+              "cycle": 1,
+              "relative_l2": 0.0023468334693461657,
+              "cosine": 0.9999971985816956,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.0023468334693461657,
+              "own_reference_cosine": 0.9999971985816956
+            },
+            {
+              "identical_input_replay_exact": true,
+              "cycle": 2,
+              "relative_l2": 0.0023468334693461657,
+              "cosine": 0.9999971985816956,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.0023468334693461657,
+              "own_reference_cosine": 0.9999971985816956
+            }
+          ],
+          "timing": {
+            "scope": "Includes BF16 input quantization and route reduction; prepared graph, not native serving ABI",
+            "samples_us": [
+              219.2540740966797,
+              229.17247772216797,
+              219.41823959350586,
+              220.14047622680664,
+              219.52896118164062,
+              219.3916893005371,
+              228.50591659545898,
+              219.44799423217773
+            ],
+            "median_us": 219.48847770690918,
+            "order": "AB/BA, eight samples of 100 replays",
+            "gpu_before": "GPU-a7c503f0-bb16-4333-4f44-92e331dbcf2e, P0, 2502 MHz, [N/A], [N/A], 0x0000000000000000",
+            "gpu_after": "GPU-a7c503f0-bb16-4333-4f44-92e331dbcf2e, P0, 2502 MHz, [N/A], [N/A], 0x0000000000000000",
+            "cold_samples_us": [
+              254.91198897361755,
+              253.39199602603912,
+              253.85600328445435,
+              251.8559992313385,
+              253.87200713157654,
+              255.90398907661438,
+              254.03200089931488,
+              251.8559992313385
+            ],
+            "cold_protocol": "Eight balanced samples; median of 32 individual graph replays each following a 256 MiB write, write excluded"
+          },
+          "cold_median_us": 253.86400520801544
+        },
+        {
+          "rows": 16,
+          "implementation": "native_compact_tp2",
+          "checks": [
+            {
+              "identical_input_replay_exact": null,
+              "cycle": 0,
+              "relative_l2": 0.0023460884112864733,
+              "cosine": 0.9999971985816956,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.0023460884112864733,
+              "own_reference_cosine": 0.9999971985816956,
+              "native_route_relative_l2": 0.0,
+              "native_routes_exact": true
+            },
+            {
+              "identical_input_replay_exact": null,
+              "cycle": 1,
+              "relative_l2": 0.0023468334693461657,
+              "cosine": 0.9999971985816956,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.0023468334693461657,
+              "own_reference_cosine": 0.9999971985816956,
+              "native_route_relative_l2": 0.0,
+              "native_routes_exact": true
+            },
+            {
+              "identical_input_replay_exact": true,
+              "cycle": 2,
+              "relative_l2": 0.0023468334693461657,
+              "cosine": 0.9999971985816956,
+              "native_reference_gate": true,
+              "own_reference_relative_l2": 0.0023468334693461657,
+              "own_reference_cosine": 0.9999971985816956,
+              "native_route_relative_l2": 0.0,
+              "native_routes_exact": true
+            }
+          ],
+          "timing": {
+            "scope": "Includes BF16 input quantization and route reduction; prepared graph, not native serving ABI",
+            "samples_us": [
+              226.54495239257812,
+              226.29600524902344,
+              217.71551132202148,
+              217.10527420043945,
+              225.6924819946289,
+              218.7068748474121,
+              217.57312774658203,
+              217.54079818725586
+            ],
+            "median_us": 218.2111930847168,
+            "order": "AB/BA, eight samples of 100 replays",
+            "gpu_before": "GPU-a7c503f0-bb16-4333-4f44-92e331dbcf2e, P0, 2502 MHz, [N/A], [N/A], 0x0000000000000000",
+            "gpu_after": "GPU-a7c503f0-bb16-4333-4f44-92e331dbcf2e, P0, 2502 MHz, [N/A], [N/A], 0x0000000000000000",
+            "cold_samples_us": [
+              252.07999348640442,
+              251.80800259113312,
+              251.93600356578827,
+              253.02399694919586,
+              251.8399953842163,
+              252.56000459194183,
+              251.8399953842163,
+              252.48000025749207
+            ],
+            "cold_protocol": "Eight balanced samples; median of 32 individual graph replays each following a 256 MiB write, write excluded"
+          },
+          "cold_median_us": 252.00799852609634
+        }
+      ]
+    }
+  ],
+  "gpu_tests": ".....                                                                    [100%]\n5 passed in 5.64s\n",
+  "rtx_aot_manifest": {
+    "schema": 1,
+    "experimental": false,
+    "role": "rtx_tp2",
+    "input_format": "fp8_k32",
+    "sparkinfer_revision": "4e31d0a10ea7ca24ac48d522fb65eaafbc27ad30",
+    "capability": [
+      12,
+      0
+    ],
+    "physical_sms": 188,
+    "width": 192,
+    "compact_max_capacity": 16,
+    "compact_live_rows": 8,
+    "geometry": {
+      "experts": 384,
+      "hidden": 5120,
+      "intermediate": 1152,
+      "kernel_intermediate": 1152,
+      "topk": 6
+    },
+    "variants": [
+      {
+        "name": "v41_rtx_tp2_m1",
+        "implementation": "hybrid",
+        "compact_live_rows": 1,
+        "width": 192,
+        "output_kind": "fp32_routes",
+        "native_abi_version": 2,
+        "capacity_rows": 1,
+        "core_scratch_nbytes": 877600,
+        "scratch": [
+          {
+            "slot": 3,
+            "offset": 0,
+            "nbytes": 4,
+            "shape": [
+              1
+            ]
+          },
+          {
+            "slot": 4,
+            "offset": 16,
+            "nbytes": 9216,
+            "shape": [
+              2304
+            ]
+          },
+          {
+            "slot": 5,
+            "offset": 9232,
+            "nbytes": 1536,
+            "shape": [
+              384
+            ]
+          },
+          {
+            "slot": 6,
+            "offset": 10768,
+            "nbytes": 3072,
+            "shape": [
+              384,
+              2
+            ]
+          },
+          {
+            "slot": 7,
+            "offset": 13840,
+            "nbytes": 456,
+            "shape": [
+              6,
+              19
+            ]
+          },
+          {
+            "slot": 8,
+            "offset": 14304,
+            "nbytes": 24,
+            "shape": [
+              6
+            ]
+          },
+          {
+            "slot": 9,
+            "offset": 14336,
+            "nbytes": 24,
+            "shape": [
+              6
+            ]
+          },
+          {
+            "slot": 10,
+            "offset": 14368,
+            "nbytes": 737280,
+            "shape": [
+              6,
+              6,
+              5120
+            ]
+          },
+          {
+            "slot": 41,
+            "offset": 751648,
+            "nbytes": 122880,
+            "shape": [
+              6,
+              5120
+            ]
+          }
+        ],
+        "scratch_pointer_offsets": [
+          null,
+          null,
+          null,
+          0,
+          16,
+          9232,
+          10768,
+          13840,
+          14304,
+          14336,
+          14368,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          0,
+          0,
+          0,
+          874528,
+          null,
+          null,
+          876064,
+          751648,
+          0,
+          0
+        ],
+        "native_entry": "_mlir_ds41rt_v41_rtx_tp2_m1__mlir_ciface_cutlass___call___b12xmoe_sharedkernelsv41_compact_pipelineV41HybridPipeline_object_at__FakeTensorUint321128013201_FakeTensorUint8116052801_FakeTensorUint325662310401_FakeTensorUint"
+      },
+      {
+        "name": "v41_rtx_tp2_m16",
+        "implementation": "hybrid",
+        "compact_live_rows": 8,
+        "width": 192,
+        "output_kind": "fp32_routes",
+        "native_abi_version": 2,
+        "capacity_rows": 16,
+        "core_scratch_nbytes": 13925776,
+        "scratch": [
+          {
+            "slot": 3,
+            "offset": 0,
+            "nbytes": 4,
+            "shape": [
+              1
+            ]
+          },
+          {
+            "slot": 4,
+            "offset": 16,
+            "nbytes": 147456,
+            "shape": [
+              36864
+            ]
+          },
+          {
+            "slot": 5,
+            "offset": 147472,
+            "nbytes": 1536,
+            "shape": [
+              384
+            ]
+          },
+          {
+            "slot": 6,
+            "offset": 149008,
+            "nbytes": 3072,
+            "shape": [
+              384,
+              2
+            ]
+          },
+          {
+            "slot": 7,
+            "offset": 152080,
+            "nbytes": 7296,
+            "shape": [
+              96,
+              19
+            ]
+          },
+          {
+            "slot": 8,
+            "offset": 159376,
+            "nbytes": 384,
+            "shape": [
+              96
+            ]
+          },
+          {
+            "slot": 9,
+            "offset": 159760,
+            "nbytes": 384,
+            "shape": [
+              96
+            ]
+          },
+          {
+            "slot": 10,
+            "offset": 160144,
+            "nbytes": 11796480,
+            "shape": [
+              6,
+              96,
+              5120
+            ]
+          },
+          {
+            "slot": 41,
+            "offset": 11956624,
+            "nbytes": 1966080,
+            "shape": [
+              96,
+              5120
+            ]
+          }
+        ],
+        "scratch_pointer_offsets": [
+          null,
+          null,
+          null,
+          0,
+          16,
+          147472,
+          149008,
+          152080,
+          159376,
+          159760,
+          160144,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          0,
+          0,
+          0,
+          13922704,
+          null,
+          null,
+          13924240,
+          11956624,
+          0,
+          0
+        ],
+        "native_entry": "_mlir_ds41rt_v41_rtx_tp2_m16__mlir_ciface_cutlass___call___b12xmoe_sharedkernelsv41_compact_pipelineV41HybridPipeline_object_at__FakeTensorUint3216128013201_FakeTensorUint81616052801_FakeTensorUint325662310401_FakeTensorUi"
+      },
+      {
+        "name": "v41_rtx_tp2_m80",
+        "implementation": "slices",
+        "compact_live_rows": null,
+        "width": 192,
+        "output_kind": "fp32_routes",
+        "native_abi_version": 2,
+        "capacity_rows": 80,
+        "core_scratch_nbytes": 69598096,
+        "scratch": [
+          {
+            "slot": 3,
+            "offset": 0,
+            "nbytes": 4,
+            "shape": [
+              1
+            ]
+          },
+          {
+            "slot": 4,
+            "offset": 16,
+            "nbytes": 737280,
+            "shape": [
+              184320
+            ]
+          },
+          {
+            "slot": 5,
+            "offset": 737296,
+            "nbytes": 1536,
+            "shape": [
+              384
+            ]
+          },
+          {
+            "slot": 6,
+            "offset": 738832,
+            "nbytes": 3072,
+            "shape": [
+              384,
+              2
+            ]
+          },
+          {
+            "slot": 7,
+            "offset": 741904,
+            "nbytes": 36480,
+            "shape": [
+              480,
+              19
+            ]
+          },
+          {
+            "slot": 8,
+            "offset": 778384,
+            "nbytes": 1920,
+            "shape": [
+              480
+            ]
+          },
+          {
+            "slot": 9,
+            "offset": 780304,
+            "nbytes": 1920,
+            "shape": [
+              480
+            ]
+          },
+          {
+            "slot": 10,
+            "offset": 782224,
+            "nbytes": 58982400,
+            "shape": [
+              6,
+              480,
+              5120
+            ]
+          },
+          {
+            "slot": 41,
+            "offset": 59764624,
+            "nbytes": 9830400,
+            "shape": [
+              480,
+              5120
+            ]
+          }
+        ],
+        "scratch_pointer_offsets": [
+          null,
+          null,
+          null,
+          0,
+          16,
+          737296,
+          738832,
+          741904,
+          778384,
+          780304,
+          782224,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          0,
+          0,
+          0,
+          69595024,
+          null,
+          null,
+          69596560,
+          59764624,
+          0,
+          0
+        ],
+        "native_entry": "_mlir_ds41rt_v41_rtx_tp2_m80__mlir_ciface_cutlass___call___b12xmoe_sharedkernelsv41_slice_pipelineV41SlicePipeline_object_at__FakeTensorUint3280128013201_FakeTensorUint88016052801_FakeTensorUint325662310401_FakeTensorUint3"
+      },
+      {
+        "name": "v41_rtx_tp2_m256",
+        "implementation": "slices",
+        "compact_live_rows": null,
+        "width": 192,
+        "output_kind": "fp32_tokens",
+        "native_abi_version": 3,
+        "capacity_rows": 256,
+        "core_scratch_nbytes": 7738912,
+        "scratch": [
+          {
+            "slot": 3,
+            "offset": 0,
+            "nbytes": 4,
+            "shape": [
+              1
+            ]
+          },
+          {
+            "slot": 4,
+            "offset": 16,
+            "nbytes": 2359296,
+            "shape": [
+              589824
+            ]
+          },
+          {
+            "slot": 5,
+            "offset": 2359312,
+            "nbytes": 1536,
+            "shape": [
+              384
+            ]
+          },
+          {
+            "slot": 6,
+            "offset": 2360848,
+            "nbytes": 3072,
+            "shape": [
+              384,
+              2
+            ]
+          },
+          {
+            "slot": 7,
+            "offset": 2363920,
+            "nbytes": 116736,
+            "shape": [
+              1536,
+              19
+            ]
+          },
+          {
+            "slot": 8,
+            "offset": 2480656,
+            "nbytes": 6144,
+            "shape": [
+              1536
+            ]
+          },
+          {
+            "slot": 9,
+            "offset": 2486800,
+            "nbytes": 6144,
+            "shape": [
+              1536
+            ]
+          },
+          {
+            "slot": 10,
+            "offset": 2492944,
+            "nbytes": 4,
+            "shape": [
+              1
+            ]
+          },
+          {
+            "slot": 41,
+            "offset": 2492960,
+            "nbytes": 5242880,
+            "shape": [
+              1310720
+            ]
+          }
+        ],
+        "scratch_pointer_offsets": [
+          null,
+          null,
+          null,
+          0,
+          16,
+          2359312,
+          2360848,
+          2363920,
+          2480656,
+          2486800,
+          2492944,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          0,
+          0,
+          0,
+          7735840,
+          null,
+          null,
+          7737376,
+          2492960,
+          0,
+          0
+        ],
+        "native_entry": "_mlir_ds41rt_v41_rtx_tp2_m256__mlir_ciface_cutlass___call___b12xmoe_sharedkernelsv41_slice_pipelineV41SlicePipeline_object_at__FakeTensorUint32256128013201_FakeTensorUint825616052801_FakeTensorUint325662310401_FakeTensorUin"
+      },
+      {
+        "name": "v41_rtx_tp2_m1024",
+        "implementation": "slices",
+        "compact_live_rows": null,
+        "width": 192,
+        "output_kind": "fp32_tokens",
+        "native_abi_version": 3,
+        "capacity_rows": 1024,
+        "core_scratch_nbytes": 30932512,
+        "scratch": [
+          {
+            "slot": 3,
+            "offset": 0,
+            "nbytes": 4,
+            "shape": [
+              1
+            ]
+          },
+          {
+            "slot": 4,
+            "offset": 16,
+            "nbytes": 9437184,
+            "shape": [
+              2359296
+            ]
+          },
+          {
+            "slot": 5,
+            "offset": 9437200,
+            "nbytes": 1536,
+            "shape": [
+              384
+            ]
+          },
+          {
+            "slot": 6,
+            "offset": 9438736,
+            "nbytes": 3072,
+            "shape": [
+              384,
+              2
+            ]
+          },
+          {
+            "slot": 7,
+            "offset": 9441808,
+            "nbytes": 466944,
+            "shape": [
+              6144,
+              19
+            ]
+          },
+          {
+            "slot": 8,
+            "offset": 9908752,
+            "nbytes": 24576,
+            "shape": [
+              6144
+            ]
+          },
+          {
+            "slot": 9,
+            "offset": 9933328,
+            "nbytes": 24576,
+            "shape": [
+              6144
+            ]
+          },
+          {
+            "slot": 10,
+            "offset": 9957904,
+            "nbytes": 4,
+            "shape": [
+              1
+            ]
+          },
+          {
+            "slot": 41,
+            "offset": 9957920,
+            "nbytes": 20971520,
+            "shape": [
+              5242880
+            ]
+          }
+        ],
+        "scratch_pointer_offsets": [
+          null,
+          null,
+          null,
+          0,
+          16,
+          9437200,
+          9438736,
+          9441808,
+          9908752,
+          9933328,
+          9957904,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          0,
+          0,
+          0,
+          30929440,
+          null,
+          null,
+          30930976,
+          9957920,
+          0,
+          0
+        ],
+        "native_entry": "_mlir_ds41rt_v41_rtx_tp2_m1024__mlir_ciface_cutlass___call___b12xmoe_sharedkernelsv41_slice_pipelineV41SlicePipeline_object_at__FakeTensorUint321024128013201_FakeTensorUint8102416052801_FakeTensorUint325662310401_FakeTensorU"
+      },
+      {
+        "name": "v41_rtx_tp2_m4096",
+        "implementation": "slices",
+        "compact_live_rows": null,
+        "width": 192,
+        "output_kind": "fp32_tokens",
+        "native_abi_version": 3,
+        "capacity_rows": 4096,
+        "core_scratch_nbytes": 123706912,
+        "scratch": [
+          {
+            "slot": 3,
+            "offset": 0,
+            "nbytes": 4,
+            "shape": [
+              1
+            ]
+          },
+          {
+            "slot": 4,
+            "offset": 16,
+            "nbytes": 37748736,
+            "shape": [
+              9437184
+            ]
+          },
+          {
+            "slot": 5,
+            "offset": 37748752,
+            "nbytes": 1536,
+            "shape": [
+              384
+            ]
+          },
+          {
+            "slot": 6,
+            "offset": 37750288,
+            "nbytes": 3072,
+            "shape": [
+              384,
+              2
+            ]
+          },
+          {
+            "slot": 7,
+            "offset": 37753360,
+            "nbytes": 1867776,
+            "shape": [
+              24576,
+              19
+            ]
+          },
+          {
+            "slot": 8,
+            "offset": 39621136,
+            "nbytes": 98304,
+            "shape": [
+              24576
+            ]
+          },
+          {
+            "slot": 9,
+            "offset": 39719440,
+            "nbytes": 98304,
+            "shape": [
+              24576
+            ]
+          },
+          {
+            "slot": 10,
+            "offset": 39817744,
+            "nbytes": 4,
+            "shape": [
+              1
+            ]
+          },
+          {
+            "slot": 41,
+            "offset": 39817760,
+            "nbytes": 83886080,
+            "shape": [
+              20971520
+            ]
+          }
+        ],
+        "scratch_pointer_offsets": [
+          null,
+          null,
+          null,
+          0,
+          16,
+          37748752,
+          37750288,
+          37753360,
+          39621136,
+          39719440,
+          39817744,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          0,
+          0,
+          0,
+          123703840,
+          null,
+          null,
+          123705376,
+          39817760,
+          0,
+          0
+        ],
+        "native_entry": "_mlir_ds41rt_v41_rtx_tp2_m4096__mlir_ciface_cutlass___call___b12xmoe_sharedkernelsv41_slice_pipelineV41SlicePipeline_object_at__FakeTensorUint324096128013201_FakeTensorUint8409616052801_FakeTensorUint325662310401_FakeTensorU"
+      }
+    ],
+    "input_quantizer": {
+      "format": "row E4M3 payload then UE8M0 K32 scales",
+      "row_bytes": 5280,
+      "max_rows": 4096,
+      "expected_m": 80,
+      "amax_floor": 0.0001,
+      "abi": {
+        "symbol": "_mlir_ds41rt_v41_expert_input_quant__mlir_ciface_cutlass___call___b12x_libquantmxfp8_rows_MXFP8RowsQuantFixedWidthLaunch_object_at__Ptrgmem_Ptrgmem_Ptrgmem_Ptrgmem_1_1_CUstream0x0",
+        "pointers": [
+          "source_ptr",
+          "values_ptr",
+          "scale_rows_ptr",
+          "scale_mma_ptr"
+        ],
+        "i32": [
+          "m",
+          "grid_x"
+        ],
+        "stream": "stream",
+        "argument_count": 8
+      },
+      "object_sha256": "f7ab636997b6faae3c1e315e5519e4ce8980674ad815400e76ee4e8072024e85"
+    },
+    "artifact_sha256": {
+      "v41_rtx_tp2_m1024.o": "1c3a1745d1ffc4a6c95250f1dad04b7360ca060cb0d98c490e0910f96ccc7f7c",
+      "v41_rtx_tp2_m80.o": "0e92ca1a492187c0d15f71188a4e85a55be51cbdf3f0fd9191c59f2691304bc8",
+      "v41_expert_input_quant.o": "f7ab636997b6faae3c1e315e5519e4ce8980674ad815400e76ee4e8072024e85",
+      "v41_rtx_tp2_m1.o": "48c34b860d5eb0fa541ae3e01065808c7d2e6a05a5602843370b7f83bd195b48",
+      "v41_rtx_tp2_m4096.o": "3467273a433c09bb0872f864a71245994c09a952e837baf37c8a1010235973f0",
+      "v41_rtx_tp2_m256.o": "4d845bf6bf6719cdfadfbc72cdc8297fcc51d4f923ce7bedd8eb06e4ccef195f",
+      "v41_expert_input_quant.h": "af33b472f3c36fdb51a07b6fcce354d2c2efc5a8a80b4465d54eee72f396d0ca",
+      "v41_rtx_tp2_m4096.h": "fba09fbc1ac5f2c9838d36fd4ea9f411000904e516d437064a77e05983225382",
+      "v41_expert_variants.h": "e45417333de25b8929deb3415ba3635fecc432f930a26f309eb4f158e12d94f9",
+      "v41_rtx_tp2_m80.h": "6fefa963322bc9bda4e68c5d30c0813a1331b7e1bc33fe9b512f00ca3fa895d3",
+      "v41_rtx_tp2_m256.h": "a2c961669893e2ead908571e90e7f5367ef6c84d7c003103a783a8942b6c9b01",
+      "v41_rtx_tp2_m1024.h": "e99551afea23ec801392d0f76a69df0d29012c51b6e9110fc74fe3b9c902ba0f",
+      "v41_rtx_tp2_m1.h": "00f4f89e520f65d844bb34846186bfd99388928f7335ab53d621aa2cab512f0d",
+      "v41_rtx_tp2_m16.h": "92fc51891d8421ba5b026841e1c7b3f9baf7e5b323a0d54b2fd7f6ed4ea75443",
+      "v41_input_quant_dispatch.h": "1524721597bcaeed9d7105ac56ccc52c398af558dc6920a60f27c95bd5f5f77c",
+      "v41_rtx_tp2_m16.o": "bb9c79ecdff21b9b28e2a093d5cb2271b21076dd73c3632a55b1e28109d6e368"
+    }
+  },
+  "spark_aot_manifest": {
+    "schema": 1,
+    "experimental": false,
+    "role": "spark",
+    "input_format": "fp8_k32",
+    "sparkinfer_revision": "4e31d0a10ea7ca24ac48d522fb65eaafbc27ad30",
+    "capability": [
+      12,
+      1
+    ],
+    "physical_sms": 48,
+    "width": {
+      "1": 64,
+      "16": 192,
+      "80": 192,
+      "256": 192,
+      "1024": 192,
+      "4096": 192
+    },
+    "compact_max_capacity": 16,
+    "compact_live_rows": 2,
+    "geometry": {
+      "experts": 384,
+      "hidden": 5120,
+      "intermediate": 576,
+      "kernel_intermediate": 640,
+      "topk": 6
+    },
+    "variants": [
+      {
+        "name": "v41_spark_m1",
+        "implementation": "hybrid",
+        "compact_live_rows": 1,
+        "width": 64,
+        "output_kind": "fp32_routes",
+        "native_abi_version": 2,
+        "capacity_rows": 1,
+        "core_scratch_nbytes": 1246240,
+        "scratch": [
+          {
+            "slot": 3,
+            "offset": 0,
+            "nbytes": 4,
+            "shape": [
+              1
+            ]
+          },
+          {
+            "slot": 4,
+            "offset": 16,
+            "nbytes": 9216,
+            "shape": [
+              2304
+            ]
+          },
+          {
+            "slot": 5,
+            "offset": 9232,
+            "nbytes": 1536,
+            "shape": [
+              384
+            ]
+          },
+          {
+            "slot": 6,
+            "offset": 10768,
+            "nbytes": 3072,
+            "shape": [
+              384,
+              2
+            ]
+          },
+          {
+            "slot": 7,
+            "offset": 13840,
+            "nbytes": 456,
+            "shape": [
+              6,
+              19
+            ]
+          },
+          {
+            "slot": 8,
+            "offset": 14304,
+            "nbytes": 24,
+            "shape": [
+              6
+            ]
+          },
+          {
+            "slot": 9,
+            "offset": 14336,
+            "nbytes": 24,
+            "shape": [
+              6
+            ]
+          },
+          {
+            "slot": 10,
+            "offset": 14368,
+            "nbytes": 1105920,
+            "shape": [
+              9,
+              6,
+              5120
+            ]
+          },
+          {
+            "slot": 41,
+            "offset": 1120288,
+            "nbytes": 122880,
+            "shape": [
+              6,
+              5120
+            ]
+          }
+        ],
+        "scratch_pointer_offsets": [
+          null,
+          null,
+          null,
+          0,
+          16,
+          9232,
+          10768,
+          13840,
+          14304,
+          14336,
+          14368,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          0,
+          0,
+          0,
+          1243168,
+          null,
+          null,
+          1244704,
+          1120288,
+          0,
+          0
+        ],
+        "native_entry": "_mlir_ds41rt_v41_spark_m1__mlir_ciface_cutlass___call___b12xmoe_sharedkernelsv41_compact_pipelineV41HybridPipeline_object_at__FakeTensorUint321128013201_FakeTensorUint8116052801_FakeTensorUint323145728001_FakeTensorUint"
+      },
+      {
+        "name": "v41_spark_m16",
+        "implementation": "hybrid",
+        "compact_live_rows": 2,
+        "width": 192,
+        "output_kind": "fp32_routes",
+        "native_abi_version": 2,
+        "capacity_rows": 16,
+        "core_scratch_nbytes": 8027536,
+        "scratch": [
+          {
+            "slot": 3,
+            "offset": 0,
+            "nbytes": 4,
+            "shape": [
+              1
+            ]
+          },
+          {
+            "slot": 4,
+            "offset": 16,
+            "nbytes": 147456,
+            "shape": [
+              36864
+            ]
+          },
+          {
+            "slot": 5,
+            "offset": 147472,
+            "nbytes": 1536,
+            "shape": [
+              384
+            ]
+          },
+          {
+            "slot": 6,
+            "offset": 149008,
+            "nbytes": 3072,
+            "shape": [
+              384,
+              2
+            ]
+          },
+          {
+            "slot": 7,
+            "offset": 152080,
+            "nbytes": 7296,
+            "shape": [
+              96,
+              19
+            ]
+          },
+          {
+            "slot": 8,
+            "offset": 159376,
+            "nbytes": 384,
+            "shape": [
+              96
+            ]
+          },
+          {
+            "slot": 9,
+            "offset": 159760,
+            "nbytes": 384,
+            "shape": [
+              96
+            ]
+          },
+          {
+            "slot": 10,
+            "offset": 160144,
+            "nbytes": 5898240,
+            "shape": [
+              3,
+              96,
+              5120
+            ]
+          },
+          {
+            "slot": 41,
+            "offset": 6058384,
+            "nbytes": 1966080,
+            "shape": [
+              96,
+              5120
+            ]
+          }
+        ],
+        "scratch_pointer_offsets": [
+          null,
+          null,
+          null,
+          0,
+          16,
+          147472,
+          149008,
+          152080,
+          159376,
+          159760,
+          160144,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          0,
+          0,
+          0,
+          8024464,
+          null,
+          null,
+          8026000,
+          6058384,
+          0,
+          0
+        ],
+        "native_entry": "_mlir_ds41rt_v41_spark_m16__mlir_ciface_cutlass___call___b12xmoe_sharedkernelsv41_compact_pipelineV41HybridPipeline_object_at__FakeTensorUint3216128013201_FakeTensorUint81616052801_FakeTensorUint323145728001_FakeTensorUi"
+      },
+      {
+        "name": "v41_spark_m80",
+        "implementation": "slices",
+        "compact_live_rows": null,
+        "width": 192,
+        "output_kind": "fp32_routes",
+        "native_abi_version": 2,
+        "capacity_rows": 80,
+        "core_scratch_nbytes": 40106896,
+        "scratch": [
+          {
+            "slot": 3,
+            "offset": 0,
+            "nbytes": 4,
+            "shape": [
+              1
+            ]
+          },
+          {
+            "slot": 4,
+            "offset": 16,
+            "nbytes": 737280,
+            "shape": [
+              184320
+            ]
+          },
+          {
+            "slot": 5,
+            "offset": 737296,
+            "nbytes": 1536,
+            "shape": [
+              384
+            ]
+          },
+          {
+            "slot": 6,
+            "offset": 738832,
+            "nbytes": 3072,
+            "shape": [
+              384,
+              2
+            ]
+          },
+          {
+            "slot": 7,
+            "offset": 741904,
+            "nbytes": 36480,
+            "shape": [
+              480,
+              19
+            ]
+          },
+          {
+            "slot": 8,
+            "offset": 778384,
+            "nbytes": 1920,
+            "shape": [
+              480
+            ]
+          },
+          {
+            "slot": 9,
+            "offset": 780304,
+            "nbytes": 1920,
+            "shape": [
+              480
+            ]
+          },
+          {
+            "slot": 10,
+            "offset": 782224,
+            "nbytes": 29491200,
+            "shape": [
+              3,
+              480,
+              5120
+            ]
+          },
+          {
+            "slot": 41,
+            "offset": 30273424,
+            "nbytes": 9830400,
+            "shape": [
+              480,
+              5120
+            ]
+          }
+        ],
+        "scratch_pointer_offsets": [
+          null,
+          null,
+          null,
+          0,
+          16,
+          737296,
+          738832,
+          741904,
+          778384,
+          780304,
+          782224,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          0,
+          0,
+          0,
+          40103824,
+          null,
+          null,
+          40105360,
+          30273424,
+          0,
+          0
+        ],
+        "native_entry": "_mlir_ds41rt_v41_spark_m80__mlir_ciface_cutlass___call___b12xmoe_sharedkernelsv41_slice_pipelineV41SlicePipeline_object_at__FakeTensorUint3280128013201_FakeTensorUint88016052801_FakeTensorUint323145728001_FakeTensorUint3"
+      },
+      {
+        "name": "v41_spark_m256",
+        "implementation": "slices",
+        "compact_live_rows": null,
+        "width": 192,
+        "output_kind": "fp32_tokens",
+        "native_abi_version": 3,
+        "capacity_rows": 256,
+        "core_scratch_nbytes": 7738912,
+        "scratch": [
+          {
+            "slot": 3,
+            "offset": 0,
+            "nbytes": 4,
+            "shape": [
+              1
+            ]
+          },
+          {
+            "slot": 4,
+            "offset": 16,
+            "nbytes": 2359296,
+            "shape": [
+              589824
+            ]
+          },
+          {
+            "slot": 5,
+            "offset": 2359312,
+            "nbytes": 1536,
+            "shape": [
+              384
+            ]
+          },
+          {
+            "slot": 6,
+            "offset": 2360848,
+            "nbytes": 3072,
+            "shape": [
+              384,
+              2
+            ]
+          },
+          {
+            "slot": 7,
+            "offset": 2363920,
+            "nbytes": 116736,
+            "shape": [
+              1536,
+              19
+            ]
+          },
+          {
+            "slot": 8,
+            "offset": 2480656,
+            "nbytes": 6144,
+            "shape": [
+              1536
+            ]
+          },
+          {
+            "slot": 9,
+            "offset": 2486800,
+            "nbytes": 6144,
+            "shape": [
+              1536
+            ]
+          },
+          {
+            "slot": 10,
+            "offset": 2492944,
+            "nbytes": 4,
+            "shape": [
+              1
+            ]
+          },
+          {
+            "slot": 41,
+            "offset": 2492960,
+            "nbytes": 5242880,
+            "shape": [
+              1310720
+            ]
+          }
+        ],
+        "scratch_pointer_offsets": [
+          null,
+          null,
+          null,
+          0,
+          16,
+          2359312,
+          2360848,
+          2363920,
+          2480656,
+          2486800,
+          2492944,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          0,
+          0,
+          0,
+          7735840,
+          null,
+          null,
+          7737376,
+          2492960,
+          0,
+          0
+        ],
+        "native_entry": "_mlir_ds41rt_v41_spark_m256__mlir_ciface_cutlass___call___b12xmoe_sharedkernelsv41_slice_pipelineV41SlicePipeline_object_at__FakeTensorUint32256128013201_FakeTensorUint825616052801_FakeTensorUint323145728001_FakeTensorUin"
+      },
+      {
+        "name": "v41_spark_m1024",
+        "implementation": "slices",
+        "compact_live_rows": null,
+        "width": 192,
+        "output_kind": "fp32_tokens",
+        "native_abi_version": 3,
+        "capacity_rows": 1024,
+        "core_scratch_nbytes": 30932512,
+        "scratch": [
+          {
+            "slot": 3,
+            "offset": 0,
+            "nbytes": 4,
+            "shape": [
+              1
+            ]
+          },
+          {
+            "slot": 4,
+            "offset": 16,
+            "nbytes": 9437184,
+            "shape": [
+              2359296
+            ]
+          },
+          {
+            "slot": 5,
+            "offset": 9437200,
+            "nbytes": 1536,
+            "shape": [
+              384
+            ]
+          },
+          {
+            "slot": 6,
+            "offset": 9438736,
+            "nbytes": 3072,
+            "shape": [
+              384,
+              2
+            ]
+          },
+          {
+            "slot": 7,
+            "offset": 9441808,
+            "nbytes": 466944,
+            "shape": [
+              6144,
+              19
+            ]
+          },
+          {
+            "slot": 8,
+            "offset": 9908752,
+            "nbytes": 24576,
+            "shape": [
+              6144
+            ]
+          },
+          {
+            "slot": 9,
+            "offset": 9933328,
+            "nbytes": 24576,
+            "shape": [
+              6144
+            ]
+          },
+          {
+            "slot": 10,
+            "offset": 9957904,
+            "nbytes": 4,
+            "shape": [
+              1
+            ]
+          },
+          {
+            "slot": 41,
+            "offset": 9957920,
+            "nbytes": 20971520,
+            "shape": [
+              5242880
+            ]
+          }
+        ],
+        "scratch_pointer_offsets": [
+          null,
+          null,
+          null,
+          0,
+          16,
+          9437200,
+          9438736,
+          9441808,
+          9908752,
+          9933328,
+          9957904,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          0,
+          0,
+          0,
+          30929440,
+          null,
+          null,
+          30930976,
+          9957920,
+          0,
+          0
+        ],
+        "native_entry": "_mlir_ds41rt_v41_spark_m1024__mlir_ciface_cutlass___call___b12xmoe_sharedkernelsv41_slice_pipelineV41SlicePipeline_object_at__FakeTensorUint321024128013201_FakeTensorUint8102416052801_FakeTensorUint323145728001_FakeTensorU"
+      },
+      {
+        "name": "v41_spark_m4096",
+        "implementation": "slices",
+        "compact_live_rows": null,
+        "width": 192,
+        "output_kind": "fp32_tokens",
+        "native_abi_version": 3,
+        "capacity_rows": 4096,
+        "core_scratch_nbytes": 123706912,
+        "scratch": [
+          {
+            "slot": 3,
+            "offset": 0,
+            "nbytes": 4,
+            "shape": [
+              1
+            ]
+          },
+          {
+            "slot": 4,
+            "offset": 16,
+            "nbytes": 37748736,
+            "shape": [
+              9437184
+            ]
+          },
+          {
+            "slot": 5,
+            "offset": 37748752,
+            "nbytes": 1536,
+            "shape": [
+              384
+            ]
+          },
+          {
+            "slot": 6,
+            "offset": 37750288,
+            "nbytes": 3072,
+            "shape": [
+              384,
+              2
+            ]
+          },
+          {
+            "slot": 7,
+            "offset": 37753360,
+            "nbytes": 1867776,
+            "shape": [
+              24576,
+              19
+            ]
+          },
+          {
+            "slot": 8,
+            "offset": 39621136,
+            "nbytes": 98304,
+            "shape": [
+              24576
+            ]
+          },
+          {
+            "slot": 9,
+            "offset": 39719440,
+            "nbytes": 98304,
+            "shape": [
+              24576
+            ]
+          },
+          {
+            "slot": 10,
+            "offset": 39817744,
+            "nbytes": 4,
+            "shape": [
+              1
+            ]
+          },
+          {
+            "slot": 41,
+            "offset": 39817760,
+            "nbytes": 83886080,
+            "shape": [
+              20971520
+            ]
+          }
+        ],
+        "scratch_pointer_offsets": [
+          null,
+          null,
+          null,
+          0,
+          16,
+          37748752,
+          37750288,
+          37753360,
+          39621136,
+          39719440,
+          39817744,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          0,
+          0,
+          0,
+          123703840,
+          null,
+          null,
+          123705376,
+          39817760,
+          0,
+          0
+        ],
+        "native_entry": "_mlir_ds41rt_v41_spark_m4096__mlir_ciface_cutlass___call___b12xmoe_sharedkernelsv41_slice_pipelineV41SlicePipeline_object_at__FakeTensorUint324096128013201_FakeTensorUint8409616052801_FakeTensorUint323145728001_FakeTensorU"
+      }
+    ],
+    "input_quantizer": {
+      "format": "row E4M3 payload then UE8M0 K32 scales",
+      "row_bytes": 5280,
+      "max_rows": 4096,
+      "expected_m": 80,
+      "amax_floor": 0.0001,
+      "abi": {
+        "symbol": "_mlir_ds41rt_v41_expert_input_quant__mlir_ciface_cutlass___call___b12x_libquantmxfp8_rows_MXFP8RowsQuantFixedWidthLaunch_object_at__Ptrgmem_Ptrgmem_Ptrgmem_Ptrgmem_1_1_CUstream0x0",
+        "pointers": [
+          "source_ptr",
+          "values_ptr",
+          "scale_rows_ptr",
+          "scale_mma_ptr"
+        ],
+        "i32": [
+          "m",
+          "grid_x"
+        ],
+        "stream": "stream",
+        "argument_count": 8
+      },
+      "object_sha256": "40d559acb3fcd71c14d9596bca40bf0b64af07d4ed7106bc7d37a6422d51efda"
+    },
+    "artifact_sha256": {
+      "v41_spark_m80.h": "1b91e62a2099ff6c62dc48017dc31f4436c8bdf98c7ae03f654eab8cb7fa7edd",
+      "v41_input_quant_dispatch.h": "4d51090b67a3b490457dc62e30e965152bb10f441e861033b490d00c46e4b501",
+      "v41_spark_m16.o": "67ca2da569f86e8a60d54d4650385ce8b0feedd03c1515f46f229d7ad3277df6",
+      "v41_expert_input_quant.h": "af33b472f3c36fdb51a07b6fcce354d2c2efc5a8a80b4465d54eee72f396d0ca",
+      "v41_expert_input_quant.o": "40d559acb3fcd71c14d9596bca40bf0b64af07d4ed7106bc7d37a6422d51efda",
+      "v41_spark_m4096.h": "c2ed9560fee9ddad2ac2e855db8f3f7e964d5b4f320eb79ed2426b4b6b6dc70a",
+      "v41_spark_m1024.o": "85bfa0eee1eb02968ca129fc20a533c86b52263cb573994b44600e18629da91c",
+      "v41_expert_variants.h": "b47825b41d8d889157fc79e9d1fa42f5731c9de77ba09e1a32dffd3de9edc059",
+      "v41_spark_m256.o": "ba942e1f99f5fa3e7e1240316ed3f64fd25a7ce0785ae1484570a79fc34136ee",
+      "v41_spark_m1024.h": "40506ae62d0b1a74e3c98038131e4462651f0a7b61cbf1e563783f5cbec093c5",
+      "v41_spark_m80.o": "71db22672b524ac8c8f303259166d7b7f0cebc3d505c001ca0c1757c93f741bb",
+      "v41_spark_m1.h": "e7589b1ae1560cfd4561dc96ace68e5ac3431ddc24b39a95a30c5e923250a589",
+      "v41_spark_m4096.o": "30daceaa7faa325bbf46cbf9a9055e59bd388675f11697a44a87d7c836fa9bb7",
+      "v41_spark_m256.h": "5fba75e4e4a43e61b88cc6cbd5206fdd07dde241e4893a463ff3808292dd6458",
+      "v41_spark_m16.h": "aad5a21117e0c3372f8c0d20028e6c8fc7be999672bfd737e809dbde9e40c853",
+      "v41_spark_m1.o": "368687f340152dc99025c39355b2fa2deb6a07ba1431d08cd3944ab5c591e00e"
+    }
+  },
+  "rtx_link_record": {
+    "path": "/home/tj/.cache/ds41rt-upstream-20260916/hybrid-tp2-link.json",
+    "sha256": "c9e5491d78ad61b1ad6f48bb2e822781bfae4392cb8521e8dda85fb5a1af1aa9"
+  },
+  "note": "Spark candidate implementation label in this raw report still says native_compact_tp2; actual Spark role/geometry and compiled SM121 artifacts are verified. The tool now labels it native_compact_spark."
+}
