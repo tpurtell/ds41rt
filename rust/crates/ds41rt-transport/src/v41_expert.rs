@@ -27,7 +27,7 @@ fn validate_canonical(
     header: &crate::ExpertProtocolV2RequestHeader,
     max_rows: u32,
     row_at: impl Fn(usize) -> Result<crate::ExpertProtocolV2RowDescriptor>,
-    route_at: impl Fn(usize) -> Result<crate::ExpertProtocolV2RouteEntry>,
+    mut route_at: impl FnMut(usize) -> Result<crate::ExpertProtocolV2RouteEntry>,
 ) -> Result<()> {
     ensure!(
         header.flags & EXPERT_PROTOCOL_V2_FLAG_V41_COMPACT_BF16 != 0,
@@ -90,6 +90,22 @@ fn validate_canonical(
     Ok(())
 }
 
+fn validate_paired(
+    header: &crate::ExpertProtocolV2RequestHeader, max_rows: u32,
+    row_at: impl Fn(usize) -> Result<crate::ExpertProtocolV2RowDescriptor>,
+    route_at: impl Fn(usize) -> Result<crate::ExpertProtocolV2RouteEntry>,
+) -> Result<()> {
+    ensure!(header.flags & V41_EXL3_PAIRED_REQUEST_FLAG != 0, "paired worker requires paired request");
+    let mut canonical = header.clone();
+    canonical.flags &= !V41_EXL3_PAIRED_REQUEST_FLAG;
+    let mut batch = V41PairedOwnershipBatch::default();
+    validate_canonical(&canonical, max_rows, row_at, |index| {
+        let mut route = route_at(index)?;
+        route.expert_id = batch.observe(route.expert_id)?.expert_id;
+        Ok(route)
+    })
+}
+
 /// Validated canonical row-major routing; the same request must reach every TP rank.
 pub struct V41BackboneRequest<'a> {
     view: ExpertProtocolV2RequestView<'a>,
@@ -99,6 +115,19 @@ impl<'a> V41BackboneRequest<'a> {
         let view = ExpertProtocolV2RequestView::parse(frame)?;
         validate_canonical(&view.header, max_rows, |i| view.row(i), |i| view.route(i))?;
         Ok(Self { view })
+    }
+    /// Explicit admission for a worker bound to paired EXL3 resident weights.
+    pub fn parse_paired(frame: &'a [u8], max_rows: u32) -> Result<Self> {
+        let view = ExpertProtocolV2RequestView::parse(frame)?;
+        validate_paired(&view.header, max_rows, |i| view.row(i), |i| view.route(i))?;
+        Ok(Self { view })
+    }
+    pub fn is_paired(&self) -> bool { self.view.header.flags & V41_EXL3_PAIRED_REQUEST_FLAG != 0 }
+
+    pub fn validate_owned_paired(request: &crate::ExpertProtocolV2Request, max_rows: u32) -> Result<()> {
+        request.validate()?;
+        validate_paired(&request.header, max_rows,
+            |i| Ok(request.rows[i].clone()), |i| Ok(request.routes[i].clone()))
     }
     /// Check a locally owned request using the worker's canonical contract,
     /// without serializing or copying its activation payload.
@@ -132,6 +161,7 @@ impl<'a> V41BackboneRequest<'a> {
     }
     /// Fill caller-owned GPU-upload arrays without reordering or rounding routes.
     pub fn copy_routes_into(&self, ids: &mut [i32], weights: &mut [f32]) -> Result<()> {
+        ensure!(!self.is_paired(), "paired routes require ownership-aware unpacking");
         let count = self.view.header.route_count as usize;
         ensure!(
             ids.len() >= count && weights.len() >= count,
@@ -143,6 +173,18 @@ impl<'a> V41BackboneRequest<'a> {
             weights[index] = route.gate_weight;
         }
         Ok(())
+    }
+    pub fn copy_paired_routes_into(&self, ids: &mut [i32], weights: &mut [f32], rank: usize, ownership: &mut [i32]) -> Result<()> {
+        ensure!(self.is_paired(), "disjoint routes cannot use paired unpacking");
+        let count = self.view.header.route_count as usize;
+        ensure!(ids.len() >= count && weights.len() >= count, "paired routing buffers too short");
+        let mut batch = V41PairedOwnershipBatch::default();
+        for index in 0..count {
+            let route = self.view.route(index)?;
+            ids[index] = batch.observe(route.expert_id)?.expert_id as i32;
+            weights[index] = route.gate_weight;
+        }
+        batch.write_local_ownership(rank, ownership)
     }
     fn response_header(&self, executor_id: u64) -> Result<ExpertProtocolV2ResponseHeader> {
         ensure!(executor_id != 0, "native response needs an executor identity");
@@ -157,7 +199,7 @@ impl<'a> V41BackboneRequest<'a> {
                 output_row_stride_bytes: V41_PARTIAL_ROW_BYTES,
                 output_payload_bytes: self.plane_bytes()? as u64,
                 status: ExpertProtocolV2Status::Ok,
-                flags: header.flags,
+                flags: header.flags & !V41_EXL3_PAIRED_REQUEST_FLAG,
                 executor_id,
             })
     }

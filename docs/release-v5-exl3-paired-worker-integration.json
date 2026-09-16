@@ -1,0 +1,19 @@
+{
+  "scope": "Worker request parsing/upload/launch wiring; not live GPU worker qualification",
+  "transport_tests": {
+    "passed": 157,
+    "ignored": 3,
+    "failed": 0
+  },
+  "daemon_cargo_check": true,
+  "wire_route_entry_bytes": 12,
+  "additional_wire_payload_bytes": 0,
+  "additional_h2d_calls": 0,
+  "paired_gpu_input_extra_bytes_for_current_two_tier_checkpoint": 3072,
+  "pending": [
+    "coordinator ownership assignment and encoding",
+    "paired resident loading and matching package selection",
+    "Rust GPU worker and distributed qualification",
+    "performance measurements"
+  ]
+}

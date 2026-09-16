@@ -87,7 +87,11 @@ pub(super) fn run(config: NativeExpertServiceConfig, listen: &str) -> Result<()>
         while index < connections.len() {
             let mut execution_failed = false;
             let result = connections[index].poll(|view, mapped, emit| {
-                let request = V41BackboneRequest::parse(view.frame_bytes(), config.capacity)?;
+                let request = if execution.is_paired() {
+                    V41BackboneRequest::parse_paired(view.frame_bytes(), config.capacity)?
+                } else {
+                    V41BackboneRequest::parse(view.frame_bytes(), config.capacity)?
+                };
                 let layer = (request.layer() as usize).checked_sub(config.first_layer)
                     .context("requested expert layer is not resident on this Spark")?;
                 execution.bind_layer(&weights, layer)?;

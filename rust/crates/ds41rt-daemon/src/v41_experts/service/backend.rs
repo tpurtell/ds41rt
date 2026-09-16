@@ -47,6 +47,7 @@ pub(super) enum Execution<'w, 'a> {
     Exl3(Exl3Worker<'a>),
 }
 impl<'w, 'a> Execution<'w, 'a> {
+    pub(super) fn is_paired(&self) -> bool { matches!(self, Self::Exl3(worker) if worker.is_paired()) }
     pub(super) fn bind_layer(&mut self, weights: &'w Weights<'a>, index: usize) -> Result<()> {
         match (self, weights) {
             (Self::Full(execution), Weights::Full(weights)) => execution.bind_layer(

@@ -24,6 +24,8 @@ pub(crate) struct Exl3Worker<'a> {
     executions: Vec<Exl3Execution<'a>>,
     capacity: usize,
     inputs: [DeviceAllocation<'a>; 3],
+    paired_upload: Option<Vec<i32>>,
+    ownership_words: usize,
     library: &'a NativeLibrary,
     first_layer: usize,
     layer_count: usize,
@@ -45,8 +47,10 @@ impl<'a> Exl3Worker<'a> {
     pub(crate) fn plan(directory: &Path, capacity: u32) -> Result<usize> {
         let directories: Vec<_> = Self::capacities(capacity)?.into_iter()
             .map(|c| directory.join(format!("m{c}"))).collect();
+        let ownership_bytes = Exl3Execution::ownership_bytes(&directories[0])?;
         Exl3Workspace::plan(&directories, Exl3InputFormat::Fp8K32)?
             .checked_add(capacity as usize * (5280 + 6 * 8))
+            .and_then(|bytes| bytes.checked_add(ownership_bytes))
             .context("EXL3 worker workspace budget overflow")
     }
 
@@ -99,9 +103,13 @@ impl<'a> Exl3Worker<'a> {
             );
             executions.push(execution);
         }
+        let ownership_words = if first.layout.layout == ds41rt_loader::V41Exl3Partition::PairedTp4 {
+            first.layout.experts * first.layout.tiers.len()
+        } else { 0 };
+        let paired_upload = (ownership_words > 0).then(|| vec![0; capacity as usize * 6 + ownership_words]);
         let inputs = [
             DeviceAllocation::new(library, capacity as usize * 5280)?,
-            DeviceAllocation::new(library, capacity as usize * 6 * 4)?,
+            DeviceAllocation::new(library, (capacity as usize * 6 + ownership_words) * 4)?,
             DeviceAllocation::new(library, capacity as usize * 6 * 4)?,
         ];
         ensure!(
@@ -136,6 +144,8 @@ impl<'a> Exl3Worker<'a> {
             executions,
             capacity: capacity as usize,
             inputs,
+            paired_upload,
+            ownership_words,
             library,
             first_layer,
             layer_count,
@@ -143,6 +153,8 @@ impl<'a> Exl3Worker<'a> {
             executor_id: rank as u64 + 1,
         })
     }
+
+    pub(crate) fn is_paired(&self) -> bool { self.paired_upload.is_some() }
 
     pub(crate) fn bind_layer(&mut self, layer: usize) -> Result<()> {
         ensure!(
@@ -172,6 +184,7 @@ impl<'a> Exl3Worker<'a> {
             request.rows() > 0 && request.rows() as usize <= self.capacity,
             "EXL3 request exceeds capacity"
         );
+        ensure!(request.is_paired() == self.is_paired(), "EXL3 request/resident layout mismatch");
         request.require_input_dtype(ExpertV2Dtype::Fp8E4m3Ue8m0K32 as u32)?;
         let bytes = request.plane_bytes()?;
         ensure!(
@@ -179,19 +192,28 @@ impl<'a> Exl3Worker<'a> {
             "EXL3 host exchange is too small"
         );
         let started = self.timing.as_ref().map(|_| std::time::Instant::now());
-        request.copy_routes_into(&mut exchange.ids, &mut exchange.routing)?;
+        let routes = request.rows() as usize * 6;
+        if let Some(upload) = &mut self.paired_upload {
+            let (ids, tail) = upload.split_at_mut(routes);
+            request.copy_paired_routes_into(ids, &mut exchange.routing, self.executor_id as usize - 1,
+                &mut tail[..self.ownership_words])?;
+        } else {
+            request.copy_routes_into(&mut exchange.ids, &mut exchange.routing)?;
+        }
         ensure!(
             cfg!(target_endian = "little"),
             "native exchange requires little-endian storage"
         );
-        let routes = request.rows() as usize * 6;
         // Every previous response completed this stream before returning.
         self.library
             .copy_h2d(self.inputs[0].buffer, request.hidden())?;
         unsafe {
             self.library.copy_h2d(
                 self.inputs[1].buffer,
-                std::slice::from_raw_parts(exchange.ids.as_ptr().cast::<u8>(), routes * 4),
+                match &self.paired_upload {
+                    Some(upload) => std::slice::from_raw_parts(upload.as_ptr().cast::<u8>(), (routes + self.ownership_words) * 4),
+                    None => std::slice::from_raw_parts(exchange.ids.as_ptr().cast::<u8>(), routes * 4),
+                },
             )?;
             self.library.copy_h2d(
                 self.inputs[2].buffer,
@@ -211,7 +233,15 @@ impl<'a> Exl3Worker<'a> {
             .find(|e| e.capacity() >= request.rows() as usize)
             .context("missing preloaded EXL3 worker capacity")?;
         let output = unsafe {
-            match destination {
+            if self.ownership_words > 0 {
+                let ownership = Ds41rtDeviceBuffer {
+                    ptr: self.inputs[1].buffer.ptr.cast::<u8>().add(routes * 4).cast(),
+                    bytes: self.ownership_words * 4,
+                    ..self.inputs[1].buffer
+                };
+                execution.launch_paired_layer_into(self.layer, inputs, request.rows() as usize,
+                    self.stream.raw, destination, ownership)?
+            } else { match destination {
                 Some(output) => execution.launch_layer_into(
                     self.layer,
                     inputs,
@@ -225,7 +255,7 @@ impl<'a> Exl3Worker<'a> {
                     request.rows() as usize,
                     self.stream.raw,
                 )?,
-            }
+            } }
         };
         let enqueued_us = started.map(|t| t.elapsed().as_micros() as u64).unwrap_or(0);
         if let Some([_, end]) = &self.timing {
@@ -244,7 +274,8 @@ impl<'a> Exl3Worker<'a> {
             // including routing and output reduction, not just the expert kernel.
             let gpu_us = unsafe { self.library.cuda_event_elapsed_ms(start.raw, end.raw)? } * 1000.;
             let mut seen = [false; 384];
-            for &id in &exchange.ids[..routes] {
+            let ids = self.paired_upload.as_deref().unwrap_or(&exchange.ids);
+            for &id in &ids[..routes] {
                 if let Some(value) = seen.get_mut(id as usize) { *value = true; }
             }
             tracing::info!(target: "ds41rt::worker_timing", executor_id, layer=request.layer(), rows=request.rows(),

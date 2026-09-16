@@ -474,7 +474,8 @@ fn response_header_len_from_flags(flags: u32) -> usize {
 fn validate_flags(flags: u32, label: &str) -> Result<()> {
     let allowed = match label {
         "request" => {
-            EXPERT_PROTOCOL_V2_FLAG_DEBUG_CHECKSUM
+            crate::v41_expert::V41_EXL3_PAIRED_REQUEST_FLAG
+                | EXPERT_PROTOCOL_V2_FLAG_DEBUG_CHECKSUM
                 | EXPERT_PROTOCOL_V2_FLAG_V41_COMPACT_BF16
                 | EXPERT_PROTOCOL_V2_FLAG_PRECOMPILE_WARMUP
                 | EXPERT_PROTOCOL_V2_FLAG_RESPONSE_FP8_E4M3_ROW_SCALED
@@ -494,6 +495,13 @@ fn validate_flags(flags: u32, label: &str) -> Result<()> {
         }
         _ => EXPERT_PROTOCOL_V2_FLAG_DEBUG_CHECKSUM,
     };
+    if label == "request" && flags & crate::v41_expert::V41_EXL3_PAIRED_REQUEST_FLAG != 0 {
+        let paired_allowed = crate::v41_expert::V41_EXL3_PAIRED_REQUEST_FLAG
+            | EXPERT_PROTOCOL_V2_FLAG_V41_COMPACT_BF16 | EXPERT_PROTOCOL_V2_FLAG_DEBUG_CHECKSUM;
+        if flags & !paired_allowed != 0 || flags & EXPERT_PROTOCOL_V2_FLAG_V41_COMPACT_BF16 == 0 {
+            bail!("paired EXL3 requires the native compact request contract");
+        }
+    }
     let unknown = flags & !allowed;
     if unknown != 0 {
         bail!("ExpertProtocolV2 {label} has unknown flags 0x{unknown:08x}");

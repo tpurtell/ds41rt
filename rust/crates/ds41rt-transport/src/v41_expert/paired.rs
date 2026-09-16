@@ -1,4 +1,4 @@
-//! Candidate paired EXL3 route-word contract. Not enabled in frame parsing yet.
+//! Paired EXL3 route-word contract, requiring explicit paired native admission.
 //!
 //! Keep the existing 12-byte route entry: bits 0..8 identify the expert,
 //! bits 9..10 select the two boundary owners. Every other bit is reserved.
@@ -6,8 +6,7 @@
 //! words. In particular, an all-zero ownership pattern still needs the flag.
 use anyhow::{ensure, Result};
 
-/// Reserved for paired EXL3 admission. Existing frame parsers reject this flag
-/// until the worker, native artifact and coordinator contracts are integrated.
+/// Requires explicit paired admission; ordinary native workers reject this flag.
 pub const V41_EXL3_PAIRED_REQUEST_FLAG: u32 = 1 << 17;
 const EXPERT_MASK: u32 = 511;
 const OWNERS_SHIFT: u32 = 9;
@@ -174,6 +173,57 @@ mod tests {
     }
 
     #[test]
+    fn paired_frames_preserve_size_routes_and_responses_and_reject_conflicts() {
+        use crate::v41_expert::V41BackboneRequest;
+        let original = crate::v41_expert::tests::request(3);
+        let ordinary = original.encode().unwrap();
+        assert!(V41BackboneRequest::parse_paired(&ordinary, 3).is_err());
+        for pattern in 0..4 {
+            let mut request = original.clone();
+            request.header.flags |= V41_EXL3_PAIRED_REQUEST_FLAG;
+            for route in &mut request.routes {
+                route.expert_id = V41PairedRouteWord {
+                    expert_id: route.expert_id,
+                    owners: ((route.expert_id + pattern) % 4) as u8,
+                }
+                .encode()
+                .unwrap();
+            }
+            let frame = request.encode().unwrap();
+            assert_eq!(frame.len(), ordinary.len());
+            assert!(V41BackboneRequest::parse(&frame, 3).is_err());
+            V41BackboneRequest::validate_owned_paired(&request, 3).unwrap();
+            let native = V41BackboneRequest::parse_paired(&frame, 3).unwrap();
+            let mut ids = [0; 18];
+            let mut weights = [0.; 18];
+            assert!(native.copy_routes_into(&mut ids, &mut weights).is_err());
+            for rank in 0..4 {
+                let mut ownership = [99; 768];
+                native
+                    .copy_paired_routes_into(&mut ids, &mut weights, rank, &mut ownership)
+                    .unwrap();
+                for (index, route) in original.routes.iter().enumerate() {
+                    assert_eq!(ids[index], route.expert_id as i32);
+                    assert_eq!(weights[index].to_bits(), route.gate_weight.to_bits());
+                    let owners = (route.expert_id + pattern) % 4;
+                    assert_eq!(
+                        ownership[route.expert_id as usize],
+                        i32::from(((owners >> (rank / 2)) & 1) == (rank % 2) as u32)
+                    );
+                }
+                assert!(ownership[384..].iter().all(|&v| v == 0));
+            }
+            let partials = vec![0; native.plane_bytes().unwrap()];
+            let response = native.response(1, &partials).unwrap();
+            assert_eq!(response.header.flags, original.header.flags);
+            response.validate().unwrap();
+            request.routes[6].expert_id ^= 1 << OWNERS_SHIFT;
+            assert!(V41BackboneRequest::validate_owned_paired(&request, 3).is_err());
+            assert!(V41BackboneRequest::parse_paired(&request.encode().unwrap(), 3).is_err());
+        }
+    }
+
+    #[test]
     fn current_native_frame_contract_still_rejects_paired_admission() {
         let mut request = crate::v41_expert::tests::request(2);
         let original = request.encode().unwrap();
@@ -185,7 +235,9 @@ mod tests {
         assert_eq!(request.encode().unwrap(), original);
         assert!(crate::v41_expert::V41BackboneRequest::validate_owned(&request, 2).is_ok());
         request.header.flags |= V41_EXL3_PAIRED_REQUEST_FLAG;
-        assert!(request.encode().is_err());
+        let paired_frame = request.encode().unwrap();
+        assert!(crate::v41_expert::V41BackboneRequest::parse(&paired_frame, 2).is_err());
+        assert!(crate::v41_expert::V41BackboneRequest::parse_paired(&paired_frame, 2).is_ok());
         assert!(crate::v41_expert::V41BackboneRequest::validate_owned(&request, 2).is_err());
     }
 }

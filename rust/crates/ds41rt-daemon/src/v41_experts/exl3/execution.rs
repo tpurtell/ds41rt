@@ -240,6 +240,11 @@ pub(crate) enum Exl3InputFormat {
 }
 
 impl<'a> Exl3Execution<'a> {
+    pub(crate) fn ownership_bytes(directory: &Path) -> Result<usize> {
+        let meta: Manifest = serde_json::from_slice(&std::fs::read(directory.join("v41_exl3.json"))?)?;
+        Ok(if meta.native_layout()? == V41Exl3Layout::Disjoint { 0 } else { meta.experts * meta.bits.len() * 4 })
+    }
+
     /// Device allocation payload per lane, including aliases and optional wire
     /// reconstruction. Weight storage and CUDA module/driver reserve are separate.
     pub(crate) fn plan(directory: &Path, format: Exl3InputFormat) -> Result<usize> {

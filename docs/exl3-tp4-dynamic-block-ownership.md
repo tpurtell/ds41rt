@@ -1,8 +1,9 @@
 # EXL3 TP4: balance whole rotation blocks per expert
 
 Proposed TP4 optimization. The CPU ownership planner and explicit paired loader
-layout are implemented and tested; serving transport and fused GPU execution
-are not integrated. This is not a
+layout are implemented and tested. Native paired kernels and worker dispatch
+are implemented, but coordinator integration and distributed qualification
+remain incomplete. This is not a
 release default and has no measured serving benefit yet.
 Keep H128 rotations local while distributing the two extra blocks of each
 18-block expert across the four Sparks. TP6 remains a separate goal.
@@ -168,17 +169,21 @@ to measure on the mixed 512/640 active widths after correctness.
 
 ### Compact wire contract
 
-`v41_expert/paired.rs` implements the candidate ownership-word codec without
-enabling paired frame admission. The existing 12-byte route entry is retained:
+`v41_expert/paired.rs` implements the ownership-word codec with explicit
+paired admission. The existing 12-byte route entry is retained:
 expert-word bits 0–8 hold ID 0–383; bits 9–10 hold the two pair-owner selections;
 bits 11–31 must be zero. There are no additional payload bytes or messages.
 Repeated routes for an expert must carry identical ownership throughout the
 batch. Fixed-size batch scratch validates consistency and expands ownership
 to the kernel's int32 row, clearing inactive and padded slots on reuse.
 
-Request flag bit 17 is reserved for this contract and remains rejected by the
-current frame parser. Integration must check the flag against the loaded
-paired/disjoint EXL3 layout in **both** directions before execution. Even an
+Request flag bit 17 identifies this contract. Generic framing accepts it only
+with native compact-response semantics and optional debug checksums; legacy
+streaming/compression flags cannot be combined with it. Ordinary native parsing
+rejects paired frames; explicit paired parsing requires the flag and validates
+decoded IDs, unique routes per row, and consistent ownership across the batch.
+The worker service selects parsing from its loaded execution layout, checking
+paired/disjoint agreement in **both** directions before execution. Even an
 all-zero owner selection requires the paired flag; it must never silently run
 on a disjoint or NVFP4 worker. The original model retains its equal 576-channel
 TP4 split, ordinary expert IDs and existing request/response behavior.
@@ -202,8 +207,8 @@ and paired-last DSOs exported, linked, answered the expected queries and
 completed CUDA create/destroy. Both paired exports used two blocks/SM at
 capacity 80. This checks artifact construction and initialization, not native
 compute launch correctness or performance. Evidence is in
-`release-v5-exl3-paired-export.json` and its archive. Worker launch integration
-and paired frame admission are still pending.
+`release-v5-exl3-paired-export.json` and its archive. These initial checks did
+not exercise worker launch or paired frame admission.
 
 The exported C compute path has subsequently passed real-checkpoint comparison
 with B12x JIT for disjoint, paired-first and paired-last artifacts. Each used
@@ -224,9 +229,27 @@ fourth descriptor row on the launch stream. Ordinary launches reject paired
 kernels, and paired launches reject disjoint kernels. Destination pointers are
 resolved during setup, with no per-launch allocation or tensor-name lookup.
 The caller must preserve ownership-buffer lifetime and exclusive descriptor
-use through stream/graph completion. This Rust launch path still needs GPU
-qualification and connection to worker request decoding; frame admission is
-not enabled by these setup changes.
+use through stream/graph completion.
+
+Worker request decoding is now connected to this explicit launch. A paired
+worker preallocates an ID-upload buffer with an additional ownership row,
+unpacks routes into its prefix and writes ownership immediately after the live
+IDs. The existing ID H2D transfer carries both, and the launch-stream device
+copy moves ownership into the bound descriptor. There is no extra network
+message, H2D call, per-request allocation or cross-lane decision. The extra GPU
+input capacity is 3,072 bytes for the current two-tier checkpoint; it is included
+in workspace planning. Ordinary workers retain their existing input sizes and
+route-copy path. Responses strip the request-only paired flag and retain the
+existing compact BF16 format.
+
+All 157 transport library tests passed (three live/environment tests ignored),
+including paired frame length equality, exact decoded IDs/FP32 weights,
+per-pair ownership coverage, repeated-expert conflict rejection, ordinary versus
+paired admission, and unchanged response flags. The daemon compiles with the
+new worker path. This is not yet Rust-worker GPU or distributed-serving
+qualification. Coordinator assignment/encoding, selecting paired resident
+loading and matching packages, and live rejection/cancellation/recovery tests
+remain required before deployment.
 
 The current resident layout and mixed kernel assume one intermediate width
 for every expert in a launch. Supporting this proposal requires a real
