@@ -1,0 +1,388 @@
+{
+  "scope": "Combined native live-row hybrid experts on both RTX TP2 and all four Spark workers; matched three-repeat short decode screen, not final release qualification.",
+  "configuration": {
+    "workers": [
+      {
+        "host": "ostrich",
+        "previous_container": "ds41rt-upstream-worker-ostrich",
+        "candidate_container": "ds41rt-hybrid-worker-ostrich",
+        "container_id": "c9888225ff36746033e1d1ce809972ef6d174002f37db3fef36add6d20f7c9c3",
+        "command": [
+          "docker",
+          "run",
+          "-d",
+          "--name",
+          "ds41rt-hybrid-worker-ostrich",
+          "--gpus",
+          "all",
+          "--network",
+          "host",
+          "--ipc",
+          "host",
+          "--device",
+          "/dev/infiniband",
+          "--ulimit",
+          "memlock=-1:-1",
+          "-v",
+          "/home/tj/.cache/huggingface:/root/.cache/huggingface:ro",
+          "-v",
+          "/home/tj/.cache/ds41rt-upstream-20260916/worker-hybrid-artifacts:/candidate:ro",
+          "-e",
+          "DS41RT_NATIVE_LIB=/candidate/libds41rt_native.so",
+          "-e",
+          "RUST_LOG=info",
+          "--label",
+          "io.ds41rt.integration=candidate-hybrid-4e31d0a1",
+          "--entrypoint",
+          "/candidate/ds41rt",
+          "sha256:622398bf2562f3d570fa8821715b501bfe69be718a00dc0dcf7304420fe4287b",
+          "expertd-native",
+          "--snapshot",
+          "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+          "--native-lib",
+          "/candidate/libds41rt_native.so",
+          "--rank",
+          "0",
+          "--capacity",
+          "4096",
+          "--device-budget-bytes",
+          "107374182400",
+          "--first-layer",
+          "20",
+          "--listen",
+          "0.0.0.0:19441"
+        ]
+      },
+      {
+        "host": "dodo",
+        "previous_container": "ds41rt-upstream-worker-dodo",
+        "candidate_container": "ds41rt-hybrid-worker-dodo",
+        "container_id": "9ff10772e085068ba7323fcae2c5406665a5ce9611bf31052f378d925eb401af",
+        "command": [
+          "docker",
+          "run",
+          "-d",
+          "--name",
+          "ds41rt-hybrid-worker-dodo",
+          "--gpus",
+          "all",
+          "--network",
+          "host",
+          "--ipc",
+          "host",
+          "--device",
+          "/dev/infiniband",
+          "--ulimit",
+          "memlock=-1:-1",
+          "-v",
+          "/home/tj/.cache/huggingface:/root/.cache/huggingface:ro",
+          "-v",
+          "/home/tj/.cache/ds41rt-upstream-20260916/worker-hybrid-artifacts:/candidate:ro",
+          "-e",
+          "DS41RT_NATIVE_LIB=/candidate/libds41rt_native.so",
+          "-e",
+          "RUST_LOG=info",
+          "--label",
+          "io.ds41rt.integration=candidate-hybrid-4e31d0a1",
+          "--entrypoint",
+          "/candidate/ds41rt",
+          "sha256:622398bf2562f3d570fa8821715b501bfe69be718a00dc0dcf7304420fe4287b",
+          "expertd-native",
+          "--snapshot",
+          "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+          "--native-lib",
+          "/candidate/libds41rt_native.so",
+          "--rank",
+          "1",
+          "--capacity",
+          "4096",
+          "--device-budget-bytes",
+          "107374182400",
+          "--first-layer",
+          "20",
+          "--listen",
+          "0.0.0.0:19441"
+        ]
+      },
+      {
+        "host": "emu",
+        "previous_container": "ds41rt-upstream-worker-emu",
+        "candidate_container": "ds41rt-hybrid-worker-emu",
+        "container_id": "638d2893cc8434b0953edf50eb5484f82aa13b00b8953ef9b9189446c6e095f3",
+        "command": [
+          "docker",
+          "run",
+          "-d",
+          "--name",
+          "ds41rt-hybrid-worker-emu",
+          "--gpus",
+          "all",
+          "--network",
+          "host",
+          "--ipc",
+          "host",
+          "--device",
+          "/dev/infiniband",
+          "--ulimit",
+          "memlock=-1:-1",
+          "-v",
+          "/home/tj/.cache/huggingface:/root/.cache/huggingface:ro",
+          "-v",
+          "/home/tj/.cache/ds41rt-upstream-20260916/worker-hybrid-artifacts:/candidate:ro",
+          "-e",
+          "DS41RT_NATIVE_LIB=/candidate/libds41rt_native.so",
+          "-e",
+          "RUST_LOG=info",
+          "--label",
+          "io.ds41rt.integration=candidate-hybrid-4e31d0a1",
+          "--entrypoint",
+          "/candidate/ds41rt",
+          "sha256:622398bf2562f3d570fa8821715b501bfe69be718a00dc0dcf7304420fe4287b",
+          "expertd-native",
+          "--snapshot",
+          "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+          "--native-lib",
+          "/candidate/libds41rt_native.so",
+          "--rank",
+          "2",
+          "--capacity",
+          "4096",
+          "--device-budget-bytes",
+          "107374182400",
+          "--first-layer",
+          "20",
+          "--listen",
+          "0.0.0.0:19441"
+        ]
+      },
+      {
+        "host": "kiwi",
+        "previous_container": "ds41rt-upstream-worker-kiwi",
+        "candidate_container": "ds41rt-hybrid-worker-kiwi",
+        "container_id": "51c171dbc324a603f000c946457c5ae20f47be9f5c5f5c5950c3535956f6d54d",
+        "command": [
+          "docker",
+          "run",
+          "-d",
+          "--name",
+          "ds41rt-hybrid-worker-kiwi",
+          "--gpus",
+          "all",
+          "--network",
+          "host",
+          "--ipc",
+          "host",
+          "--device",
+          "/dev/infiniband",
+          "--ulimit",
+          "memlock=-1:-1",
+          "-v",
+          "/home/tj/.cache/huggingface:/root/.cache/huggingface:ro",
+          "-v",
+          "/home/tj/.cache/ds41rt-upstream-20260916/worker-hybrid-artifacts:/candidate:ro",
+          "-e",
+          "DS41RT_NATIVE_LIB=/candidate/libds41rt_native.so",
+          "-e",
+          "RUST_LOG=info",
+          "--label",
+          "io.ds41rt.integration=candidate-hybrid-4e31d0a1",
+          "--entrypoint",
+          "/candidate/ds41rt",
+          "sha256:622398bf2562f3d570fa8821715b501bfe69be718a00dc0dcf7304420fe4287b",
+          "expertd-native",
+          "--snapshot",
+          "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+          "--native-lib",
+          "/candidate/libds41rt_native.so",
+          "--rank",
+          "3",
+          "--capacity",
+          "4096",
+          "--device-budget-bytes",
+          "107374182400",
+          "--first-layer",
+          "20",
+          "--listen",
+          "0.0.0.0:19441"
+        ]
+      }
+    ],
+    "spark_sha256": "f5d3ced0d7e70b47d24ef700d7baa97ddb175d9d0a59afd14013f50ff40468d0",
+    "coordinator_sha256": "16793655026843d36402319a91e1176cdbd51ce89097fe8b9b1d00bbad6cf5dc",
+    "startup_log": "/home/tj/.cache/ds41rt-upstream-20260916/hybrid-experts-startup.log",
+    "run_script": "#!/bin/bash\nset -eu\ncd /home/tj/Developer/ds41rt\nexec env DS41RT_NATIVE_LIB=/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-hybrid-tp2.so LD_LIBRARY_PATH=/home/tj/.local/share/uv/python/cpython-3.12.3-linux-x86_64-gnu/lib DS41RT_PYTHON=/home/tj/Developer/ds41rt/.venv/bin/python RUST_LOG=info CUDA_VISIBLE_DEVICES=0,1 rust/target/release/ds41rt serve-native --snapshot /home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277 --native-lib /home/tj/.cache/ds41rt-upstream-20260916/libcandidate-hybrid-tp2.so --peers 10.55.0.1:19441,10.55.0.2:19441,10.55.0.3:19441,10.55.0.4:19441 --rtx-gpus 2 --listen 0.0.0.0:8000 --prefill-batch-tokens 2048 --concurrency 16 --prefix-cache-entries 24 --max-context-tokens 1048576 --max-output-tokens 393216 --dspark\n",
+    "baseline_report": "/home/tj/.cache/ds41rt-upstream-20260916/compact-tp2-serving-baseline.json"
+  },
+  "requests_identical": true,
+  "arms": {
+    "baseline": {
+      "raw_path": "/home/tj/.cache/ds41rt-upstream-20260916/compact-tp2-serving-baseline.json",
+      "sha256": "2ffdaaa042a0703eadc5306dfcd93078e2a70ab8138b54d54d92ce722320855b",
+      "passed": 27,
+      "requests": 27,
+      "weighted_tps_samples": [
+        96.72462493883654,
+        96.41564157048707,
+        93.38798525205536
+      ],
+      "weighted_tps_mean": 95.50941725379299,
+      "weighted_tps_median": 96.41564157048707,
+      "cases": {
+        "code": {
+          "tps_samples": [
+            148.8372657779057,
+            160.08046603803044,
+            157.32561599992928
+          ],
+          "median_tps": 157.32561599992928
+        },
+        "topic": {
+          "tps_samples": [
+            88.95543493535395,
+            85.22287578471466,
+            86.5490240718238
+          ],
+          "median_tps": 86.5490240718238
+        },
+        "counting": {
+          "tps_samples": [
+            185.35998092927377,
+            200.39106033440672,
+            202.43143736484342
+          ],
+          "median_tps": 200.39106033440672
+        }
+      }
+    },
+    "hybrid": {
+      "raw_path": "/home/tj/.cache/ds41rt-upstream-20260916/hybrid-experts-serving-candidate.json",
+      "sha256": "540104ac3d898c38cc2ed406b5dcdac1c7726d31fe2d0612a60daece2e8be97b",
+      "passed": 27,
+      "requests": 27,
+      "weighted_tps_samples": [
+        96.74591385630163,
+        95.14980470194318,
+        94.08536412635156
+      ],
+      "weighted_tps_mean": 95.32702756153212,
+      "weighted_tps_median": 95.14980470194318,
+      "cases": {
+        "code": {
+          "tps_samples": [
+            152.95658606573232,
+            158.47699931415403,
+            157.79752537889618
+          ],
+          "median_tps": 157.79752537889618
+        },
+        "topic": {
+          "tps_samples": [
+            89.37953388728243,
+            88.3603397891179,
+            86.53324214675251
+          ],
+          "median_tps": 88.3603397891179
+        },
+        "counting": {
+          "tps_samples": [
+            186.24507498335944,
+            200.2058057401878,
+            199.09744852114952
+          ],
+          "median_tps": 199.09744852114952
+        }
+      }
+    }
+  },
+  "decision": "Single-client throughput remains flat. One-sample concurrency results are mixed and the old C16 code first sample is known to be slow; repeated matched trials are required before selection. Experimental defaults remain off.",
+  "concurrency_screen": {
+    "baseline": {
+      "code": {
+        "raw_path": "/home/tj/.cache/ds41rt-upstream-20260916/compact-concurrency-baseline-code.json",
+        "sha256": "fa3385e93daec678297a4ae8df52eb6628e3d70d6028c1f2f6cbb1cc0fc77c37",
+        "passed": true,
+        "summaries": [
+          {
+            "concurrency": 2,
+            "samples": 1,
+            "median_aggregate_tps": 218.54229654337985,
+            "min_aggregate_tps": 218.54229654337985,
+            "max_aggregate_tps": 218.54229654337985
+          },
+          {
+            "concurrency": 16,
+            "samples": 1,
+            "median_aggregate_tps": 906.6953499771781,
+            "min_aggregate_tps": 906.6953499771781,
+            "max_aggregate_tps": 906.6953499771781
+          }
+        ]
+      },
+      "topic": {
+        "raw_path": "/home/tj/.cache/ds41rt-upstream-20260916/compact-concurrency-baseline-topic.json",
+        "sha256": "9c39d6f3e5af1a06c18793a143493358ab40c2754a989ea2877ba9eec2a61a5b",
+        "passed": true,
+        "summaries": [
+          {
+            "concurrency": 2,
+            "samples": 1,
+            "median_aggregate_tps": 148.10754947330017,
+            "min_aggregate_tps": 148.10754947330017,
+            "max_aggregate_tps": 148.10754947330017
+          },
+          {
+            "concurrency": 16,
+            "samples": 1,
+            "median_aggregate_tps": 700.2845918905613,
+            "min_aggregate_tps": 700.2845918905613,
+            "max_aggregate_tps": 700.2845918905613
+          }
+        ]
+      }
+    },
+    "hybrid": {
+      "code": {
+        "raw_path": "/home/tj/.cache/ds41rt-upstream-20260916/hybrid-concurrency-candidate-code.json",
+        "sha256": "d5ee8e5736320a535542ff051ad042e9989b9ec7e37fa2855fc49a7d572a77fa",
+        "passed": true,
+        "summaries": [
+          {
+            "concurrency": 2,
+            "samples": 1,
+            "median_aggregate_tps": 216.5132675929001,
+            "min_aggregate_tps": 216.5132675929001,
+            "max_aggregate_tps": 216.5132675929001
+          },
+          {
+            "concurrency": 16,
+            "samples": 1,
+            "median_aggregate_tps": 1245.0835016659748,
+            "min_aggregate_tps": 1245.0835016659748,
+            "max_aggregate_tps": 1245.0835016659748
+          }
+        ]
+      },
+      "topic": {
+        "raw_path": "/home/tj/.cache/ds41rt-upstream-20260916/hybrid-concurrency-candidate-topic.json",
+        "sha256": "b30cb7e50a72e20998c5713a879f107ebf5379455a6a3f7fb343599e62a72110",
+        "passed": true,
+        "summaries": [
+          {
+            "concurrency": 2,
+            "samples": 1,
+            "median_aggregate_tps": 157.63503463796488,
+            "min_aggregate_tps": 157.63503463796488,
+            "max_aggregate_tps": 157.63503463796488
+          },
+          {
+            "concurrency": 16,
+            "samples": 1,
+            "median_aggregate_tps": 654.8466826595263,
+            "min_aggregate_tps": 654.8466826595263,
+            "max_aggregate_tps": 654.8466826595263
+          }
+        ]
+      }
+    }
+  }
+}

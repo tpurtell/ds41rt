@@ -16,6 +16,26 @@ flowchart LR
     F --> G[Clean image builds, README, reports and release]
 ```
 
+## Combined hybrid experts: first serving screen
+
+The combined RTX/Spark hybrid passed all 27 short decode requests, using
+identical request bodies to the baseline. Three-run mean weighted throughput
+was **95.51 → 95.33 TPS** (median **96.42 → 95.15**): no useful single-client
+gain. Median code was 157.33 → 157.80 TPS and topic 86.55 → 88.36 TPS.
+Warm coordinator startup took 13.03 seconds, with all twenty encoder expert
+layers on RTX TP2 and the same cache reservation as the comparison baseline.
+
+The initial concurrency screen also passed, but is mixed: code C2 was
+218.5 → 216.5 TPS, topic C2 148.1 → 157.6, and topic C16 700.3 → 654.8.
+Hybrid C16 code was 1245.1 TPS; comparing that against the old slow first
+sample would be misleading (the repeated baseline previously reached
+1299–1304 TPS). Repeated matched concurrency trials are running before any
+backend-selection decision. Both compact experiment defaults remain off.
+[Serving evidence](sparkinfer-upstream-expert-hybrid-serving-20260916.json)
+records the component identities, raw artifacts and summaries. This closes
+the initial combined serving correctness screen, not final release quality
+or performance acceptance.
+
 ## Full hybrid Spark worker qualification
 
 The full serving library now passes the native shared-arena checks at live
