@@ -1,0 +1,101 @@
+{
+  "scope": "Clean candidate build and standard dual-RTX launcher; quality qualification in progress, not final release acceptance.",
+  "coordinator_image": "sha256:3d95c6a7feed2dfc9fc8240815446295949f56ab75da361cd53257bf554b10e3",
+  "labels": {
+    "com.nvidia.build.id": "313520559",
+    "com.nvidia.build.ref": "30a5fc6cbfce157e75fae3d0cf1fd8e273a3dc25",
+    "com.nvidia.cublas.version": "13.4.1.1",
+    "com.nvidia.cublasmp.version": "0.8.1.2360",
+    "com.nvidia.cuda.version": "9.0",
+    "com.nvidia.cudla.version": "13.2.75",
+    "com.nvidia.cudnn.version": "9.22.0.52",
+    "com.nvidia.cufft.version": "12.2.0.46",
+    "com.nvidia.curand.version": "10.4.2.55",
+    "com.nvidia.cusolver.version": "12.2.0.1",
+    "com.nvidia.cusolvermp.version": "0.8.0.3126",
+    "com.nvidia.cusparse.version": "12.7.10.1",
+    "com.nvidia.cusparselt.version": "0.9.1.1",
+    "com.nvidia.nccl.version": "2.30.4",
+    "com.nvidia.npp.version": "13.1.0.48",
+    "com.nvidia.nsightcompute.version": "2026.1.1.2",
+    "com.nvidia.nsightsystems.version": "2026.2.1.210",
+    "com.nvidia.nvjpeg.version": "13.1.0.48",
+    "com.nvidia.nvvm.version": "13.2.78",
+    "com.nvidia.pytorch.version": "2.12.0a0+5aff392",
+    "com.nvidia.tensorrt.version": "10.16.1.11",
+    "com.nvidia.tensorrtoss.version": "",
+    "com.nvidia.volumes.needed": "nvidia_driver",
+    "io.ds41rt.cuda_arch": "120",
+    "io.ds41rt.role": "coordinator",
+    "io.ds41rt.source-manifest.sha256": "fa74a1c9289ff62ad09f91575f4912ac49e260b32e2e5677253deb5bdfb951c2",
+    "io.ds41rt.sparkinfer.revision": "4e31d0a10ea7ca24ac48d522fb65eaafbc27ad30",
+    "org.opencontainers.image.description": "DeepSeek V4.1 Flash inference for one or two RTX PRO 6000 GPUs and four DGX Spark expert workers",
+    "org.opencontainers.image.licenses": "MIT",
+    "org.opencontainers.image.revision": "83808905f007bf4bd608b929385fa325320c654c-dirty-fa74a1c9289f",
+    "org.opencontainers.image.source": "https://github.com/tpurtell/ds41rt",
+    "org.opencontainers.image.title": "DS41RT inference",
+    "org.opencontainers.image.version": "upstream-candidate"
+  },
+  "command": [
+    "ds41rt",
+    "serve-native",
+    "--snapshot",
+    "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+    "--native-lib",
+    "/opt/ds41rt/lib/libds41rt_native.so",
+    "--peers",
+    "10.55.0.1:19441,10.55.0.2:19441,10.55.0.3:19441,10.55.0.4:19441",
+    "--rtx-gpus",
+    "2",
+    "--listen",
+    "0.0.0.0:8000",
+    "--prefill-batch-tokens",
+    "2048",
+    "--concurrency",
+    "16",
+    "--prefix-cache-entries",
+    "24",
+    "--max-context-tokens",
+    "1048576",
+    "--max-output-tokens",
+    "393216",
+    "--dspark"
+  ],
+  "hardware": "uuid, name, power.limit [W], clocks.current.memory [MHz], memory.used [MiB]\nGPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, NVIDIA RTX PRO 6000 Blackwell Workstation Edition, 400.00 W, 13365 MHz, 95452 MiB\nGPU-95f8f212-9131-df99-fd53-7535965197d7, NVIDIA RTX PRO 6000 Blackwell Workstation Edition, 400.00 W, 13365 MHz, 95628 MiB\n",
+  "evidence": {
+    "candidate-clean-build-archive.log": {
+      "path": "/home/tj/.cache/ds41rt-upstream-20260916/candidate-clean-build-archive.log",
+      "sha256": "af2e85871da2656a7e7ff22bd2fe7507fd0e2503316318da2801e169e61faf27"
+    },
+    "clean-reference-launch.log": {
+      "path": "/home/tj/.cache/ds41rt-upstream-20260916/clean-reference-launch.log",
+      "sha256": "2d94a16051509e3dae6d3ddacf38576eed6aa48312bf00ce1bb16fc354fb2c10"
+    },
+    "clean-reference-server.log": {
+      "path": "/home/tj/.cache/ds41rt-upstream-20260916/clean-reference-server.log",
+      "sha256": "50b8f7573b74fdea9451f7e183f0d48cf48a23b104dd96d138dba147bdf68f8d"
+    },
+    "clean-standard-launch.log": {
+      "path": "/home/tj/.cache/ds41rt-upstream-20260916/clean-standard-launch.log",
+      "sha256": "fdf3826e60c5ed30634739b3c15d058a5f0a5c1c4cb6b5b7e27358c197ef5b26"
+    },
+    "clean-prefix-reference.json": {
+      "path": "/home/tj/.cache/ds41rt-upstream-20260916/clean-prefix-reference.json",
+      "sha256": "58e9729cb56f36a339506a8cfcbe7257d8357dfc45f82f0f236e653e77e04a04",
+      "passed": true,
+      "cases": 6
+    },
+    "clean-prefix-candidate.json": {
+      "path": "/home/tj/.cache/ds41rt-upstream-20260916/clean-prefix-candidate.json",
+      "sha256": "4ba3e3deffe8c8c10e3d0a44160a804e419fd8a3fea414bd2853598ba5eaa11e",
+      "passed": true,
+      "cases": 6
+    },
+    "clean-vision.json": {
+      "path": "/home/tj/.cache/ds41rt-upstream-20260916/clean-vision.json",
+      "sha256": "5b8bfecff55f4b114d4cbc6485afdd8cd2b81b16469c74b0136d855bc3204a28",
+      "passed": true,
+      "cases": 10
+    }
+  }
+}

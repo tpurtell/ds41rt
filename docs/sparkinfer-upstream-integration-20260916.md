@@ -16,6 +16,24 @@ flowchart LR
     F --> G[Clean image builds, README, reports and release]
 ```
 
+## Clean-image serving qualification
+
+The archive build completed and the standard launcher started the two-RTX,
+four-Spark deployment on port 8000. A cache-disabled target reference passed
+all six requests. Standard dSpark with 16 concurrent slots and 24 retained
+entries then passed the same six requests, including divergent and shorter
+branches, exact hits, parent isolation and a multi-chunk new suffix. Partial
+branches replayed 142/144 uncached tokens; exact repeats reported full reuse.
+These are correctness checks, not comparative throughput measurements.
+
+All ten vision cases passed: semantics, changed-image isolation, reordering,
+partial reuse, completed-turn resume and sixteen-image exact reuse. Image,
+source, launch arguments, hardware settings and raw report hashes are recorded
+in [clean-serving evidence](sparkinfer-upstream-clean-serving-20260916.json).
+Long-context needle and the remaining release qualification are still pending.
+The normal launcher uses the current binary K5 default; K7 calibration and
+comparison runs above selected K7 explicitly.
+
 ## Adaptive serving decision and clean-build preparation
 
 The uninstrumented dual-RTX K7 comparison passed every code/topic concurrency,
