@@ -96,6 +96,103 @@
       "sha256": "5b8bfecff55f4b114d4cbc6485afdd8cd2b81b16469c74b0136d855bc3204a28",
       "passed": true,
       "cases": 10
+    },
+    "clean-needle.json": {
+      "path": "/home/tj/.cache/ds41rt-upstream-20260916/clean-needle.json",
+      "sha256": "540dd873e59d1ccc0508f4cbaf0e1fe33901bee57f2011c64673c1b8e2a1c3ae"
+    },
+    "clean-api.json": {
+      "path": "/home/tj/.cache/ds41rt-upstream-20260916/clean-api.json",
+      "sha256": "6a3b62b23a59bb70e57af230b3ddc3ebd3399177e4ac3daa6575498993bb3d51"
+    },
+    "clean-partial-concurrency.json": {
+      "path": "/home/tj/.cache/ds41rt-upstream-20260916/clean-partial-concurrency.json",
+      "sha256": "15092a756e5a112467759d883d162ec7b68325418ceda09afd3f6ea5a736c2a5"
     }
+  },
+  "needle": [
+    {
+      "source_tokens": 32768,
+      "position": 0.1,
+      "passed": true,
+      "runs": {
+        "cold": {
+          "seconds": 4.920190574950539,
+          "prompt_tokens": 32876,
+          "cached_tokens": 0,
+          "retrieved": true
+        },
+        "exact": {
+          "seconds": 0.7677634930005297,
+          "prompt_tokens": 32876,
+          "cached_tokens": 32876,
+          "retrieved": true
+        }
+      }
+    },
+    {
+      "source_tokens": 131072,
+      "position": 0.5,
+      "passed": true,
+      "runs": {
+        "cold": {
+          "seconds": 18.71322614501696,
+          "prompt_tokens": 131179,
+          "cached_tokens": 0,
+          "retrieved": true
+        },
+        "exact": {
+          "seconds": 0.652001267997548,
+          "prompt_tokens": 131179,
+          "cached_tokens": 131179,
+          "retrieved": true
+        }
+      }
+    },
+    {
+      "source_tokens": 524288,
+      "position": 0.9,
+      "passed": true,
+      "runs": {
+        "cold": {
+          "seconds": 116.85483223898336,
+          "prompt_tokens": 524395,
+          "cached_tokens": 0,
+          "retrieved": true
+        },
+        "exact": {
+          "seconds": 1.0914800710743293,
+          "prompt_tokens": 524395,
+          "cached_tokens": 524395,
+          "retrieved": true
+        }
+      }
+    },
+    {
+      "source_tokens": 1040000,
+      "position": 0.5,
+      "passed": true,
+      "runs": {
+        "cold": {
+          "seconds": 352.4726804699749,
+          "prompt_tokens": 1040109,
+          "cached_tokens": 0,
+          "retrieved": true
+        },
+        "exact": {
+          "seconds": 1.7545325700193644,
+          "prompt_tokens": 1040109,
+          "cached_tokens": 1040109,
+          "retrieved": true
+        }
+      }
+    }
+  ],
+  "cancellation_recovered": true,
+  "concurrent_partial_branches_passed": 16,
+  "raw_archive": {
+    "path": "docs/evidence/upstream-clean-serving-20260916.json.gz",
+    "sha256": "55a90f9db42fba66fcc46043f50321f5cbdcfc3ac058a2787d6c7efcf9373911",
+    "bytes": 52628
   }
 }

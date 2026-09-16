@@ -30,7 +30,14 @@ All ten vision cases passed: semantics, changed-image isolation, reordering,
 partial reuse, completed-turn resume and sixteen-image exact reuse. Image,
 source, launch arguments, hardware settings and raw report hashes are recorded
 in [clean-serving evidence](sparkinfer-upstream-clean-serving-20260916.json).
-Long-context needle and the remaining release qualification are still pending.
+High-thinking needle retrieval passed at 32K, 128K, 512K and 1.04M source
+contexts, both cold and with full exact reuse. The cold/exact durations were
+4.92/0.77, 18.71/0.65, 116.85/1.09 and 352.47/1.75 seconds. These are single
+functional observations, not a prefill speedup claim. Streaming cancellation
+and recovery passed, followed by all 16 concurrent divergent cache branches.
+The [raw results](evidence/upstream-clean-serving-20260916.json.gz) preserve the
+responses and usage accounting. Three high-thinking tool-evaluation runs are
+now in progress; final performance and publication remain pending.
 
 The upcoming performance collection preserves the published concurrency prompt
 label/nonce (`phase2-release-final`, `20260914`), direct-corpus seed 61001 and
