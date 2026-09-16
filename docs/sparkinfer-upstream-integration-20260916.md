@@ -24,8 +24,18 @@ the captured reproduction had 27 MiB free and reported compact reduction
 CUDA status 2. Accumulated graph residency exceeds the single-card runtime
 reserve. Reducing index retention from 512 to 128 entries per wave delayed
 the failure until the third mixed sweep but still exhausted memory during
-graph instantiation, with 13 MiB free. It is not an accepted fix. Per-component
-graph memory tracing is in progress while preserving the configured KV pool.
+graph instantiation, with 13 MiB free. It is not an accepted fix. Per-component tracing attributes the dominant
+allocation growth to per-layer attention-query, router, shared-expert, window,
+and sparse-attention graph families. These are allocator deltas, not exact
+per-object residency measurements; diagnostic timings are not benchmark results.
+
+A 16-shape per-layer LRU completes the single-card warm-history campaign and
+three mixed sweeps with 465 MiB minimum free, without reducing KV capacity.
+However, single-card mixed C16 falls to 180.51 TPS versus published v3's
+196.46, and the dual mixed sweep falls from 303.91 to 281.05 TPS against the
+preceding unlimited-shape candidate. This policy is also **not accepted**.
+The next candidate retains 24 projection shapes and bounds window/compressor
+producer graphs to 16, keeping index retention at 512 and KV capacity unchanged.
 The [failure evidence](sparkinfer-upstream-single-memory-20260916.json)
 preserves the failed streams and reproduction logs. The dual measurements
 below describe the earlier 512-entry candidate, not a completed release.

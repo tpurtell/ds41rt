@@ -32,5 +32,111 @@
     "path": "docs/evidence/upstream-single-memory-failure-20260916.tar.gz",
     "sha256": "b86dcd5dab7b36bb866e843571052e78ae46735ce8201f74b0be870047fc5212"
   },
-  "next_step": "Temporary per-component CUDA graph memory tracing; no release readiness claim"
+  "next_step": "Evaluate 24 projection shapes and 16 producer shapes with the same KV pool; release remains blocked pending performance and sustained-memory qualification",
+  "graph_memory_trace": {
+    "allocation_deltas_are_not_exact_residency": true,
+    "minimum_free_mib": 2.25,
+    "between_capture_delta_mib": -2.0,
+    "rows": [
+      {
+        "component": "crates/ds41rt-daemon/src/v41_sparse_attention.rs",
+        "captures": 9120,
+        "allocated_delta_mib": 548.0,
+        "live_estimated_mib": 284.0,
+        "live_handles": 3840
+      },
+      {
+        "component": "crates/ds41rt-daemon/src/v41_attention_query.rs",
+        "captures": 3200,
+        "allocated_delta_mib": 428.0,
+        "live_estimated_mib": 422.0,
+        "live_handles": 3120
+      },
+      {
+        "component": "crates/ds41rt-daemon/src/v41_backbone_router.rs",
+        "captures": 3200,
+        "allocated_delta_mib": 350.0,
+        "live_estimated_mib": 344.0,
+        "live_handles": 3120
+      },
+      {
+        "component": "crates/ds41rt-daemon/src/v41_window.rs",
+        "captures": 3360,
+        "allocated_delta_mib": 338.0,
+        "live_estimated_mib": 334.0,
+        "live_handles": 3120
+      },
+      {
+        "component": "crates/ds41rt-daemon/src/v41_backbone_shared.rs",
+        "captures": 3200,
+        "allocated_delta_mib": 302.0,
+        "live_estimated_mib": 290.0,
+        "live_handles": 3120
+      },
+      {
+        "component": "crates/ds41rt-daemon/src/v41_index_selection.rs",
+        "captures": 54099,
+        "allocated_delta_mib": 104.0,
+        "live_estimated_mib": 4.0,
+        "live_handles": 515
+      },
+      {
+        "component": "crates/ds41rt-daemon/src/v41_index_query.rs",
+        "captures": 640,
+        "allocated_delta_mib": 56.0,
+        "live_estimated_mib": 54.0,
+        "live_handles": 624
+      },
+      {
+        "component": "crates/ds41rt-daemon/src/v41_compressor.rs",
+        "captures": 336,
+        "allocated_delta_mib": 26.0,
+        "live_estimated_mib": 26.0,
+        "live_handles": 312
+      },
+      {
+        "component": "crates/ds41rt-daemon/src/v41_experts/dspark/chain.rs",
+        "captures": 15,
+        "allocated_delta_mib": 8.0,
+        "live_estimated_mib": 8.0,
+        "live_handles": 15
+      },
+      {
+        "component": "crates/ds41rt-daemon/src/v41_engram/layer.rs",
+        "captures": 10069,
+        "allocated_delta_mib": 4.0,
+        "live_estimated_mib": 0.0,
+        "live_handles": 4
+      },
+      {
+        "component": "crates/ds41rt-daemon/src/v41_target_embedding.rs",
+        "captures": 1102,
+        "allocated_delta_mib": 2.0,
+        "live_estimated_mib": 0.0,
+        "live_handles": 1
+      },
+      {
+        "component": "crates/ds41rt-daemon/src/v41_target_head.rs",
+        "captures": 4977,
+        "allocated_delta_mib": 0.0,
+        "live_estimated_mib": 0.0,
+        "live_handles": 2
+      }
+    ]
+  },
+  "layer_lru_16_trial": {
+    "status": "not accepted: mixed decode regression",
+    "single_full_warm_history_passed": true,
+    "single_min_free_MiB": 465,
+    "single_mixed_C16_median_tps": 180.51,
+    "published_v3_single_mixed_C16_tps": 196.46,
+    "dual_mixed_C16_tps": 281.05,
+    "preceding_unbounded_dual_mixed_C16_tps": 303.91,
+    "next_experiment": "24 projection shapes; 16 window/compressor shapes; index limit unchanged at 512",
+    "kv_pool_changed": false
+  },
+  "retention_trials_archive": {
+    "path": "docs/evidence/upstream-graph-retention-trials-20260916.tar.gz",
+    "sha256": "540777c714bd3acf266b27a14d84f510be2dd6d28e6c6853ed80714331b3702d"
+  }
 }
