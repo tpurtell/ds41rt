@@ -133,6 +133,8 @@ def export(output: Path, intermediate: int, experts: int, capacity: int,
             "object_sha256": hashlib.sha256((output / (label + '.o')).read_bytes()).hexdigest(),
             "header_sha256": hashlib.sha256(header.encode()).hexdigest()})
     buffers = make_mixed_trellis_buffers(launch, device=torch.device("cuda", 0), sms=props.multi_processor_count)
+    lut_bytes = launch.trellis_lut.contiguous().view(torch.uint8).cpu().numpy().tobytes()
+    (output / 'trellis_lut.bin').write_bytes(lut_bytes)
     layouts = {}
     owners = {}
     for field in fields(buffers):
@@ -152,6 +154,8 @@ def export(output: Path, intermediate: int, experts: int, capacity: int,
         "unique_execution_buffer_bytes": sum(v['bytes'] for k,v in layouts.items() if v['allocation'] == k),
         "requires_route_preparation": not direct,
         "required_link_libraries": ["cudart", "cute_dsl_runtime"],
+        "trellis_lut": {"file": "trellis_lut.bin", "bytes": len(lut_bytes),
+            "sha256": hashlib.sha256(lut_bytes).hexdigest()},
         "native_execution_verified": False}
     write_bridge(output, manifest)
     if not direct:

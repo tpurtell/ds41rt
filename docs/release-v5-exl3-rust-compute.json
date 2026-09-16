@@ -1,0 +1,29 @@
+{
+  "passed": true,
+  "scope": "Rust daemon layer owner, exported workspace/LUT and native direct EXL3 compute. All 384 layer-0 expert weights resident for TP4 rank2 (width512); six expert IDs exercised against independent Python B12x preparation. Not full-model/TP reduction/serving/performance qualification.",
+  "source_revision": "c024d14ce936ddfc2c863377d033d85e1787924b",
+  "resident_experts": 384,
+  "routed_reference_experts": 6,
+  "rows": [
+    16,
+    3,
+    1,
+    16
+  ],
+  "masked_routes": true,
+  "bitwise_equal": true,
+  "graph_zero_then_restored_input": "exact",
+  "workspace_payload_bytes": 7150288,
+  "lut_bytes": 4096,
+  "native_bridge_sha256": "b771aa2e2436750cecd23b0d48ece358713282e493b5c1a0f20980b6c0b6130e",
+  "rust_test_binary_sha256": "91e0a35933d85b9fe6a4cb2920d15d3d50b65a7e2a06fa30ebd3235dddd07df8",
+  "artifact": "evidence/v5-exl3-rust-compute.tar.gz",
+  "artifact_sha256": "43d98f2ffaf283f8a4bdd235c7673dc96950941565e14210aea3af4e01bafba1",
+  "remaining": [
+    "Packed route adapter qualification through Rust",
+    "Spark wire input decoding",
+    "Other TP geometries and TP reduction",
+    "Serving selection and complete native build packaging",
+    "Full performance, tool/needle/top1 qualification and v5 release"
+  ]
+}

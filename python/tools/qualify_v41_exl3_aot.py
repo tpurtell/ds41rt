@@ -15,6 +15,8 @@ def main() -> None:
     parser.add_argument('--snapshot', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--dspark-stage', type=int, choices=(0,1,2))
+    parser.add_argument('--slice-start', type=int, default=0)
+    parser.add_argument('--fixture', type=Path)
     args = parser.parse_args()
     import torch
     from safetensors import safe_open
@@ -26,6 +28,8 @@ def main() -> None:
     assert meta['bits'] == [3, 4] and meta['experts'] == 6
     assert meta['sparkinfer_revision'] == _pinned_sparkinfer.REVISION
     hidden, width, experts, capacity = meta['hidden'], meta['intermediate'], meta['experts'], meta['capacity']
+    start=args.slice_start
+    assert start >= 0 and start % 128 == 0 and start+width <= 2304
     topk = meta['top_k']
     graph_rows = min(3, capacity)
     assert topk == (3 if args.dspark_stage is not None else 6)
@@ -44,9 +48,9 @@ def main() -> None:
                         continue
                     if suffix == 'trellis':
                         bitmaps[expert, projection] = value.shape[-1] // 16
-                        value = value[:width//16] if projection == 'w2' else value[:, :width//16]
+                        value = value[start//16:(start+width)//16] if projection == 'w2' else value[:, start//16:(start+width)//16]
                     elif (projection == 'w2' and suffix == 'suh') or (projection != 'w2' and suffix == 'svh'):
-                        value = value[:width]
+                        value = value[start:start+width]
                     tensors[expert, projection, suffix] = value.contiguous().to('cuda')
     def rotations(proj, suffix):
         return torch.stack([tensors[e,proj,suffix] for e in range(experts)])
@@ -154,8 +158,20 @@ def main() -> None:
         expected=run_bound_mixed_trellis(x[:graph_rows],weights[:graph_rows],ids[:graph_rows],binding,buffers).clone()
         buffers.output.fill_(float('nan'));poison_metadata();graph.replay();torch.cuda.synchronize()
         assert torch.equal(buffers.output[:graph_rows],expected)
+        if args.fixture is not None:
+            args.fixture.mkdir(parents=True,exist_ok=True)
+            expected=run_bound_mixed_trellis(x,weights,ids,binding,buffers).clone()
+            artifacts={}
+            for name,value in [('input',x),('ids',ids),('weights',weights),('expected',expected)]:
+                raw=value.contiguous().view(torch.uint8).cpu().numpy().tobytes()
+                (args.fixture/(name+'.bin')).write_bytes(raw)
+                artifacts[name]={'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest()}
+            (args.fixture/'fixture.json').write_text(json.dumps({'layer':layer_prefix,'slice_start':start,
+                'width':width,'capacity':capacity,'topk':topk,'reference_experts':experts,
+                'snapshot_revision':args.snapshot.name,'artifacts':artifacts},indent=2)+'\n')
         args.output.write_text(json.dumps({'passed':True,'scope':'native AOT versus B12x, six real checkpoint experts; not full-model qualification',
             'checkpoint_layer':layer_prefix,'topk':topk,'native_info_verified':info_verified,
+            'slice_start':start,
             'sparkinfer_revision':_pinned_sparkinfer.REVISION,'compute':meta['compute'],'intermediate':width,
             'direct':meta['direct'],
             'route_bridge_sha256':None if route_lib is None else hashlib.sha256((route_path.parent/'libv41_exl3_routes.so').read_bytes()).hexdigest(),

@@ -283,3 +283,22 @@ an incomplete link: Python's globally loaded CuTe runtime masked missing symbols
 The module now explicitly links `cute_dsl_runtime` with undefined-symbol errors
 enabled. Full dSpark residency/execution, Rust compute launches, TP integration
 and quant serving still need completion and qualification.
+
+## Bound Rust execution
+
+`v41_experts/exl3/execution.rs` now binds resident compressed weights to the
+native compute and epilogue modules. Workspace allocation/alias resolution,
+LUT upload and launch-table construction occur during setup. Launch updates
+live input pointers and row bounds without workspace allocation or host waits.
+The exporter now includes a hashed Trellis LUT asset, eliminating the probe's
+implicit dependency on Python to supply that device tensor. A native route
+owner is also available; its combined Rust packed path is not yet qualified.
+
+[Rust GPU evidence](release-v5-exl3-rust-compute.json) passes for all 384 resident
+layer-0 experts at TP4 rank 2 (512 intermediate channels), exercising six expert
+IDs and masked routes against an independently prepared B12x reference. Rows
+16, 3, 1 and 16 are bitwise equal. Captured graph replay consumes changed zero
+input and matches the reference again after restoring input, with output
+poisoned before each replay. This proves a native Rust layer compute path, not
+TP reduction or full-model serving. Spark wire decoding, remaining geometries,
+packed Rust execution, build packaging and serving selection remain required.
