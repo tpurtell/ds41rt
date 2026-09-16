@@ -17,7 +17,7 @@ os.environ["B12X_COMPILE_MEMORY_CACHE"] = "0"
 import _pinned_sparkinfer
 
 
-def export(output, capacities, width, atomic_min_capacity=None, role="spark", *, standard_names=False):
+def export(output, capacities, width, atomic_min_capacity=None, role="spark", *, standard_names=False, compact_max_capacity=None):
     import torch
     import cutlass
     import cutlass.cute as cute
@@ -44,6 +44,8 @@ def export(output, capacities, width, atomic_min_capacity=None, role="spark", *,
         (384, 1152, 1152, 6) if tp2 else
         (384, 2304, 2304, 6) if local_backbone else (384, 576, 640, 6)
     )
+    if compact_max_capacity is not None and (not tp2 or compact_max_capacity < 1):
+        raise ValueError("compact specialization currently requires RTX TP2 and positive capacity")
     output.mkdir(parents=True, exist_ok=True)
     manifest = dict(
         schema=1,
@@ -54,13 +56,15 @@ def export(output, capacities, width, atomic_min_capacity=None, role="spark", *,
         capability=[props.major, props.minor],
         physical_sms=props.multi_processor_count,
         width=width,
+        compact_max_capacity=compact_max_capacity,
         geometry=dict(experts=experts, hidden=5120, intermediate=intermediate,
                       kernel_intermediate=kernel_intermediate, topk=topk),
         variants=[],
     )
     includes, entries = [], []
     for capacity in capacities:
-        atomic = atomic_min_capacity is not None and capacity >= atomic_min_capacity
+        compact = compact_max_capacity is not None and capacity <= compact_max_capacity
+        atomic = not compact and atomic_min_capacity is not None and capacity >= atomic_min_capacity
         selected_width = width[capacity] if isinstance(width, dict) else width
         routes = capacity * topk
         planes = (intermediate + selected_width - 1) // selected_width
@@ -85,6 +89,14 @@ def export(output, capacities, width, atomic_min_capacity=None, role="spark", *,
             (cutlass.Float32, (capacity * 5120,), (1,)) if atomic else
                 (cutlass.Float32, (routes, 5120), (5120, 1)),
         ]
+        if compact:
+            # Keep the public slice ABI; planner-only arguments become small
+            # placeholders. Native unit scales are compile-time constants.
+            specs[9] = (cutlass.Uint32, (routes * (intermediate + (intermediate//128)*4) // 4,), (1,))
+            specs[10] = (cutlass.Float32, (experts,), (1,))
+            for index in range(11, 15):
+                specs[index] = (cutlass.Int32, (1,), (1,))
+            specs[15] = (cutlass.BFloat16, (routes, 2*intermediate), (2*intermediate, 1))
         args = [
             make_fake_tensor(dtype, shape, stride, assumed_align=16)
             for dtype, shape, stride in specs
@@ -94,6 +106,9 @@ def export(output, capacities, width, atomic_min_capacity=None, role="spark", *,
         pipeline = (V41DraftSlicePipeline(capacity, selected_width, props.multi_processor_count)
                     if coordinator else V41SlicePipeline(capacity, selected_width, atomic_tokens=atomic,
                                                experts=experts, topk=topk, intermediate=intermediate))
+        if compact:
+            from b12x.moe._shared.kernels.v41_compact_pipeline import V41CompactPipeline
+            pipeline = V41CompactPipeline(capacity, props.multi_processor_count)
         if coordinator:
             args.insert(0, make_fake_tensor(cutlass.BFloat16, (capacity, 5120), (5120, 1), assumed_align=16))
         compiled = cute.compile(
@@ -162,7 +177,7 @@ def export(output, capacities, width, atomic_min_capacity=None, role="spark", *,
         scratch_slots = [3, 4, 5, 6, 7, 8, 9, 10, 41]
         for index, slot in zip(range(8, 17), scratch_slots):
             dtype, shape, _ = specs[index]
-            size = 4
+            size = dtype.width // 8
             for dim in shape:
                 size *= dim
             offset = (offset + 15) // 16 * 16
@@ -236,6 +251,7 @@ def export(output, capacities, width, atomic_min_capacity=None, role="spark", *,
         manifest["variants"].append(
             dict(
                 name=label,
+                implementation="compact" if compact else "slices",
                 width=selected_width,
                 output_kind="fp32_tokens" if atomic else "fp32_routes",
                 native_abi_version=3 if atomic else 2,
@@ -283,6 +299,7 @@ if __name__ == "__main__":
     parser.add_argument("--atomic-min-capacity", type=int, choices=[256, 1024, 4096],
                         help="Use ABI 3 direct FP32 token accumulation at these larger capacities")
     parser.add_argument("--standard-names", action="store_true")
+    parser.add_argument("--compact-max-capacity", type=int, help="Experimental TP2 direct compact specialization up to this capacity")
     args = parser.parse_args()
     capacities = tuple(int(x) for x in args.rows.split(","))
     if (
@@ -306,4 +323,4 @@ if __name__ == "__main__":
     except (ValueError, TypeError) as error:
         parser.error(str(error))
     export(args.output_dir, capacities, width, args.atomic_min_capacity, args.role,
-           standard_names=args.standard_names)
+           standard_names=args.standard_names, compact_max_capacity=args.compact_max_capacity)

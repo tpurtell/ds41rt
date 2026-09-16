@@ -5,6 +5,10 @@ endif()
 set(DS41RT_V41_TP2_EXPERT_DIR "${CMAKE_CURRENT_BINARY_DIR}/v41_tp2_experts")
 set(DS41RT_V41_TP2_EXPERT_OBJECTS)
 set(DS41RT_V41_TP2_EXPERT_HEADERS)
+set(DS41RT_V41_TP2_COMPACT_ARGS)
+if(DS41RT_V41_TP2_COMPACT_EXPERIMENT)
+  list(APPEND DS41RT_V41_TP2_COMPACT_ARGS --compact-max-capacity 16)
+endif()
 foreach(rows IN ITEMS 1 16 80 256 1024 4096)
   set(stem "${DS41RT_V41_TP2_EXPERT_DIR}/v41_rtx_tp2_m${rows}")
   list(APPEND DS41RT_V41_TP2_EXPERT_OBJECTS "${stem}.o")
@@ -20,6 +24,7 @@ add_custom_command(
     "${CMAKE_CURRENT_SOURCE_DIR}/../python/tools/export_b12x_v41_slices_aot.py"
     --output-dir "${DS41RT_V41_TP2_EXPERT_DIR}" --role rtx_tp2
     --rows 1,16,80,256,1024,4096 --width 192 --atomic-min-capacity 256 --standard-names
+    ${DS41RT_V41_TP2_COMPACT_ARGS}
   COMMAND "${CMAKE_COMMAND}" -E copy
     "${DS41RT_V41_TP2_EXPERT_DIR}/v41_expert_variants.h"
     "${DS41RT_V41_TP2_EXPERT_DIR}/v41_tp2_expert_variants.h"

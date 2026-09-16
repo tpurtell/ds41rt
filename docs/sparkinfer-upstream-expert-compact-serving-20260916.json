@@ -1,0 +1,2623 @@
+{
+  "scope": "Native compact TP2 AOT integration and serving screen, not final release qualification.",
+  "candidate_lock": {
+    "schema": 1,
+    "repository": "https://github.com/tpurtell/sparkinfer-glmrt.git",
+    "revision": "85de5f129b305eea9e80ba8d5c3026a74db92595",
+    "source_tree_sha256": "ad88babc5de2bd6c62d678ad1240ee62481954d9e6514f89b2a51fa155964fd6"
+  },
+  "initial_failure": "Shared capacity scratch initialization overwrote compact unit-scale vectors. Reproducer returned zero one-row output. Initial serving failed code/counting in each of three repeats.",
+  "fix": "Native compile-time unit scales; no persistent scratch constant dependency.",
+  "shared_repro_before": "{\"rows\": 1, \"activation\": \"silu_v41\", \"implementation\": \"native_tp2\", \"checks\": [{\"identical_input_replay_exact\": null, \"cycle\": 0, \"relative_l2\": 0.0023333507124334574, \"cosine\": 0.9999972581863403, \"native_reference_gate\": true, \"own_reference_relative_l2\": 0.0023333507124334574, \"own_reference_cosine\": 0.9999972581863403}, {\"identical_input_replay_exact\": null, \"cycle\": 1, \"relative_l2\": 0.002366494620218873, \"cosine\": 0.9999972581863403, \"native_reference_gate\": true, \"own_reference_relative_l2\": 0.002366494620218873, \"own_reference_cosine\": 0.9999972581863403}, {\"identical_input_replay_exact\": true, \"cycle\": 2, \"relative_l2\": 0.002366494620218873, \"cosine\": 0.9999972581863403, \"native_reference_gate\": true, \"own_reference_relative_l2\": 0.002366494620218873, \"own_reference_cosine\": 0.9999972581863403}]}\nTraceback (most recent call last):\n  File \"/home/tj/Developer/ds41rt/python/tools/compare_v41_expert_upstream.py\", line 297, in <module>\n    if __name__=='__main__':raise SystemExit(main())\n                                             ^^^^^^\n  File \"/home/tj/Developer/ds41rt/python/tools/compare_v41_expert_upstream.py\", line 221, in main\n    assert torch.isfinite(actual).all() and actual.norm()>0, (binding.implementation, rows, float(actual.norm()))\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: ('native_compact_tp2', 1, 0.0)\n",
+  "shared_repro_after": {
+    "scope": "Screen upstream expert numerics at DS41RT geometry before native adaptation.\n\nUses prepared GPU paths, not the serving native ABI. No serving speedup claim.\n",
+    "command": [
+      "python/tools/compare_v41_expert_upstream.py",
+      "--b12x-root",
+      "/home/tj/.cache/ds41rt-upstream-20260916/sparkinfer",
+      "--intermediate",
+      "1152",
+      "--rows",
+      "1",
+      "16",
+      "--compare-timing",
+      "--shared-native-scratch",
+      "--native-lib",
+      "/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-index-sort.so",
+      "--candidate-native-lib",
+      "/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-compact-tp2-fixed.so",
+      "--output",
+      "/home/tj/.cache/ds41rt-upstream-20260916/expert-compact-shared-fixed.json"
+    ],
+    "fork_revision": "85de5f129b305eea9e80ba8d5c3026a74db92595",
+    "script_sha256": "4859ac2fe5f1478ab0ed40e0fbc7e22084cee6f2cb12c921d6f8cd59d0502d03",
+    "device": "_CudaDeviceProperties(name='NVIDIA RTX PRO 6000 Blackwell Workstation Edition', major=12, minor=0, total_memory=97249MB, multi_processor_count=188, uuid=fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, pci_bus_id=17, pci_device_id=0, pci_domain_id=0, L2_cache_size=128MB)",
+    "geometry": {
+      "experts": 384,
+      "hidden": 5120,
+      "intermediate": 1152,
+      "topk": 6
+    },
+    "cases": [
+      {
+        "rows": 1,
+        "activation": "silu_v41",
+        "implementation": "native_tp2",
+        "checks": [
+          {
+            "identical_input_replay_exact": null,
+            "cycle": 0,
+            "relative_l2": 0.0023333507124334574,
+            "cosine": 0.9999972581863403,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.0023333507124334574,
+            "own_reference_cosine": 0.9999972581863403
+          },
+          {
+            "identical_input_replay_exact": null,
+            "cycle": 1,
+            "relative_l2": 0.002366494620218873,
+            "cosine": 0.9999972581863403,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.002366494620218873,
+            "own_reference_cosine": 0.9999972581863403
+          },
+          {
+            "identical_input_replay_exact": true,
+            "cycle": 2,
+            "relative_l2": 0.002366494620218873,
+            "cosine": 0.9999972581863403,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.002366494620218873,
+            "own_reference_cosine": 0.9999972581863403
+          }
+        ],
+        "prepared_graph_timing": {
+          "scope": "Includes BF16 input quantization and route reduction; prepared graph, not native serving ABI",
+          "samples_us": [
+            92.193603515625,
+            92.16511726379395,
+            92.21280097961426,
+            92.20992088317871,
+            92.20000267028809,
+            92.20992088317871,
+            92.20864295959473,
+            92.20992088317871
+          ],
+          "median_us": 92.20928192138672,
+          "order": "AB/BA, eight samples of 100 replays",
+          "gpu_before": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, P1, 2662 MHz, 13365 MHz, 400.00 W, 0x0000000000000000\nGPU-95f8f212-9131-df99-fd53-7535965197d7, P8, 180 MHz, 405 MHz, 400.00 W, 0x0000000000000000",
+          "gpu_after": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, P1, 2662 MHz, 13365 MHz, 400.00 W, 0x0000000000000000\nGPU-95f8f212-9131-df99-fd53-7535965197d7, P8, 180 MHz, 405 MHz, 400.00 W, 0x0000000000000000",
+          "cold_samples_us": [],
+          "cold_protocol": null
+        }
+      },
+      {
+        "rows": 1,
+        "activation": "silu",
+        "implementation": "native_compact_tp2",
+        "checks": [
+          {
+            "identical_input_replay_exact": null,
+            "cycle": 0,
+            "relative_l2": 0.0023333507124334574,
+            "cosine": 0.9999972581863403,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.04042346030473709,
+            "own_reference_cosine": 0.9991837739944458,
+            "native_route_relative_l2": 1.3407367305262596e-07
+          },
+          {
+            "identical_input_replay_exact": null,
+            "cycle": 1,
+            "relative_l2": 0.002366494620218873,
+            "cosine": 0.9999972581863403,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.03510754555463791,
+            "own_reference_cosine": 0.9993869066238403,
+            "native_route_relative_l2": 5.650562684422766e-08
+          },
+          {
+            "identical_input_replay_exact": true,
+            "cycle": 2,
+            "relative_l2": 0.002366494620218873,
+            "cosine": 0.9999972581863403,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.03510754555463791,
+            "own_reference_cosine": 0.9993869066238403,
+            "native_route_relative_l2": 5.650562684422766e-08
+          }
+        ],
+        "prepared_graph_timing": {
+          "scope": "Includes BF16 input quantization and route reduction; prepared graph, not native serving ABI",
+          "samples_us": [
+            26.672959327697754,
+            26.642239093780518,
+            26.650559902191162,
+            26.63520097732544,
+            26.636478900909424,
+            26.636478900909424,
+            26.646718978881836,
+            26.649599075317383
+          ],
+          "median_us": 26.644479036331177,
+          "order": "AB/BA, eight samples of 100 replays",
+          "gpu_before": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, P1, 2662 MHz, 13365 MHz, 400.00 W, 0x0000000000000000\nGPU-95f8f212-9131-df99-fd53-7535965197d7, P8, 180 MHz, 405 MHz, 400.00 W, 0x0000000000000000",
+          "gpu_after": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, P1, 2662 MHz, 13365 MHz, 400.00 W, 0x0000000000000000\nGPU-95f8f212-9131-df99-fd53-7535965197d7, P8, 180 MHz, 405 MHz, 400.00 W, 0x0000000000000000",
+          "cold_samples_us": [],
+          "cold_protocol": null
+        }
+      },
+      {
+        "rows": 16,
+        "activation": "silu_v41",
+        "implementation": "native_tp2",
+        "checks": [
+          {
+            "identical_input_replay_exact": null,
+            "cycle": 0,
+            "relative_l2": 0.0023669302463531494,
+            "cosine": 0.9999972581863403,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.0023669302463531494,
+            "own_reference_cosine": 0.9999972581863403
+          },
+          {
+            "identical_input_replay_exact": null,
+            "cycle": 1,
+            "relative_l2": 0.0023459820076823235,
+            "cosine": 0.9999971389770508,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.0023459820076823235,
+            "own_reference_cosine": 0.9999971389770508
+          },
+          {
+            "identical_input_replay_exact": true,
+            "cycle": 2,
+            "relative_l2": 0.0023459820076823235,
+            "cosine": 0.9999971389770508,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.0023459820076823235,
+            "own_reference_cosine": 0.9999971389770508
+          }
+        ],
+        "prepared_graph_timing": {
+          "scope": "Includes BF16 input quantization and route reduction; prepared graph, not native serving ABI",
+          "samples_us": [
+            561.4444732666016,
+            561.5103912353516,
+            561.3935852050781,
+            564.1088104248047,
+            563.6147308349609,
+            564.2537689208984,
+            564.3423843383789,
+            564.4047927856445
+          ],
+          "median_us": 563.8617706298828,
+          "order": "AB/BA, eight samples of 100 replays",
+          "gpu_before": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, P1, 2760 MHz, 13365 MHz, 400.00 W, 0x0000000000000000\nGPU-95f8f212-9131-df99-fd53-7535965197d7, P8, 180 MHz, 405 MHz, 400.00 W, 0x0000000000000000",
+          "gpu_after": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, P1, 2467 MHz, 13365 MHz, 400.00 W, 0x0000000000000004\nGPU-95f8f212-9131-df99-fd53-7535965197d7, P8, 180 MHz, 405 MHz, 400.00 W, 0x0000000000000000",
+          "cold_samples_us": [],
+          "cold_protocol": null
+        }
+      },
+      {
+        "rows": 16,
+        "activation": "silu",
+        "implementation": "native_compact_tp2",
+        "checks": [
+          {
+            "identical_input_replay_exact": null,
+            "cycle": 0,
+            "relative_l2": 0.002366941189393401,
+            "cosine": 0.9999972581863403,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.0385427363216877,
+            "own_reference_cosine": 0.9992587566375732,
+            "native_route_relative_l2": 1.3904379159157543e-07
+          },
+          {
+            "identical_input_replay_exact": null,
+            "cycle": 1,
+            "relative_l2": 0.002345981542021036,
+            "cosine": 0.9999971389770508,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.03883151337504387,
+            "own_reference_cosine": 0.9992458820343018,
+            "native_route_relative_l2": 4.8211340697434935e-08
+          },
+          {
+            "identical_input_replay_exact": true,
+            "cycle": 2,
+            "relative_l2": 0.002345981542021036,
+            "cosine": 0.9999971389770508,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.03883151337504387,
+            "own_reference_cosine": 0.9992458820343018,
+            "native_route_relative_l2": 4.8211340697434935e-08
+          }
+        ],
+        "prepared_graph_timing": {
+          "scope": "Includes BF16 input quantization and route reduction; prepared graph, not native serving ABI",
+          "samples_us": [
+            558.4457778930664,
+            558.6601638793945,
+            559.63134765625,
+            563.0310440063477,
+            564.0947341918945,
+            564.3964767456055,
+            564.3695831298828,
+            565.1334381103516
+          ],
+          "median_us": 563.5628890991211,
+          "order": "AB/BA, eight samples of 100 replays",
+          "gpu_before": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, P1, 2760 MHz, 13365 MHz, 400.00 W, 0x0000000000000000\nGPU-95f8f212-9131-df99-fd53-7535965197d7, P8, 180 MHz, 405 MHz, 400.00 W, 0x0000000000000000",
+          "gpu_after": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, P1, 2467 MHz, 13365 MHz, 400.00 W, 0x0000000000000004\nGPU-95f8f212-9131-df99-fd53-7535965197d7, P8, 180 MHz, 405 MHz, 400.00 W, 0x0000000000000000",
+          "cold_samples_us": [],
+          "cold_protocol": null
+        }
+      }
+    ],
+    "native_library": {
+      "path": "/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-index-sort.so",
+      "sha256": "8c6cccb1c3372567a1c49cc480a9cdf2b44d776a0a69cfa7c9d823caebaf0a4c",
+      "output": "Native local FP32 routes summed and rounded once to BF16; excludes cross-device TP2 reduction"
+    },
+    "candidate_native_library": {
+      "path": "/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-compact-tp2-fixed.so",
+      "sha256": "dd8a9e538806e8da481d606b0ba795847669eab98fb8ce3d0e54e89d37cd3368"
+    },
+    "fork_dirty": "",
+    "fork_source_sha256": {
+      "b12x/moe/_shared/kernels/tiny_decode.py": "bbf0b9dbd5d80229678f397098cc987f3b048dc7c7a11f9bbada7895e0b4fc53",
+      "b12x/moe/fused_moe/_impl.py": "a4c362f874ace2925e1ba127989874d443c64dfe931aff05ad856ba14d784594",
+      "b12x/moe/fused_moe/_preparation.py": "d23c61b2e27094a772bc3b1bee7c1ba2ea1e973750dc84250b1d05d0c360eab8",
+      "b12x/moe/_shared/kernels/reference.py": "d3e6e44ebba3e7c9566a6e6f76b982324713528f95cf96303aa3d2c73af866c1",
+      "b12x/moe/_shared/kernels/w4a8_compact_micro.py": "eb3463d2b3143041871c10e6cee5b0966453cb3be607fd3063d5f7713000dc32",
+      "b12x/moe/_shared/kernels/w4a8_compact_projection.py": "16af29c246370f02c89a869f6c9fa04e46a45acfdf5581783945ac8f551a26a5",
+      "b12x/moe/_shared/kernels/w4a8_compact_activation.py": "004939748448df8ff8c234a3a7a94c17691d12a6c4a658df1114cee186215216",
+      "b12x/moe/_shared/kernels/w4a8_phase2.py": "679958bc86b936adcd3220ad635e86c0a99c810de1229b0ecb567b94b40b9b7e"
+    },
+    "reference_semantics": {
+      "native": "V4.1 BF16 projection boundaries and routing before intermediate FP8 quantization",
+      "generic": "Declared W4A8-MX FP8 activation reference; tiny-decode actually consumes BF16 and accumulates BF16 atomically, so this is not its exact arithmetic oracle",
+      "compact": "FP8 input, BF16 FC1 and activation boundaries, FP8 intermediate, routing after FC2 before BF16 route output; FP32 top-k sum rounded to BF16"
+    }
+  },
+  "gpu_tests": [
+    "...                                                                      [100%]\n3 passed in 3.69s\n",
+    "....                                                                     [100%]\n4 passed, 56 deselected in 9.96s\n"
+  ],
+  "serving_metrics": {
+    "baseline": {
+      "median_weighted_tps": 96.41564157048707,
+      "repeats": [
+        {
+          "repeat": 1,
+          "weighted_cases": 8,
+          "serving_completed": 8,
+          "objective_checks_passed": 4,
+          "objective_checks_assessed": 4,
+          "weighted_observed_decode_tokens_per_second": 96.72462493883654,
+          "partial_weighted_observed_decode_tokens_per_second": 96.72462493883654,
+          "complete_weighted_corpus": true,
+          "all_samples_passed": true
+        },
+        {
+          "repeat": 2,
+          "weighted_cases": 8,
+          "serving_completed": 8,
+          "objective_checks_passed": 4,
+          "objective_checks_assessed": 4,
+          "weighted_observed_decode_tokens_per_second": 96.41564157048707,
+          "partial_weighted_observed_decode_tokens_per_second": 96.41564157048707,
+          "complete_weighted_corpus": true,
+          "all_samples_passed": true
+        },
+        {
+          "repeat": 3,
+          "weighted_cases": 8,
+          "serving_completed": 8,
+          "objective_checks_passed": 4,
+          "objective_checks_assessed": 4,
+          "weighted_observed_decode_tokens_per_second": 93.38798525205536,
+          "partial_weighted_observed_decode_tokens_per_second": 93.38798525205536,
+          "complete_weighted_corpus": true,
+          "all_samples_passed": true
+        }
+      ],
+      "median_case_tps": {
+        "code": 157.32561599992928,
+        "topic": 86.5490240718238,
+        "counting": 200.39106033440672
+      }
+    },
+    "candidate": {
+      "median_weighted_tps": 96.1583625419321,
+      "repeats": [
+        {
+          "repeat": 1,
+          "weighted_cases": 8,
+          "serving_completed": 8,
+          "objective_checks_passed": 4,
+          "objective_checks_assessed": 4,
+          "weighted_observed_decode_tokens_per_second": 98.24896563845229,
+          "partial_weighted_observed_decode_tokens_per_second": 98.24896563845229,
+          "complete_weighted_corpus": true,
+          "all_samples_passed": true
+        },
+        {
+          "repeat": 2,
+          "weighted_cases": 8,
+          "serving_completed": 8,
+          "objective_checks_passed": 4,
+          "objective_checks_assessed": 4,
+          "weighted_observed_decode_tokens_per_second": 96.1583625419321,
+          "partial_weighted_observed_decode_tokens_per_second": 96.1583625419321,
+          "complete_weighted_corpus": true,
+          "all_samples_passed": true
+        },
+        {
+          "repeat": 3,
+          "weighted_cases": 8,
+          "serving_completed": 8,
+          "objective_checks_passed": 4,
+          "objective_checks_assessed": 4,
+          "weighted_observed_decode_tokens_per_second": 95.53815618439506,
+          "partial_weighted_observed_decode_tokens_per_second": 95.53815618439506,
+          "complete_weighted_corpus": true,
+          "all_samples_passed": true
+        }
+      ],
+      "median_case_tps": {
+        "code": 159.57613844377437,
+        "topic": 88.02652728599385,
+        "counting": 198.74548189249114
+      }
+    }
+  },
+  "matched_requests": 27,
+  "identical_outputs": 11,
+  "serving_checks": "All 27 requests pass in both arms. Outputs differ on 16; exact freeform identity is not an acceptance gate. Native arithmetic oracle remains unchanged.",
+  "raw_files": [
+    {
+      "path": "/home/tj/.cache/ds41rt-upstream-20260916/compact-tp2-serving-baseline.json",
+      "sha256": "2ffdaaa042a0703eadc5306dfcd93078e2a70ab8138b54d54d92ce722320855b"
+    },
+    {
+      "path": "/home/tj/.cache/ds41rt-upstream-20260916/compact-tp2-serving-baseline-metadata.json",
+      "sha256": "84d5f383efe7839d916fe9626a10b3f360ff625f746482746442dcd9001bf57c"
+    },
+    {
+      "path": "/home/tj/.cache/ds41rt-upstream-20260916/compact-tp2-serving-candidate.json",
+      "sha256": "a6ade07e277766c956ac01ec3ca4757e4da9aa04e36ab3597a5fd3afea8febb2"
+    },
+    {
+      "path": "/home/tj/.cache/ds41rt-upstream-20260916/compact-tp2-serving-candidate-metadata.json",
+      "sha256": "73cec7b8e451cb052218f0d33e364115f7ec271120b6c1f6f1a222d9085dffc3"
+    },
+    {
+      "path": "/home/tj/.cache/ds41rt-upstream-20260916/compact-tp2-fixed-serving-candidate.json",
+      "sha256": "6c29463d228e031b9cea3412f0996226a9f63d2849792459336975766cb69f15"
+    },
+    {
+      "path": "/home/tj/.cache/ds41rt-upstream-20260916/compact-tp2-fixed-serving-candidate-metadata.json",
+      "sha256": "d2d4d146b237523047ca1ccb3fd25d6181225fabb1173ba8c44ba88b712f553e"
+    },
+    {
+      "path": "/home/tj/.cache/ds41rt-upstream-20260916/expert-compact-shared-repro.log",
+      "sha256": "8e67ae58eeb22acb57a8f0775f3f7bd4ac2e9d31844761fa0c2f8841b7530612"
+    },
+    {
+      "path": "/home/tj/.cache/ds41rt-upstream-20260916/expert-compact-shared-fixed.json",
+      "sha256": "887895e60a0244a235b23ac2c5dc5ab698079eb9d030665b42860613fb3f2684"
+    },
+    {
+      "path": "/home/tj/.cache/ds41rt-upstream-20260916/expert-compact-unit-scales-tests.log",
+      "sha256": "686d343077a3f1826d7481369b346fbf858a2676cfed2ff301c60c556056d843"
+    },
+    {
+      "path": "/home/tj/.cache/ds41rt-upstream-20260916/expert-compact-unit-scales-generic.log",
+      "sha256": "ebd2f05e59c47625cde0208cfb895c4e5250177e223dfb09530d81f087f86a6f"
+    }
+  ],
+  "controlled_link": {
+    "scope": "Controlled relink of serving native library: TP2 objects/bridge replaced; other native objects preserved. Not a clean release build.",
+    "compile": [
+      "g++",
+      "-std=c++17",
+      "-O3",
+      "-DNDEBUG",
+      "-fPIC",
+      "-c",
+      "-I",
+      "/home/tj/Developer/ds41rt/native/include",
+      "-I",
+      "/usr/local/cuda-13.3/include",
+      "-I",
+      "/home/tj/.cache/ds41rt-upstream-20260916/compact-tp2-fixed-aot",
+      "/home/tj/Developer/ds41rt/native/src/v41_tp2_experts.cc",
+      "-o",
+      "/home/tj/.cache/ds41rt-upstream-20260916/compact-tp2-fixed-aot/v41_tp2_experts.cc.o"
+    ],
+    "link": [
+      "/usr/bin/c++",
+      "-fPIC",
+      "-O3",
+      "-DNDEBUG",
+      "-shared",
+      "-Wl,-soname,libds41rt_native.so",
+      "-o",
+      "/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-compact-tp2-fixed.so",
+      "b12x_coordinator_aot/coordinator_w4a16_q_b_m8.o",
+      "b12x_coordinator_aot/coordinator_w4a16_q_b_m16_candidate.o",
+      "b12x_coordinator_aot/coordinator_w4a16_o_proj_m1.o",
+      "b12x_coordinator_aot/coordinator_w4a16_o_proj_m16_candidate.o",
+      "b12x_coordinator_aot/coordinator_w4a16_o_proj_m1_tn64_candidate.o",
+      "v41_experts/v41_expert_input_quant.o",
+      "v41_experts/v41_coordinator_m1.o",
+      "v41_experts/v41_coordinator_m16.o",
+      "v41_experts/v41_coordinator_m40.o",
+      "v41_experts/v41_coordinator_m80.o",
+      "v41_experts/v41_coordinator_m256.o",
+      "v41_experts/v41_coordinator_m1024.o",
+      "v41_experts/v41_coordinator_m4096.o",
+      "v41_local_experts/v41_rtx_backbone_m1.o",
+      "v41_local_experts/v41_rtx_backbone_m16.o",
+      "v41_local_experts/v41_rtx_backbone_m80.o",
+      "v41_local_experts/v41_rtx_backbone_m256.o",
+      "v41_local_experts/v41_rtx_backbone_m1024.o",
+      "v41_local_experts/v41_rtx_backbone_m4096.o",
+      "/home/tj/.cache/ds41rt-upstream-20260916/compact-tp2-fixed-aot/v41_rtx_tp2_m1.o",
+      "/home/tj/.cache/ds41rt-upstream-20260916/compact-tp2-fixed-aot/v41_rtx_tp2_m16.o",
+      "/home/tj/.cache/ds41rt-upstream-20260916/compact-tp2-fixed-aot/v41_rtx_tp2_m80.o",
+      "/home/tj/.cache/ds41rt-upstream-20260916/compact-tp2-fixed-aot/v41_rtx_tp2_m256.o",
+      "/home/tj/.cache/ds41rt-upstream-20260916/compact-tp2-fixed-aot/v41_rtx_tp2_m1024.o",
+      "/home/tj/.cache/ds41rt-upstream-20260916/compact-tp2-fixed-aot/v41_rtx_tp2_m4096.o",
+      "v41_fp8/v41_engram_fp8_m1_quant.o",
+      "v41_fp8/v41_engram_fp8_m1_gemm.o",
+      "v41_fp8/v41_engram_fp8_m16_quant.o",
+      "v41_fp8/v41_engram_fp8_m16_gemm.o",
+      "v41_fp8/v41_engram_fp8_m80_quant.o",
+      "v41_fp8/v41_engram_fp8_m80_gemm.o",
+      "v41_fp8/v41_engram_fp8_m256_quant.o",
+      "v41_fp8/v41_engram_fp8_m256_gemm.o",
+      "v41_fp8/v41_engram_fp8_m1024_quant.o",
+      "v41_fp8/v41_engram_fp8_m1024_gemm.o",
+      "v41_fp8/v41_engram_fp8_m4096_quant.o",
+      "v41_fp8/v41_engram_fp8_m4096_gemm.o",
+      "v41_fp8/v41_ffn_up_fp8_m1_quant.o",
+      "v41_fp8/v41_ffn_up_fp8_m1_gemm.o",
+      "v41_fp8/v41_ffn_up_fp8_m16_quant.o",
+      "v41_fp8/v41_ffn_up_fp8_m16_gemm.o",
+      "v41_fp8/v41_ffn_up_fp8_m80_quant.o",
+      "v41_fp8/v41_ffn_up_fp8_m80_gemm.o",
+      "v41_fp8/v41_ffn_up_fp8_m256_quant.o",
+      "v41_fp8/v41_ffn_up_fp8_m256_gemm.o",
+      "v41_fp8/v41_ffn_up_fp8_m1024_quant.o",
+      "v41_fp8/v41_ffn_up_fp8_m1024_gemm.o",
+      "v41_fp8/v41_ffn_up_fp8_m4096_quant.o",
+      "v41_fp8/v41_ffn_up_fp8_m4096_gemm.o",
+      "v41_fp8/v41_ffn_down_fp8_m1_quant.o",
+      "v41_fp8/v41_ffn_down_fp8_m1_gemm.o",
+      "v41_fp8/v41_ffn_down_fp8_m16_quant.o",
+      "v41_fp8/v41_ffn_down_fp8_m16_gemm.o",
+      "v41_fp8/v41_ffn_down_fp8_m80_quant.o",
+      "v41_fp8/v41_ffn_down_fp8_m80_gemm.o",
+      "v41_fp8/v41_ffn_down_fp8_m256_quant.o",
+      "v41_fp8/v41_ffn_down_fp8_m256_gemm.o",
+      "v41_fp8/v41_ffn_down_fp8_m1024_quant.o",
+      "v41_fp8/v41_ffn_down_fp8_m1024_gemm.o",
+      "v41_fp8/v41_ffn_down_fp8_m4096_quant.o",
+      "v41_fp8/v41_ffn_down_fp8_m4096_gemm.o",
+      "v41_fp8/v41_main_fp8_m1_quant.o",
+      "v41_fp8/v41_main_fp8_m1_gemm.o",
+      "v41_fp8/v41_main_fp8_m16_quant.o",
+      "v41_fp8/v41_main_fp8_m16_gemm.o",
+      "v41_fp8/v41_main_fp8_m80_quant.o",
+      "v41_fp8/v41_main_fp8_m80_gemm.o",
+      "v41_fp8/v41_main_fp8_m256_quant.o",
+      "v41_fp8/v41_main_fp8_m256_gemm.o",
+      "v41_fp8/v41_main_fp8_m1024_quant.o",
+      "v41_fp8/v41_main_fp8_m1024_gemm.o",
+      "v41_fp8/v41_main_fp8_m4096_quant.o",
+      "v41_fp8/v41_main_fp8_m4096_gemm.o",
+      "v41_fp8/v41_q_a_fp8_m1_quant.o",
+      "v41_fp8/v41_q_a_fp8_m1_gemm.o",
+      "v41_fp8/v41_q_a_fp8_m16_quant.o",
+      "v41_fp8/v41_q_a_fp8_m16_gemm.o",
+      "v41_fp8/v41_q_a_fp8_m80_quant.o",
+      "v41_fp8/v41_q_a_fp8_m80_gemm.o",
+      "v41_fp8/v41_q_a_fp8_m256_quant.o",
+      "v41_fp8/v41_q_a_fp8_m256_gemm.o",
+      "v41_fp8/v41_q_a_fp8_m1024_quant.o",
+      "v41_fp8/v41_q_a_fp8_m1024_gemm.o",
+      "v41_fp8/v41_q_a_fp8_m4096_quant.o",
+      "v41_fp8/v41_q_a_fp8_m4096_gemm.o",
+      "v41_fp8/v41_q_b_fp8_m1_quant.o",
+      "v41_fp8/v41_q_b_fp8_m1_gemm.o",
+      "v41_fp8/v41_q_b_fp8_m16_quant.o",
+      "v41_fp8/v41_q_b_fp8_m16_gemm.o",
+      "v41_fp8/v41_q_b_fp8_m80_quant.o",
+      "v41_fp8/v41_q_b_fp8_m80_gemm.o",
+      "v41_fp8/v41_q_b_fp8_m256_quant.o",
+      "v41_fp8/v41_q_b_fp8_m256_gemm.o",
+      "v41_fp8/v41_q_b_fp8_m1024_quant.o",
+      "v41_fp8/v41_q_b_fp8_m1024_gemm.o",
+      "v41_fp8/v41_q_b_fp8_m4096_quant.o",
+      "v41_fp8/v41_q_b_fp8_m4096_gemm.o",
+      "v41_fp8/v41_kv_fp8_m1_quant.o",
+      "v41_fp8/v41_kv_fp8_m1_gemm.o",
+      "v41_fp8/v41_kv_fp8_m16_quant.o",
+      "v41_fp8/v41_kv_fp8_m16_gemm.o",
+      "v41_fp8/v41_kv_fp8_m80_quant.o",
+      "v41_fp8/v41_kv_fp8_m80_gemm.o",
+      "v41_fp8/v41_kv_fp8_m256_quant.o",
+      "v41_fp8/v41_kv_fp8_m256_gemm.o",
+      "v41_fp8/v41_kv_fp8_m1024_quant.o",
+      "v41_fp8/v41_kv_fp8_m1024_gemm.o",
+      "v41_fp8/v41_kv_fp8_m4096_quant.o",
+      "v41_fp8/v41_kv_fp8_m4096_gemm.o",
+      "v41_fp8/v41_o_b_fp8_m1_quant.o",
+      "v41_fp8/v41_o_b_fp8_m1_gemm.o",
+      "v41_fp8/v41_o_b_fp8_m16_quant.o",
+      "v41_fp8/v41_o_b_fp8_m16_gemm.o",
+      "v41_fp8/v41_o_b_fp8_m80_quant.o",
+      "v41_fp8/v41_o_b_fp8_m80_gemm.o",
+      "v41_fp8/v41_o_b_fp8_m256_quant.o",
+      "v41_fp8/v41_o_b_fp8_m256_gemm.o",
+      "v41_fp8/v41_o_b_fp8_m1024_quant.o",
+      "v41_fp8/v41_o_b_fp8_m1024_gemm.o",
+      "v41_fp8/v41_o_b_fp8_m4096_quant.o",
+      "v41_fp8/v41_o_b_fp8_m4096_gemm.o",
+      "v41_fp8/v41_o_a_fp8_m1_quant.o",
+      "v41_fp8/v41_o_a_fp8_m1_gemm.o",
+      "v41_fp8/v41_o_a_fp8_m1_quant_rope.o",
+      "v41_fp8/v41_o_a_fp8_m16_quant.o",
+      "v41_fp8/v41_o_a_fp8_m16_gemm.o",
+      "v41_fp8/v41_o_a_fp8_m16_quant_rope.o",
+      "v41_fp8/v41_o_a_fp8_m80_quant.o",
+      "v41_fp8/v41_o_a_fp8_m80_gemm.o",
+      "v41_fp8/v41_o_a_fp8_m80_quant_rope.o",
+      "v41_fp8/v41_o_a_fp8_m256_quant.o",
+      "v41_fp8/v41_o_a_fp8_m256_gemm.o",
+      "v41_fp8/v41_o_a_fp8_m256_quant_rope.o",
+      "v41_fp8/v41_o_a_fp8_m1024_quant.o",
+      "v41_fp8/v41_o_a_fp8_m1024_gemm.o",
+      "v41_fp8/v41_o_a_fp8_m1024_quant_rope.o",
+      "v41_fp8/v41_o_a_fp8_m4096_quant.o",
+      "v41_fp8/v41_o_a_fp8_m4096_gemm.o",
+      "v41_fp8/v41_o_a_fp8_m4096_quant_rope.o",
+      "v41_fp8/v41_index_q_fp8_m1_quant.o",
+      "v41_fp8/v41_index_q_fp8_m1_gemm.o",
+      "v41_fp8/v41_index_q_fp8_m16_quant.o",
+      "v41_fp8/v41_index_q_fp8_m16_gemm.o",
+      "v41_fp8/v41_index_q_fp8_m80_quant.o",
+      "v41_fp8/v41_index_q_fp8_m80_gemm.o",
+      "v41_fp8/v41_index_q_fp8_m256_quant.o",
+      "v41_fp8/v41_index_q_fp8_m256_gemm.o",
+      "v41_fp8/v41_index_q_fp8_m1024_quant.o",
+      "v41_fp8/v41_index_q_fp8_m1024_gemm.o",
+      "v41_fp8/v41_index_q_fp8_m4096_quant.o",
+      "v41_fp8/v41_index_q_fp8_m4096_gemm.o",
+      "v41_fp8/v41_ffn_tp2_up_fp8_m1_quant.o",
+      "v41_fp8/v41_ffn_tp2_up_fp8_m1_gemm.o",
+      "v41_fp8/v41_ffn_tp2_up_fp8_m16_quant.o",
+      "v41_fp8/v41_ffn_tp2_up_fp8_m16_gemm.o",
+      "v41_fp8/v41_ffn_tp2_up_fp8_m80_quant.o",
+      "v41_fp8/v41_ffn_tp2_up_fp8_m80_gemm.o",
+      "v41_fp8/v41_ffn_tp2_up_fp8_m256_quant.o",
+      "v41_fp8/v41_ffn_tp2_up_fp8_m256_gemm.o",
+      "v41_fp8/v41_ffn_tp2_up_fp8_m1024_quant.o",
+      "v41_fp8/v41_ffn_tp2_up_fp8_m1024_gemm.o",
+      "v41_fp8/v41_ffn_tp2_up_fp8_m4096_quant.o",
+      "v41_fp8/v41_ffn_tp2_up_fp8_m4096_gemm.o",
+      "v41_fp8/v41_ffn_tp2_down_fp8_m1_quant.o",
+      "v41_fp8/v41_ffn_tp2_down_fp8_m1_gemm.o",
+      "v41_fp8/v41_ffn_tp2_down_fp8_m16_quant.o",
+      "v41_fp8/v41_ffn_tp2_down_fp8_m16_gemm.o",
+      "v41_fp8/v41_ffn_tp2_down_fp8_m80_quant.o",
+      "v41_fp8/v41_ffn_tp2_down_fp8_m80_gemm.o",
+      "v41_fp8/v41_ffn_tp2_down_fp8_m256_quant.o",
+      "v41_fp8/v41_ffn_tp2_down_fp8_m256_gemm.o",
+      "v41_fp8/v41_ffn_tp2_down_fp8_m1024_quant.o",
+      "v41_fp8/v41_ffn_tp2_down_fp8_m1024_gemm.o",
+      "v41_fp8/v41_ffn_tp2_down_fp8_m4096_quant.o",
+      "v41_fp8/v41_ffn_tp2_down_fp8_m4096_gemm.o",
+      "v41_fp8/v41_hc_project.o",
+      "v41_fp8/v41_hc_lagged.o",
+      "v41_index/v41_index_score.o",
+      "v41_router/v41_router_e128.o",
+      "v41_router/v41_router_e384.o",
+      "v41_attention/v41_attention.o",
+      "CMakeFiles/ds41rt_native.dir/src/ds41rt_native.cc.o",
+      "CMakeFiles/ds41rt_native.dir/src/xgrammar_adapter.cc.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_expert_pack.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_route_reduce.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/engram.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_dspark.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_hc.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_router.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_dspark_cache.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_dspark_attention.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_compressor.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_vision.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_kv.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_sparse_attention.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_index_scores.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_index_topk.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_candidate_blocks.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_attention_ops.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/norm.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/mlp.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/residual.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/kv_cache.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/mla_indexing.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/router.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/linear.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/attention.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/embedding.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/sampling.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/nibbles.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/nvfp4_payload.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/ds4_flash_direct.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/packed_fp8_mla_exact.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/b12x_coordinator.cu.o",
+      "CMakeFiles/ds41rt_native.dir/src/v41_experts.cc.o",
+      "CMakeFiles/ds41rt_native.dir/src/v41_local_experts.cc.o",
+      "/home/tj/.cache/ds41rt-upstream-20260916/compact-tp2-fixed-aot/v41_tp2_experts.cc.o",
+      "CMakeFiles/ds41rt_native.dir/src/v41_fp8.cc.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_fp8.cu.o",
+      "CMakeFiles/ds41rt_native.dir/src/v41_index_score.cc.o",
+      "CMakeFiles/ds41rt_native.dir/src/v41_router_scores.cc.o",
+      "CMakeFiles/ds41rt_native.dir/src/v41_attention_aot.cc.o",
+      "-L/usr/local/cuda-13.3/targets/x86_64-linux/lib/stubs",
+      "-L/usr/local/cuda-13.3/targets/x86_64-linux/lib",
+      "-Wl,-rpath,/home/tj/Developer/ds41rt/.venv/lib/python3.12/site-packages/nvidia_cutlass_dsl/cu13/lib:/usr/local/cuda-13.3/targets/x86_64-linux/lib",
+      "libds41rt_xgrammar.a",
+      "/usr/local/cuda-13.3/targets/x86_64-linux/lib/libcudart.so",
+      "/usr/local/cuda-13.3/targets/x86_64-linux/lib/libcublas.so",
+      "/usr/local/cuda-13.3/targets/x86_64-linux/lib/stubs/libcuda.so",
+      "/home/tj/Developer/ds41rt/.venv/lib/python3.12/site-packages/nvidia_cutlass_dsl/cu13/lib/libcute_dsl_runtime.so",
+      "/usr/lib/x86_64-linux-gnu/libibverbs.so",
+      "/usr/local/cuda-13.3/targets/x86_64-linux/lib/libcublasLt.so",
+      "/usr/local/cuda-13.3/targets/x86_64-linux/lib/libculibos.a",
+      "-ldl",
+      "/usr/lib/x86_64-linux-gnu/librt.a",
+      "-lcudadevrt",
+      "-lcudart_static",
+      "-lrt",
+      "-lpthread",
+      "-ldl"
+    ],
+    "cwd": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving",
+    "replaced": [
+      [
+        "v41_tp2_experts/v41_rtx_tp2_m1.o",
+        "/home/tj/.cache/ds41rt-upstream-20260916/compact-tp2-fixed-aot/v41_rtx_tp2_m1.o"
+      ],
+      [
+        "v41_tp2_experts/v41_rtx_tp2_m16.o",
+        "/home/tj/.cache/ds41rt-upstream-20260916/compact-tp2-fixed-aot/v41_rtx_tp2_m16.o"
+      ],
+      [
+        "v41_tp2_experts/v41_rtx_tp2_m80.o",
+        "/home/tj/.cache/ds41rt-upstream-20260916/compact-tp2-fixed-aot/v41_rtx_tp2_m80.o"
+      ],
+      [
+        "v41_tp2_experts/v41_rtx_tp2_m256.o",
+        "/home/tj/.cache/ds41rt-upstream-20260916/compact-tp2-fixed-aot/v41_rtx_tp2_m256.o"
+      ],
+      [
+        "v41_tp2_experts/v41_rtx_tp2_m1024.o",
+        "/home/tj/.cache/ds41rt-upstream-20260916/compact-tp2-fixed-aot/v41_rtx_tp2_m1024.o"
+      ],
+      [
+        "v41_tp2_experts/v41_rtx_tp2_m4096.o",
+        "/home/tj/.cache/ds41rt-upstream-20260916/compact-tp2-fixed-aot/v41_rtx_tp2_m4096.o"
+      ],
+      [
+        "CMakeFiles/ds41rt_native.dir/src/v41_tp2_experts.cc.o",
+        "/home/tj/.cache/ds41rt-upstream-20260916/compact-tp2-fixed-aot/v41_tp2_experts.cc.o"
+      ]
+    ],
+    "objects": [
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/b12x_coordinator_aot/coordinator_w4a16_q_b_m8.o",
+        "sha256": "55e7327f61f923828ddce7999fd8cdba2f1ff16920027b7b4ab6e42862d32b20"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/b12x_coordinator_aot/coordinator_w4a16_q_b_m16_candidate.o",
+        "sha256": "5ed50fb39f6fde92c5b8f4e64913cf3f44cf8130f76d6f415b18172d9e75f0c7"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/b12x_coordinator_aot/coordinator_w4a16_o_proj_m1.o",
+        "sha256": "62fce77c0137d4e0873a8c199391b68483c64b344af618a8df9802e283212848"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/b12x_coordinator_aot/coordinator_w4a16_o_proj_m16_candidate.o",
+        "sha256": "2a4141d62c268d47e549c347206fa85e50fbbffaa11af38fc78b0a1573409add"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/b12x_coordinator_aot/coordinator_w4a16_o_proj_m1_tn64_candidate.o",
+        "sha256": "5f9c6dff6b0ebe8c78045f52c93a55522131ad8f9cad8b2a5b88e8e26ae2a02c"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_experts/v41_expert_input_quant.o",
+        "sha256": "f7ab636997b6faae3c1e315e5519e4ce8980674ad815400e76ee4e8072024e85"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_experts/v41_coordinator_m1.o",
+        "sha256": "b6715dc84fc4159e33ca016c5f9f145a8f737965018ec11dc58aec77205b3904"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_experts/v41_coordinator_m16.o",
+        "sha256": "0d896a09c843e09c3d54034ac2613c75a5caffef23fbbc2368b5a419148730a9"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_experts/v41_coordinator_m40.o",
+        "sha256": "4bf70e380a50920b5445ab75544b5479484aacb13ad1bd0851347893bbe8ce11"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_experts/v41_coordinator_m80.o",
+        "sha256": "9fd7359068f4f9d877fea59a8cae0ea5c399e3a52301ab930ccbe9344f2317e3"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_experts/v41_coordinator_m256.o",
+        "sha256": "8a640e25260f010de60ed33e1fbc8eb4ad91bc8a323e2cba1f862315605bee2b"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_experts/v41_coordinator_m1024.o",
+        "sha256": "9acbba6edbdb331ff1b6be718945c3b399ec23e21d6994388d1a6a64bfc205b7"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_experts/v41_coordinator_m4096.o",
+        "sha256": "528ec249b97182f1e02ee26b7cfac887a18d8bdde13ab01ca70de2c821efc044"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_local_experts/v41_rtx_backbone_m1.o",
+        "sha256": "2c22b6eb3373e573e8a5156f063a0504525177b59da0af6eef1ae4ca0387b5b2"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_local_experts/v41_rtx_backbone_m16.o",
+        "sha256": "d55f98a4bf7d3de596a8eeb4a0658834a59f599898e38ec107f160772266936c"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_local_experts/v41_rtx_backbone_m80.o",
+        "sha256": "fdef61f892d04bd50406d82a9e65bcf3d9d8188c2ead16b8761182e1ffe030d4"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_local_experts/v41_rtx_backbone_m256.o",
+        "sha256": "c87c414789cfe337e86f00fb21eca56d091f2b0e9c7c226fb3daa60be3948851"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_local_experts/v41_rtx_backbone_m1024.o",
+        "sha256": "e2dbc2009dc9b154a2dbf4567edd5ac45ab27890f1b6cd50ccbd6293ce655c27"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_local_experts/v41_rtx_backbone_m4096.o",
+        "sha256": "88447bdd40049261728870fd3c586b0a587f1576965075b8ef475a5c0597f867"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/compact-tp2-fixed-aot/v41_rtx_tp2_m1.o",
+        "sha256": "40749a3b7e4fe75734debfd6085c14ef35019947b4d8e883a2656387cb83f8f5"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/compact-tp2-fixed-aot/v41_rtx_tp2_m16.o",
+        "sha256": "493a39bd1cd249c8028722602038dccfe95a0142b2d2def43d7c255c2e81503f"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/compact-tp2-fixed-aot/v41_rtx_tp2_m80.o",
+        "sha256": "0e92ca1a492187c0d15f71188a4e85a55be51cbdf3f0fd9191c59f2691304bc8"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/compact-tp2-fixed-aot/v41_rtx_tp2_m256.o",
+        "sha256": "4d845bf6bf6719cdfadfbc72cdc8297fcc51d4f923ce7bedd8eb06e4ccef195f"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/compact-tp2-fixed-aot/v41_rtx_tp2_m1024.o",
+        "sha256": "1c3a1745d1ffc4a6c95250f1dad04b7360ca060cb0d98c490e0910f96ccc7f7c"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/compact-tp2-fixed-aot/v41_rtx_tp2_m4096.o",
+        "sha256": "3467273a433c09bb0872f864a71245994c09a952e837baf37c8a1010235973f0"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_engram_fp8_m1_quant.o",
+        "sha256": "dc1783118d712289b0221cc10f3dffe4a6f0ece78748a48b1b4367c4b7aeea5f"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_engram_fp8_m1_gemm.o",
+        "sha256": "8264cb20f12d7b5d88bf02dcb8f21c8465a5213c053610254c773ea545e3fb9b"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_engram_fp8_m16_quant.o",
+        "sha256": "754e01c55694bd9723604a8c8fd42caad97bc23d668e439f4e6d7aff5fcf6e8b"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_engram_fp8_m16_gemm.o",
+        "sha256": "9f55187324520c1801fb6f20915c93366fa4d35dd3cfe0e6b271d60273ee4184"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_engram_fp8_m80_quant.o",
+        "sha256": "e2d73ddcb9caa0e8611eda2e08d4acc67e648661d5d850f14d3daaa8b8dac93a"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_engram_fp8_m80_gemm.o",
+        "sha256": "13b54304958507f8e51731229f2fb68665cd4410a4cd35bd33c049cf6adcfb80"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_engram_fp8_m256_quant.o",
+        "sha256": "f753a6f2da5ef34f47f7c8cf707a0d6d918536d46880e4d756a14f4281173264"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_engram_fp8_m256_gemm.o",
+        "sha256": "4d3093e7a90ee3f9c4ef28ea1b86392227829cbc34ed50be93caa01dda7f2bcd"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_engram_fp8_m1024_quant.o",
+        "sha256": "83219a8b0e0179ff3ef6bb5fb88ecb113ab3b73ff7a7b8fe79ff061ffdf728e8"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_engram_fp8_m1024_gemm.o",
+        "sha256": "1fd5ff9fc47070c2a9d18c7fc2ce21302281fa9fcb8b59004ea3dd2f582bf650"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_engram_fp8_m4096_quant.o",
+        "sha256": "918002c51d0bbb7c59e97eb48c012f33282ccea051b227107ce9f809921e77fd"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_engram_fp8_m4096_gemm.o",
+        "sha256": "ce3c083a65b27eabe371edde30e6810263c7ffee02d042c623b916c991997747"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_up_fp8_m1_quant.o",
+        "sha256": "ae036b1ee37617bbf5847c24c64502cfa37ff9f52ac940dc05c134a048918995"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_up_fp8_m1_gemm.o",
+        "sha256": "e663a23563eb4a911f9b4848cfa38b8452c3d8bcae219aacef1c341dbbfe910a"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_up_fp8_m16_quant.o",
+        "sha256": "39d8032cd24142062743fd8315519a8e43d5af2741d8fe932f4107fab4caa2bb"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_up_fp8_m16_gemm.o",
+        "sha256": "f25fcade07f9ece5e918e78888adf5ba2ca81160e3eeba96a4bd4569c30ab0a7"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_up_fp8_m80_quant.o",
+        "sha256": "da81afa3052d63ddc5690cba97e2a88dae5c8d600239356530017ec17e9aa39b"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_up_fp8_m80_gemm.o",
+        "sha256": "5c21e41e4601a82cbd4818295d71db3d58c0dceef01cf9ca884e832797e7ebc0"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_up_fp8_m256_quant.o",
+        "sha256": "c2f3fa396e7e588bc942d934b6e8c34dec2bb93a4e7c9ea4df3d2a6f8a1e57de"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_up_fp8_m256_gemm.o",
+        "sha256": "2214500ef4c01b4ff73a3bfd0678c28e240f589e057759e4dc51701fbb7bdde6"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_up_fp8_m1024_quant.o",
+        "sha256": "6c5b1a96ce01ecdc1e4a277ec1f1e588c796b324dca06f0ffe39e0a06c39bb1d"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_up_fp8_m1024_gemm.o",
+        "sha256": "919b336f988e2b53446cbcaeb06620e8f8ad9d75452df6cdacec2222ee62b9bb"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_up_fp8_m4096_quant.o",
+        "sha256": "4afb84a0d5678b150a246ce2d1f4c636af32718fd6384ca62a4b641c1123329d"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_up_fp8_m4096_gemm.o",
+        "sha256": "41aa21f5e7aef172eb3ced4a96cd082a9a3e64b2bfd952b42a7e74b1826dfd7d"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_down_fp8_m1_quant.o",
+        "sha256": "a4f45fd06cc723719c8fa8389cb8403f16376509f2ede001fb0630d0559bddcb"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_down_fp8_m1_gemm.o",
+        "sha256": "8ae646b3c100532a515db392e5647fc24a6b28c14718044735c13cb781e040ec"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_down_fp8_m16_quant.o",
+        "sha256": "35b1f78da7d88048e5831714b323c7466e81c42a6d4374b3ae93a13d1c86e1ae"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_down_fp8_m16_gemm.o",
+        "sha256": "067b6c5cf2053e8777d5e7e2c22d543dd4c5b39584367367553b250b1b01fb13"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_down_fp8_m80_quant.o",
+        "sha256": "20fd8ad61a51ee090794e4d8dac7f93d75a40f61b72c3996390bdb3a503163a3"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_down_fp8_m80_gemm.o",
+        "sha256": "da47a0958486c9bcd356da5e513fb12bb8926ac666a928f9ac47439c8a1f34fa"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_down_fp8_m256_quant.o",
+        "sha256": "63137940473683734b83f49b3d62f094b3d74dd830733056e1aee3576f90b188"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_down_fp8_m256_gemm.o",
+        "sha256": "fa6830319416c955e2a851c2b4d71bdea977fb9df64c76384510e1e77465d9a6"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_down_fp8_m1024_quant.o",
+        "sha256": "87516fd729bbb329e7fa55df3a71811c78f484ffd2fd26110056b67c2dcf0cf2"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_down_fp8_m1024_gemm.o",
+        "sha256": "a0d0d3bf155f0139098ebae3a62da75e6438dd1273c040d2ed698ad3ca1e7048"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_down_fp8_m4096_quant.o",
+        "sha256": "bcc555c1dce20cbc322a2079415ff242d3b3dacdac6d265a2e86e0aa0caf665a"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_down_fp8_m4096_gemm.o",
+        "sha256": "1ecfa2ba2d1c178d2663c1d4ed6f616ebe6850028d6a8f84fc5915a838f39bde"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_main_fp8_m1_quant.o",
+        "sha256": "7dbcf4a5dd0184b8740c7f54d9484adc59f3f5510c0db445f835ee83640d8c6a"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_main_fp8_m1_gemm.o",
+        "sha256": "e9c55d181144cbbcef4edd7fe7b5427d887098e02b7efba1cdafcef6ae149c85"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_main_fp8_m16_quant.o",
+        "sha256": "e55e69544dab12babc34526c676ce35fd0b04bf5c835ee7045557495aa997958"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_main_fp8_m16_gemm.o",
+        "sha256": "d2ce529834f0eb334422a9b62176cb7755ce6d416e5555f1f3c8622265cea5c8"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_main_fp8_m80_quant.o",
+        "sha256": "e2a9dd5955c6206674fa7dcacb0549b3aeece68f094285ded832d806f270c228"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_main_fp8_m80_gemm.o",
+        "sha256": "7cec3b91c068dcfad921a121d653c0e97d58ad27f70830f19d5c4f6b18c7fe30"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_main_fp8_m256_quant.o",
+        "sha256": "af4df124300e06ca22e7f85285de96a05d49a78e7703237c159a7373f9175d26"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_main_fp8_m256_gemm.o",
+        "sha256": "b134c844cd47c7034d2dffafafd309ad2090a2875812df9f412146e96b2909f7"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_main_fp8_m1024_quant.o",
+        "sha256": "a36bf58b3b22cf865d6e2e84e6576e327aad4c9b095cdcd10203c1940ea393d0"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_main_fp8_m1024_gemm.o",
+        "sha256": "b8c381c8c7a24691b6d03e6dc4c83298048df5c2315662204c6c2fe53915da21"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_main_fp8_m4096_quant.o",
+        "sha256": "1df302504beb89c7f3c07300798f5bfc22e983fb870341afde631d79af4d0c75"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_main_fp8_m4096_gemm.o",
+        "sha256": "308e13a007038fa151296fed22259a0e5dba0d0107f7c05dd7b10d7a0b2c241b"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_q_a_fp8_m1_quant.o",
+        "sha256": "070a00a19f28d0892a4095e1a0186765b9804cd0e3bdb99e8a5e6aff90122f8c"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_q_a_fp8_m1_gemm.o",
+        "sha256": "5fff931063ec18e73d4ba3a152ac42711c47e133d591ea350588c4dccbb3c6e0"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_q_a_fp8_m16_quant.o",
+        "sha256": "c33c2ded0d95790b5892cfa90b0cfccd3178ad871f4434ca8322911eda9962c3"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_q_a_fp8_m16_gemm.o",
+        "sha256": "e1d17abd45681970da45b755f431745fc1ea6ee3626e7681bd262e60938e7022"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_q_a_fp8_m80_quant.o",
+        "sha256": "81b8354061d111c893d8883e2c20dc24542d7f21394c010858390dd304790235"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_q_a_fp8_m80_gemm.o",
+        "sha256": "54a43ca96e4459ac69042a63fb8dfcaf23eae77a7a1ed331ff88c4c7e90ae718"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_q_a_fp8_m256_quant.o",
+        "sha256": "db9a161cf97eb14bff7fee0311d0de46c2cb8da9d70f011b8e21a53123b8efc6"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_q_a_fp8_m256_gemm.o",
+        "sha256": "f8599c068e623bcff5e9727524c130b196512f09ffdb33bfc9e568fdff4199a6"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_q_a_fp8_m1024_quant.o",
+        "sha256": "9ab0123b7f5e4ba3e0f0397453b86648854db939e76e913fbe895b097fd2680a"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_q_a_fp8_m1024_gemm.o",
+        "sha256": "96aa35c9864ca17c157ddb65aed94faec7f0e93319d228febb855bc83542f2e1"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_q_a_fp8_m4096_quant.o",
+        "sha256": "e49ead2fea057c20f43097245eeb9242a3440c213ee2274a5867bab80b999f99"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_q_a_fp8_m4096_gemm.o",
+        "sha256": "732a441072d330f355b5cc62120013ccac454f3f3be223532cc0b8c3a6f5639e"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_q_b_fp8_m1_quant.o",
+        "sha256": "99228ae357edecd277f6b318593c11c09ccaef911846862d44ef6313dda74988"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_q_b_fp8_m1_gemm.o",
+        "sha256": "dbab741ef22ff71f625b76758e80803b34a497035bb72a1e81c546de059c9de6"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_q_b_fp8_m16_quant.o",
+        "sha256": "d304b49b14f2a27b7b46e713e25f9f8feb96e99d66406fcf20729b10aa060697"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_q_b_fp8_m16_gemm.o",
+        "sha256": "4703bb8f69489fb11ccceedd266ee5b86f042e30a6b9e9c54ad009bd1ae206f0"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_q_b_fp8_m80_quant.o",
+        "sha256": "36008dcb5cbc8d1c89c8aa4a52aa2a32d3581a8250b5c4cc22a1e103a8da2289"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_q_b_fp8_m80_gemm.o",
+        "sha256": "10f76be88b9922dd089a69a1be361d9f6396cc49af98ccadb0badaba1c1a28ca"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_q_b_fp8_m256_quant.o",
+        "sha256": "78f9eed7e50cb1eb3dfbfa85715e006b7fe897c5c7af2410913a7da9f545ce2b"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_q_b_fp8_m256_gemm.o",
+        "sha256": "d61b3880db51840952e1c6f5beea062a9fd1c331c984f8dddf6918d1eaa40f44"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_q_b_fp8_m1024_quant.o",
+        "sha256": "982036d143e333d1ef08cfd6ba192aa9a13e5bbe4c7bcf1519c5f7778041ab57"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_q_b_fp8_m1024_gemm.o",
+        "sha256": "8669eb155c157d7ad6a38abc2bf1bfe59f3516591804afa496f489ee532c94d0"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_q_b_fp8_m4096_quant.o",
+        "sha256": "f9d1a4703d026873eb1d0226aa76dfc556edc5a21aa88d808b59dcdd2cdc2c1b"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_q_b_fp8_m4096_gemm.o",
+        "sha256": "bd79d89bdeecab717074b5a9f84c395d99a3f27a2016ee641b2272f32f70e85b"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_kv_fp8_m1_quant.o",
+        "sha256": "5886424390206b15de04047b6dc1157a82c9d5a553425e76f57d4aa690c49fbc"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_kv_fp8_m1_gemm.o",
+        "sha256": "d9b900bff69438830c054a3707beb57d8329ea73d5ffdbf86c9d51df45cb7692"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_kv_fp8_m16_quant.o",
+        "sha256": "be92053b077babfa8fa8c3ddec5dd800e8d19de70ec28c21b89269bf9c9bcc36"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_kv_fp8_m16_gemm.o",
+        "sha256": "a0d7ef81cc41b316d5c0c8a3593470da56964cfc078b5c2963e195e83cc08c0f"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_kv_fp8_m80_quant.o",
+        "sha256": "bd97aa51f8f3a97f89a27cbb64660e2b78d8dfaf9c0fd6a0cd4f418c58fe4f43"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_kv_fp8_m80_gemm.o",
+        "sha256": "b241693d075f1b93379584d6df352e6327a4e1d497b74292401210e51ca29168"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_kv_fp8_m256_quant.o",
+        "sha256": "d8bb4b5e53e91a14023fa0d8fc6f3ac3e67dd07a937d437bb416ce09126576b0"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_kv_fp8_m256_gemm.o",
+        "sha256": "e46ea4cb0ff9ef4d1fa1c3884b12f3262e2ce839564d9e0462d354dd653ae9c6"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_kv_fp8_m1024_quant.o",
+        "sha256": "94f2ffad15054367046a19d3185be914b28d90a6219061ce102c7a4039a3aeba"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_kv_fp8_m1024_gemm.o",
+        "sha256": "fa0319e9eb428639f59954aa9f3c3783e292fe343419bcc8f780a3c7f8b9f21a"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_kv_fp8_m4096_quant.o",
+        "sha256": "1046ba1eb6a741d5fc7f3c91512c62faa84053356c3edee86c9ba82774cb1fb9"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_kv_fp8_m4096_gemm.o",
+        "sha256": "3655cc96fac8ac5d891ae70333be765bccdeb3f409e6946f99d33fb5eaed19eb"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_o_b_fp8_m1_quant.o",
+        "sha256": "4b12e2ddcffe82914443b0e87eac5c321b57b5212dbc0f7efb4e0b3426834fe2"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_o_b_fp8_m1_gemm.o",
+        "sha256": "91dc1aee850fa20477bf79ccb3e2d4393fa07d5a28f9ce38d2268a028922efe0"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_o_b_fp8_m16_quant.o",
+        "sha256": "b57b5aa18fc89f9ad3fba4e49e9bce58730116b42a97817c1f6c0f6e76986075"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_o_b_fp8_m16_gemm.o",
+        "sha256": "822808f02103cb32a3e4f9ff4865a49a9b27027d824eb5493313c2ad949348ab"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_o_b_fp8_m80_quant.o",
+        "sha256": "7877055b2b64923b84b02e622fa865ec876821906e15b8caa0af24c4cb3d997e"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_o_b_fp8_m80_gemm.o",
+        "sha256": "db0e819c8ae2476873939ba0590b67c49288a1546e2970534405b474b6d1290b"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_o_b_fp8_m256_quant.o",
+        "sha256": "6bfadd1a0af6f7b8983cd3a11d575acdb564244d4b17d77f0fdada994ff2e848"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_o_b_fp8_m256_gemm.o",
+        "sha256": "98250eb3fe5703d2f7730e513083c29c86361034359b6cc7564fc5d4bc5e3b17"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_o_b_fp8_m1024_quant.o",
+        "sha256": "792d226ecde4703e4d2287d8d8ddf60e143152e2c34deed93529e4bee7de9e2e"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_o_b_fp8_m1024_gemm.o",
+        "sha256": "83105713109b312026b7650807150e7c6cc99c76e18df8864c72879228568918"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_o_b_fp8_m4096_quant.o",
+        "sha256": "c3ff12bfa53679bd58022df4995b93ffbfc4e9bda7b59470cb7789f1e78b2c11"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_o_b_fp8_m4096_gemm.o",
+        "sha256": "5d2ff4d7e8fc93f2b6b3e365eb8ce17c7ead4c9c3844bb7ec6bef4b7b894326d"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_o_a_fp8_m1_quant.o",
+        "sha256": "ee2cd065c1b4dda9036570cc9a7a7aeb9d8f8cc83f6764d62d79bb1cf0bdbe1a"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_o_a_fp8_m1_gemm.o",
+        "sha256": "bc570a336a335131da0422717fbe24d9dd6c335e2f4de5b5ff5d9c3aa0b44fd2"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_o_a_fp8_m1_quant_rope.o",
+        "sha256": "0897827ff6ae486e4cf83c5bb0c3a363c323a9dea27fcc6af799319f0ca8af74"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_o_a_fp8_m16_quant.o",
+        "sha256": "9d8ff839d0eaa5c09a3873b7dc422d463b9a83ae67585667649cfcc27f745766"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_o_a_fp8_m16_gemm.o",
+        "sha256": "cc27e21f7889d47f615ba85fc6291e887a749670bcf69cb0ed9253ed9122036b"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_o_a_fp8_m16_quant_rope.o",
+        "sha256": "a54f0cfb579969b2911c4fe192fbf4e377aefd89cb2e73177eac689c7fcdaf6c"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_o_a_fp8_m80_quant.o",
+        "sha256": "c2f1cea47611a6072bc1b77fe9ed64ef296bbba551e438512200d2e24d02ace9"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_o_a_fp8_m80_gemm.o",
+        "sha256": "51faa36151e85416fee88fd4ace800cd48de4ecf9bc36f7dbc8214c700153fb6"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_o_a_fp8_m80_quant_rope.o",
+        "sha256": "437ee300981716c29a35f3b94d1c865e4c55496174bb72f07100c23b998fae12"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_o_a_fp8_m256_quant.o",
+        "sha256": "add44ed21378d482f091f2aa18f8b490450c718da731f87608b3c6d7e764a61d"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_o_a_fp8_m256_gemm.o",
+        "sha256": "001d21310cb733021b474f5dda81b336d4c6b7db1da89e842d2d777517b07593"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_o_a_fp8_m256_quant_rope.o",
+        "sha256": "1338a5d82b28b1c1eb29c1d86d83d9ce82bbc760330420a15336f4a99034ca86"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_o_a_fp8_m1024_quant.o",
+        "sha256": "a9895f6b4433f4e02c3ecd74980b34beb1abc58da38e705a4bc0da17c7d85931"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_o_a_fp8_m1024_gemm.o",
+        "sha256": "bece0c8bb9690980b07aaa108cf4df1b53454351d3339038bb4ca8de85efedc3"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_o_a_fp8_m1024_quant_rope.o",
+        "sha256": "a33d731a6e5c7ceef6e579eb31631852c2de60abb068029ce6d0217c2230d6a4"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_o_a_fp8_m4096_quant.o",
+        "sha256": "c0369e4e65261eda6302e7925fd9782f645479c83d4c33907a8dd630dabba383"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_o_a_fp8_m4096_gemm.o",
+        "sha256": "1f6b490723748e2187123d45a0dec5322a7cb3d937358e76e1f938ac6ec29aab"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_o_a_fp8_m4096_quant_rope.o",
+        "sha256": "6c1f83567df440e61bcd4e33f4c83d8f546adeb3ce850bd3fa15f4d4fbe549d7"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_index_q_fp8_m1_quant.o",
+        "sha256": "61d0dc432e8711571843b33099b2c2d615620be5c962db8af54a6b08ae308603"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_index_q_fp8_m1_gemm.o",
+        "sha256": "2927147dbc7b9b73f9fd6ac71da7a7fa514e826d83f04117147dacd561c1ab3a"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_index_q_fp8_m16_quant.o",
+        "sha256": "09316339c77ceff07fb5fba166da9001bcc703a2d3e0b69ceea6969d8d94e0fa"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_index_q_fp8_m16_gemm.o",
+        "sha256": "8249251f4f9f8a8cb17459c097335c7ff0bb6cf006d3b66091d3a04983ac45c3"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_index_q_fp8_m80_quant.o",
+        "sha256": "334408c29b58a150c6d7317dbb6478a3a2e8537ec043ae9651c64aaecbd04844"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_index_q_fp8_m80_gemm.o",
+        "sha256": "781fa4506e79c330ad5f2a2712b7826d11cc2a11a61d9c6329eef7fbd2b8891f"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_index_q_fp8_m256_quant.o",
+        "sha256": "200d5fdff2d8b3b05b03f0315b005f03827987963cd7653b17382437e5ccc653"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_index_q_fp8_m256_gemm.o",
+        "sha256": "95f0db69e08a68445c77c6ebe7b9d0cc53825cc2107ca46d95fa08f7501f6ba7"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_index_q_fp8_m1024_quant.o",
+        "sha256": "071a9fd8a62c38ed28ede54948f28fc003dc3ba172ed48010fc82cfc0d9dbd09"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_index_q_fp8_m1024_gemm.o",
+        "sha256": "9492128b15f4433df643795275745e0dc6317d50360ddfef4cbbfc8149fb6929"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_index_q_fp8_m4096_quant.o",
+        "sha256": "25ca395a68c4ff6ca23a4a0898ec6247c7973ddb631e7bd0d92beb7ce58897d8"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_index_q_fp8_m4096_gemm.o",
+        "sha256": "9bb320c5f1b121e484b8f51848322becf8f499b6e6ff4d509d801a4607a19d59"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_tp2_up_fp8_m1_quant.o",
+        "sha256": "95a0960aebf956b665a8d051903ac27bf131fcbfc8d8f8f1a08eed83b678a86d"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_tp2_up_fp8_m1_gemm.o",
+        "sha256": "8cc738d4d9cd83d2112097e483a786bf052edb781ab800a8d4097137300d46fd"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_tp2_up_fp8_m16_quant.o",
+        "sha256": "bff2f49aaac8cb8e119d010a091c0d581a2a97b731f6e576793943bd0a512650"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_tp2_up_fp8_m16_gemm.o",
+        "sha256": "2c250ff9c36eb3517078274e31c01e200f0448917b0ee6d5718e9c76db349a86"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_tp2_up_fp8_m80_quant.o",
+        "sha256": "4b1f1fe18aec42e5322b08eb73f806738fd0b8a8610db7b52c7004098f74bd83"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_tp2_up_fp8_m80_gemm.o",
+        "sha256": "02554caaa5acb2f9019e4690936988ed701a6e5186ea71ec3b480b43d14edc50"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_tp2_up_fp8_m256_quant.o",
+        "sha256": "448d6cb68762505ebda64cf5920c5978e0847e37224cd62ef3130b04f461017e"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_tp2_up_fp8_m256_gemm.o",
+        "sha256": "0692ffe6021eee0de7c29c84f21e08169dba33bc88f0e350b57e82f6446162e6"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_tp2_up_fp8_m1024_quant.o",
+        "sha256": "8e43199af27359f09cb54570d665317776a5f184e6736c77ae6b7000b9c7a0f6"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_tp2_up_fp8_m1024_gemm.o",
+        "sha256": "094e16d226ea63a1856507a6659ddc934ea4fd8dcebc2a4c61eb562ceebe3d26"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_tp2_up_fp8_m4096_quant.o",
+        "sha256": "24feee771632578dbd0134ef1ca004d8ef8e2b337bbd3be2c66e13f0e51ec0d3"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_tp2_up_fp8_m4096_gemm.o",
+        "sha256": "e6c259d25d25e7885cc09cef37dcc7783cbf499514eaa65bd18a17bd45325b91"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_tp2_down_fp8_m1_quant.o",
+        "sha256": "9980c08e49bc00b4deb5781819594a59e484c7f8656a7fd026b3f68cce6973a2"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_tp2_down_fp8_m1_gemm.o",
+        "sha256": "453b3588d608621ae094a399532132e35a648ea55147601661ecd6ed94d7390d"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_tp2_down_fp8_m16_quant.o",
+        "sha256": "aa9537437c4e31d32d3bc2c8df282f5e39c5322880fb7190d5ea1acf30c0f241"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_tp2_down_fp8_m16_gemm.o",
+        "sha256": "a9f58b53d208df0a3e9832e19b57bd341a5432fad51978182dcbe6344e781d04"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_tp2_down_fp8_m80_quant.o",
+        "sha256": "3ec3461f17d39a3dfa44ff913d1e77f24be53ba6297e2c0d56ae4972b68f7a1b"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_tp2_down_fp8_m80_gemm.o",
+        "sha256": "db1c2be4e180da640931b978a56dc05fbb98c72f57fe69355e23579a98821050"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_tp2_down_fp8_m256_quant.o",
+        "sha256": "7b022faf41d3d18af9b4dcb8e1dffc683fef1daf0243fe7a6479db01c1d4a996"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_tp2_down_fp8_m256_gemm.o",
+        "sha256": "67276556f03e9bd2e68585aaf71f3c8e9c90ed862e5625af7a275d5d02ff1a63"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_tp2_down_fp8_m1024_quant.o",
+        "sha256": "fc7cc00a55813c699e3206ec1456b77d806bc1d5117e505493e13634621989f2"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_tp2_down_fp8_m1024_gemm.o",
+        "sha256": "14026513291a59f8465d80a5cab769c7fafd081a1a67ebe471fe6c2943476c65"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_tp2_down_fp8_m4096_quant.o",
+        "sha256": "fd6340028c53b851c83a4d0f4c45e67ab737935ab0d74d649506a1611bd1ac97"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_ffn_tp2_down_fp8_m4096_gemm.o",
+        "sha256": "aef1fe2b5238c52a23696536546b0bbf83fab29b230a76f3fa6c626c420d2342"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_hc_project.o",
+        "sha256": "fdc50d2436cdb486226a2341eda8fa62e1aa99ceb2f600ef5f54126eac7cae2d"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8/v41_hc_lagged.o",
+        "sha256": "4f1ce093ca326ae778ca9cdd8dcc24c40a6fee28258ff71c5b5d7dadda0bc996"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_index/v41_index_score.o",
+        "sha256": "fd60f6fb71e9edd288ad7a5fef64e7c83ab88baada6fbd30a75c3be6df7b4212"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_router/v41_router_e128.o",
+        "sha256": "76479d51398cb9bd320a3950f34b3c32c66a4f2db0b1fc24468fbf14c9ca77a3"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_router/v41_router_e384.o",
+        "sha256": "b836cb09c91fd9371d18d8b945099d5ac64b90a0799cabf15353b5d9ce909489"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_attention/v41_attention.o",
+        "sha256": "c6e36658e9553ef3a37c948bb4023d9528bc5f4be54d152d48f1541e16e19d80"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/src/ds41rt_native.cc.o",
+        "sha256": "cd272ad0cb85d44a37ba586d4fd962f137fcd69d2fe90b27c7149b78da23991f"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/src/xgrammar_adapter.cc.o",
+        "sha256": "18277f123390fa261c5ad952335bfdaa5448a134fbd904679d2d559c2190611e"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_expert_pack.cu.o",
+        "sha256": "7d9e66f57e12e9a380e7fb794e1bd4dbe65c79ccd6bc90df969ce25867758ee4"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_route_reduce.cu.o",
+        "sha256": "69b628fc9a5ba27491b7c0f46216e79596df3ed75fad86358a5e4b400742442c"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/cuda/kernels/engram.cu.o",
+        "sha256": "b4df1a447b4d004ac5baab94dbcff827a17a4938d1411dd33e34c98536304f59"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_dspark.cu.o",
+        "sha256": "6c0a8c3d03e438d3cb947cda387e61aaee35adfe06b986aac0f7ff1cc00c775f"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_hc.cu.o",
+        "sha256": "65d49fff68cc38a4c1e7d92bd4d7442f45d5e1f761046fac8f1f3c344033ee71"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_router.cu.o",
+        "sha256": "322762c8e53e61f7c59b08bcdffa6d1d0dab9a61f8774d1e288773473c582835"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_dspark_cache.cu.o",
+        "sha256": "97603c7f420021cae6dc543d52ac62a181705b4f9f1e19127ea31d0d6e3092dd"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_dspark_attention.cu.o",
+        "sha256": "fb70661c78e4497648825fbd7ff81b810d2f5d08c58f874679a49992d0a5770b"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_compressor.cu.o",
+        "sha256": "0c1238f52a0a3ee5b12caa54a30b22a8f06be609a93fee2d08607e8a9c7b0913"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_vision.cu.o",
+        "sha256": "62a8c651c0d355d9cc96999012f29e911d5315be729485fcebe9b94dc676d5c7"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_kv.cu.o",
+        "sha256": "7e7a80cb2b2ebf4c3b445e3c28d9026b01cbb7f8553e524ec86484b89ec4e5f7"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_sparse_attention.cu.o",
+        "sha256": "f48670fdedd29e7de8f8c161142f4da84a40df41fba3e9cb2aaec25e70954fd6"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_index_scores.cu.o",
+        "sha256": "0875dd36dc05c6026cfbd1bbd1577761054f4599fe88db6dd80ab27dd60506b3"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_index_topk.cu.o",
+        "sha256": "fe3629497f7941699047271e651503f300e72e7c1413b67463d0c7311099aab0"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_candidate_blocks.cu.o",
+        "sha256": "546ad0234e4955bfecc93e4039ebc8e41c603c3d2edf0a0f7d7d7f09af0e0ab2"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_attention_ops.cu.o",
+        "sha256": "393c565cd3954c5a8ab71a46c67d5f9ed4db3fa15ca2800ceead181ee08874c8"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/cuda/kernels/norm.cu.o",
+        "sha256": "e7d4f49aa09b334e8c7a1487010357ecde8ec34f80ec7e4421bac7c8f59d8417"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/cuda/kernels/mlp.cu.o",
+        "sha256": "d74a9532686ce1841b76aa99d17b0e2d09625048f61b5f9b436d258af5a51265"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/cuda/kernels/residual.cu.o",
+        "sha256": "3416142d84e122dc97106cc600499ea80f9911080790de1093e73e139a798415"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/cuda/kernels/kv_cache.cu.o",
+        "sha256": "b3d9b134888ea81d636db257673c9825ca128b12910f016ac4ad30d22eff60fe"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/cuda/kernels/mla_indexing.cu.o",
+        "sha256": "67119c6be6cfe0d258a9cb8c6638d48ac1e8ea26ae171945c47dbc71792a28a9"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/cuda/kernels/router.cu.o",
+        "sha256": "62034b17cf7342239ef746c8fed1ed157fb31e3db7ff926b3e6800af62bd52e7"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/cuda/kernels/linear.cu.o",
+        "sha256": "eb7bee7b526e109f94ad33848eeea2fef4a0902db3a51e55f5a1beb822afe777"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/cuda/kernels/attention.cu.o",
+        "sha256": "c367df39dac5a6008580b9c3a78cc3350a8bb24dba9d54c19e45185a8b5420e4"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/cuda/kernels/embedding.cu.o",
+        "sha256": "86daa744f79865aa5a7ed6c0e02b311efe3f72045b01c27c123b2862f66a9df9"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/cuda/kernels/sampling.cu.o",
+        "sha256": "750da2f9e9afc7f484cef5c08775897ae2b86765dafad693aef6d6457eb82069"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/cuda/kernels/nibbles.cu.o",
+        "sha256": "d076ab6ea78085f0344503efaf16f0596029078d246bf79f4d53ec31e487a34f"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/cuda/kernels/nvfp4_payload.cu.o",
+        "sha256": "ce27b0e8da8ebae364e853681076be3277f8623fdcd3b9e2aebe5e480f2eadf3"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/cuda/kernels/ds4_flash_direct.cu.o",
+        "sha256": "1580f482c7ef86c4b5f98cb6a31a5c01b8b8648ab8671e3eb43cfa5727342b3e"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/cuda/kernels/packed_fp8_mla_exact.cu.o",
+        "sha256": "2fc6300c91b024d8f304561efc81abe3daaaf81bec56a116b9ecd28144b6258b"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/cuda/kernels/b12x_coordinator.cu.o",
+        "sha256": "032e05d5bf88e75595e66ac0d083d218c027ad4567fa53aa1bdde40dfd977dc9"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/src/v41_experts.cc.o",
+        "sha256": "6106ad751e79cff7a3bc8bc2b99b8b92ed3dd7518fb590f1b326a2061deda4f2"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/src/v41_local_experts.cc.o",
+        "sha256": "aae34f5eccd0b9a59ccd61fc575be1c65e776f2b6c792a69656939b91dd339ff"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/compact-tp2-fixed-aot/v41_tp2_experts.cc.o",
+        "sha256": "4fd19d01486b77146258b7895e13be5396a3631753d48580dc16484c25b20c5d"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/src/v41_fp8.cc.o",
+        "sha256": "83ec02e4e97af7dc3a4d55e4070dbd7f60bb9507e2e32849ac2e720c5dc0b3ea"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_fp8.cu.o",
+        "sha256": "4ef7ef830da3a8fd1be644c76ea04db0e2c3b5b65904b458ffa1caeb10e90085"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/src/v41_index_score.cc.o",
+        "sha256": "0b53925fe3e5e1c8778dc3457ba0f745af2ec7ed0d558a5fdaac877b42f7e0b4"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/src/v41_router_scores.cc.o",
+        "sha256": "9771f2b43e6678a235f63d798e926dee9fac0fa6582d80a23e108a1269d5ea83"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/CMakeFiles/ds41rt_native.dir/src/v41_attention_aot.cc.o",
+        "sha256": "327dc046ecb910f2ec4e1a55f9b6ebcd0087b2eb2d7ee871a1321e9692d22b7a"
+      },
+      {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/libds41rt_xgrammar.a",
+        "sha256": "48ba718faebcdbe9d23602377dfe5b26a21b491abf2642a268251df3d1215c4b"
+      },
+      {
+        "path": "/usr/local/cuda-13.3/targets/x86_64-linux/lib/libculibos.a",
+        "sha256": "6b8782dcda51e108d779f3c23be1885a630ab6f304439b2b2be1a03c0ac9594f"
+      },
+      {
+        "path": "/usr/lib/x86_64-linux-gnu/librt.a",
+        "sha256": "f0a17a43c74d2fe5474fa2fd29c8f14799e777d7d75a2cc4d11c20a6e7b161c5"
+      }
+    ],
+    "artifact": "/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-compact-tp2-fixed.so",
+    "sha256": "dd8a9e538806e8da481d606b0ba795847669eab98fb8ce3d0e54e89d37cd3368",
+    "tp2_manifest": {
+      "schema": 1,
+      "experimental": false,
+      "role": "rtx_tp2",
+      "input_format": "fp8_k32",
+      "sparkinfer_revision": "85de5f129b305eea9e80ba8d5c3026a74db92595",
+      "capability": [
+        12,
+        0
+      ],
+      "physical_sms": 188,
+      "width": 192,
+      "compact_max_capacity": 16,
+      "geometry": {
+        "experts": 384,
+        "hidden": 5120,
+        "intermediate": 1152,
+        "kernel_intermediate": 1152,
+        "topk": 6
+      },
+      "variants": [
+        {
+          "name": "v41_rtx_tp2_m1",
+          "implementation": "compact",
+          "width": 192,
+          "output_kind": "fp32_routes",
+          "native_abi_version": 2,
+          "capacity_rows": 1,
+          "core_scratch_nbytes": 162352,
+          "scratch": [
+            {
+              "slot": 3,
+              "offset": 0,
+              "nbytes": 4,
+              "shape": [
+                1
+              ]
+            },
+            {
+              "slot": 4,
+              "offset": 16,
+              "nbytes": 7128,
+              "shape": [
+                1782
+              ]
+            },
+            {
+              "slot": 5,
+              "offset": 7152,
+              "nbytes": 1536,
+              "shape": [
+                384
+              ]
+            },
+            {
+              "slot": 6,
+              "offset": 8688,
+              "nbytes": 4,
+              "shape": [
+                1
+              ]
+            },
+            {
+              "slot": 7,
+              "offset": 8704,
+              "nbytes": 4,
+              "shape": [
+                1
+              ]
+            },
+            {
+              "slot": 8,
+              "offset": 8720,
+              "nbytes": 4,
+              "shape": [
+                1
+              ]
+            },
+            {
+              "slot": 9,
+              "offset": 8736,
+              "nbytes": 4,
+              "shape": [
+                1
+              ]
+            },
+            {
+              "slot": 10,
+              "offset": 8752,
+              "nbytes": 27648,
+              "shape": [
+                6,
+                2304
+              ]
+            },
+            {
+              "slot": 41,
+              "offset": 36400,
+              "nbytes": 122880,
+              "shape": [
+                6,
+                5120
+              ]
+            }
+          ],
+          "scratch_pointer_offsets": [
+            null,
+            null,
+            null,
+            0,
+            16,
+            7152,
+            8688,
+            8704,
+            8720,
+            8736,
+            8752,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            0,
+            0,
+            0,
+            159280,
+            null,
+            null,
+            160816,
+            36400,
+            0,
+            0
+          ],
+          "native_entry": "_mlir_ds41rt_v41_rtx_tp2_m1__mlir_ciface_cutlass___call___b12xmoe_sharedkernelsv41_compact_pipelineV41CompactPipeline_object_at__FakeTensorUint321128013201_FakeTensorUint8116052801_FakeTensorUint325662310401_FakeTensorUin"
+        },
+        {
+          "name": "v41_rtx_tp2_m16",
+          "implementation": "compact",
+          "width": 192,
+          "output_kind": "fp32_routes",
+          "native_abi_version": 2,
+          "capacity_rows": 16,
+          "core_scratch_nbytes": 2527184,
+          "scratch": [
+            {
+              "slot": 3,
+              "offset": 0,
+              "nbytes": 4,
+              "shape": [
+                1
+              ]
+            },
+            {
+              "slot": 4,
+              "offset": 16,
+              "nbytes": 114048,
+              "shape": [
+                28512
+              ]
+            },
+            {
+              "slot": 5,
+              "offset": 114064,
+              "nbytes": 1536,
+              "shape": [
+                384
+              ]
+            },
+            {
+              "slot": 6,
+              "offset": 115600,
+              "nbytes": 4,
+              "shape": [
+                1
+              ]
+            },
+            {
+              "slot": 7,
+              "offset": 115616,
+              "nbytes": 4,
+              "shape": [
+                1
+              ]
+            },
+            {
+              "slot": 8,
+              "offset": 115632,
+              "nbytes": 4,
+              "shape": [
+                1
+              ]
+            },
+            {
+              "slot": 9,
+              "offset": 115648,
+              "nbytes": 4,
+              "shape": [
+                1
+              ]
+            },
+            {
+              "slot": 10,
+              "offset": 115664,
+              "nbytes": 442368,
+              "shape": [
+                96,
+                2304
+              ]
+            },
+            {
+              "slot": 41,
+              "offset": 558032,
+              "nbytes": 1966080,
+              "shape": [
+                96,
+                5120
+              ]
+            }
+          ],
+          "scratch_pointer_offsets": [
+            null,
+            null,
+            null,
+            0,
+            16,
+            114064,
+            115600,
+            115616,
+            115632,
+            115648,
+            115664,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            0,
+            0,
+            0,
+            2524112,
+            null,
+            null,
+            2525648,
+            558032,
+            0,
+            0
+          ],
+          "native_entry": "_mlir_ds41rt_v41_rtx_tp2_m16__mlir_ciface_cutlass___call___b12xmoe_sharedkernelsv41_compact_pipelineV41CompactPipeline_object_at__FakeTensorUint3216128013201_FakeTensorUint81616052801_FakeTensorUint325662310401_FakeTensorU"
+        },
+        {
+          "name": "v41_rtx_tp2_m80",
+          "implementation": "slices",
+          "width": 192,
+          "output_kind": "fp32_routes",
+          "native_abi_version": 2,
+          "capacity_rows": 80,
+          "core_scratch_nbytes": 69598096,
+          "scratch": [
+            {
+              "slot": 3,
+              "offset": 0,
+              "nbytes": 4,
+              "shape": [
+                1
+              ]
+            },
+            {
+              "slot": 4,
+              "offset": 16,
+              "nbytes": 737280,
+              "shape": [
+                184320
+              ]
+            },
+            {
+              "slot": 5,
+              "offset": 737296,
+              "nbytes": 1536,
+              "shape": [
+                384
+              ]
+            },
+            {
+              "slot": 6,
+              "offset": 738832,
+              "nbytes": 3072,
+              "shape": [
+                384,
+                2
+              ]
+            },
+            {
+              "slot": 7,
+              "offset": 741904,
+              "nbytes": 36480,
+              "shape": [
+                480,
+                19
+              ]
+            },
+            {
+              "slot": 8,
+              "offset": 778384,
+              "nbytes": 1920,
+              "shape": [
+                480
+              ]
+            },
+            {
+              "slot": 9,
+              "offset": 780304,
+              "nbytes": 1920,
+              "shape": [
+                480
+              ]
+            },
+            {
+              "slot": 10,
+              "offset": 782224,
+              "nbytes": 58982400,
+              "shape": [
+                6,
+                480,
+                5120
+              ]
+            },
+            {
+              "slot": 41,
+              "offset": 59764624,
+              "nbytes": 9830400,
+              "shape": [
+                480,
+                5120
+              ]
+            }
+          ],
+          "scratch_pointer_offsets": [
+            null,
+            null,
+            null,
+            0,
+            16,
+            737296,
+            738832,
+            741904,
+            778384,
+            780304,
+            782224,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            0,
+            0,
+            0,
+            69595024,
+            null,
+            null,
+            69596560,
+            59764624,
+            0,
+            0
+          ],
+          "native_entry": "_mlir_ds41rt_v41_rtx_tp2_m80__mlir_ciface_cutlass___call___b12xmoe_sharedkernelsv41_slice_pipelineV41SlicePipeline_object_at__FakeTensorUint3280128013201_FakeTensorUint88016052801_FakeTensorUint325662310401_FakeTensorUint3"
+        },
+        {
+          "name": "v41_rtx_tp2_m256",
+          "implementation": "slices",
+          "width": 192,
+          "output_kind": "fp32_tokens",
+          "native_abi_version": 3,
+          "capacity_rows": 256,
+          "core_scratch_nbytes": 7738912,
+          "scratch": [
+            {
+              "slot": 3,
+              "offset": 0,
+              "nbytes": 4,
+              "shape": [
+                1
+              ]
+            },
+            {
+              "slot": 4,
+              "offset": 16,
+              "nbytes": 2359296,
+              "shape": [
+                589824
+              ]
+            },
+            {
+              "slot": 5,
+              "offset": 2359312,
+              "nbytes": 1536,
+              "shape": [
+                384
+              ]
+            },
+            {
+              "slot": 6,
+              "offset": 2360848,
+              "nbytes": 3072,
+              "shape": [
+                384,
+                2
+              ]
+            },
+            {
+              "slot": 7,
+              "offset": 2363920,
+              "nbytes": 116736,
+              "shape": [
+                1536,
+                19
+              ]
+            },
+            {
+              "slot": 8,
+              "offset": 2480656,
+              "nbytes": 6144,
+              "shape": [
+                1536
+              ]
+            },
+            {
+              "slot": 9,
+              "offset": 2486800,
+              "nbytes": 6144,
+              "shape": [
+                1536
+              ]
+            },
+            {
+              "slot": 10,
+              "offset": 2492944,
+              "nbytes": 4,
+              "shape": [
+                1
+              ]
+            },
+            {
+              "slot": 41,
+              "offset": 2492960,
+              "nbytes": 5242880,
+              "shape": [
+                1310720
+              ]
+            }
+          ],
+          "scratch_pointer_offsets": [
+            null,
+            null,
+            null,
+            0,
+            16,
+            2359312,
+            2360848,
+            2363920,
+            2480656,
+            2486800,
+            2492944,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            0,
+            0,
+            0,
+            7735840,
+            null,
+            null,
+            7737376,
+            2492960,
+            0,
+            0
+          ],
+          "native_entry": "_mlir_ds41rt_v41_rtx_tp2_m256__mlir_ciface_cutlass___call___b12xmoe_sharedkernelsv41_slice_pipelineV41SlicePipeline_object_at__FakeTensorUint32256128013201_FakeTensorUint825616052801_FakeTensorUint325662310401_FakeTensorUin"
+        },
+        {
+          "name": "v41_rtx_tp2_m1024",
+          "implementation": "slices",
+          "width": 192,
+          "output_kind": "fp32_tokens",
+          "native_abi_version": 3,
+          "capacity_rows": 1024,
+          "core_scratch_nbytes": 30932512,
+          "scratch": [
+            {
+              "slot": 3,
+              "offset": 0,
+              "nbytes": 4,
+              "shape": [
+                1
+              ]
+            },
+            {
+              "slot": 4,
+              "offset": 16,
+              "nbytes": 9437184,
+              "shape": [
+                2359296
+              ]
+            },
+            {
+              "slot": 5,
+              "offset": 9437200,
+              "nbytes": 1536,
+              "shape": [
+                384
+              ]
+            },
+            {
+              "slot": 6,
+              "offset": 9438736,
+              "nbytes": 3072,
+              "shape": [
+                384,
+                2
+              ]
+            },
+            {
+              "slot": 7,
+              "offset": 9441808,
+              "nbytes": 466944,
+              "shape": [
+                6144,
+                19
+              ]
+            },
+            {
+              "slot": 8,
+              "offset": 9908752,
+              "nbytes": 24576,
+              "shape": [
+                6144
+              ]
+            },
+            {
+              "slot": 9,
+              "offset": 9933328,
+              "nbytes": 24576,
+              "shape": [
+                6144
+              ]
+            },
+            {
+              "slot": 10,
+              "offset": 9957904,
+              "nbytes": 4,
+              "shape": [
+                1
+              ]
+            },
+            {
+              "slot": 41,
+              "offset": 9957920,
+              "nbytes": 20971520,
+              "shape": [
+                5242880
+              ]
+            }
+          ],
+          "scratch_pointer_offsets": [
+            null,
+            null,
+            null,
+            0,
+            16,
+            9437200,
+            9438736,
+            9441808,
+            9908752,
+            9933328,
+            9957904,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            0,
+            0,
+            0,
+            30929440,
+            null,
+            null,
+            30930976,
+            9957920,
+            0,
+            0
+          ],
+          "native_entry": "_mlir_ds41rt_v41_rtx_tp2_m1024__mlir_ciface_cutlass___call___b12xmoe_sharedkernelsv41_slice_pipelineV41SlicePipeline_object_at__FakeTensorUint321024128013201_FakeTensorUint8102416052801_FakeTensorUint325662310401_FakeTensorU"
+        },
+        {
+          "name": "v41_rtx_tp2_m4096",
+          "implementation": "slices",
+          "width": 192,
+          "output_kind": "fp32_tokens",
+          "native_abi_version": 3,
+          "capacity_rows": 4096,
+          "core_scratch_nbytes": 123706912,
+          "scratch": [
+            {
+              "slot": 3,
+              "offset": 0,
+              "nbytes": 4,
+              "shape": [
+                1
+              ]
+            },
+            {
+              "slot": 4,
+              "offset": 16,
+              "nbytes": 37748736,
+              "shape": [
+                9437184
+              ]
+            },
+            {
+              "slot": 5,
+              "offset": 37748752,
+              "nbytes": 1536,
+              "shape": [
+                384
+              ]
+            },
+            {
+              "slot": 6,
+              "offset": 37750288,
+              "nbytes": 3072,
+              "shape": [
+                384,
+                2
+              ]
+            },
+            {
+              "slot": 7,
+              "offset": 37753360,
+              "nbytes": 1867776,
+              "shape": [
+                24576,
+                19
+              ]
+            },
+            {
+              "slot": 8,
+              "offset": 39621136,
+              "nbytes": 98304,
+              "shape": [
+                24576
+              ]
+            },
+            {
+              "slot": 9,
+              "offset": 39719440,
+              "nbytes": 98304,
+              "shape": [
+                24576
+              ]
+            },
+            {
+              "slot": 10,
+              "offset": 39817744,
+              "nbytes": 4,
+              "shape": [
+                1
+              ]
+            },
+            {
+              "slot": 41,
+              "offset": 39817760,
+              "nbytes": 83886080,
+              "shape": [
+                20971520
+              ]
+            }
+          ],
+          "scratch_pointer_offsets": [
+            null,
+            null,
+            null,
+            0,
+            16,
+            37748752,
+            37750288,
+            37753360,
+            39621136,
+            39719440,
+            39817744,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            0,
+            0,
+            0,
+            123703840,
+            null,
+            null,
+            123705376,
+            39817760,
+            0,
+            0
+          ],
+          "native_entry": "_mlir_ds41rt_v41_rtx_tp2_m4096__mlir_ciface_cutlass___call___b12xmoe_sharedkernelsv41_slice_pipelineV41SlicePipeline_object_at__FakeTensorUint324096128013201_FakeTensorUint8409616052801_FakeTensorUint325662310401_FakeTensorU"
+        }
+      ],
+      "input_quantizer": {
+        "format": "row E4M3 payload then UE8M0 K32 scales",
+        "row_bytes": 5280,
+        "max_rows": 4096,
+        "expected_m": 80,
+        "amax_floor": 0.0001,
+        "abi": {
+          "symbol": "_mlir_ds41rt_v41_expert_input_quant__mlir_ciface_cutlass___call___b12x_libquantmxfp8_rows_MXFP8RowsQuantFixedWidthLaunch_object_at__Ptrgmem_Ptrgmem_Ptrgmem_Ptrgmem_1_1_CUstream0x0",
+          "pointers": [
+            "source_ptr",
+            "values_ptr",
+            "scale_rows_ptr",
+            "scale_mma_ptr"
+          ],
+          "i32": [
+            "m",
+            "grid_x"
+          ],
+          "stream": "stream",
+          "argument_count": 8
+        },
+        "object_sha256": "f7ab636997b6faae3c1e315e5519e4ce8980674ad815400e76ee4e8072024e85"
+      },
+      "artifact_sha256": {
+        "v41_rtx_tp2_m1024.o": "1c3a1745d1ffc4a6c95250f1dad04b7360ca060cb0d98c490e0910f96ccc7f7c",
+        "v41_rtx_tp2_m80.o": "0e92ca1a492187c0d15f71188a4e85a55be51cbdf3f0fd9191c59f2691304bc8",
+        "v41_expert_input_quant.o": "f7ab636997b6faae3c1e315e5519e4ce8980674ad815400e76ee4e8072024e85",
+        "v41_rtx_tp2_m1.o": "40749a3b7e4fe75734debfd6085c14ef35019947b4d8e883a2656387cb83f8f5",
+        "v41_rtx_tp2_m4096.o": "3467273a433c09bb0872f864a71245994c09a952e837baf37c8a1010235973f0",
+        "v41_rtx_tp2_m256.o": "4d845bf6bf6719cdfadfbc72cdc8297fcc51d4f923ce7bedd8eb06e4ccef195f",
+        "v41_expert_input_quant.h": "af33b472f3c36fdb51a07b6fcce354d2c2efc5a8a80b4465d54eee72f396d0ca",
+        "v41_rtx_tp2_m4096.h": "fba09fbc1ac5f2c9838d36fd4ea9f411000904e516d437064a77e05983225382",
+        "v41_expert_variants.h": "0963d5e551376dc87a22cb38512638143d2e688e42b718acdee17f808b27e07a",
+        "v41_rtx_tp2_m80.h": "6fefa963322bc9bda4e68c5d30c0813a1331b7e1bc33fe9b512f00ca3fa895d3",
+        "v41_rtx_tp2_m256.h": "a2c961669893e2ead908571e90e7f5367ef6c84d7c003103a783a8942b6c9b01",
+        "v41_rtx_tp2_m1024.h": "e99551afea23ec801392d0f76a69df0d29012c51b6e9110fc74fe3b9c902ba0f",
+        "v41_rtx_tp2_m1.h": "ffa90c5c109dae378dcd6b4faba3797503489b6167a953fc0f1cd2b01af931a1",
+        "v41_rtx_tp2_m16.h": "85c597a4885fc093650cd0fd9b78c9d38d3d4cd53b28d767dd917f4ec15a212c",
+        "v41_input_quant_dispatch.h": "1524721597bcaeed9d7105ac56ccc52c398af558dc6920a60f27c95bd5f5f77c",
+        "v41_rtx_tp2_m16.o": "493a39bd1cd249c8028722602038dccfe95a0142b2d2def43d7c255c2e81503f"
+      }
+    }
+  },
+  "concurrency_screen": [
+    {
+      "case": "code",
+      "arms": {
+        "baseline": {
+          "path": "/home/tj/.cache/ds41rt-upstream-20260916/compact-concurrency-baseline-code.json",
+          "sha256": "fa3385e93daec678297a4ae8df52eb6628e3d70d6028c1f2f6cbb1cc0fc77c37",
+          "prompt": "compact-tp2-compare 91602. Write a Python function merge_intervals(intervals) that merges overlapping integer intervals. Include type hints, a short docstring, and three assert-based examples. Return only one Python code block.",
+          "summaries": [
+            {
+              "concurrency": 2,
+              "samples": 1,
+              "median_aggregate_tps": 218.54229654337985,
+              "min_aggregate_tps": 218.54229654337985,
+              "max_aggregate_tps": 218.54229654337985
+            },
+            {
+              "concurrency": 16,
+              "samples": 1,
+              "median_aggregate_tps": 906.6953499771781,
+              "min_aggregate_tps": 906.6953499771781,
+              "max_aggregate_tps": 906.6953499771781
+            }
+          ]
+        },
+        "candidate": {
+          "path": "/home/tj/.cache/ds41rt-upstream-20260916/compact-concurrency-candidate-code.json",
+          "sha256": "3cbd0896c438d71008867cd3c0463bc379895ccb4f65efe22d07833a0b55d9ca",
+          "prompt": "compact-tp2-compare 91602. Write a Python function merge_intervals(intervals) that merges overlapping integer intervals. Include type hints, a short docstring, and three assert-based examples. Return only one Python code block.",
+          "summaries": [
+            {
+              "concurrency": 2,
+              "samples": 1,
+              "median_aggregate_tps": 222.0970877181058,
+              "min_aggregate_tps": 222.0970877181058,
+              "max_aggregate_tps": 222.0970877181058
+            },
+            {
+              "concurrency": 16,
+              "samples": 1,
+              "median_aggregate_tps": 1251.6017491229666,
+              "min_aggregate_tps": 1251.6017491229666,
+              "max_aggregate_tps": 1251.6017491229666
+            }
+          ]
+        }
+      }
+    },
+    {
+      "case": "topic",
+      "arms": {
+        "baseline": {
+          "path": "/home/tj/.cache/ds41rt-upstream-20260916/compact-concurrency-baseline-topic.json",
+          "sha256": "9c39d6f3e5af1a06c18793a143493358ab40c2754a989ea2877ba9eec2a61a5b",
+          "prompt": "compact-tp2-compare 91602. Explain virtual memory to a junior programmer in five concise bullet points, including paging, page faults, and the role of the TLB.",
+          "summaries": [
+            {
+              "concurrency": 2,
+              "samples": 1,
+              "median_aggregate_tps": 148.10754947330017,
+              "min_aggregate_tps": 148.10754947330017,
+              "max_aggregate_tps": 148.10754947330017
+            },
+            {
+              "concurrency": 16,
+              "samples": 1,
+              "median_aggregate_tps": 700.2845918905613,
+              "min_aggregate_tps": 700.2845918905613,
+              "max_aggregate_tps": 700.2845918905613
+            }
+          ]
+        },
+        "candidate": {
+          "path": "/home/tj/.cache/ds41rt-upstream-20260916/compact-concurrency-candidate-topic.json",
+          "sha256": "e192fe9e70b8dfe832ff5e3b3bc97d45f9c3b06dd461456b96068694daa773d4",
+          "prompt": "compact-tp2-compare 91602. Explain virtual memory to a junior programmer in five concise bullet points, including paging, page faults, and the role of the TLB.",
+          "summaries": [
+            {
+              "concurrency": 2,
+              "samples": 1,
+              "median_aggregate_tps": 162.59476885511012,
+              "min_aggregate_tps": 162.59476885511012,
+              "max_aggregate_tps": 162.59476885511012
+            },
+            {
+              "concurrency": 16,
+              "samples": 1,
+              "median_aggregate_tps": 698.2208025847469,
+              "min_aggregate_tps": 698.2208025847469,
+              "max_aggregate_tps": 698.2208025847469
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "c16_code_repeat": {
+    "baseline": {
+      "path": "/home/tj/.cache/ds41rt-upstream-20260916/compact-c16-code-baseline-repeat.json",
+      "sha256": "9aa5905b0eecb61e8f97f39e0635c0712ee1d338a193a1cb244e1931fcff22a7",
+      "summaries": [
+        {
+          "concurrency": 16,
+          "samples": 3,
+          "median_aggregate_tps": 1299.151954642209,
+          "min_aggregate_tps": 958.3117651102068,
+          "max_aggregate_tps": 1303.8800316725014
+        }
+      ],
+      "aggregate_tps": [
+        958.3117651102068,
+        1299.151954642209,
+        1303.8800316725014
+      ]
+    },
+    "candidate": {
+      "path": "/home/tj/.cache/ds41rt-upstream-20260916/compact-c16-code-candidate-repeat.json",
+      "sha256": "235e315424c2d435155244d220d1dedda9b01d00ff2fd29accd99df01f534b96",
+      "summaries": [
+        {
+          "concurrency": 16,
+          "samples": 3,
+          "median_aggregate_tps": 1285.2443054944197,
+          "min_aggregate_tps": 1034.139331059963,
+          "max_aggregate_tps": 1296.95115695621
+        }
+      ],
+      "aggregate_tps": [
+        1034.139331059963,
+        1285.2443054944197,
+        1296.95115695621
+      ]
+    }
+  },
+  "c16_note": "Matched outputs; slow first sample in both arms. Baseline median 1299.15 versus candidate 1285.24 TPS. No stable serving gain established; remains opt-in. Repeats are bounded diagnostics, not final release measurements."
+}

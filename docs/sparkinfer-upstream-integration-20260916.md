@@ -78,6 +78,50 @@ They may still require mechanical merge/import/test fixes when shared library
 surfaces change. Attention/projection parallelization across GPUs is deferred;
 retain the current ownership and expert parallelism in comparisons.
 
+## Native compact TP2 export and serving integration (September 16)
+
+The opt-in `DS41RT_V41_TP2_COMPACT_EXPERIMENT` build selects compact kernels
+at capacities 1/16 and retains slices for larger capacities. Its AOT adapter
+consumes existing 5280-byte FP8 wire rows directly, preserving the native
+expert ABI and FP32 TP contributions. Separate-arena native C ABI checks pass
+on both RTX cards and at live rows 1/2/4/8/16. RTX0 local stage times are
+92.2→28.0, 97.9→36.0, 160.2→137.0, 289.6→273.6 and 561.9→560.1 µs,
+respectively. These are component measurements, not serving TPS gains.
+[Initial AOT evidence](sparkinfer-upstream-expert-compact-aot-20260916.json)
+is explicitly limited by the integration failure discovered next.
+
+The first serving attempt failed code/counting in all three repeats, while
+the matched baseline passed all 27 requests. Serving shares one scratch
+arena across capacity variants; initializing larger variants overwrote the
+compact adapter's initialized unit-scale vectors. A native shared-arena
+reproducer returned exactly zero for the one-row output. Fork `85de5f12`
+replaces these scratch reads with compile-time unit scales. The reproducer
+then passes, as do three native compact GPU tests and four generic regressions.
+This is an integration fix, not a relaxed quality check.
+
+[Fixed serving evidence](sparkinfer-upstream-expert-compact-serving-20260916.json)
+records controlled relinks, exact artifact hashes and three matched short-corpus
+repeats. Both arms pass all 27 requests. All request bodies match; 11 outputs
+are identical and 16 differ, so this is not an exact-continuation comparison.
+
+| Metric, median of three repeats | Baseline | Compact TP2 |
+| --- | ---: | ---: |
+| Weighted decode TPS | 96.42 | 96.16 |
+| Code TPS | 157.33 | 159.58 |
+| Topic TPS | 86.55 | 88.03 |
+| Counting TPS | 200.39 | 198.75 |
+
+The concurrency screen passes all checks. Single samples show code C2
+218.5→222.1 aggregate TPS and topic C2 148.1→162.6, while topic C16 is
+700.3→698.2. An initially large apparent code C16 gain (906.7→1251.6)
+does not survive repetition: both arms have slow first samples, then settle
+near 1300 TPS. Three-run medians are 1299.2→1285.2 with identical outputs.
+The isolated one-row gain therefore does not establish a broad serving gain.
+The experimental switch remains off by default; Spark applicability and
+dSpark cost recalibration remain part of candidate selection.
+The fixed candidate's warm startup was 12.95 seconds; this single observation
+is not a formal startup comparison. Production pins remain unchanged.
+
 ## Compact experts adapted to native arithmetic (September 16)
 
 Fork commit `80a7be9d` adds an explicit native V4.1 compact specialization:
