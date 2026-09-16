@@ -451,3 +451,34 @@ services were restored. Evidence: `release-v5-exl3-reasoning-code-acceptance.jso
 and its archive, including all draft observations, scheduler rounds, client
 responses and collector sources. Per-layer timing logs are excluded from this
 acceptance archive; the complete original log hash is recorded.
+
+### Placement-aware adaptive cost fit
+
+Fixed K1–K7 collection produced 12,004 complete verification rounds including
+the separately held-out reasoning-code run. The fit uses 3,031 warm odd-width
+code/mixed rounds. Even widths validate code/mixed; every topic and reasoning
+observation is held out. Median absolute verification-time prediction errors:
+
+| Held-out workload | Legacy formula | Placement fit | Fit p90 error |
+| --- | ---: | ---: | ---: |
+| Code, K2/K4/K6 | 34.30% | 8.06% | 21.74% |
+| Mixed, K2/K4/K6 | 15.35% | 7.49% | 19.10% |
+| Topic, K2/K4/K6 | 35.93% | 8.11% | 23.12% |
+| Reasoning code, K7 | 42.32% | 10.90% | 26.09% |
+
+The fit separates TP2 RTX and TP4 Spark layer costs, plus non-expert round cost.
+Nonnegative hinge coefficients converged to zero; the affine and hinge fits
+therefore agree. These predictions use observed routes and instrumented elapsed
+times. They do not establish forecast accuracy or a serving throughput gain.
+An uninstrumented adaptive legacy/calibrated/calibrated/legacy comparison is
+required before choosing defaults. This profile covers paired dual-RTX EXL3
+only; single-RTX and full-model calibration remain pending.
+
+The K5 trace exposed a logging defect: disabled route capture left old decode
+rows available to a same-sized prefill. Logging now checks that capture is
+active. The two identified old prefill batches are recorded in a trace-hash
+bound exclusion manifest; the parser still rejects unexplained leftovers and
+forbids excluding any completed verification round. Corrected K2/K4/K6 traces
+need no exclusions. Evidence: `release-v5-exl3-paired-adaptive-cost-fit.json` and
+its archive. Filtered archived cost traces reproduce every original parsed
+observation exactly; source hashes and the explicit exclusion are retained.

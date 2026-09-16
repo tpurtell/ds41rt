@@ -70,3 +70,22 @@ def test_stale_capture_recovery_requires_exact_trace_and_layer_manifest(tmp_path
     exclusion.write_text(json.dumps(manifest))
     with pytest.raises(ValueError, match='cannot exclude a completed verification'):
         module.observations(directory)
+
+
+def test_explicit_reasoning_segment_needs_no_code_report(tmp_path):
+    path = Path(__file__).parents[1] / 'fit-ds41-placement-costs.py'
+    spec = importlib.util.spec_from_file_location('placement_reasoning', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    directory = tmp_path / 'reasoning-rtx2-k7'
+    directory.mkdir()
+    lines = [f'2026-09-17T00:00:00Z DEBUG ds41rt::cost_model: verification layer cost batch=1 layer={layer} rows=8 '
+             'routed_backend="spark_tp4" shared_tp=2 distinct_experts=6 expert_groups_16=6 '
+             'produced_us=1 index_us=1 attention_us=1 experts_us=1 finish_us=1 total_us=5\n'
+             for layer in range(40)]
+    lines.append('2026-09-17T00:00:01Z DEBUG ds41rt::cost_model: verification round cost batch=1 lane=0 rows=8 requests=1 verify_us=250\n')
+    raw = ''.join(lines).encode()
+    (directory / 'server.log').write_bytes(raw)
+    (directory / 'segments.json').write_text(json.dumps([dict(workload='code-reasoning',begin=0,end=len(raw))]))
+    records, _ = module.observations(directory)
+    assert len(records) == 1 and records[0]['workload'] == 'code-reasoning'

@@ -34,8 +34,8 @@ def observations(directory):
     # The client writes its final code report after receiving the last response;
     # mixed requests are issued only after that client exits. Explicit segment
     # offsets take precedence when the collector recorded them.
-    code_end = (directory / 'code.json').stat().st_mtime
     segments = json.loads((directory / 'segments.json').read_text()) if (directory / 'segments.json').exists() else None
+    code_end = (directory / 'code.json').stat().st_mtime if segments is None else None
     pending = defaultdict(dict)
     records = []
     seen_shapes = Counter()
@@ -80,9 +80,10 @@ def observations(directory):
         if elapsed > verify_us:
             raise ValueError(f'round duration mismatch {batch}')
         timestamp = datetime.fromisoformat(line.split()[0].replace('Z', '+00:00')).timestamp()
-        workload = 'code' if timestamp <= code_end else 'mixed'
-        if segments:
+        if segments is not None:
             workload = next(s['workload'] for s in segments if s['begin'] <= begin < s['end'])
+        else:
+            workload = 'code' if timestamp <= code_end else 'mixed'
         shape = (int(fields['lane']), rows)
         seen_shapes[shape] += 1
         records.append(dict(source=directory.name, batch=batch, gpus=gpus, width=width,
