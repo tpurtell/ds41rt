@@ -59,9 +59,9 @@ section('Startup', 'Measured standard-script startup for the qualified image.',
 rows=[]
 for phase,gpus in sorted(d['gpu_telemetry'].items()):
  for uuid,gpu in sorted(gpus.items()):
-  rows.append([phase,uuid, f(gpu['peak_memory_mib']/1024),f(gpu['peak_power_watts']),f(gpu['peak_memory_clock_mhz'])])
+  rows.append([phase,uuid, f(gpu['peak_memory_mib']/1024),f(gpu['minimum_free_mib']/1024),f(gpu['peak_power_watts']),f(gpu['peak_memory_clock_mhz'])])
 section('Observed GPU peaks', 'Sampled device usage across each performance phase, including idle monitored cards. Used memory includes weights, KV and workspaces; it is not KV capacity. Peaks need not occur simultaneously.',
- ['Phase','GPU UUID','Used GiB','Power W','Memory MHz'],rows)
+ ['Phase','GPU UUID','Peak used GiB','Minimum free GiB','Power W','Memory MHz'],rows)
 tools=json.loads((root/'docs/sparkinfer-upstream-tool-eval-20260916.json').read_text())
 rows=[[run['run_id'],f"{run['basic_points']}/{run['basic_max']}",f"{run['hard_points']}/{run['hard_max']}",f"{run['total_points']}/{run['total_max']}"] for run in tools['runs']]
 section('Tool calling', 'Exactly three completed campaigns, thinking enabled at high effort, C16, and a 4,096-token response cap including reasoning. These runs used the earlier clean integration image; later graph-lifetime changes receive focused checks. See the tool-eval report for image provenance and failures.',

@@ -25,6 +25,8 @@ def summarize_telemetry(path: Path) -> dict:
             assert float(row["power.limit [W]"].split()[0]) == 400, path
             gpu = gpus.setdefault(row["uuid"], {"samples": 0, "power_limit_watts": 400})
             gpu["samples"] += 1
+            free = float(row["memory.free [MiB]"].split()[0])
+            gpu["minimum_free_mib"] = min(gpu.get("minimum_free_mib", free), free)
             for output, column in columns.items():
                 value = float(row[column].split()[0])
                 gpu[output] = max(gpu.get(output, value), value)
