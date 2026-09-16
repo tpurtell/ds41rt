@@ -53,7 +53,7 @@ __global__ void merge(const uint64_t* in,uint64_t* out,int in_blocks,int out_blo
     if(rank<K)out[(row*out_blocks+blockIdx.x)*K+rank]=keys[i];
   }
 }
-template<int K>
+template<int K,uint64_t Limit>
 __global__ void finish(const uint64_t* selected,uint64_t* carry,int32_t* output,int reset) {
   __shared__ typename Sort<K>::TempStorage storage;
   uint64_t keys[K/128];const uint64_t row=blockIdx.x;
@@ -72,7 +72,10 @@ __global__ void finish(const uint64_t* selected,uint64_t* carry,int32_t* output,
     keys[i]=rank<K && keys[i]!=0?uint32_t(~uint32_t(keys[i])):UINT64_MAX;
   }
   __syncthreads();
-  Sort<K>(storage).Sort(keys);
+  // Logical positions use only 20 (token) or 17 (block) bits. Include
+  // one sentinel bit so UINT64_MAX sorts after every valid position.
+  static_assert(Limit==1048576 || Limit==131072);
+  Sort<K>(storage).Sort(keys,0,Limit==1048576?21:18);
   #pragma unroll
   for(int i=0;i<K/128;++i) {
     const int rank=threadIdx.x*(K/128)+i;
@@ -105,7 +108,7 @@ static int32_t select(const float* scores,const uint64_t* positions,
     status=cudaGetLastError();if(status!=cudaSuccess)return status;
     auto* tmp=a;a=b;b=tmp;current=next;
   }
-  finish<K><<<queries,256,0,cuda_stream>>>(a,carry,output,reset);
+  finish<K,Limit><<<queries,256,0,cuda_stream>>>(a,carry,output,reset);
   return cudaGetLastError();
 }
 

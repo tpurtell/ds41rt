@@ -78,6 +78,44 @@ They may still require mechanical merge/import/test fixes when shared library
 surfaces change. Attention/projection parallelization across GPUs is deferred;
 retain the current ownership and expert parallelism in comparisons.
 
+## Bounded final index-position sort (September 16)
+
+Reviewing upstream's position-only sort exposed avoidable work in our existing
+native selector: its final ascending position sort processes all 64 bits, although
+valid token positions occupy 20 bits and block positions 17 bits. The candidate
+now sorts 21/18 bits respectively, including a bit that places the invalid
+`UINT64_MAX` sentinel after every valid position. Score sorting, deterministic
+lower-position tie breaking, carry encoding and merge behavior are unchanged.
+
+[Both-GPU evidence](sparkinfer-upstream-index-bounded-sort-20260916.json) comes
+from [the complete native-chain probe](../python/tools/compare_v41_index_native.py).
+Baseline and candidate are compiled with identical NVCC flags. Each GPU passes
+40 cases across K=512/2048, 1/16 rows and widths 8/512/4096/16384, including
+two-chunk carry merging, all-score ties, NaN/-infinity scores, invalid positions,
+high logical positions, changed-input graph replay and stable allocations.
+Output and encoded carry match the old native path exactly; selected positions
+also match an independent stable-sort oracle. This is not a paged-pool test:
+selection reads flat score/position arrays, not the physical KV pool.
+
+Representative RTX0 medians below are **microseconds for two complete chunk
+selections**, including score selection, carry merging and final position sorting.
+Six timing samples alternate baseline/candidate order.
+
+| K | Rows | Width per chunk | Before | Bounded sort |
+| --- | ---: | ---: | ---: | ---: |
+| 512 | 1 | 512 | 57.37 | 47.10 |
+| 512 | 16 | 4096 | 96.66 | 86.00 |
+| 512 | 16 | 16384 | 148.17 | 137.22 |
+| 2048 | 1 | 512 | 114.72 | 92.14 |
+| 2048 | 16 | 4096 | 127.09 | 104.45 |
+| 2048 | 16 | 16384 | 211.89 | 189.04 |
+
+The change saves approximately 5 us per top-512 call and 11 us per top-2048
+call on RTX0. Native full-library rebuild and serving comparison remain pending.
+This does not resolve upstream's threshold-tie contract mismatch; it improves
+our complete equivalent selection path while that larger replacement remains
+under evaluation. Production serving has not yet been restarted with this edit.
+
 ## Index selection contract and first comparison (September 16)
 
 [GPU comparison evidence](sparkinfer-upstream-index-topk-20260916.json) and

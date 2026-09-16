@@ -1,0 +1,1020 @@
+{
+  "scope": "Complete two-chunk native index selection; bounded final position-sort radix range only. No serving speedup claimed.",
+  "build": "nvcc -std=c++17 -O3 -arch=sm_120 -shared -Xcompiler=-fPIC -I native/include SOURCE -o LIBRARY",
+  "nvcc": "nvcc: NVIDIA (R) Cuda compiler driver\nCopyright (c) 2005-2026 NVIDIA Corporation\nBuilt on Tue_Jun_09_02:43:40_PM_PDT_2026\nCuda compilation tools, release 13.3, V13.3.73\nBuild cuda_13.3.r13.3/compiler.38244171_0\n",
+  "source_sha256": {
+    "/home/tj/.cache/ds41rt-upstream-20260916/index-topk-before.cu": "f31f12eb495638db4619bfa60cd57f578ac57891daa042c7aee296072d413ed7",
+    "native/cuda/kernels/v41_index_topk.cu": "25b9415529a9a1ab14ec5b5ccc5c3b5bff56c48e4d8fb23a34ef56805b176d50",
+    "python/tools/compare_v41_index_native.py": "e1d4f416838f8ec186b68e2ed395e98648063c792ac2ee2437a8e33b70829dc9"
+  },
+  "gpu0": {
+    "command": [
+      "python/tools/compare_v41_index_native.py",
+      "--baseline",
+      "/home/tj/.cache/ds41rt-upstream-20260916/libindex-topk-before.so",
+      "--candidate",
+      "/home/tj/.cache/ds41rt-upstream-20260916/libindex-topk-bounded.so",
+      "--output",
+      "/home/tj/.cache/ds41rt-upstream-20260916/index-topk-bounded-matched.json"
+    ],
+    "device": "_CudaDeviceProperties(name='NVIDIA RTX PRO 6000 Blackwell Workstation Edition', major=12, minor=0, total_memory=97249MB, multi_processor_count=188, uuid=fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, pci_bus_id=17, pci_device_id=0, pci_domain_id=0, L2_cache_size=128MB)",
+    "libraries": {
+      "baseline": {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/libindex-topk-before.so",
+        "sha256": "cbfabd7777f5e2794a8bd517616f131590831b911e7816cd9bbf4802acf1a1ed"
+      },
+      "candidate": {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/libindex-topk-bounded.so",
+        "sha256": "eae39105f2fa732506a9b8d499113cc112e1eccc607d5a4256066979434ff39c"
+      }
+    },
+    "results": [
+      {
+        "k": 512,
+        "rows": 1,
+        "width": 8,
+        "chunks": 2,
+        "checks": [
+          {
+            "cycle": 0,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 1,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 2,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 3,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          }
+        ],
+        "baseline_us": [
+          58.17311763763428,
+          58.097920417785645,
+          58.00352096557617,
+          58.02591800689697,
+          58.04800033569336,
+          58.06784152984619
+        ],
+        "candidate_us": [
+          47.101759910583496,
+          47.11071968078613,
+          47.107839584350586,
+          47.11008071899414,
+          47.10080146789551,
+          47.09216117858887
+        ]
+      },
+      {
+        "k": 512,
+        "rows": 1,
+        "width": 512,
+        "chunks": 2,
+        "checks": [
+          {
+            "cycle": 0,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 1,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 2,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 3,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          }
+        ],
+        "baseline_us": [
+          57.42080211639404,
+          57.36095905303955,
+          57.371201515197754,
+          57.36991882324219,
+          57.37472057342529,
+          57.38207817077637
+        ],
+        "candidate_us": [
+          47.115840911865234,
+          47.08608150482178,
+          47.091522216796875,
+          47.099199295043945,
+          47.09375858306885,
+          47.10207939147949
+        ]
+      },
+      {
+        "k": 512,
+        "rows": 1,
+        "width": 4096,
+        "chunks": 2,
+        "checks": [
+          {
+            "cycle": 0,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 1,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 2,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 3,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          }
+        ],
+        "baseline_us": [
+          96.31839752197266,
+          96.2816047668457,
+          96.23200416564941,
+          96.26367568969727,
+          96.27519607543945,
+          96.2492847442627
+        ],
+        "candidate_us": [
+          85.9609603881836,
+          85.96416473388672,
+          85.98464012145996,
+          85.97151756286621,
+          85.99583625793457,
+          86.02848052978516
+        ]
+      },
+      {
+        "k": 512,
+        "rows": 16,
+        "width": 4096,
+        "chunks": 2,
+        "checks": [
+          {
+            "cycle": 0,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 1,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 2,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 3,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          }
+        ],
+        "baseline_us": [
+          96.74464225769043,
+          96.64928436279297,
+          96.6710376739502,
+          96.62655830383301,
+          96.6915225982666,
+          96.6534423828125
+        ],
+        "candidate_us": [
+          86.00543975830078,
+          85.99935531616211,
+          85.99360466003418,
+          86.0153579711914,
+          85.9984016418457,
+          86.01408004760742
+        ]
+      },
+      {
+        "k": 512,
+        "rows": 16,
+        "width": 16384,
+        "chunks": 2,
+        "checks": [
+          {
+            "cycle": 0,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 1,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 2,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 3,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          }
+        ],
+        "baseline_us": [
+          148.1926441192627,
+          148.14080238342285,
+          148.1503963470459,
+          147.96799659729004,
+          148.23360443115234,
+          148.22815895080566
+        ],
+        "candidate_us": [
+          137.22271919250488,
+          137.18751907348633,
+          137.18591690063477,
+          137.23456382751465,
+          137.22111701965332,
+          137.26207733154297
+        ]
+      },
+      {
+        "k": 2048,
+        "rows": 1,
+        "width": 8,
+        "chunks": 2,
+        "checks": [
+          {
+            "cycle": 0,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 1,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 2,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 3,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          }
+        ],
+        "baseline_us": [
+          112.35296249389648,
+          112.38112449645996,
+          112.37088203430176,
+          112.4022388458252,
+          112.33471870422363,
+          112.35903739929199
+        ],
+        "candidate_us": [
+          89.21631813049316,
+          89.2188835144043,
+          89.18944358825684,
+          89.13599967956543,
+          89.28383827209473,
+          89.26688194274902
+        ]
+      },
+      {
+        "k": 2048,
+        "rows": 1,
+        "width": 512,
+        "chunks": 2,
+        "checks": [
+          {
+            "cycle": 0,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 1,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 2,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 3,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          }
+        ],
+        "baseline_us": [
+          114.72607612609863,
+          114.68511581420898,
+          114.71455574035645,
+          114.71903800964355,
+          114.70656394958496,
+          114.71936225891113
+        ],
+        "candidate_us": [
+          92.16896057128906,
+          92.1241569519043,
+          92.12512016296387,
+          92.12800025939941,
+          92.14591979980469,
+          92.1564769744873
+        ]
+      },
+      {
+        "k": 2048,
+        "rows": 1,
+        "width": 4096,
+        "chunks": 2,
+        "checks": [
+          {
+            "cycle": 0,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 1,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 2,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 3,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          }
+        ],
+        "baseline_us": [
+          122.8934383392334,
+          122.91104316711426,
+          122.86687850952148,
+          122.91104316711426,
+          122.89119720458984,
+          122.86848068237305
+        ],
+        "candidate_us": [
+          100.02943992614746,
+          100.04799842834473,
+          100.06591796875,
+          100.04063606262207,
+          99.98144149780273,
+          99.98047828674316
+        ]
+      },
+      {
+        "k": 2048,
+        "rows": 16,
+        "width": 4096,
+        "chunks": 2,
+        "checks": [
+          {
+            "cycle": 0,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 1,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 2,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 3,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          }
+        ],
+        "baseline_us": [
+          127.27616310119629,
+          127.16768264770508,
+          127.07551956176758,
+          127.05792427062988,
+          127.08319664001465,
+          127.09952354431152
+        ],
+        "candidate_us": [
+          104.46463584899902,
+          104.4489574432373,
+          104.42720413208008,
+          104.44767951965332,
+          104.46432113647461,
+          104.42560195922852
+        ]
+      },
+      {
+        "k": 2048,
+        "rows": 16,
+        "width": 16384,
+        "chunks": 2,
+        "checks": [
+          {
+            "cycle": 0,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 1,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 2,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 3,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          }
+        ],
+        "baseline_us": [
+          211.89632415771484,
+          211.89184188842773,
+          211.9046401977539,
+          211.7807960510254,
+          211.81407928466797,
+          211.9443130493164
+        ],
+        "candidate_us": [
+          189.15136337280273,
+          189.11008834838867,
+          188.98015975952148,
+          189.05887603759766,
+          188.98752212524414,
+          189.02847290039062
+        ]
+      }
+    ]
+  },
+  "gpu1": {
+    "command": [
+      "python/tools/compare_v41_index_native.py",
+      "--device",
+      "1",
+      "--baseline",
+      "/home/tj/.cache/ds41rt-upstream-20260916/libindex-topk-before.so",
+      "--candidate",
+      "/home/tj/.cache/ds41rt-upstream-20260916/libindex-topk-bounded.so",
+      "--output",
+      "/home/tj/.cache/ds41rt-upstream-20260916/index-topk-bounded-gpu1.json"
+    ],
+    "device": "_CudaDeviceProperties(name='NVIDIA RTX PRO 6000 Blackwell Workstation Edition', major=12, minor=0, total_memory=97246MB, multi_processor_count=188, uuid=95f8f212-9131-df99-fd53-7535965197d7, pci_bus_id=225, pci_device_id=0, pci_domain_id=0, L2_cache_size=128MB)",
+    "libraries": {
+      "baseline": {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/libindex-topk-before.so",
+        "sha256": "cbfabd7777f5e2794a8bd517616f131590831b911e7816cd9bbf4802acf1a1ed"
+      },
+      "candidate": {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/libindex-topk-bounded.so",
+        "sha256": "eae39105f2fa732506a9b8d499113cc112e1eccc607d5a4256066979434ff39c"
+      }
+    },
+    "results": [
+      {
+        "k": 512,
+        "rows": 1,
+        "width": 8,
+        "chunks": 2,
+        "checks": [
+          {
+            "cycle": 0,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 1,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 2,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 3,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          }
+        ],
+        "baseline_us": [
+          57.39903926849365,
+          57.34335899353027,
+          57.33823776245117,
+          57.343997955322266,
+          57.35167980194092,
+          57.3414421081543
+        ],
+        "candidate_us": [
+          47.101120948791504,
+          47.094078063964844,
+          47.09951877593994,
+          47.101120948791504,
+          47.101759910583496,
+          47.099199295043945
+        ]
+      },
+      {
+        "k": 512,
+        "rows": 1,
+        "width": 512,
+        "chunks": 2,
+        "checks": [
+          {
+            "cycle": 0,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 1,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 2,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 3,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          }
+        ],
+        "baseline_us": [
+          57.372798919677734,
+          57.342400550842285,
+          57.342400550842285,
+          57.34560012817383,
+          57.34176158905029,
+          57.344961166381836
+        ],
+        "candidate_us": [
+          45.087361335754395,
+          45.078721046447754,
+          45.07552146911621,
+          45.092477798461914,
+          45.083842277526855,
+          45.08512020111084
+        ]
+      },
+      {
+        "k": 512,
+        "rows": 1,
+        "width": 4096,
+        "chunks": 2,
+        "checks": [
+          {
+            "cycle": 0,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 1,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 2,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 3,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          }
+        ],
+        "baseline_us": [
+          94.29856300354004,
+          94.2527961730957,
+          94.24544334411621,
+          94.24832344055176,
+          94.24832344055176,
+          94.24863815307617
+        ],
+        "candidate_us": [
+          83.94975662231445,
+          83.94783973693848,
+          83.94623756408691,
+          83.94528388977051,
+          83.94656181335449,
+          83.95199775695801
+        ]
+      },
+      {
+        "k": 512,
+        "rows": 16,
+        "width": 4096,
+        "chunks": 2,
+        "checks": [
+          {
+            "cycle": 0,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 1,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 2,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 3,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          }
+        ],
+        "baseline_us": [
+          95.4918384552002,
+          95.51679611206055,
+          95.53471565246582,
+          95.35615921020508,
+          95.40096282958984,
+          95.5788803100586
+        ],
+        "candidate_us": [
+          84.01984214782715,
+          84.01151657104492,
+          84.00896072387695,
+          84.00927543640137,
+          84.00351524353027,
+          84.01632308959961
+        ]
+      },
+      {
+        "k": 512,
+        "rows": 16,
+        "width": 16384,
+        "chunks": 2,
+        "checks": [
+          {
+            "cycle": 0,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 1,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 2,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 3,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          }
+        ],
+        "baseline_us": [
+          145.43519973754883,
+          145.4694366455078,
+          145.4678440093994,
+          145.49951553344727,
+          145.48704147338867,
+          145.4745578765869
+        ],
+        "candidate_us": [
+          135.1360034942627,
+          135.11520385742188,
+          135.19519805908203,
+          135.18688201904297,
+          135.1625633239746,
+          135.12288093566895
+        ]
+      },
+      {
+        "k": 2048,
+        "rows": 1,
+        "width": 8,
+        "chunks": 2,
+        "checks": [
+          {
+            "cycle": 0,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 1,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 2,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 3,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          }
+        ],
+        "baseline_us": [
+          110.58527946472168,
+          110.5504035949707,
+          110.55808067321777,
+          110.56192398071289,
+          110.56063652038574,
+          110.5628776550293
+        ],
+        "candidate_us": [
+          88.05215835571289,
+          88.04256439208984,
+          88.05312156677246,
+          88.04320335388184,
+          88.04927825927734,
+          88.0406379699707
+        ]
+      },
+      {
+        "k": 2048,
+        "rows": 1,
+        "width": 512,
+        "chunks": 2,
+        "checks": [
+          {
+            "cycle": 0,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 1,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 2,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 3,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          }
+        ],
+        "baseline_us": [
+          112.74304389953613,
+          112.68927574157715,
+          112.68768310546875,
+          112.6966381072998,
+          112.70144462585449,
+          112.6905632019043
+        ],
+        "candidate_us": [
+          90.15872001647949,
+          90.15647888183594,
+          90.1523208618164,
+          90.16127586364746,
+          90.15263557434082,
+          90.15199661254883
+        ]
+      },
+      {
+        "k": 2048,
+        "rows": 1,
+        "width": 4096,
+        "chunks": 2,
+        "checks": [
+          {
+            "cycle": 0,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 1,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 2,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 3,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          }
+        ],
+        "baseline_us": [
+          120.93536376953125,
+          120.88255882263184,
+          120.88992118835449,
+          120.88447570800781,
+          120.88191986083984,
+          120.88383674621582
+        ],
+        "candidate_us": [
+          98.35488319396973,
+          98.34591865539551,
+          98.34495544433594,
+          98.34367752075195,
+          98.34048271179199,
+          98.34239959716797
+        ]
+      },
+      {
+        "k": 2048,
+        "rows": 16,
+        "width": 4096,
+        "chunks": 2,
+        "checks": [
+          {
+            "cycle": 0,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 1,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 2,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 3,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          }
+        ],
+        "baseline_us": [
+          125.72671890258789,
+          125.67392349243164,
+          125.72064399719238,
+          125.7369613647461,
+          125.67551612854004,
+          125.68479537963867
+        ],
+        "candidate_us": [
+          102.55328178405762,
+          102.62720108032227,
+          102.52351760864258,
+          102.54240036010742,
+          102.5222396850586,
+          102.58687973022461
+        ]
+      },
+      {
+        "k": 2048,
+        "rows": 16,
+        "width": 16384,
+        "chunks": 2,
+        "checks": [
+          {
+            "cycle": 0,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 1,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 2,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          },
+          {
+            "cycle": 3,
+            "carry_exact": true,
+            "output_exact": true,
+            "oracle_exact": true
+          }
+        ],
+        "baseline_us": [
+          209.04064178466797,
+          209.00640487670898,
+          208.98496627807617,
+          209.0127944946289,
+          208.985595703125,
+          208.99423599243164
+        ],
+        "candidate_us": [
+          186.46207809448242,
+          186.4201545715332,
+          186.43680572509766,
+          186.41311645507812,
+          186.4521598815918,
+          186.42719268798828
+        ]
+      }
+    ]
+  }
+}
