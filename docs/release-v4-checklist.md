@@ -28,7 +28,7 @@ upstream integration; the published September 14 v3 is unchanged.
 - [ ] Replicate all performance tables in README and the linked report; include
   the 400 W limit, standard memory speed, cache bytes and token counts, and
   actual RTX/Spark placement budgets.
-- [ ] Promote the accepted merged fork to its master branch and verify the
+- [x] Promote the accepted merged fork to its master branch and verify the
   dependency remains reachable at the locked revision.
 - [ ] Finalize release version/configuration and build the final source; verify
   the final image identities and standard launch before publication.

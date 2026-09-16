@@ -55,11 +55,14 @@ experiment remain off; existing shared experts and Engram/loading remain in use.
 
 The source hash verifier and upstream ancestry check pass. The ten focused
 release-launcher/provenance tests pass, as does shell syntax validation.
-Clean-image functional evidence is below. Final three-run tool quality,
-one/two-RTX performance, fork-master promotion and publication remain pending;
-this dev integration does not update the published containers or release tags.
-Earlier sections describing an unchanged pin record the historical experiment
-state before this integration.
+Our fork's remote `master` was fast-forwarded from `3882b935` to `4e31d0a1`;
+`git ls-remote` confirms the locked revision is its current head. This does not
+alter the published DS41RT containers or release tags.
+
+Clean-image functional checks and the three tool-evaluation runs are complete,
+with evidence below. One/two-RTX performance review, final packaging and
+publication remain pending. Earlier sections describing unchanged master/pins
+record the historical experiment state before this integration.
 
 ## Clean-image serving qualification
 
