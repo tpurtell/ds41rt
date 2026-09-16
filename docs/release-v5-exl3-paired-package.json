@@ -1,0 +1,25 @@
+{
+  "scope": "SM121 paired native package compilation and package verification; not live Rust worker qualification",
+  "sparkinfer_revision": "e685f48c3b941208a8dc5915a742738a3c2de706",
+  "compute": [
+    12,
+    1
+  ],
+  "variants": 24,
+  "capacities": [
+    1,
+    16,
+    80,
+    256,
+    1024,
+    4096
+  ],
+  "manifest_sha256": "4b839de817e34356b011e8ac799e9af7f6127d5b41b999e8a6d23655b95246f5",
+  "rank_boundaries": {
+    "tp4-rank0": "last",
+    "tp4-rank2": "last",
+    "tp4-rank1": "first",
+    "tp4-rank3": "first"
+  },
+  "passed": true
+}

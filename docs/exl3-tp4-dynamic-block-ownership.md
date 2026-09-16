@@ -325,6 +325,7 @@ kernels for ranks 0/2 and first-boundary kernels for ranks 1/3, all with physica
 width 640. Each capacity retains the pinned compiler's normal tile policy. The
 package records `paired_tp4: true` and each variant's boundary; verification
 checks rank orientation, width, tier count and descriptor ABI and rejects
-paired artifacts labelled as ordinary packages. CPU package tests pass; a full
-SM121 capacity export has been started, but compilation and live qualification
-are not yet established by those tests.
+paired artifacts labelled as ordinary packages. CPU package tests pass. The SM121 export also completed and verified all 24
+rank/capacity variants (1, 16, 80, 256, 1024 and 4096 rows). This proves package
+compilation, not live Rust-worker correctness. Evidence:
+`release-v5-exl3-paired-package.json`.
