@@ -268,7 +268,7 @@ impl LaneFfn<'_, '_, '_> {
             }
             let tp2_shared = transport.has_tp2_shared_layer(input.layer);
             ensure!(shared.is_some() || tp2_shared, "decoder shared TP2 execution required");
-            let request = unsafe { routed.expert_request(library, placement, rows)? };
+            let mut request = unsafe { routed.expert_request(library, placement, rows)? };
             if let Some(capture) = route_capture.as_deref_mut() {
                 let output = &mut capture[input.layer];
                 output.clear();
@@ -276,6 +276,7 @@ impl LaneFfn<'_, '_, '_> {
                     .map(|routes| std::array::from_fn(|i| routes[i].expert_id)));
             }
             let routed_us = timing.elapsed().as_micros() as u64;
+            transport.prepare_remote_request(&mut request)?;
             let pending = transport.dispatch_ffn(&request).await?;
             let dispatched_us = timing.elapsed().as_micros() as u64;
             if tp2_shared {
@@ -296,7 +297,7 @@ impl LaneFfn<'_, '_, '_> {
                 let ffn_us = timing.elapsed().as_micros() as u64;
                 // The dispatch request already owns these CPU-side routes.
                 // No extra device read or worker instrumentation is needed.
-                let route_ids: Vec<_> = request.request().routes.iter().map(|r| r.expert_id).collect();
+                let route_ids: Vec<_> = request.request().routes.iter().map(|r| r.expert_id & 511).collect();
                 let owners: Vec<_> = rows.iter().map(|r| (r.request_id, r.position)).collect();
                 let unique_experts = route_ids.iter().collect::<std::collections::BTreeSet<_>>().len();
                 tracing::debug!(target: "ds41rt::route_policy", layer=input.layer,

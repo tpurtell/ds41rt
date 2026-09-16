@@ -80,9 +80,16 @@ per-expert weight-streaming and per-routed-row coefficients, using fixed
 uses the same marginal cost for each of an expert's four mandatory blocks
 within a pair. It validates the ordinary request and all cost arithmetic before
 encoding ownership, retaining route order and exact routing weights. A request
-owns its encoded decisions independently of later scratch reuse. Cost-profile
-selection and installation into serving lanes remain pending; these coefficients
-are not yet calibrated performance predictions.
+owns its encoded decisions independently of later scratch reuse. Single- and dual-RTX serving now install this adapter when
+`DS41RT_EXL3_PAIRED_COST_PROFILE` names a JSON file. The schema is
+`ds41rt.exl3-paired-cost.v1`; `layers` contains 40 arrays of 384 objects, each
+with two-element integer arrays `weight` and `per_row` (one cost per pair).
+Startup rejects incomplete, zero-cost or overflowing profiles and rejects
+activation on a non-EXL3 checkpoint. The profile is shared read-only while every
+lane owns separate scratch. Assignment happens after original route capture,
+immediately before remote dispatch; local RTX expert execution is unaffected.
+The profile must be used with matching paired Spark artifacts. No calibrated
+profile is shipped yet, and this mode remains opt-in pending live qualification.
 
 Four focused CPU tests cover all four ownership combinations (each of the 18
 global blocks exactly once), the six-expert 27/27/27/27 example, unequal costs

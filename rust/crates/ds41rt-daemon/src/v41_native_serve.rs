@@ -230,7 +230,9 @@ fn worker(
             max_frame_bytes: 64 * 1024 * 1024,
         },
     )?;
+    let paired_profile = crate::v41_experts::paired::PairedProfile::from_env(catalog.exl3().is_some())?;
     let mut transport = NativeTp4Wave::new(&lib, roce, NativeTp4Wave::device_bytes(capacity)?)?;
+    if let Some(profile) = &paired_profile { transport.install_paired(profile.clone())?; }
     let mut prefill_pass = TargetPass::new(
         TargetEmbeddingWave::new(&lib, &table, rows, TargetEmbeddingWave::device_bytes(rows)?)?,
         BackboneLane::new(&weights, capacity, BackboneLane::workspace_bytes(&lib, capacity)?.into_iter().sum())?,
@@ -251,6 +253,7 @@ fn worker(
         .map_err(|_| anyhow::anyhow!("four Spark peers required"))?, [1, 2, 3, 4], capacity,
         TcpTransportConfig { timeout: Duration::from_secs(120), max_frame_bytes: 64 * 1024 * 1024 })?;
     let mut prefill_transport = NativeTp4Wave::new(&lib, prefill_roce, NativeTp4Wave::device_bytes(capacity)?)?;
+    if let Some(profile) = &paired_profile { prefill_transport.install_paired(profile.clone())?; }
     let draft_weights = if args.dspark {
         Some(crate::v41_experts::dspark::DsparkWeights::load_serving_with_width(
             &lib,

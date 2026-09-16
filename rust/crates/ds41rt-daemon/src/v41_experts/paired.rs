@@ -5,10 +5,46 @@ use ds41rt_transport::{ExpertProtocolV2Request, v41_expert::{V41BackboneRequest,
 
 /// Cost units must agree across weights and routed-row terms. The caller supplies
 /// calibrated costs; this adapter does not assume a bandwidth or compute ratio.
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, serde::Deserialize)]
 pub(crate) struct BoundaryCostModel {
     pub weight: [u64; 2],
     pub per_row: [u64; 2],
+}
+
+/// Explicit experimental profile; weights and per-row costs share one unit.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PairedProfile {
+    schema: String,
+    layers: Vec<Vec<BoundaryCostModel>>,
+}
+impl PairedProfile {
+    pub(crate) fn from_env(compressed: bool) -> Result<Option<std::rc::Rc<Self>>> {
+        let Some(path) = std::env::var_os("DS41RT_EXL3_PAIRED_COST_PROFILE") else { return Ok(None); };
+        ensure!(compressed, "paired EXL3 profile requires an EXL3 checkpoint");
+        let profile: Self = serde_json::from_slice(&std::fs::read(path)?)?;
+        profile.validate()?;
+        Ok(Some(std::rc::Rc::new(profile)))
+    }
+    fn validate(&self) -> Result<()> {
+        ensure!(self.schema == "ds41rt.exl3-paired-cost.v1", "unsupported paired cost schema");
+        ensure!(self.layers.len() == 40 && self.layers.iter().all(|layer| layer.len() == 384),
+            "paired profile requires 40 layers of 384 expert costs");
+        for model in self.layers.iter().flatten() {
+            for pair in 0..2 {
+                let cost = model.per_row[pair].checked_mul(4096)
+                    .and_then(|rows| model.weight[pair].checked_add(rows))
+                    .context("paired profile cost overflow")?;
+                ensure!(model.weight[pair] > 0 || model.per_row[pair] > 0, "paired profile needs positive costs");
+                ensure!(cost.checked_mul(5 * 384).is_some(), "paired profile batch cost overflow");
+            }
+        }
+        Ok(())
+    }
+    pub(crate) fn layer(&self, layer: usize) -> Result<&[BoundaryCostModel; 384]> {
+        self.layers.get(layer).context("paired profile layer missing")?.as_slice().try_into()
+            .map_err(|_| anyhow::anyhow!("paired profile expert extent mismatch"))
+    }
 }
 
 pub(crate) struct PairedAssignment {
@@ -72,6 +108,23 @@ mod tests {
         request.header.flags |= ds41rt_transport::v41_expert::EXPERT_PROTOCOL_V2_FLAG_V41_COMPACT_BF16;
         request
     }
+    #[test]
+    fn paired_profile_validates_full_extent_and_safe_cost_bounds() -> Result<()> {
+        let mut profile = PairedProfile { schema: "ds41rt.exl3-paired-cost.v1".into(),
+            layers: vec![vec![BoundaryCostModel { weight:[10;2], per_row:[2;2] };384];40] };
+        profile.validate()?;
+        assert!(profile.layer(40).is_err());
+        profile.layers[39][383].weight[1] = u64::MAX;
+        assert!(profile.validate().is_err());
+        profile.layers[39][383] = BoundaryCostModel::default();
+        assert!(profile.validate().is_err());
+        profile.layers[39][383] = BoundaryCostModel { weight:[10;2], per_row:[2;2] };
+        profile.layers[39].pop();
+        assert!(profile.validate().is_err());
+        assert!(profile.layer(39).is_err());
+        Ok(())
+    }
+
     #[test]
     fn paired_assignment_balances_reuse_and_owns_decisions() -> Result<()> {
         let mut scratch = PairedAssignment::new();

@@ -264,11 +264,13 @@ pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Recei
         [Rc::new(RankWeights::load(devices[0], &catalog, expert_layers, rank_budgets[0])?),
          Rc::new(RankWeights::load(devices[1], &catalog, expert_layers, rank_budgets[1])?)]
     };
+    let paired_profile = crate::v41_experts::paired::PairedProfile::from_env(compressed)?;
     let make_transport = || {
         let mut transport = devices[1].own(|| NativeTp4Wave::new(&lib,
             V41Tp4Roce::new(args.peers.clone().try_into().map_err(|_| anyhow::anyhow!("four Spark peers required"))?,
                 [1, 2, 3, 4], capacity, TcpTransportConfig { timeout: Duration::from_secs(120),
                     max_frame_bytes: 64 << 20 })?, NativeTp4Wave::device_bytes(capacity)?))?;
+        if let Some(profile) = &paired_profile { transport.install_paired(profile.clone())?; }
         transport.install_tp2(tp2_ffn::Wave::new(routed.clone(), shared.clone(), expert_layers, capacity)?)?;
         Ok::<_, anyhow::Error>(transport)
     };

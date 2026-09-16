@@ -20,8 +20,21 @@ pub(crate) struct NativeTp4Wave<'a> {
     ready_rows: Option<u32>,
     local: Option<super::local::LocalExpertWave<'a>>,
     tp2: Option<Box<super::tp2_ffn::Wave<'a>>>,
+    paired: Option<Box<(super::paired::PairedAssignment, std::rc::Rc<super::paired::PairedProfile>)>>,
 }
 impl<'a> NativeTp4Wave<'a> {
+    pub(crate) fn install_paired(&mut self, profile: std::rc::Rc<super::paired::PairedProfile>) -> Result<()> {
+        ensure!(self.paired.is_none(), "paired assignment already installed");
+        self.paired = Some(Box::new((super::paired::PairedAssignment::new(), profile)));
+        Ok(())
+    }
+    pub(crate) fn prepare_remote_request(&mut self, request: &mut crate::v41_backbone_router::BoundExpertRequest) -> Result<()> {
+        if let Some(paired) = &mut self.paired {
+            request.assign_paired(&mut paired.0, &paired.1)?;
+        }
+        Ok(())
+    }
+
     pub fn install_local(&mut self, wave: super::local::LocalExpertWave<'a>) -> Result<()> {
         ensure!(self.local.is_none() && self.tp2.is_none(), "local expert lane already installed");
         self.local = Some(wave);
@@ -128,6 +141,7 @@ impl<'a> NativeTp4Wave<'a> {
             ready_rows: None,
             local: None,
             tp2: None,
+            paired: None,
         })
     }
     /// RoCE execution with optional host BF16 shared-expert contribution.

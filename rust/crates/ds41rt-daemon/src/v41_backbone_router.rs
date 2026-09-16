@@ -663,6 +663,13 @@ pub(crate) struct BoundExpertRequest {
     binding: QueryBinding,
 }
 impl BoundExpertRequest {
+    pub(crate) fn assign_paired(&mut self, assignment: &mut crate::v41_experts::paired::PairedAssignment,
+        profile: &crate::v41_experts::paired::PairedProfile) -> Result<()> {
+        let layer = self.binding.layer();
+        assignment.encode(&mut self.request, profile.layer(layer)?, layer)?;
+        Ok(())
+    }
+
     pub fn request(&self) -> &ds41rt_transport::ExpertProtocolV2Request {
         &self.request
     }
