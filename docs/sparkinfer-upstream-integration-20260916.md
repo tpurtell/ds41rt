@@ -4,7 +4,9 @@ Integrate the new upstream V4.1 kernels with DS41RT's native engine, measure
 which implementations improve real serving, and publish a qualified release.
 Decode on code and prose is the primary performance target; prefill, startup,
 memory capacity, numerical quality, and concurrency remain release requirements.
-This is an initial source analysis, **not evidence of an achieved speedup**.
+The component analysis and experiment history follow the current qualification
+status below. Completed measurements establish the reported gains; full release
+qualification and publication remain pending.
 
 ```mermaid
 flowchart LR
@@ -25,9 +27,16 @@ passes all three mixed sweeps with 329 MiB minimum free. Weighted decode is
 196.46 TPS (+4.9%), with a 193.81–209.87 three-run range. Post-history 1.04M
 retrieval/vision and dual prefix/branch checks now pass in the
 [focused serving evidence](sparkinfer-upstream-query-inplace-focused-20260916.json).
-Single-card minimum free after long-context/vision is 269 MiB. The dual mixed
-pilot records 290.21 TPS at C16, below the earlier 303.91 pilot; it is one sweep,
-so the final three-sample clean-image matrix must establish performance.
+Single-card minimum free after long-context/vision is 269 MiB.
+
+The [final clean build](sparkinfer-upstream-v4-final-build-20260916.json) at
+`3924227` now passes standard launch with matching source labels on all five
+hosts. Its [completed dual decode measurements](sparkinfer-upstream-v4-final-dual-decode-20260916.json)
+show weighted throughput of 97.79 versus v3's 79.33 TPS (+23.3%). Mixed C16
+is 308.19 TPS (307.01–313.51), versus 309.06 in v3 (−0.3%); this three-sweep
+result does not reproduce the lower 290.21 TPS single pilot. Mixed C8 rises
+from 203.05 to 226.39 TPS (+11.5%). The remaining final-image performance
+matrix is running; these completed subsets do not establish all release gates.
 
 **Earlier release blocker:** single-RTX qualification reproduced CUDA out-of-memory
 after the second mixed C16 sweep. The original run reached 97,248 MiB used;
