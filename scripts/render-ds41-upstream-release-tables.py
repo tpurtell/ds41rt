@@ -45,6 +45,15 @@ for i,c in enumerate([1,2,4,8,16]):
   z=x[l]['mixed']['summaries'][i];row.append(f"{f(z['median_aggregate_tps'])} ({f(z['min_aggregate_tps'])}–{f(z['max_aggregate_tps'])})")
  rows.append(row)
 section('Mixed traffic','Fixed code/fable/topic mix with simultaneous admission and nonce seed 56001. Three-sweep ranges preserve workload and scheduling variation.',['Concurrency','1 RTX median (range)','2 RTX median (range)'],rows)
+rows=[]
+for layout,label in [('single','1 RTX'),('dual','2 RTX')]:
+ q=d['deployment'][layout]
+ rows.append([label,f"0–{q['rtx_expert_layers']-1}, TP{q['rtx_expert_tp']}",
+  f"{q['spark_layers']} layers / {q['spark_budget_bytes_each']/2**30:g} GiB each",
+  f"{q['global_pool_bytes']/1e9:.3f} GB / {q['logical_pool_tokens']:,} logical + {q['private_tail_tokens']:,} private-tail tokens",
+  f"{q['prompt_retention_entries']} / {q['completed_turn_retention_entries']}"])
+section('Deployment and cache capacity','Actual launch controls and startup pool reservation. Prompt/completed retention counts are cache entries.',
+ ['Layout','RTX expert layers','Spark residency / budget','Global FP4 source pool','Prompt / completed retention'],rows)
 section('Startup', 'Measured standard-script startup for the qualified image.',
  ['Layout', 'Startup seconds'], [[label, f(d['startup_seconds'][layout])] for layout,label in [('single','1 RTX'),('dual','2 RTX')]])
 rows=[]

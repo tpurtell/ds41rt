@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 import runpy
 from pathlib import Path
 
@@ -31,6 +32,42 @@ def summarize_telemetry(path: Path) -> dict:
     assert gpus, path
     return gpus
 
+
+def summarize_deployment(metadata: dict, log: Path) -> dict:
+    """Read measured pool/placement and explicit launch controls."""
+    text = re.sub(r"\x1b\[[0-9;]*m", "", log.read_text())
+    argv = metadata["arguments"]
+    def option(args, name):
+        return int(args[args.index(name) + 1])
+    concurrency = option(argv, "--concurrency")
+    retained = option(argv, "--prefix-cache-entries")
+    rows = [line for line in text.splitlines() if
+            "native KV pool reservation" in line or
+            "dual RTX cache reservation after fixed allocations" in line]
+    assert len(rows) == 1, log
+    line = rows[0]
+    pages = json.loads(re.search(r"source_pages=(\[[^]]+\])", line).group(1))
+    pool_bytes = int(re.search(r"global_bytes=(\d+)", line).group(1))
+    tails = concurrency + 2 * retained
+    assert len(pages) == 4 and pages == [pages[0]] * 3 + [2 * pages[0]]
+    assert pages[0] > tails
+    if metadata["layout"] == "dual":
+        layers = int(re.search(r"encoder_layers=(\d+)", line).group(1))
+        tp = 2
+    else:
+        placement = next(line for line in text.splitlines() if "bottom-up RTX expert placement" in line)
+        layers = int(re.search(r"layers=(\d+)", placement).group(1))
+        tp = 1
+    workers = metadata["workers"]
+    budgets = {option(w["args"], "--device-budget-bytes") for w in workers}
+    first = {option(w["args"], "--first-layer") for w in workers}
+    assert len(budgets) == len(first) == 1
+    return {"global_pool_bytes": pool_bytes, "logical_pool_tokens": (pages[0] - tails) * 512,
+            "private_tail_tokens": tails * 512, "source_pages": pages,
+            "prompt_retention_entries": retained, "completed_turn_retention_entries": retained,
+            "concurrency": concurrency, "rtx_expert_layers": layers, "rtx_expert_tp": tp,
+            "spark_first_layer": next(iter(first)), "spark_layers": 40 - next(iter(first)),
+            "spark_budget_bytes_each": next(iter(budgets))}
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -73,6 +110,7 @@ def main() -> None:
         "provenance": {},
         "gpu_telemetry": {},
         "startup_seconds": {},
+        "deployment": {},
     }
     artifacts = set()
     binary_hashes = set()
@@ -121,6 +159,10 @@ def main() -> None:
             artifacts.add(telemetry)
             report["gpu_telemetry"][f"{layout}-{phase}"] = summarize_telemetry(telemetry)
             report["provenance"][f"{layout}-{phase}"] = metadata
+            if phase == "dspark":
+                log = args.input / f"{layout}-{phase}-server.log"
+                report["deployment"][layout] = summarize_deployment(metadata, log)
+                artifacts.add(log)
         startup = args.input / f"{layout}-startup-seconds.txt"
         seconds = float(startup.read_text())
         assert seconds > 0
