@@ -48,10 +48,22 @@ TPS**, versus 82.17 for this candidate's zero-base retained-corpus row. There is
 no corresponding published v3 2K result, so this is not a before/after release
 speedup claim. Both rows remain visible.
 
-The clean-image K5 legacy/refit cost comparison has started using the same
-code/topic/mixed prompts; it restores the standard coordinator afterward.
-Single-RTX and target-only measurements remain pending. Review the controlled
-comparison before accepting the performance tradeoffs.
+The completed [clean-image K5 cost comparison](sparkinfer-upstream-clean-adaptive-20260916.json)
+uses the same code/topic/mixed prompts and three repetitions. On freshly started
+coordinators, legacy versus refit code C16 is 1282.67 versus 1277.74 TPS; topic
+C16 is 701.82 versus 712.37. Mixed C8 improves 189.49 → 211.77 with the refit,
+but mixed C16 is 301.08 → 299.88 and topic C2 falls 160.41 → 151.39. This
+is not a consistent enough advantage to change the default yet.
+
+More significantly, restarting the unchanged legacy image improves topic C1–C8
+from 80.28/122.03/218.87/356.11 to 93.62/160.41/278.61/444.08 TPS despite
+**identical generated text for every corresponding sample**. Restoring and
+restarting the original standard container also produces 95.54/151.54/283.04/
+449.19/711.70 at C1/C2/C4/C8/C16. The difference therefore does not require
+the experimental launcher or refitted model. Serving-history sensitivity remains
+unresolved; a serial long-context-then-short-decode probe is underway. Do not
+replace the initial matrix with the faster results without resolving this concern.
+Single-RTX and target-only measurements remain pending.
 
 ## Selected implementation on dev
 
