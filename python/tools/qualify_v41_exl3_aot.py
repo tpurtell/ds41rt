@@ -3,6 +3,7 @@
 from __future__ import annotations
 import argparse
 import ctypes as ct
+from dataclasses import replace
 import hashlib
 import json
 from pathlib import Path
@@ -21,7 +22,7 @@ def main() -> None:
     parser.add_argument('--fixture', type=Path)
     parser.add_argument('--fixture-input', type=Path, help='Reuse a prior fixture input prefix for a different capacity/tile reference')
     parser.add_argument('--fixture-canonical-routes', action='store_true',
-        help='Emit valid Spark wire routes, using zero weights instead of masked IDs')
+        help='Emit valid distinct routes, using zero weights instead of masked IDs')
     parser.add_argument('--fixture-format', choices=('bf16','fp8_k32'), default='bf16')
     args = parser.parse_args()
     import torch
@@ -73,6 +74,20 @@ def main() -> None:
         intermediate_rotations=torch.cat((rotations('w1','svh'),rotations('w3','svh'),rotations('w2','suh')),dim=1),
         down_svh=rotations('w2','svh'), activation='silu',params_dtype=torch.bfloat16,
         num_experts=experts, hidden_size=hidden, intermediate_size=width)
+    # Empty projection membership is legal. Keep one unreachable physical
+    # plane for the native binding's non-null storage ABI; descriptor membership
+    # and gate/up counts remain unchanged, so this adds no routed expert.
+    padded=[]
+    for bits,tier in zip(meta['bits'],prepared.tiers):
+        stride=(width//16)*(hidden//16)*(8*bits)
+        updates={}
+        if tier.w13.numel()==0:
+            updates['w13']=torch.zeros(stride,dtype=torch.int32,device='cuda')
+        if tier.w2.numel()==0:
+            updates.update(w2=torch.zeros(stride,dtype=torch.int32,device='cuda'),
+                w2_global_scale=torch.ones(1,dtype=torch.float32,device='cuda'))
+        padded.append(replace(tier,**updates))
+    prepared=replace(prepared,tiers=tuple(padded))
     props=torch.cuda.get_device_properties(0)
     launch=compile_mixed_trellis(size_m=capacity,hidden_size=hidden,intermediate_size=width,
         tier0_num_experts=experts,tier1_num_experts=experts,route_num_experts=experts,
@@ -80,6 +95,12 @@ def main() -> None:
         max_shared_mem=props.shared_memory_per_block_optin,force_tile_config=tuple(meta['tile']),
         swiglu_limit=10.0, direct_topk_routes=meta['direct'],full_rotation_output_dtype=meta['output_dtype'])
     buffers=make_mixed_trellis_buffers(launch,device=torch.device('cuda',0),sms=props.multi_processor_count)
+    # Native route initialization covers the packer's rounded bucket. Use the
+    # exported allocation contract for both paths, including non-power-of-two
+    # capacities where it is larger than B12x's exact-capacity metadata arrays.
+    buffers=replace(buffers, **{name:torch.empty(meta['buffers'][name]['shape'],
+        device='cuda',dtype=torch.int32)
+        for name in ('packed_route_indices','block_expert_ids')})
     binding=bind_mixed_trellis(*prepared.tiers,prepared.global_to_combined,prepared.descriptor_map,prepared.rotations,launch,
         gate_experts=prepared.gate_counts,up_experts=prepared.up_counts)
     lib=ct.CDLL(str(args.aot/'libds41rt_exl3.so'))
@@ -148,7 +169,10 @@ def main() -> None:
         if route_lib is not None:
             for name in ('packed_route_indices','block_expert_ids','packed_route_count','expert_offsets','expert_counts'):
                 getattr(buffers,name).fill_(-777)
-    assert any(len({bitmaps[e,p] for p in ['w1','w3','w2']}) > 1 for e in range(experts))
+    # Some sampled draft stages are uniformly K3. Keep the encoder
+    # mixed-projection gate while qualifying those legal empty-tier draft cases.
+    if args.dspark_stage is None:
+        assert any(len({bitmaps[e,p] for p in ['w1','w3','w2']}) > 1 for e in range(experts))
     results=[]; graph=None
     try:
         for rows in sorted(set([1,min(3,capacity),max(1,capacity-1),capacity])):
@@ -167,8 +191,8 @@ def main() -> None:
         if args.fixture is not None:
             args.fixture.mkdir(parents=True,exist_ok=True)
             if args.fixture_canonical_routes:
-                assert topk == 6
-                ids.copy_(torch.arange(experts,device=ids.device,dtype=ids.dtype).repeat(capacity,1).roll(1,dims=1))
+                ids.copy_(torch.arange(capacity*topk,device=ids.device,dtype=ids.dtype)
+                    .reshape(capacity,topk).remainder(experts).roll(1,dims=1))
                 weights[::2,1]=0
             fixture_input=x
             if args.fixture_input is not None:

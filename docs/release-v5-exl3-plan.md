@@ -624,3 +624,28 @@ includes independent dSpark references, the updated SM121 package and four-Spark
 RoCE integration, FP4 PLE gathering, then full-model serving and optimization.
 Adaptive calibration and content-type acceptance reporting remain after kernel
 and placement optimization, before final release measurements.
+
+## dSpark independent routed-expert reference
+
+[Draft reference evidence](release-v5-exl3-dspark-reference.json) passes all three
+stages at capacities 1/16/80/256. Six real checkpoint experts per stage are first
+compared between native AOT and B12x, with exact BF16 results at multiple live
+counts, changed-input graph replay and poisoned route metadata. A separate Rust
+check loads all 128 experts in each of the three stages and matches those hashed
+fixtures bitwise on both RTX GPUs. Two lanes enqueue before either waits, with
+different and changing row orders. Fixture snapshot, geometry, payload hashes and
+matching tile/routing/output policies are checked before comparing outputs.
+
+The reference fixture now supports valid top-3 routes and the exported rounded
+route metadata capacities. The stage-2 sample is uniformly K3; its unused K4 tier
+gets unreachable dummy physical storage without adding descriptor membership.
+The encoder mixed-projection assertion stays in place. These changes concern
+reference preparation and test coverage, not serving kernels or adaptive policy.
+
+This closes the independent dSpark routed-expert reference gap for the tested
+six experts per stage, including full resident weight packing. It does not prove
+all-expert coverage or full-model quality/performance. Evidence uses the v4 native
+library with the wire addon and rebuilt SM120 EXL3 modules. Next integration is
+the updated full-capacity SM121 package and four-Spark RoCE path, alongside the
+remaining FP4 PLE gathering implementation, before full-model optimization and
+release qualification.

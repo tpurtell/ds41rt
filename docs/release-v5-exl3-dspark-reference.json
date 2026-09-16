@@ -1,0 +1,160 @@
+{
+  "passed": true,
+  "scope": "B12x numerical parity for all three dSpark routed expert stages, then native Rust execution with complete 128-expert residency and six routed reference experts per stage. Not full-model quality or serving performance.",
+  "snapshot_revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+  "stages": [
+    0,
+    1,
+    2
+  ],
+  "capacities": [
+    1,
+    16,
+    80,
+    256
+  ],
+  "gpu_ordinals": [
+    0,
+    1
+  ],
+  "resident_experts_per_stage": 128,
+  "routed_reference_expert_ids": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "resident_cases": 24,
+  "checks": [
+    "native AOT versus B12x exact BF16 output with multiple live row counts",
+    "six-expert reference graph replay with changed inputs/routes and poisoned route metadata",
+    "full resident Rust stage output matches hashed B12x fixtures bitwise",
+    "two Rust lanes enqueue before either waits, using distinct and changing row orders",
+    "reference and native tile/routing/output policies checked before comparison",
+    "fixture snapshot, geometry, lengths and SHA256 checked",
+    "finite nonzero reference output"
+  ],
+  "reference_projection_tiers": {
+    "0": [
+      [
+        4,
+        4,
+        4
+      ],
+      [
+        3,
+        3,
+        3
+      ],
+      [
+        4,
+        4,
+        4
+      ],
+      [
+        4,
+        4,
+        4
+      ],
+      [
+        3,
+        3,
+        4
+      ],
+      [
+        3,
+        4,
+        4
+      ]
+    ],
+    "1": [
+      [
+        3,
+        3,
+        3
+      ],
+      [
+        3,
+        3,
+        3
+      ],
+      [
+        3,
+        3,
+        3
+      ],
+      [
+        3,
+        4,
+        4
+      ],
+      [
+        3,
+        3,
+        3
+      ],
+      [
+        3,
+        3,
+        3
+      ]
+    ],
+    "2": [
+      [
+        3,
+        3,
+        3
+      ],
+      [
+        3,
+        3,
+        3
+      ],
+      [
+        3,
+        3,
+        3
+      ],
+      [
+        3,
+        3,
+        3
+      ],
+      [
+        3,
+        3,
+        3
+      ],
+      [
+        3,
+        3,
+        3
+      ]
+    ]
+  },
+  "fixture_tool_changes": [
+    "valid top-3 canonical routes",
+    "dummy physical storage for empty projection tiers without adding descriptor membership",
+    "route metadata storage follows exported bucket capacity",
+    "encoder mixed-projection assertion preserved; uniformly K3 draft sample explicitly allowed"
+  ],
+  "native_library_scope": "v4 native library plus wire addon and complete SM120 EXL3 package; not a clean release image.",
+  "source_sha256": {
+    "python/tools/qualify_v41_exl3_aot.py": "ee57ad4fd1f7aef3aa669975f8971d5b01c8cffa5617e033adecd5b3cbdc42d3",
+    "rust/crates/ds41rt-daemon/src/v41_experts/dspark/expert_backend.rs": "0e6d0f64b757ad8a88f1aa97f7d66a0151d1610ea3ba6a33406da349ccd5cff1",
+    "rust/crates/ds41rt-daemon/src/v41_experts/dspark/expert_backend/reference_tests.rs": "5c13068fea8cd83ea93cb45e93eaef8dc900724fc13032fdf9a6d5a67ed12851"
+  },
+  "archive": "docs/evidence/v5-exl3-dspark-reference.tar.gz",
+  "archive_sha256": "bcb03b2abf611922eb249c66ce4209d1d93891de5726d11f70bc23980bcfe402",
+  "verified_at": "2026-09-16T17:12:25.573558+00:00",
+  "remaining": [
+    "updated full-capacity SM121 package and four-Spark RoCE integration",
+    "FP4 PLE gathering",
+    "full-model serving and correctness",
+    "kernel and RTX layer-placement optimization",
+    "post-optimization adaptive timing profiles and content-type acceptance",
+    "requested release tables, tool tests, quant analysis and v5 publication"
+  ]
+}

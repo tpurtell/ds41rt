@@ -183,6 +183,9 @@ impl<'w, 'a> CompressedDraftExperts<'w, 'a> {
 }
 
 #[cfg(test)]
+mod reference_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use ds41rt_ffi::NativeLibrary;
