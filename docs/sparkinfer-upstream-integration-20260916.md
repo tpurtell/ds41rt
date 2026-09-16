@@ -5,8 +5,8 @@ which implementations improve real serving, and publish a qualified release.
 Decode on code and prose is the primary performance target; prefill, startup,
 memory capacity, numerical quality, and concurrency remain release requirements.
 The component analysis and experiment history follow the current qualification
-status below. Completed measurements establish the reported gains; full release
-qualification and publication remain pending.
+status below. Qualification is complete and [v4 is published](https://github.com/tpurtell/ds41rt/releases/tag/v4);
+[publication evidence](release-v4-publication.json) records remote digests and assets.
 
 ```mermaid
 flowchart LR
@@ -41,7 +41,7 @@ post-history 1.04M retrieval/vision and dual prefix/branch checks passed in the
 [focused serving evidence](sparkinfer-upstream-query-inplace-focused-20260916.json),
 with 269 MiB single-card minimum free after long-context/vision. The
 [final clean build](sparkinfer-upstream-v4-final-build-20260916.json) records
-matching source labels on all five hosts. Publication is the remaining release step.
+matching source labels on all five hosts. The release is published and verified.
 
 **Earlier release blocker:** single-RTX qualification reproduced CUDA out-of-memory
 after the second mixed C16 sweep. The original run reached 97,248 MiB used;
@@ -1762,11 +1762,11 @@ per-kernel FLOPS or capacity alone.
 The implementation gates are backed by the hashed baseline artifacts,
 merge `37ff0dbd` (parents `3882b935` and `92cd3800`), and the component/native
 qualification reports above. Dev and the fork's master now select `4e31d0a1`.
-The final runtime source is frozen at `3924227`; its clean images are running
+The final runtime source is frozen at `3924227`; its clean images completed
 the final one/two-RTX performance matrix. Attention, lagged mHC, narrow
 projection scheduling and bounded index sorting are enabled; compact experts
 and row vocabulary remain disabled. The [release checklist](release-v4-checklist.md)
-tracks the remaining performance, documentation and publication gates. Earlier
+records the completed performance, documentation and publication gates. Earlier
 experiment sections preserve their original pending decisions and measurements.
 
 - [x] Fetch the upstream snapshot, inspect selected native dependencies, and
@@ -1796,7 +1796,7 @@ experiment sections preserve their original pending decisions and measurements.
   with UUIDs, clocks/mode, exact configuration and raw samples in evidence.
   Cache GB headlines must include token capacity. Repeat historical official
   API references only if needed; label their original date/protocol.
-- [ ] Clean build and run the release images on the coordinator and Spark
+- [x] Clean build and run the release images on the coordinator and Spark
   hosts. Verify the normal port 8000 and configurable concurrency/pool options.
   Publish the next version with concise feature notes and linked qualification
   evidence. Push accepted fork changes to the fork's `master`; update and push

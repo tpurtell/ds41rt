@@ -1,6 +1,6 @@
 {
   "version": "v4",
-  "status": "Registry v4 manifests verified; GitHub release and latest tags pending",
+  "status": "Published; v4 and latest registry manifests, GitHub asset digests, source refs, and standard serving verified",
   "engine_revision": "39242276302b24e6e07313152cc532e43d8ed6ca",
   "source_manifest_sha256": "bf22e0f27f0368db99fbe43c966b3be771a14ead09f2d1428d872521d98b0394",
   "images": {
@@ -15,7 +15,11 @@
         "io.ds41rt.source-manifest.sha256": "bf22e0f27f0368db99fbe43c966b3be771a14ead09f2d1428d872521d98b0394",
         "io.ds41rt.sparkinfer.revision": "4e31d0a10ea7ca24ac48d522fb65eaafbc27ad30",
         "org.opencontainers.image.version": "v4"
-      }
+      },
+      "verified_tags": [
+        "v4",
+        "latest"
+      ]
     },
     "spark": {
       "repository": "ghcr.io/tpurtell/ds41rt-spark-expert",
@@ -28,7 +32,11 @@
         "io.ds41rt.source-manifest.sha256": "bf22e0f27f0368db99fbe43c966b3be771a14ead09f2d1428d872521d98b0394",
         "io.ds41rt.sparkinfer.revision": "4e31d0a10ea7ca24ac48d522fb65eaafbc27ad30",
         "org.opencontainers.image.version": "v4"
-      }
+      },
+      "verified_tags": [
+        "v4",
+        "latest"
+      ]
     }
   },
   "assets": [
@@ -48,5 +56,58 @@
       "sha256": "b38a7b4e9b238df73b20f8a478e4ff956a2d534ce63b3d3b85e9146818d96099"
     }
   ],
-  "release_url": "https://github.com/tpurtell/ds41rt/releases/tag/v4"
+  "release_url": "https://github.com/tpurtell/ds41rt/releases/tag/v4",
+  "published_at": "2026-09-16T11:19:15Z",
+  "release_source_revision": "e10c2cb8753ed13f86a408b8bd877e3cecede8d8",
+  "verified_at": "2026-09-16T11:19:56.495720+00:00",
+  "github_asset_verification": {
+    "method": "GitHub server-computed SHA256 digests and sizes compared with local release artifacts; downloaded SHA256SUMS matched byte-for-byte",
+    "assets": [
+      {
+        "name": "ds41rt-v4-coordinator-linux-amd64.tar.gz",
+        "size": 17648514,
+        "digest": "sha256:bc65de7473ef6f2f416841c55892fdc541525e445242e87684bce3939c64dd3e",
+        "state": "uploaded",
+        "url": "https://github.com/tpurtell/ds41rt/releases/download/v4/ds41rt-v4-coordinator-linux-amd64.tar.gz"
+      },
+      {
+        "name": "ds41rt-v4-qualification-evidence.tar.gz",
+        "size": 63576625,
+        "digest": "sha256:9e9c64d429000b42e3665ded069f3a9f48b9a4c8e4de5385090b2fe76a5c902f",
+        "state": "uploaded",
+        "url": "https://github.com/tpurtell/ds41rt/releases/download/v4/ds41rt-v4-qualification-evidence.tar.gz"
+      },
+      {
+        "name": "ds41rt-v4-spark-expert-linux-arm64.tar.gz",
+        "size": 15679863,
+        "digest": "sha256:b38a7b4e9b238df73b20f8a478e4ff956a2d534ce63b3d3b85e9146818d96099",
+        "state": "uploaded",
+        "url": "https://github.com/tpurtell/ds41rt/releases/download/v4/ds41rt-v4-spark-expert-linux-arm64.tar.gz"
+      },
+      {
+        "name": "SHA256SUMS",
+        "size": 321,
+        "digest": "sha256:6a1d8520891cd8a08d774da12e704c8b9f7786c91d72556ab8683fd59ae5d0d6",
+        "state": "uploaded",
+        "url": "https://github.com/tpurtell/ds41rt/releases/download/v4/SHA256SUMS"
+      }
+    ]
+  },
+  "serving_verification": {
+    "health_url": "http://127.0.0.1:8000/health",
+    "http_status": 200,
+    "spark_workers": [
+      "ostrich",
+      "dodo",
+      "emu",
+      "kiwi"
+    ],
+    "spark_image": "ghcr.io/tpurtell/ds41rt-spark-expert:v4"
+  },
+  "cleanup": {
+    "stopped_experiment_containers_removed": 13,
+    "experimental_binaries_removed": 15,
+    "experimental_binary_bytes_removed": 502300304,
+    "qualification_evidence_retained": true
+  }
 }

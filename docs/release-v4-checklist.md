@@ -1,7 +1,9 @@
 # DS41RT v4 release checklist
 
-Status: final performance and focused regression review completed; publication
-is pending. The published September 14 v3 is unchanged.
+Status: v4 published with verified container tags, release asset digests, and
+source identities. The standard service is healthy; disposable experiments are
+cleaned up. The published September 14 v3 is unchanged. See the
+[publication record](release-v4-publication.json).
 
 - [x] Analyze applicable upstream changes and record native ABI, numerical,
   memory, and performance treatment by component.
@@ -43,9 +45,9 @@ is pending. The published September 14 v3 is unchanged.
   records revision `3924227`, all five source labels, packaged checksums, and
   the 52.71-second dual-RTX standard launch. Performance qualification and
   remote publication are recorded separately; see the [final report](release-v4-performance.md).
-- [ ] Publish coordinator and Spark images, release notes, binaries, evidence,
+- [x] Publish coordinator and Spark images, release notes, binaries, evidence,
   and checksums; verify remote digests/assets and release branch/tag identities.
-- [ ] Leave the standard service healthy, clean disposable intermediates while
+- [x] Leave the standard service healthy, clean disposable intermediates while
   retaining evidence, and push all final commits.
 
 Routed EXL3/Trellis and parallel attention/projection remain future work, with
