@@ -16,6 +16,22 @@ flowchart LR
     F --> G[Clean image builds, README, reports and release]
 ```
 
+## Full hybrid Spark worker qualification
+
+The full serving library now passes the native shared-arena checks at live
+rows 1/2/4/16. At two rows, warm expert time was 157.4 → 124.6 µs and cold
+expert time 221.1 → 206.4 µs. At four and sixteen rows the hybrid uses the
+original grouped path and its FP32 route outputs are bitwise identical.
+These are component measurements; combined RTX/Spark serving acceptance is
+still pending. The original worker containers and artifacts are preserved
+for matched comparison and rollback.
+
+The [full-worker evidence](sparkinfer-upstream-expert-hybrid-full-worker-20260916.json)
+records the native checks and library identity. The controlled relink helper
+replaces only expert objects and their wrapper, records all object hashes,
+and verifies that the original library remains unchanged. This is an A/B
+experiment artifact; release acceptance still requires a clean build.
+
 ## Source boundary and observed state
 
 Inspected on 2026-09-16:

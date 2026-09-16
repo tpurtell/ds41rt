@@ -1,0 +1,589 @@
+{
+  "scope": "Full Spark serving library native expert qualification; controlled expert-only relink, not clean release build or end-to-end serving evidence.",
+  "library_sha256": "f5d3ced0d7e70b47d24ef700d7baa97ddb175d9d0a59afd14013f50ff40468d0",
+  "baseline_library_sha256": "9dd7115e8e520ad7fee5ebdf8a540c9f406a77d0219428c686fdad5c8ae95f07",
+  "link_manifest_sha256": "08215ef88e37b18af5a6f48e1eb8d1c9d5434cb948c5c272fed31f07dcc5946d",
+  "qualification": {
+    "scope": "Screen upstream expert numerics at DS41RT geometry before native adaptation.\n\nSupports prepared paths and actual native TP2 libraries. Reports local kernel\ncost, not whole-serving speedup.\n",
+    "command": [
+      "python/tools/compare_v41_expert_upstream.py",
+      "--b12x-root",
+      "/work/sparkinfer-compact",
+      "--intermediate",
+      "576",
+      "--rows",
+      "1",
+      "2",
+      "4",
+      "16",
+      "--routing-pattern",
+      "shared",
+      "--compare-timing",
+      "--cold-timing",
+      "--shared-native-scratch",
+      "--native-lib",
+      "/work/worker-artifacts/libds41rt_native.so",
+      "--candidate-native-lib",
+      "/work/libworker-hybrid.so",
+      "--output",
+      "/work/expert-hybrid-spark-full.json"
+    ],
+    "fork_revision": "4e31d0a10ea7ca24ac48d522fb65eaafbc27ad30",
+    "script_sha256": "f675c3d327fc9ab39faa9e78d445fc9466246df8ca809f06ed33fc1aea5d7f78",
+    "device": "_CudaDeviceProperties(name='NVIDIA GB10', major=12, minor=1, total_memory=124546MB, multi_processor_count=48, uuid=a7c503f0-bb16-4333-4f44-92e331dbcf2e, pci_bus_id=1, pci_device_id=0, pci_domain_id=15, L2_cache_size=24MB)",
+    "geometry": {
+      "experts": 384,
+      "hidden": 5120,
+      "intermediate": 576,
+      "topk": 6
+    },
+    "cases": [
+      {
+        "rows": 1,
+        "activation": "silu_v41",
+        "implementation": "native_spark",
+        "checks": [
+          {
+            "identical_input_replay_exact": null,
+            "cycle": 0,
+            "relative_l2": 0.0023753782734274864,
+            "cosine": 0.9999971389770508,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.0023753782734274864,
+            "own_reference_cosine": 0.9999971389770508
+          },
+          {
+            "identical_input_replay_exact": null,
+            "cycle": 1,
+            "relative_l2": 0.002365611493587494,
+            "cosine": 0.9999971985816956,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.002365611493587494,
+            "own_reference_cosine": 0.9999971985816956
+          },
+          {
+            "identical_input_replay_exact": true,
+            "cycle": 2,
+            "relative_l2": 0.002365611493587494,
+            "cosine": 0.9999971985816956,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.002365611493587494,
+            "own_reference_cosine": 0.9999971985816956
+          }
+        ],
+        "prepared_graph_timing": {
+          "scope": "Includes BF16 input quantization and route reduction; prepared graph, not native serving ABI",
+          "samples_us": [
+            119.45664405822754,
+            127.91775703430176,
+            119.60479736328125,
+            123.75552177429199,
+            128.38175773620605,
+            128.00959587097168,
+            119.97056007385254,
+            119.85183715820312
+          ],
+          "median_us": 121.86304092407227,
+          "order": "AB/BA, eight samples of 100 replays",
+          "gpu_before": "GPU-a7c503f0-bb16-4333-4f44-92e331dbcf2e, P0, 2405 MHz, [N/A], [N/A], 0x0000000000000000",
+          "gpu_after": "GPU-a7c503f0-bb16-4333-4f44-92e331dbcf2e, P0, 2502 MHz, [N/A], [N/A], 0x0000000000000000",
+          "cold_samples_us": [
+            204.28799837827682,
+            203.855998814106,
+            203.75999808311462,
+            203.71200144290924,
+            203.88799905776978,
+            204.97599989175797,
+            204.73599433898926,
+            205.50400018692017
+          ],
+          "cold_protocol": "Eight balanced samples; median of 32 individual graph replays each following a 256 MiB write, write excluded"
+        }
+      },
+      {
+        "rows": 1,
+        "activation": "silu",
+        "implementation": "native_compact_spark",
+        "checks": [
+          {
+            "identical_input_replay_exact": null,
+            "cycle": 0,
+            "relative_l2": 0.0023753782734274864,
+            "cosine": 0.9999971389770508,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.0023753782734274864,
+            "own_reference_cosine": 0.9999971389770508,
+            "native_route_relative_l2": 6.958824627645299e-08,
+            "native_routes_exact": false
+          },
+          {
+            "identical_input_replay_exact": null,
+            "cycle": 1,
+            "relative_l2": 0.002365611493587494,
+            "cosine": 0.9999971985816956,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.002365611493587494,
+            "own_reference_cosine": 0.9999971985816956,
+            "native_route_relative_l2": 2.4058053327280504e-08,
+            "native_routes_exact": false
+          },
+          {
+            "identical_input_replay_exact": true,
+            "cycle": 2,
+            "relative_l2": 0.002365611493587494,
+            "cosine": 0.9999971985816956,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.002365611493587494,
+            "own_reference_cosine": 0.9999971985816956,
+            "native_route_relative_l2": 2.4058053327280504e-08,
+            "native_routes_exact": false
+          }
+        ],
+        "prepared_graph_timing": {
+          "scope": "Includes BF16 input quantization and route reduction; prepared graph, not native serving ABI",
+          "samples_us": [
+            133.2412815093994,
+            135.07200241088867,
+            127.45439529418945,
+            131.73151969909668,
+            127.65312194824219,
+            127.35360145568848,
+            127.47167587280273,
+            127.60319709777832
+          ],
+          "median_us": 127.62815952301025,
+          "order": "AB/BA, eight samples of 100 replays",
+          "gpu_before": "GPU-a7c503f0-bb16-4333-4f44-92e331dbcf2e, P0, 2405 MHz, [N/A], [N/A], 0x0000000000000000",
+          "gpu_after": "GPU-a7c503f0-bb16-4333-4f44-92e331dbcf2e, P0, 2502 MHz, [N/A], [N/A], 0x0000000000000000",
+          "cold_samples_us": [
+            196.56000286340714,
+            196.52800261974335,
+            196.43200188875198,
+            196.46400213241577,
+            198.55999946594238,
+            197.63199985027313,
+            197.6960003376007,
+            197.64799624681473
+          ],
+          "cold_protocol": "Eight balanced samples; median of 32 individual graph replays each following a 256 MiB write, write excluded"
+        }
+      },
+      {
+        "rows": 2,
+        "activation": "silu_v41",
+        "implementation": "native_spark",
+        "checks": [
+          {
+            "identical_input_replay_exact": null,
+            "cycle": 0,
+            "relative_l2": 0.0023229520302265882,
+            "cosine": 0.9999972581863403,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.0023229520302265882,
+            "own_reference_cosine": 0.9999972581863403
+          },
+          {
+            "identical_input_replay_exact": null,
+            "cycle": 1,
+            "relative_l2": 0.00233658030629158,
+            "cosine": 0.9999972581863403,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.00233658030629158,
+            "own_reference_cosine": 0.9999972581863403
+          },
+          {
+            "identical_input_replay_exact": true,
+            "cycle": 2,
+            "relative_l2": 0.00233658030629158,
+            "cosine": 0.9999972581863403,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.00233658030629158,
+            "own_reference_cosine": 0.9999972581863403
+          }
+        ],
+        "prepared_graph_timing": {
+          "scope": "Includes BF16 input quantization and route reduction; prepared graph, not native serving ABI",
+          "samples_us": [
+            148.7020778656006,
+            157.67359733581543,
+            149.203519821167,
+            157.35136032104492,
+            157.81696319580078,
+            157.36255645751953,
+            157.31871604919434,
+            157.61695861816406
+          ],
+          "median_us": 157.35695838928223,
+          "order": "AB/BA, eight samples of 100 replays",
+          "gpu_before": "GPU-a7c503f0-bb16-4333-4f44-92e331dbcf2e, P0, 2502 MHz, [N/A], [N/A], 0x0000000000000000",
+          "gpu_after": "GPU-a7c503f0-bb16-4333-4f44-92e331dbcf2e, P0, 2502 MHz, [N/A], [N/A], 0x0000000000000000",
+          "cold_samples_us": [
+            223.13600033521652,
+            221.11999988555908,
+            220.2880010008812,
+            220.5440029501915,
+            221.6319963335991,
+            220.23999691009521,
+            221.24800086021423,
+            221.0880070924759
+          ],
+          "cold_protocol": "Eight balanced samples; median of 32 individual graph replays each following a 256 MiB write, write excluded"
+        }
+      },
+      {
+        "rows": 2,
+        "activation": "silu",
+        "implementation": "native_compact_spark",
+        "checks": [
+          {
+            "identical_input_replay_exact": null,
+            "cycle": 0,
+            "relative_l2": 0.0023229520302265882,
+            "cosine": 0.9999972581863403,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.0023229520302265882,
+            "own_reference_cosine": 0.9999972581863403,
+            "native_route_relative_l2": 6.597105084438226e-08,
+            "native_routes_exact": false
+          },
+          {
+            "identical_input_replay_exact": null,
+            "cycle": 1,
+            "relative_l2": 0.00233658030629158,
+            "cosine": 0.9999972581863403,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.00233658030629158,
+            "own_reference_cosine": 0.9999972581863403,
+            "native_route_relative_l2": 2.691827738487973e-08,
+            "native_routes_exact": false
+          },
+          {
+            "identical_input_replay_exact": true,
+            "cycle": 2,
+            "relative_l2": 0.00233658030629158,
+            "cosine": 0.9999972581863403,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.00233658030629158,
+            "own_reference_cosine": 0.9999972581863403,
+            "native_route_relative_l2": 2.691827738487973e-08,
+            "native_routes_exact": false
+          }
+        ],
+        "prepared_graph_timing": {
+          "scope": "Includes BF16 input quantization and route reduction; prepared graph, not native serving ABI",
+          "samples_us": [
+            128.73120307922363,
+            124.04959678649902,
+            125.06815910339355,
+            127.15807914733887,
+            122.42239952087402,
+            129.6275234222412,
+            122.4345588684082,
+            123.56351852416992
+          ],
+          "median_us": 124.55887794494629,
+          "order": "AB/BA, eight samples of 100 replays",
+          "gpu_before": "GPU-a7c503f0-bb16-4333-4f44-92e331dbcf2e, P0, 2502 MHz, [N/A], [N/A], 0x0000000000000000",
+          "gpu_after": "GPU-a7c503f0-bb16-4333-4f44-92e331dbcf2e, P0, 2502 MHz, [N/A], [N/A], 0x0000000000000000",
+          "cold_samples_us": [
+            206.60799741744995,
+            206.1759978532791,
+            206.7520022392273,
+            206.30399882793427,
+            206.62400126457214,
+            206.33599907159805,
+            205.85599541664124,
+            206.41600340604782
+          ],
+          "cold_protocol": "Eight balanced samples; median of 32 individual graph replays each following a 256 MiB write, write excluded"
+        }
+      },
+      {
+        "rows": 4,
+        "activation": "silu_v41",
+        "implementation": "native_spark",
+        "checks": [
+          {
+            "identical_input_replay_exact": null,
+            "cycle": 0,
+            "relative_l2": 0.0023622652515769005,
+            "cosine": 0.9999972581863403,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.0023622652515769005,
+            "own_reference_cosine": 0.9999972581863403
+          },
+          {
+            "identical_input_replay_exact": null,
+            "cycle": 1,
+            "relative_l2": 0.002349365968257189,
+            "cosine": 0.9999972581863403,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.002349365968257189,
+            "own_reference_cosine": 0.9999972581863403
+          },
+          {
+            "identical_input_replay_exact": true,
+            "cycle": 2,
+            "relative_l2": 0.002349365968257189,
+            "cosine": 0.9999972581863403,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.002349365968257189,
+            "own_reference_cosine": 0.9999972581863403
+          }
+        ],
+        "prepared_graph_timing": {
+          "scope": "Includes BF16 input quantization and route reduction; prepared graph, not native serving ABI",
+          "samples_us": [
+            163.37152481079102,
+            164.10528182983398,
+            163.3683204650879,
+            163.69888305664062,
+            163.39584350585938,
+            163.8198471069336,
+            163.63712310791016,
+            163.6400032043457
+          ],
+          "median_us": 163.63856315612793,
+          "order": "AB/BA, eight samples of 100 replays",
+          "gpu_before": "GPU-a7c503f0-bb16-4333-4f44-92e331dbcf2e, P0, 2502 MHz, [N/A], [N/A], 0x0000000000000000",
+          "gpu_after": "GPU-a7c503f0-bb16-4333-4f44-92e331dbcf2e, P0, 2502 MHz, [N/A], [N/A], 0x0000000000000000",
+          "cold_samples_us": [
+            227.27999836206436,
+            228.15999388694763,
+            227.36000269651413,
+            227.31199860572815,
+            228.28799486160278,
+            227.24799811840057,
+            226.84799879789352,
+            227.48799622058868
+          ],
+          "cold_protocol": "Eight balanced samples; median of 32 individual graph replays each following a 256 MiB write, write excluded"
+        }
+      },
+      {
+        "rows": 4,
+        "activation": "silu",
+        "implementation": "native_compact_spark",
+        "checks": [
+          {
+            "identical_input_replay_exact": null,
+            "cycle": 0,
+            "relative_l2": 0.0023622652515769005,
+            "cosine": 0.9999972581863403,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.0023622652515769005,
+            "own_reference_cosine": 0.9999972581863403,
+            "native_route_relative_l2": 0.0,
+            "native_routes_exact": true
+          },
+          {
+            "identical_input_replay_exact": null,
+            "cycle": 1,
+            "relative_l2": 0.002349365968257189,
+            "cosine": 0.9999972581863403,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.002349365968257189,
+            "own_reference_cosine": 0.9999972581863403,
+            "native_route_relative_l2": 0.0,
+            "native_routes_exact": true
+          },
+          {
+            "identical_input_replay_exact": true,
+            "cycle": 2,
+            "relative_l2": 0.002349365968257189,
+            "cosine": 0.9999972581863403,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.002349365968257189,
+            "own_reference_cosine": 0.9999972581863403,
+            "native_route_relative_l2": 0.0,
+            "native_routes_exact": true
+          }
+        ],
+        "prepared_graph_timing": {
+          "scope": "Includes BF16 input quantization and route reduction; prepared graph, not native serving ABI",
+          "samples_us": [
+            178.05631637573242,
+            183.45888137817383,
+            169.34368133544922,
+            177.67999649047852,
+            169.46399688720703,
+            169.30719375610352,
+            169.20223236083984,
+            169.29088592529297
+          ],
+          "median_us": 169.40383911132812,
+          "order": "AB/BA, eight samples of 100 replays",
+          "gpu_before": "GPU-a7c503f0-bb16-4333-4f44-92e331dbcf2e, P0, 2502 MHz, [N/A], [N/A], 0x0000000000000000",
+          "gpu_after": "GPU-a7c503f0-bb16-4333-4f44-92e331dbcf2e, P0, 2502 MHz, [N/A], [N/A], 0x0000000000000000",
+          "cold_samples_us": [
+            226.9119992852211,
+            228.2399982213974,
+            227.92000323534012,
+            226.27199441194534,
+            227.50400006771088,
+            226.44799947738647,
+            227.08799690008163,
+            227.24799811840057
+          ],
+          "cold_protocol": "Eight balanced samples; median of 32 individual graph replays each following a 256 MiB write, write excluded"
+        }
+      },
+      {
+        "rows": 16,
+        "activation": "silu_v41",
+        "implementation": "native_spark",
+        "checks": [
+          {
+            "identical_input_replay_exact": null,
+            "cycle": 0,
+            "relative_l2": 0.0023460884112864733,
+            "cosine": 0.9999971985816956,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.0023460884112864733,
+            "own_reference_cosine": 0.9999971985816956
+          },
+          {
+            "identical_input_replay_exact": null,
+            "cycle": 1,
+            "relative_l2": 0.0023468334693461657,
+            "cosine": 0.9999971985816956,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.0023468334693461657,
+            "own_reference_cosine": 0.9999971985816956
+          },
+          {
+            "identical_input_replay_exact": true,
+            "cycle": 2,
+            "relative_l2": 0.0023468334693461657,
+            "cosine": 0.9999971985816956,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.0023468334693461657,
+            "own_reference_cosine": 0.9999971985816956
+          }
+        ],
+        "prepared_graph_timing": {
+          "scope": "Includes BF16 input quantization and route reduction; prepared graph, not native serving ABI",
+          "samples_us": [
+            221.3759994506836,
+            219.18624877929688,
+            209.7817611694336,
+            210.56640625,
+            209.91424560546875,
+            218.41663360595703,
+            209.71935272216797,
+            210.1158332824707
+          ],
+          "median_us": 210.34111976623535,
+          "order": "AB/BA, eight samples of 100 replays",
+          "gpu_before": "GPU-a7c503f0-bb16-4333-4f44-92e331dbcf2e, P0, 2502 MHz, [N/A], [N/A], 0x0000000000000000",
+          "gpu_after": "GPU-a7c503f0-bb16-4333-4f44-92e331dbcf2e, P0, 2502 MHz, [N/A], [N/A], 0x0000000000000000",
+          "cold_samples_us": [
+            253.9840042591095,
+            254.89600002765656,
+            254.94401156902313,
+            254.92800772190094,
+            254.96000051498413,
+            254.5120120048523,
+            254.06399369239807,
+            254.09600138664246
+          ],
+          "cold_protocol": "Eight balanced samples; median of 32 individual graph replays each following a 256 MiB write, write excluded"
+        }
+      },
+      {
+        "rows": 16,
+        "activation": "silu",
+        "implementation": "native_compact_spark",
+        "checks": [
+          {
+            "identical_input_replay_exact": null,
+            "cycle": 0,
+            "relative_l2": 0.0023460884112864733,
+            "cosine": 0.9999971985816956,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.0023460884112864733,
+            "own_reference_cosine": 0.9999971985816956,
+            "native_route_relative_l2": 0.0,
+            "native_routes_exact": true
+          },
+          {
+            "identical_input_replay_exact": null,
+            "cycle": 1,
+            "relative_l2": 0.0023468334693461657,
+            "cosine": 0.9999971985816956,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.0023468334693461657,
+            "own_reference_cosine": 0.9999971985816956,
+            "native_route_relative_l2": 0.0,
+            "native_routes_exact": true
+          },
+          {
+            "identical_input_replay_exact": true,
+            "cycle": 2,
+            "relative_l2": 0.0023468334693461657,
+            "cosine": 0.9999971985816956,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.0023468334693461657,
+            "own_reference_cosine": 0.9999971985816956,
+            "native_route_relative_l2": 0.0,
+            "native_routes_exact": true
+          }
+        ],
+        "prepared_graph_timing": {
+          "scope": "Includes BF16 input quantization and route reduction; prepared graph, not native serving ABI",
+          "samples_us": [
+            222.36608505249023,
+            213.96543502807617,
+            213.65728378295898,
+            214.15807723999023,
+            214.12511825561523,
+            221.38399124145508,
+            214.35903549194336,
+            214.01056289672852
+          ],
+          "median_us": 214.14159774780273,
+          "order": "AB/BA, eight samples of 100 replays",
+          "gpu_before": "GPU-a7c503f0-bb16-4333-4f44-92e331dbcf2e, P0, 2502 MHz, [N/A], [N/A], 0x0000000000000000",
+          "gpu_after": "GPU-a7c503f0-bb16-4333-4f44-92e331dbcf2e, P0, 2502 MHz, [N/A], [N/A], 0x0000000000000000",
+          "cold_samples_us": [
+            248.928003013134,
+            248.31999838352203,
+            249.82400238513947,
+            249.7119978070259,
+            248.57600033283234,
+            248.83200228214264,
+            248.89599531888962,
+            248.84799867868423
+          ],
+          "cold_protocol": "Eight balanced samples; median of 32 individual graph replays each following a 256 MiB write, write excluded"
+        }
+      }
+    ],
+    "native_library": {
+      "path": "/work/worker-artifacts/libds41rt_native.so",
+      "sha256": "9dd7115e8e520ad7fee5ebdf8a540c9f406a77d0219428c686fdad5c8ae95f07",
+      "output": "Native local FP32 routes summed and rounded once to BF16; excludes cross-device TP reduction",
+      "role": "spark"
+    },
+    "candidate_native_library": {
+      "path": "/work/libworker-hybrid.so",
+      "sha256": "f5d3ced0d7e70b47d24ef700d7baa97ddb175d9d0a59afd14013f50ff40468d0"
+    },
+    "fork_dirty": "",
+    "fork_source_sha256": {
+      "b12x/moe/_shared/kernels/tiny_decode.py": "bbf0b9dbd5d80229678f397098cc987f3b048dc7c7a11f9bbada7895e0b4fc53",
+      "b12x/moe/fused_moe/_impl.py": "a4c362f874ace2925e1ba127989874d443c64dfe931aff05ad856ba14d784594",
+      "b12x/moe/fused_moe/_preparation.py": "d23c61b2e27094a772bc3b1bee7c1ba2ea1e973750dc84250b1d05d0c360eab8",
+      "b12x/moe/_shared/kernels/reference.py": "d3e6e44ebba3e7c9566a6e6f76b982324713528f95cf96303aa3d2c73af866c1",
+      "b12x/moe/_shared/kernels/w4a8_compact_micro.py": "eb3463d2b3143041871c10e6cee5b0966453cb3be607fd3063d5f7713000dc32",
+      "b12x/moe/_shared/kernels/w4a8_compact_projection.py": "16af29c246370f02c89a869f6c9fa04e46a45acfdf5581783945ac8f551a26a5",
+      "b12x/moe/_shared/kernels/w4a8_compact_activation.py": "004939748448df8ff8c234a3a7a94c17691d12a6c4a658df1114cee186215216",
+      "b12x/moe/_shared/kernels/w4a8_phase2.py": "679958bc86b936adcd3220ad635e86c0a99c810de1229b0ecb567b94b40b9b7e"
+    },
+    "reference_semantics": {
+      "native": "V4.1 BF16 projection boundaries and routing before intermediate FP8 quantization",
+      "generic": "Declared W4A8-MX FP8 activation reference; tiny-decode actually consumes BF16 and accumulates BF16 atomically, so this is not its exact arithmetic oracle",
+      "compact": "FP8 input, BF16 FC1 and activation boundaries, FP8 intermediate, routing after FC2 before BF16 route output; FP32 top-k sum rounded to BF16"
+    }
+  }
+}
