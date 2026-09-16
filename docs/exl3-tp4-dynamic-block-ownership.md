@@ -329,3 +329,16 @@ paired artifacts labelled as ordinary packages. CPU package tests pass. The SM12
 rank/capacity variants (1, 16, 80, 256, 1024 and 4096 rows). This proves package
 compilation, not live Rust-worker correctness. Evidence:
 `release-v5-exl3-paired-package.json`.
+
+### Rust worker GPU check
+
+The paired Rust worker test passed on GB10 for layer 30 at 80 rows, emulating
+ranks 0 and 1 sequentially with all 384 experts resident and six experts routed.
+Both first/last boundary orientations matched the Python reference byte-for-byte
+through mapped output and multi-chunk host responses; mapped-buffer guard bytes
+remained intact. The initial harness launch lacked `/opt/ds41rt/lib` in its
+library path; correcting that allowed the test to run and pass in 1.77 seconds.
+This verifies worker loading, ownership upload, native launch and response
+formatting at that shape. It does not establish live four-Spark execution,
+capacity transitions, changing ownership across Rust worker launches or speed.
+Evidence: `release-v5-exl3-paired-worker-gpu.json`.

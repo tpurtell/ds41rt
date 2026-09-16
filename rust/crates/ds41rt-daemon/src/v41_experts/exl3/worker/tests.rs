@@ -252,3 +252,75 @@ fn paired_worker_loading_rejects_wrong_rank_and_mixed_capacities() -> Result<()>
     assert!(Exl3Worker::partition(root.path(), 80, 4).is_err());
     Ok(())
 }
+
+#[test]
+#[ignore = "requires paired Spark package, paired reference fixtures, snapshot and CUDA"]
+fn paired_worker_mapped_and_chunked_match_reference() -> Result<()> {
+    use ds41rt_loader::V41Exl3Partition;
+    use ds41rt_transport::v41_expert::{V41PairedRouteWord, V41_EXL3_PAIRED_REQUEST_FLAG};
+    let lib = unsafe { NativeLibrary::load(std::env::var("DS41RT_NATIVE_LIB")?)? };
+    lib.cuda_set_device(0)?;
+    let snapshot = std::path::PathBuf::from(std::env::var("DS41RT_EXL3_SNAPSHOT")?);
+    let catalog = ds41rt_loader::read_official_v41_catalog(ds41rt_loader::OFFICIAL_V41_MODEL_ID, &snapshot)?;
+    let package = std::path::PathBuf::from(std::env::var("DS41RT_EXL3_PAIRED_PACKAGE")?);
+    let fixtures = std::path::PathBuf::from(std::env::var("DS41RT_EXL3_PAIRED_FIXTURES")?);
+    for (rank, boundary) in [(0, "last"), (1, "first")] {
+        let fixture = fixtures.join(format!("paired-fixture-{boundary}"));
+        let meta: serde_json::Value = serde_json::from_slice(&std::fs::read(fixture.join("fixture.json"))?)?;
+        ensure!(meta["layer"] == "layers.30" && meta["paired_rank"] == rank
+            && meta["paired_boundary"] == boundary && meta["capacity"] == 80
+            && meta["input_format"] == "fp8_k32" && meta["canonical_routes"] == true
+            && meta["snapshot_revision"].as_str() == snapshot.file_name().and_then(|v| v.to_str()), "paired fixture identity mismatch");
+        let read = |name: &str| -> Result<Vec<u8>> {
+            let bytes = std::fs::read(fixture.join(format!("{name}.bin")))?;
+            ensure!(Some(bytes.len() as u64) == meta["artifacts"][name]["bytes"].as_u64()
+                && Some(format!("{:x}", Sha256::digest(&bytes)).as_str()) == meta["artifacts"][name]["sha256"].as_str(), "paired fixture checksum mismatch");
+            Ok(bytes)
+        };
+        let input = read("input")?; let ids = read("ids")?; let routing = read("weights")?;
+        let owners = read("owners")?; let expected = read("expected")?;
+        let aot = package.join(format!("tp4-rank{rank}"));
+        assert_eq!(Exl3Worker::partition(&aot, 80, rank)?, V41Exl3Partition::PairedTp4);
+        let layer = ExpertLayer::Backbone { layer:30, rank };
+        let budget = Exl3Weights::plan_with_layout(&catalog, layer, V41Exl3Partition::PairedTp4)?;
+        let weights = Rc::new(vec![Exl3Weights::load_with_layout(&lib, &catalog, layer,
+            budget.resident_bytes, V41Exl3Partition::PairedTp4)?]);
+        let mut worker = Exl3Worker::new(&lib, weights, &aot, 80, Exl3Worker::plan(&aot, 80)?)?;
+        let mut exchange = HostExpertExchange::new(80)?;
+        let mut request = ExpertProtocolV2Request::new(91,17,30,5120,ExpertV2Dtype::Fp8E4m3Ue8m0K32,
+            (0..80).map(|r| ExpertProtocolV2RowDescriptor { row_id:r as u64, source_kind:ExpertV2SourceKind::Prefill,
+                source_request_id:1,token_position:r as u64,route_offset:r*6,route_count:6 }).collect(),
+            (0..480).map(|r| {
+                let id = u32::from_le_bytes(ids[r*4..r*4+4].try_into().unwrap());
+                let owner = u32::from_le_bytes(owners[id as usize*4..id as usize*4+4].try_into().unwrap());
+                Ok(ExpertProtocolV2RouteEntry { row_index:r as u32/6,
+                    expert_id:V41PairedRouteWord { expert_id:id, owners:u8::try_from(owner)? }.encode()?,
+                    gate_weight:f32::from_le_bytes(routing[r*4..r*4+4].try_into().unwrap()) })
+            }).collect::<Result<Vec<_>>>()?, input)?;
+        request.header.flags |= EXPERT_PROTOCOL_V2_FLAG_V41_COMPACT_BF16 | V41_EXL3_PAIRED_REQUEST_FLAG;
+        let frame = request.encode()?;
+        let parsed = V41BackboneRequest::parse_paired(&frame,80)?;
+        let prefix = EXPERT_PROTOCOL_V2_RESPONSE_HEADER_LEN;
+        let mut host = HostAllocation::new(&lib,prefix+expected.len()+64)?;
+        host.bytes_mut().fill(0xa5);
+        let alias = lib.cuda_host_buffer_device_alias(host.buffer)?;
+        let response = unsafe { worker.execute_mapped_request(&parsed,rank as u64+1,&mut exchange,alias)? }.context("paired mapped response absent")?;
+        assert_eq!(response.header.flags & V41_EXL3_PAIRED_REQUEST_FLAG,0);
+        assert_eq!(&host.bytes_mut()[prefix..prefix+expected.len()], expected.as_slice());
+        assert!(host.bytes_mut()[..prefix].iter().all(|&v| v==0xa5));
+        assert!(host.bytes_mut()[prefix+expected.len()..].iter().all(|&v| v==0xa5));
+        request.header.flags |= EXPERT_PROTOCOL_V2_FLAG_DEBUG_CHECKSUM;
+        let frame = request.encode()?;
+        let parsed = V41BackboneRequest::parse_paired(&frame,80)?;
+        let mut indices = [0;3]; let mut actual = Vec::new();
+        worker.execute_host_chunks(&parsed,rank as u64+1,&mut exchange,&mut indices,
+            ds41rt_transport::EXPERT_PROTOCOL_V2_RESPONSE_DEBUG_HEADER_LEN+3*(10240+4), |response| {
+                response.validate()?;
+                assert_eq!(response.header.flags & V41_EXL3_PAIRED_REQUEST_FLAG,0);
+                actual.extend_from_slice(response.partial_output_payload); Ok(())
+            })?;
+        assert_eq!(actual,expected);
+        eprintln!("paired rank {rank} ({boundary}): mapped and chunked outputs match reference exactly");
+    }
+    Ok(())
+}

@@ -1,0 +1,28 @@
+{
+  "scope": "Rust Exl3Worker GPU execution on one GB10, real layer30, emulated ranks0/1; not live distributed qualification",
+  "test": "paired_worker_mapped_and_chunked_match_reference",
+  "rows": 80,
+  "reference_experts": 6,
+  "resident_experts": 384,
+  "ranks": [
+    0,
+    1
+  ],
+  "boundary_orientations": [
+    "last",
+    "first"
+  ],
+  "mapped_output_bitwise_equal": true,
+  "chunked_output_bitwise_equal": true,
+  "mapped_guard_bytes_intact": true,
+  "test_seconds": 1.77,
+  "log_sha256": "76b8c2a556d458401e65d3f736026d67fdbd2df588b81c434e5cfef9327bea4a",
+  "paired_source_revision": "e685f48c3b941208a8dc5915a742738a3c2de706",
+  "passed": true,
+  "pending": [
+    "live four-Spark dispatch",
+    "capacity transitions",
+    "ownership-changing Rust worker replay",
+    "performance measurements"
+  ]
+}
