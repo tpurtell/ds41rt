@@ -20,13 +20,17 @@
   "private_tail_tokens": 32768,
   "startup_runtime_headroom_bytes": 2147483648,
   "candidate_fix": {
-    "status": "being built; not yet qualified",
+    "status": "rejected: third mixed C16 sweep still exhausts memory",
     "retained_index_graphs_per_wave_before": 512,
     "retained_index_graphs_per_wave_candidate": 128,
-    "kv_pool_change": false
+    "kv_pool_change": false,
+    "cuda_eviction_test_passed": true,
+    "last_free_mib": 13,
+    "error": "ds41rt_cuda_graph_end_capture returned status 6: cudaGraphInstantiate failed: out of memory"
   },
   "archive": {
     "path": "docs/evidence/upstream-single-memory-failure-20260916.tar.gz",
-    "sha256": "cc412c3d07ce10a68406753875776b3a70cd615034becb3581b7bd8179695134"
-  }
+    "sha256": "b86dcd5dab7b36bb866e843571052e78ae46735ce8201f74b0be870047fc5212"
+  },
+  "next_step": "Temporary per-component CUDA graph memory tracing; no release readiness claim"
 }
