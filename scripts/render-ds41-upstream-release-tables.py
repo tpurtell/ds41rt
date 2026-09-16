@@ -32,9 +32,15 @@ for l,label in [('single','One-RTX'),('dual','Two-RTX')]:
  section(f'{label} prefill matrix','Median effective tokens/s after one shape warmup, with three samples per cell and verified parent reuse.',['Retained base',*[f'+{z//1024}K' for z in q['suffixes']]],rows)
 rows=[]
 retained={l:{r['context_tokens']:r for key in ['retained_decode','retained_decode_2k'] for r in x[l][key]['context_summaries']} for l in ['single','dual']}
+old_retained={l:{r['context_tokens']:r for r in old['layouts'][l]['retained_decode']['context_summaries']} for l in ['single','dual']}
 for n in sorted(retained['single']):
- rows.append([str(n//1024)+'K' if n else '0',*[f(retained[l][n]['weighted_observed_decode_tokens_per_second']) for l in ['single','dual']],*[f"{retained[l][n]['serving_completed']}/{retained[l][n]['cache_valid']}" for l in ['single','dual']]])
-section('Decode over retained context','Three samples for each of eight content types per base. The 2K row is a separate realistic-context measurement without a matching v3 baseline; it is not substituted for the original zero-context protocol.',['Retained base','1 RTX weighted dSpark','2 RTX weighted dSpark','1 RTX completed/cache-valid','2 RTX completed/cache-valid'],rows)
+ row=[str(n//1024)+'K' if n else '0']
+ for l in ['single','dual']:
+  value=retained[l][n]['weighted_observed_decode_tokens_per_second']
+  row.extend([f(value),pct(value,old_retained[l][n]['weighted_observed_decode_tokens_per_second']) if n in old_retained[l] else '—'])
+ row.extend(f"{retained[l][n]['serving_completed']}/{retained[l][n]['cache_valid']}" for l in ['single','dual'])
+ rows.append(row)
+section('Decode over retained context','Three samples for each of eight content types per base. Changes compare matched v3 retained-context runs. The 2K row is a separate realistic-context measurement without a matching v3 baseline; it is not substituted for the original zero-context protocol.',['Retained base','1 RTX weighted dSpark','Change from v3','2 RTX weighted dSpark','Change from v3','1 RTX completed/cache-valid','2 RTX completed/cache-valid'],rows)
 rows=[]
 for i,c in enumerate([1,2,4,8,16]):rows.append([c,*[f(x[l]['concurrency'][case]['summaries'][i]['median_aggregate_tps']) for case in ['counting','code','topic'] for l in ['single','dual']]])
 section('Concurrency scaling','Median aggregate tokens/s across three runs, timed from earliest first content to last completion, including admission gaps.',['Concurrency','1 RTX counting','2 RTX counting','1 RTX code','2 RTX code','1 RTX topic','2 RTX topic'],rows)
