@@ -1,0 +1,134 @@
+# EXL3 TP4: balance whole rotation blocks per expert
+
+Proposed TP4 optimization. The CPU ownership planner is implemented and tested;
+loading, transport and fused GPU execution are not integrated. This is not a
+release default and has no measured serving benefit yet.
+Keep H128 rotations local while distributing the two extra blocks of each
+18-block expert across the four Sparks. TP6 remains a separate goal.
+
+## Resident layout
+
+Number the expert's 2,304 intermediate channels as blocks 0–17, each 128
+channels wide. Each pair stores one duplicated boundary block:
+
+| Spark rank | Always computes | Optional block stored locally | Partner |
+| --- | --- | --- | --- |
+| 0 | 0–3 | 4 | 1 |
+| 1 | 5–8 | 4 | 0 |
+| 2 | 9–12 | 13 | 3 |
+| 3 | 14–17 | 13 | 2 |
+
+For each active expert, exactly one member of each pair computes its boundary
+block. All 18 blocks contribute exactly once. Every Spark stores five blocks,
+or 640 channels, rather than today's 640/640/512/512 allocation. Aggregate
+expert storage increases from 18 to 20 blocks: approximately 11.1% for the
+projection payloads. This is in-memory duplication; checkpoint files remain
+shared, unchanged inputs. Exact metadata, workspace and startup budgets still
+need measurement.
+
+Gate, up and down projections must use the same channel ownership. Their
+rotation/scaling tables follow the corresponding global channel indices.
+Boundary blocks must stay whole through rotations and activation. Each Spark
+still returns its ordinary full-hidden-width partial for the existing TP4 sum.
+Changing down-projection summation groups can change floating-point rounding;
+mathematical equivalence does not imply bitwise equivalence to the old split.
+
+## Admission and ownership
+
+Build one expert reuse histogram per lane's layer batch. Assign each active
+expert one ownership bit per pair, and retain that assignment for every row
+using that expert throughout the batch. No decision waits for the other lane.
+
+Balance estimated incremental boundary-block cost, starting with distinct
+expert weight bytes and adding a measured routed-row/reuse term. Token count
+alone is insufficient: repeated use of one expert can reuse streamed weights,
+while extra packed row groups still add computation. Mixed projection K3/K4
+rates also change the bytes associated with each expert.
+
+A deterministic largest-cost-first assignment to the lighter member of each
+pair is a reasonable first candidate. Tie breaking can depend on layer/expert
+identity without introducing a shared cross-lane decision. The coordinator
+must publish one authoritative assignment in batch-owned storage; workers must
+not independently infer ownership from possibly different execution order.
+The placement planner should execute where route information is already
+available, avoiding a new synchronous GPU-to-host read in the decode loop.
+
+For six equal-cost experts, each Spark computes 24 mandatory block-expert
+units plus three optional units: 27 each. The current arrangement computes
+30/30/24/24. That illustrative case reduces the maximum streamed work by 10%;
+it is not a measured kernel or serving speedup. Unequal costs and discrete
+assignments leave residual imbalance.
+
+## Fused execution requirements
+
+### Current implementation and integration points
+
+`rust/crates/ds41rt-core/src/exl3_tp4_ownership.rs` provides a reusable,
+allocation-free-on-success planner. It accepts measured marginal block costs
+for each pair and mandatory costs for each rank, rather than hard-coding a
+bandwidth/reuse model. Each pair sorts active experts by descending cost and
+assigns the next block to its lighter rank. Layer/expert identity can seed
+deterministic ties. Inactive experts carry an invalid ownership sentinel.
+The returned borrowed assignment prevents planner reuse while that view lives;
+transport must still retain its own batch-owned assignment through completion.
+
+Four focused CPU tests cover all four ownership combinations (each of the 18
+global blocks exactly once), the six-expert 27/27/27/27 example, unequal costs
+and initial rank loads, inactive experts, scratch reuse, invalid extents and
+overflow recovery. These prove planner/layout properties, not GPU equivalence.
+
+The resident channel intervals are contiguous: `[0,640)`, `[512,1152)`,
+`[1152,1792)`, `[1664,2304)`. Odd ranks have the optional block at their
+**beginning**, even ranks at their end. The planner exposes an active local
+block range of `0..5`, `0..4`, or `1..5`; kernels must retain the physical
+five-block stride. Contiguous resident slices avoid requiring scattered file
+reads, but loading time remains to be measured.
+
+`v41_backbone_router.rs::expert_request` already obtains completed route IDs
+from the router's pinned staging via `download_request`, then constructs the
+Spark request. `v41_backbone_lane.rs` invokes this for remote dispatch. This is
+the candidate histogram/planning insertion point without a new D2H operation.
+The request protocol needs an explicit ownership contract before wiring it in.
+`v41_exl3_staging.rs::tensor_slice` currently derives a fixed range from
+`intermediate_partition`; the paired ranges must be propagated through staging
+and residency budgeting together, not substituted only in the kernel.
+
+### GPU work still required
+
+The current resident layout and mixed kernel assume one intermediate width
+for every expert in a launch. Supporting this proposal requires a real
+per-expert active extent and boundary-block selection inside the fused path.
+
+- Store a fixed five-block physical layout, with explicit global block mapping.
+  Gate/up tile scheduling must omit an unowned optional block, and down must
+  omit its K contribution. Reading all five blocks and zeroing the fifth does
+  not deliver the intended streaming reduction.
+- Preserve correct physical strides when the active extent is four blocks.
+  Active width must not silently change the stride of the next expert or tier.
+- Keep four- and five-block experts in the same cooperative launch. Splitting
+  them into separate launches is only a control experiment, not the intended
+  fused implementation.
+- Preallocate ownership metadata, histograms and scratch for each lane/worker
+  owner. Bind them to the request lifetime, including cancellation and error
+  draining. Keep graph addresses stable and live counts out of compile keys.
+- Extend native export, runtime metadata and transport validation together.
+  Reject mismatched ownership contracts rather than silently using the fixed
+  partition on one worker.
+
+## Experiments and acceptance
+
+1. Verify exact coverage of all 18 blocks across all four ranks for every
+   ownership combination, including repeated experts and uneven row counts.
+2. Compare the four-rank sum with an independent fixed-partition/reference
+   computation on real mixed-projection checkpoint weights. Exercise both
+   ownership choices, boundary rotations, clipping, masked/padded routes,
+   changed-input graph replay, and cancellation/reuse of metadata storage.
+3. Measure actual weight traffic or tightly controlled native kernel timings
+   to establish that unowned blocks are skipped. Profile both small and large
+   expert sets and reuse distributions; include the planner/transport cost.
+4. Compare fixed placement, static per-expert placement, and dynamic ownership
+   on code, topic and mixed serving workloads. Preserve loading speed, the RTX
+   KV budget, and independent lanes. Inspect prefill separately.
+5. Integrate only after the complete path demonstrates a useful gain without
+   a clear regression. Retune adaptive costs after choosing the kernel/layout.
+   The final quant agreement and release qualification requirements still apply.

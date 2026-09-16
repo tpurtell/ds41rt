@@ -19,6 +19,11 @@ mod errors;
 mod expert_batch;
 mod expert_host_batch;
 mod expert_route_plan;
+mod exl3_tp4_ownership;
+pub use exl3_tp4_ownership::{
+    exl3_tp4_active_blocks, Exl3BoundaryCost, Exl3Tp4OwnershipPlan,
+    Exl3Tp4OwnershipPlanner, EXL3_TP4_RESIDENT_BLOCKS,
+};
 mod graph_buffers;
 mod ids;
 mod kv_cache;
