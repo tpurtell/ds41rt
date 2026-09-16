@@ -301,16 +301,34 @@ fn worker(
     if args.rtx_expert_layers != memory::LocalLayers::Count(0) {
         use crate::v41_experts::{ExpertLayer, ExpertWeights, local::LocalExpertWave};
         let local_started = Instant::now();
-        let per_lane = LocalExpertWave::device_bytes(&lib, capacity)?;
-        let budgets = (0..40).map(|layer| ExpertWeights::plan(&lib, &catalog,
-            ExpertLayer::BackboneFull { layer })).collect::<Result<Vec<_>>>()?;
+        use crate::v41_experts::exl3::Exl3Weights;
+        let exl3_directory = args.native_lib.parent().context("native library directory missing")?.join("exl3/rtx-tp1");
+        let compressed = catalog.exl3().is_some();
+        let per_lane = if compressed { LocalExpertWave::exl3_device_bytes(&exl3_directory, capacity)? }
+            else { LocalExpertWave::device_bytes(&lib, capacity)? };
+        let budgets = (0..40).map(|layer| {
+            let selection = ExpertLayer::BackboneFull { layer };
+            if compressed { Exl3Weights::plan(&catalog, selection) }
+            else { ExpertWeights::plan(&lib, &catalog, selection) }
+        }).collect::<Result<Vec<_>>>()?;
         let (free, total) = lib.cuda_memory_info()?;
         let plan = memory::LocalLayerPlan::new(args.rtx_expert_layers, &budgets,
             per_lane.checked_mul(2).context("local lane budget overflow")?, free, total, pool.reservation_bytes)?;
         tracing::info!(layers=plan.layers, resident_bytes=plan.resident_bytes,
             workspace_bytes=plan.workspace_bytes, peak_bytes=plan.peak_bytes,
             "bottom-up RTX expert placement");
-        if plan.layers > 0 {
+        if plan.layers > 0 && compressed {
+            let mut loaded = Vec::with_capacity(plan.layers);
+            for layer in 0..plan.layers {
+                loaded.push(Exl3Weights::load(&lib, &catalog, ExpertLayer::BackboneFull { layer },
+                    budgets[layer].peak_device_bytes()?)?);
+            }
+            let weights = std::rc::Rc::new(loaded);
+            transport.install_local(unsafe { LocalExpertWave::new_exl3(&lib, weights.clone(),
+                &exl3_directory, capacity, per_lane)? })?;
+            prefill_transport.install_local(unsafe { LocalExpertWave::new_exl3(&lib, weights,
+                &exl3_directory, capacity, per_lane)? })?;
+        } else if plan.layers > 0 {
             let mut loaded = Vec::with_capacity(plan.layers);
             for layer in 0..plan.layers {
                 loaded.push(ExpertWeights::load(&lib, &catalog, ExpertLayer::BackboneFull { layer },

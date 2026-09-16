@@ -470,3 +470,22 @@ is not the complete release build. The actual daemon loads a full EXL3 layer and
 opens its listener using the default adjacent package path, with no AOT override.
 The isolated smoke container was removed and standard v4 serving remains healthy.
 No RoCE inference traffic or end-to-end throughput is claimed by these checks.
+
+## RTX serving integration in progress
+
+The single-RTX local expert owner now selects a compressed backend for EXL3
+catalogs. Bottom-up placement uses actual compressed layer budgets and the
+packaged `rtx-tp1` workspace costs. Each lane retains independent execution
+owners and selects the smallest loaded capacity covering its live rows
+(1/16/80 plus the configured maximum). Routed FP32 token sums enter the existing
+shared-expert reducer; partial-launch failures drain the lane before reuse.
+All variant workspace allocations are included in the budget. They currently
+have separate storage; sharing mutually exclusive variant scratch is an
+optimization still to do, not an assumed memory saving.
+
+This wiring compiles and all 12 existing serving memory-planning tests pass.
+The test binary needed the host Python library directory in `LD_LIBRARY_PATH`.
+Its combined local EXL3/shared-expert GPU numerics and
+full serving are not yet qualified. RTX TP2 and dSpark backend integration remain
+pending, as do full-capacity packages and four-Spark RoCE inference. Existing
+full-model local kernels retain their original selection and shared scratch.
