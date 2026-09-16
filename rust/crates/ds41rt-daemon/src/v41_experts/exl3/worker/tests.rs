@@ -320,6 +320,44 @@ fn paired_worker_mapped_and_chunked_match_reference() -> Result<()> {
                 actual.extend_from_slice(response.partial_output_payload); Ok(())
             })?;
         assert_eq!(actual,expected);
+        // Alternate owner bits, then restore while crossing m1/m16/m80.
+        // Different capacity tiles can round BF16 differently: retain the
+        // predeclared real-checkpoint tolerance for those prefix comparisons.
+        for (rows, flip) in [(80usize, true), (1,false), (16,false), (17,false), (80,false)] {
+            let mut next = ExpertProtocolV2Request::new(92,17,30,5120,ExpertV2Dtype::Fp8E4m3Ue8m0K32,
+                request.rows[..rows].to_vec(), request.routes[..rows*6].to_vec(),
+                request.hidden_payload[..rows*5280].to_vec())?;
+            next.header.flags = request.header.flags;
+            if flip { for route in &mut next.routes { route.expert_id ^= 3 << 9; } }
+            let frame = next.encode()?;
+            let parsed = V41BackboneRequest::parse_paired(&frame,80)?;
+            actual.clear();
+            worker.execute_host_chunks(&parsed,rank as u64+1,&mut exchange,&mut indices,
+                ds41rt_transport::EXPERT_PROTOCOL_V2_RESPONSE_DEBUG_HEADER_LEN+3*(10240+4), |response| {
+                    actual.extend_from_slice(response.partial_output_payload); Ok(())
+                })?;
+            if flip {
+                assert_ne!(actual,expected, "changing ownership must change the partial");
+                assert!(actual.chunks_exact(2).all(|b| f32::from_bits((u16::from_le_bytes([b[0],b[1]]) as u32)<<16).is_finite()));
+            } else if rows == 80 {
+                assert_eq!(actual,expected, "restored ownership must reproduce the original output");
+            } else {
+                let mut max_error = 0f64; let mut max_reference = 0f64;
+                let mut error_sq = 0f64; let mut reference_sq = 0f64;
+                for (a,b) in actual.chunks_exact(2).zip(expected[..rows*10240].chunks_exact(2)) {
+                    let a = f32::from_bits((u16::from_le_bytes([a[0],a[1]]) as u32)<<16) as f64;
+                    let b = f32::from_bits((u16::from_le_bytes([b[0],b[1]]) as u32)<<16) as f64;
+                    assert!(a.is_finite() && b.is_finite());
+                    max_error = max_error.max((a-b).abs()); max_reference = max_reference.max(b.abs());
+                    error_sq += (a-b).powi(2); reference_sq += b*b;
+                }
+                assert!(max_reference > 0. && reference_sq > 0.);
+                let relative_max = max_error/max_reference;
+                let relative_l2 = (error_sq/reference_sq).sqrt();
+                eprintln!("paired rank {rank} rows {rows}: relative_max={relative_max} relative_l2={relative_l2}");
+                assert!(relative_max <= 0.006 && relative_l2 <= 0.003);
+            }
+        }
         eprintln!("paired rank {rank} ({boundary}): mapped and chunked outputs match reference exactly");
     }
     Ok(())

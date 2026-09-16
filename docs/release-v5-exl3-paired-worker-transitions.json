@@ -1,0 +1,64 @@
+{
+  "scope": "Rust GPU worker ownership restoration and capacity switching, one GB10 emulating ranks0/1; not distributed serving",
+  "rows_sequence": [
+    80,
+    1,
+    16,
+    17,
+    80
+  ],
+  "ownership_flipped_on_first_launch": true,
+  "restored_80_row_output_bitwise_equal": true,
+  "cross_capacity_tolerance": {
+    "relative_max": 0.006,
+    "relative_l2": 0.003
+  },
+  "checks": [
+    {
+      "rank": 0,
+      "rows": 1,
+      "relative_max": 0.0,
+      "relative_l2": 0.0
+    },
+    {
+      "rank": 0,
+      "rows": 16,
+      "relative_max": 0.0035460992907801418,
+      "relative_l2": 0.0009281174250820376
+    },
+    {
+      "rank": 0,
+      "rows": 17,
+      "relative_max": 0.0,
+      "relative_l2": 0.0
+    },
+    {
+      "rank": 1,
+      "rows": 1,
+      "relative_max": 0.0,
+      "relative_l2": 0.0
+    },
+    {
+      "rank": 1,
+      "rows": 16,
+      "relative_max": 0.0034482758620689655,
+      "relative_l2": 0.0008119936724749422
+    },
+    {
+      "rank": 1,
+      "rows": 17,
+      "relative_max": 0.0,
+      "relative_l2": 0.0
+    }
+  ],
+  "log_sha256": "14fdafbf324496fe5e933a67fc6e10b1953c5bff74b6bb88803407ca5dfae2cc",
+  "passed": true,
+  "staged_hosts": [
+    "ostrich",
+    "dodo",
+    "emu",
+    "kiwi"
+  ],
+  "staged_package_variants": 24,
+  "staged_binary_sha256": "93b658e442af07eac12bf593edbf11bb9ed09c8150ecb1cf5aa43fe03a275929"
+}

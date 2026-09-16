@@ -342,3 +342,12 @@ This verifies worker loading, ownership upload, native launch and response
 formatting at that shape. It does not establish live four-Spark execution,
 capacity transitions, changing ownership across Rust worker launches or speed.
 Evidence: `release-v5-exl3-paired-worker-gpu.json`.
+
+The extended worker check also passed ownership inversion followed by restoration
+and row counts 80→1→16→17→80 on both boundary orientations. Restored 80-row
+outputs were bitwise equal; smaller-capacity prefixes passed the predeclared
+relative-max ≤0.006 and relative-L2 ≤0.003 gates for different BF16 tile schedules.
+This checks stale state across m1/m16/m80, not every large-prefill transition.
+All four Sparks now have verified candidate packages and identical ARM binary
+hashes staged separately from their running services. Evidence:
+`release-v5-exl3-paired-worker-transitions.json`.
