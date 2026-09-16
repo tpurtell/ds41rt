@@ -1,0 +1,22 @@
+{
+  "scope": "component serial-tier equivalence and graph replay; not serving qualification",
+  "sparkinfer_revision": "4e31d0a10ea7ca24ac48d522fb65eaafbc27ad30",
+  "gpu": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+  "compute": [
+    12,
+    0
+  ],
+  "sm_count": 188,
+  "torch": "2.12.0a0+5aff3928d8.nv26.05",
+  "hidden": 5120,
+  "intermediate": 640,
+  "tiers": [
+    3,
+    4
+  ],
+  "direct": true,
+  "started_at": 1789564757.4615006,
+  "passed": true,
+  "completed_at": 1789564761.2409756,
+  "peak_allocated_bytes": 48475136
+}

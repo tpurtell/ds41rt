@@ -1,0 +1,29 @@
+{
+  "fork_revision": "c024d14ce936ddfc2c863377d033d85e1787924b",
+  "source_tree_sha256": "e1b8072d208e3f1f29c7ff3062fbaa6491186e0348e382f618401d8616f4b180",
+  "scope": "Mixed-Trellis SwiGLU limit forwarding and component serial/capture checks; native V4.1 serving integration still pending",
+  "limit": 10.0,
+  "geometry": [
+    5120,
+    640
+  ],
+  "checks": [
+    "two-tier K3/K4 packed routing",
+    "two-tier K3/K4 direct routing",
+    "three-tier K3/K4/K5 packed routing",
+    "clipped and unclipped finite references differ by more than 1 percent",
+    "mixed versus clipped serial relative error below 0.004",
+    "repeatability, masked routes where applicable, CUDA graph replay"
+  ],
+  "results": {
+    "SM120 RTX PRO 6000 188 SMs": {
+      "passed": 3,
+      "seconds": 15.92
+    },
+    "SM121 Spark GB10": {
+      "passed": 3,
+      "seconds": 18.44
+    }
+  },
+  "initial_fixture_correction": "Initial input scale 1.0 overflowed the unclipped FP16 control. Reduced it to 0.1 and require both controls finite, while preserving a measured clipping effect greater than 1 percent. Initial failure output retained."
+}

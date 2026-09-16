@@ -102,7 +102,8 @@ bandwidth benefit from bits alone.
 
 ## Completion gates
 
-- [ ] Verified Spark snapshots, unchanged hard links and four replacement shards.
+- [x] Verified Spark snapshots, unchanged hard links and four replacement shards.
+  [Per-host manifest and verification](release-v5-spark-snapshots.json).
 - [ ] Generic mixed projection loader, residency and native compute for RTX/Spark.
 - [ ] GPU numerical and graph correctness, including real checkpoint projections.
 - [ ] Optimized one/two-RTX decode, prefill, startup and memory without clear full-model regression.
@@ -155,3 +156,22 @@ Native packing, GPU execution and residency integration remain required. The
 native FP4 packer explicitly rejects EXL3 input; FP4 PLE requires its own row
 gather implementation. Neither format is claimed as a working serving backend
 yet. No v5 runtime or quality acceptance is claimed.
+
+## Initial GPU geometry check
+
+The inherited K3/K4 mixed component passed serial-tier comparison, masked routes,
+repeatability and CUDA graph replay at hidden=5120, intermediate=640 on SM120
+(188 SMs). This uses synthetic small activations and is not full V4.1 numerical
+qualification or a serving benchmark. The bounded probe is
+`python/tools/qualify_v41_exl3_geometry.py`.
+
+Fixed mixed-Trellis SwiGLU clipping in fork `c024d14c`, pushed to fork master
+and pinned in DS41RT. Both mixed compiler entry points and the production plan
+now forward the model limit to the common kernel, whose specialization identity
+already includes clipping. Three clipping-sensitive component tests pass on
+SM120 and SM121, covering two-tier direct/packed and three-tier packed execution.
+The clipped reference differs from its finite unclipped control by more than
+1%, and mixed output matches clipped serial execution within 0.4% relative norm.
+Repeatability and graph replay pass. [Evidence and fixture correction](release-v5-exl3-swiglu.json)
+preserve the initial overflowing control and its bounded replacement. Native
+AOT integration and model-level numerical qualification remain pending.
