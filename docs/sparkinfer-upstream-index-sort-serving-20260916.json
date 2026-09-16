@@ -1,0 +1,195 @@
+{
+  "scope": "Sequential fresh-server serving comparison; candidate first, baseline second. Same daemon and workers; only index position-sort source rebuilt. Development evidence; release acceptance unresolved.",
+  "arms": {
+    "baseline": {
+      "repeat": {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/index-sort-repeat-baseline.json",
+        "sha256": "e9d835bf9b72fce55e51a54eb1919dd1a18ceec63f8f7db711717119cb8008e3",
+        "passed": true,
+        "summaries": [
+          {
+            "repeat": 1,
+            "weighted_cases": 8,
+            "serving_completed": 8,
+            "objective_checks_passed": 4,
+            "objective_checks_assessed": 4,
+            "weighted_observed_decode_tokens_per_second": 96.85175097645535,
+            "partial_weighted_observed_decode_tokens_per_second": 96.85175097645535,
+            "complete_weighted_corpus": true,
+            "all_samples_passed": true
+          },
+          {
+            "repeat": 2,
+            "weighted_cases": 8,
+            "serving_completed": 8,
+            "objective_checks_passed": 4,
+            "objective_checks_assessed": 4,
+            "weighted_observed_decode_tokens_per_second": 96.38124607574298,
+            "partial_weighted_observed_decode_tokens_per_second": 96.38124607574298,
+            "complete_weighted_corpus": true,
+            "all_samples_passed": true
+          },
+          {
+            "repeat": 3,
+            "weighted_cases": 8,
+            "serving_completed": 8,
+            "objective_checks_passed": 4,
+            "objective_checks_assessed": 4,
+            "weighted_observed_decode_tokens_per_second": 92.40081480202136,
+            "partial_weighted_observed_decode_tokens_per_second": 92.40081480202136,
+            "complete_weighted_corpus": true,
+            "all_samples_passed": true
+          }
+        ]
+      },
+      "retained": {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/index-sort-retained-baseline.json",
+        "sha256": "9f2c40f47c4622ed1833e105a6e33d10de0c75e89dcb4349a160803a9a26d006",
+        "passed": true,
+        "summaries": [
+          {
+            "context_tokens": 2048,
+            "samples": 8,
+            "weighted_observed_decode_tokens_per_second": 97.46698202281881,
+            "serving_completed": 8,
+            "cache_valid": 8
+          },
+          {
+            "context_tokens": 32768,
+            "samples": 8,
+            "weighted_observed_decode_tokens_per_second": 90.66127479754013,
+            "serving_completed": 8,
+            "cache_valid": 8
+          }
+        ]
+      },
+      "metadata": {
+        "command": [
+          "/home/tj/Developer/ds41rt/.venv/bin/python",
+          "/home/tj/Developer/ds41rt/scripts/bench-ds41-release-decode.py",
+          "--base-url",
+          "http://127.0.0.1:8000",
+          "--tokenizer",
+          "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+          "--label",
+          "index-sort-repeat-baseline",
+          "--repeats",
+          "3",
+          "--nonce-seed",
+          "91601",
+          "--include-counting",
+          "--output",
+          "/home/tj/.cache/ds41rt-upstream-20260916/index-sort-repeat-baseline.json"
+        ],
+        "native_sha256": "37ec39843b24c52680e8da78ce7bf4b251f1e21a02f3ea1353eebb226b854284",
+        "daemon_sha256": "82ed41b4a5cdb7e11823e424019e54c7e22a2e0fa8fe3a4d6a330c3fd52b1326",
+        "started_ns": 1789521171768214387,
+        "finished_ns": 1789521216881346557,
+        "exit_code": 0
+      }
+    },
+    "candidate": {
+      "repeat": {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/index-sort-repeat-candidate.json",
+        "sha256": "2df9055fe4135079819b166b51da9af5f59b6416c49dcf91d6eacd5d0d2c8531",
+        "passed": true,
+        "summaries": [
+          {
+            "repeat": 1,
+            "weighted_cases": 8,
+            "serving_completed": 8,
+            "objective_checks_passed": 4,
+            "objective_checks_assessed": 4,
+            "weighted_observed_decode_tokens_per_second": 95.18381460783732,
+            "partial_weighted_observed_decode_tokens_per_second": 95.18381460783732,
+            "complete_weighted_corpus": true,
+            "all_samples_passed": true
+          },
+          {
+            "repeat": 2,
+            "weighted_cases": 8,
+            "serving_completed": 8,
+            "objective_checks_passed": 4,
+            "objective_checks_assessed": 4,
+            "weighted_observed_decode_tokens_per_second": 93.28686441962257,
+            "partial_weighted_observed_decode_tokens_per_second": 93.28686441962257,
+            "complete_weighted_corpus": true,
+            "all_samples_passed": true
+          },
+          {
+            "repeat": 3,
+            "weighted_cases": 8,
+            "serving_completed": 8,
+            "objective_checks_passed": 4,
+            "objective_checks_assessed": 4,
+            "weighted_observed_decode_tokens_per_second": 89.49952774977459,
+            "partial_weighted_observed_decode_tokens_per_second": 89.49952774977459,
+            "complete_weighted_corpus": true,
+            "all_samples_passed": true
+          }
+        ]
+      },
+      "retained": {
+        "path": "/home/tj/.cache/ds41rt-upstream-20260916/index-sort-retained-candidate.json",
+        "sha256": "e0a6aea868d5da8dd6a95d75d6ee4847f20a9463120fdb81779488f0ea7d45af",
+        "passed": true,
+        "summaries": [
+          {
+            "context_tokens": 2048,
+            "samples": 8,
+            "weighted_observed_decode_tokens_per_second": 94.82592007242127,
+            "serving_completed": 8,
+            "cache_valid": 8
+          },
+          {
+            "context_tokens": 32768,
+            "samples": 8,
+            "weighted_observed_decode_tokens_per_second": 89.14853118498863,
+            "serving_completed": 8,
+            "cache_valid": 8
+          }
+        ]
+      },
+      "metadata": {
+        "command": [
+          "/home/tj/Developer/ds41rt/.venv/bin/python",
+          "/home/tj/Developer/ds41rt/scripts/bench-ds41-release-decode.py",
+          "--base-url",
+          "http://127.0.0.1:8000",
+          "--tokenizer",
+          "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+          "--label",
+          "index-sort-repeat-candidate",
+          "--repeats",
+          "3",
+          "--nonce-seed",
+          "91601",
+          "--include-counting",
+          "--output",
+          "/home/tj/.cache/ds41rt-upstream-20260916/index-sort-repeat-candidate.json"
+        ],
+        "native_sha256": "8c6cccb1c3372567a1c49cc480a9cdf2b44d776a0a69cfa7c9d823caebaf0a4c",
+        "daemon_sha256": "82ed41b4a5cdb7e11823e424019e54c7e22a2e0fa8fe3a4d6a330c3fd52b1326",
+        "started_ns": 1789521037710628568,
+        "finished_ns": 1789521083829464089,
+        "exit_code": 0
+      }
+    }
+  },
+  "comparisons": {
+    "repeat": {
+      "samples_per_arm": 27,
+      "requests_equal": true,
+      "outputs_equal": true,
+      "median_weighted_tps": {
+        "baseline": 96.38124607574298,
+        "candidate": 93.28686441962257
+      }
+    },
+    "retained": {
+      "samples_per_arm": 16,
+      "requests_equal": true,
+      "outputs_equal": false
+    }
+  }
+}

@@ -78,6 +78,41 @@ They may still require mechanical merge/import/test fixes when shared library
 surfaces change. Attention/projection parallelization across GPUs is deferred;
 retain the current ownership and expert parallelism in comparisons.
 
+## Index-sort serving gate remains unresolved (September 16)
+
+[Serving comparison](sparkinfer-upstream-index-sort-serving-20260916.json)
+records a full native rebuild: the build log shows only `v41_index_topk.cu`
+recompiled before linking. The candidate retains the same attention, mHC,
+narrow-projection exports, daemon and four workers. Saved libraries remain
+available as `libcandidate-narrow.so` (before) and `libcandidate-index-sort.so`
+(after) in the integration cache.
+
+The candidate ran first, then the old library was restarted and ran the same
+three short-context repetitions followed by one eight-case retained-context
+repetition at 2K and 32K. These are sequential, not interleaved measurements.
+
+| Weighted decode TPS | Old sort | Bounded sort |
+| --- | ---: | ---: |
+| Short context, median of three | 96.38 | 93.29 |
+| 2K retained context, one repetition | 97.47 | 94.83 |
+| 32K retained context, one repetition | 90.66 | 89.15 |
+
+All 27 short-context requests and output hashes match between arms. All 16
+retained requests and both seed requests/replies match, and all cache accounting
+checks pass, but **11 retained output hashes differ**. Therefore retained TPS
+also compares different generated continuations and is not a clean latency
+comparison. The checker's serving/cache pass is not proof of output equivalence.
+Both short-context telemetry records show active memory clocks of 13365 MHz
+and zero sampled clock-event bits, with the configured 400 W limits unchanged.
+
+The full-serving result does not establish a gain and leaves a possible
+regression unresolved. Do not promote this change based on the isolated kernel
+speedup. Next establish retained-output repeatability with the old library
+across equivalent fresh starts, then isolate index outputs or draft/verification
+batching if needed. The old library is currently serving on port 8000; the
+production dependency lock has not advanced. Final release qualification and
+publication remain pending.
+
 ## Bounded final index-position sort (September 16)
 
 Reviewing upstream's position-only sort exposed avoidable work in our existing
