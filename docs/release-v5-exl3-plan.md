@@ -1157,3 +1157,35 @@ loading or throughput claim follows. Production serving is restored afterward.
 The rebuilt set is ready for the next optimization measurements. Adaptive
 recalibration, content-type acceptance, the requested performance/quality and
 quant-analysis tables, clean release images and v5 publication remain ahead.
+
+## Rebuilt EXL3 decode profile: code and topic
+
+[Instrumented decode evidence](release-v5-exl3-decode-profile.json) collects code
+and topic at C1/C8 with three samples each, using the rebuilt 25-layer dual-RTX
+configuration and K7. These are diagnostic traces: stage times include scheduling
+and transport waits, concurrent lanes overlap, and tracing perturbs throughput.
+Trace summaries include each benchmark's warm-up as well as measured samples.
+
+| Content | C | Instrumented median aggregate tok/s | Accepted / verified draft tokens | Emitted / request cycle | Mean predicted / observed verification time |
+|---|---:|---:|---:|---:|---:|
+| Code | 1 | 186.57 | 78.07% | 5.92 | 1.431 |
+| Code | 8 | 860.02 | 83.23% | 5.97 | 1.223 |
+| Topic | 1 | 109.70 | 60.28% | 2.86 | 1.411 |
+| Topic | 8 | 497.11 | 64.67% | 2.60 | 1.186 |
+
+The dual-RTX default still uses the legacy cost formula; the placement-aware
+profile is defaulted only for one RTX. The legacy forecast overestimates these
+observed verification times substantially. This supports recalibration after
+kernel tuning, but does not by itself identify the optimal verification length.
+Acceptance is conditional on the selected draft prefixes and is unrelated to the
+deferred teacher-forced quant top-1 agreement gate. Raw token denominators and
+cycle counts are retained in the evidence; zero acceptance counts lane rounds,
+not individual requests.
+
+For C1 code, mean lane-round time is 32.81 ms, including 2.56 ms drafting and
+29.82 ms verification. Expert-stage means are 294.8 microseconds per RTX layer
+and 716.4 microseconds per Spark layer. With 25 RTX and 15 Spark layers, Spark
+expert stages remain the largest measured verification component. These elapsed
+times are not standalone kernel timings. The next optimization investigation
+targets that Spark path, followed by the required adaptive cost fit and held-out
+acceptance/performance checks. Production serving is restored.

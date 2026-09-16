@@ -1,0 +1,665 @@
+{
+  "scope": "Summarize opt-in serving traces; elapsed stages include scheduler/transport waits.",
+  "caveats": [
+    "Includes benchmark warmup and all three measured samples.",
+    "Concurrent lanes overlap; layer times must not be added as end-to-end wall time.",
+    "Zero acceptance counts lane rounds, not individual request cycles.",
+    "Tracing perturbs throughput; these are optimization diagnostics, not release tables."
+  ],
+  "results": [
+    {
+      "case": "code",
+      "concurrency": 1,
+      "rounds": 144,
+      "verified_draft_tokens": 912,
+      "accepted_draft_tokens": 712,
+      "accepted_fraction": 0.7807017543859649,
+      "request_cycles": 144,
+      "emitted_tokens": 852,
+      "zero_acceptance_lane_rounds": 4,
+      "stages_us": {
+        "draft_us": {
+          "count": 144,
+          "mean": 2563.1875,
+          "median": 2572.5,
+          "min": 2152,
+          "max": 6467
+        },
+        "verify_us": {
+          "count": 144,
+          "mean": 29819.875,
+          "median": 30238.5,
+          "min": 20291,
+          "max": 54978
+        },
+        "total_us": {
+          "count": 144,
+          "mean": 32811.4375,
+          "median": 33141.5,
+          "min": 23090,
+          "max": 62069
+        }
+      },
+      "predicted_over_observed_verify": {
+        "count": 140,
+        "mean": 1.4307314646431126,
+        "median": 1.4478070257453624,
+        "min": 0.925899821707154,
+        "max": 1.6563581613031961
+      },
+      "backends": {
+        "rtx_tp2": {
+          "layer_samples": 3600,
+          "stages_us": {
+            "produced_us": {
+              "count": 3600,
+              "mean": 45.45777777777778,
+              "median": 22.0,
+              "min": 19,
+              "max": 1276
+            },
+            "index_us": {
+              "count": 3600,
+              "mean": 0.5377777777777778,
+              "median": 1.0,
+              "min": 0,
+              "max": 6
+            },
+            "attention_us": {
+              "count": 3600,
+              "mean": 122.38222222222223,
+              "median": 120.0,
+              "min": 100,
+              "max": 443
+            },
+            "experts_us": {
+              "count": 3600,
+              "mean": 294.80583333333334,
+              "median": 298.0,
+              "min": 190,
+              "max": 465
+            },
+            "finish_us": {
+              "count": 3600,
+              "mean": 12.212777777777777,
+              "median": 12.0,
+              "min": 7,
+              "max": 30
+            }
+          },
+          "rows": {
+            "count": 3600,
+            "mean": 7.333333333333333,
+            "median": 8.0,
+            "min": 3,
+            "max": 8
+          },
+          "distinct_experts": {
+            "count": 3600,
+            "mean": 25.302222222222223,
+            "median": 25.0,
+            "min": 10,
+            "max": 45
+          }
+        },
+        "spark_tp4": {
+          "layer_samples": 2160,
+          "stages_us": {
+            "produced_us": {
+              "count": 2160,
+              "mean": 40.922222222222224,
+              "median": 23.0,
+              "min": 20,
+              "max": 636
+            },
+            "index_us": {
+              "count": 2160,
+              "mean": 0.5416666666666666,
+              "median": 1.0,
+              "min": 0,
+              "max": 3
+            },
+            "attention_us": {
+              "count": 2160,
+              "mean": 120.97083333333333,
+              "median": 119.0,
+              "min": 99,
+              "max": 431
+            },
+            "experts_us": {
+              "count": 2160,
+              "mean": 716.4060185185185,
+              "median": 730.5,
+              "min": 288,
+              "max": 9990
+            },
+            "finish_us": {
+              "count": 2160,
+              "mean": 11.986574074074074,
+              "median": 12.0,
+              "min": 8,
+              "max": 28
+            }
+          },
+          "rows": {
+            "count": 2160,
+            "mean": 7.333333333333333,
+            "median": 8.0,
+            "min": 3,
+            "max": 8
+          },
+          "distinct_experts": {
+            "count": 2160,
+            "mean": 28.34259259259259,
+            "median": 30.0,
+            "min": 9,
+            "max": 44
+          }
+        }
+      },
+      "emitted_per_request_cycle": 5.916666666666667,
+      "verified_draft_per_request_cycle": 6.333333333333333,
+      "throughput": {
+        "concurrency": 1,
+        "samples": 3,
+        "median_aggregate_tps": 186.5666021938447,
+        "min_aggregate_tps": 184.40744846677873,
+        "max_aggregate_tps": 187.5432673404455
+      }
+    },
+    {
+      "case": "code",
+      "concurrency": 8,
+      "rounds": 252,
+      "verified_draft_tokens": 5404,
+      "accepted_draft_tokens": 4498,
+      "accepted_fraction": 0.8323464100666174,
+      "request_cycles": 900,
+      "emitted_tokens": 5373,
+      "zero_acceptance_lane_rounds": 1,
+      "stages_us": {
+        "draft_us": {
+          "count": 252,
+          "mean": 5715.805555555556,
+          "median": 6207.0,
+          "min": 2183,
+          "max": 9073
+        },
+        "verify_us": {
+          "count": 252,
+          "mean": 50265.269841269845,
+          "median": 50926.5,
+          "min": 20504,
+          "max": 522492
+        },
+        "total_us": {
+          "count": 252,
+          "mean": 56737.63888888889,
+          "median": 57973.5,
+          "min": 23296,
+          "max": 532566
+        }
+      },
+      "predicted_over_observed_verify": {
+        "count": 245,
+        "mean": 1.2233579394125276,
+        "median": 1.2122196095995224,
+        "min": 0.6923627254870159,
+        "max": 1.6274931841010187
+      },
+      "backends": {
+        "rtx_tp2": {
+          "layer_samples": 6300,
+          "stages_us": {
+            "produced_us": {
+              "count": 6300,
+              "mean": 101.03412698412698,
+              "median": 81.0,
+              "min": 20,
+              "max": 1660
+            },
+            "index_us": {
+              "count": 6300,
+              "mean": 1.344126984126984,
+              "median": 1.0,
+              "min": 0,
+              "max": 6
+            },
+            "attention_us": {
+              "count": 6300,
+              "mean": 252.6706349206349,
+              "median": 229.0,
+              "min": 101,
+              "max": 1804
+            },
+            "experts_us": {
+              "count": 6300,
+              "mean": 438.6430158730159,
+              "median": 433.0,
+              "min": 192,
+              "max": 8903
+            },
+            "finish_us": {
+              "count": 6300,
+              "mean": 21.86904761904762,
+              "median": 21.0,
+              "min": 7,
+              "max": 1374
+            }
+          },
+          "rows": {
+            "count": 6300,
+            "mean": 25.015873015873016,
+            "median": 32.0,
+            "min": 3,
+            "max": 32
+          },
+          "distinct_experts": {
+            "count": 6300,
+            "mean": 24.554603174603173,
+            "median": 25.0,
+            "min": 9,
+            "max": 45
+          }
+        },
+        "spark_tp4": {
+          "layer_samples": 3780,
+          "stages_us": {
+            "produced_us": {
+              "count": 3780,
+              "mean": 54.44259259259259,
+              "median": 33.0,
+              "min": 20,
+              "max": 1029
+            },
+            "index_us": {
+              "count": 3780,
+              "mean": 1.3936507936507936,
+              "median": 1.0,
+              "min": 0,
+              "max": 7
+            },
+            "attention_us": {
+              "count": 3780,
+              "mean": 177.62936507936507,
+              "median": 174.0,
+              "min": 99,
+              "max": 2025
+            },
+            "experts_us": {
+              "count": 3780,
+              "mean": 1263.3933862433862,
+              "median": 1037.5,
+              "min": 290,
+              "max": 453823
+            },
+            "finish_us": {
+              "count": 3780,
+              "mean": 17.354497354497354,
+              "median": 16.0,
+              "min": 7,
+              "max": 889
+            }
+          },
+          "rows": {
+            "count": 3780,
+            "mean": 25.015873015873016,
+            "median": 32.0,
+            "min": 3,
+            "max": 32
+          },
+          "distinct_experts": {
+            "count": 3780,
+            "mean": 27.493386243386244,
+            "median": 29.0,
+            "min": 9,
+            "max": 44
+          }
+        }
+      },
+      "emitted_per_request_cycle": 5.97,
+      "verified_draft_per_request_cycle": 6.004444444444444,
+      "throughput": {
+        "concurrency": 8,
+        "samples": 3,
+        "median_aggregate_tps": 860.0241296674859,
+        "min_aggregate_tps": 658.6020226406163,
+        "max_aggregate_tps": 864.7847380699247
+      }
+    },
+    {
+      "case": "topic",
+      "concurrency": 1,
+      "rounds": 364,
+      "verified_draft_tokens": 1128,
+      "accepted_draft_tokens": 680,
+      "accepted_fraction": 0.6028368794326241,
+      "request_cycles": 364,
+      "emitted_tokens": 1040,
+      "zero_acceptance_lane_rounds": 72,
+      "stages_us": {
+        "draft_us": {
+          "count": 364,
+          "mean": 2525.78021978022,
+          "median": 2584.0,
+          "min": 2067,
+          "max": 2690
+        },
+        "verify_us": {
+          "count": 364,
+          "mean": 23811.68956043956,
+          "median": 23126.0,
+          "min": 18907,
+          "max": 41911
+        },
+        "total_us": {
+          "count": 364,
+          "mean": 26725.824175824175,
+          "median": 26079.5,
+          "min": 21718,
+          "max": 44576
+        }
+      },
+      "predicted_over_observed_verify": {
+        "count": 356,
+        "mean": 1.4105200571148655,
+        "median": 1.4264304170309303,
+        "min": 0.9037887896019496,
+        "max": 1.6214655703263665
+      },
+      "backends": {
+        "rtx_tp2": {
+          "layer_samples": 9100,
+          "stages_us": {
+            "produced_us": {
+              "count": 9100,
+              "mean": 43.57989010989011,
+              "median": 22.0,
+              "min": 19,
+              "max": 1008
+            },
+            "index_us": {
+              "count": 9100,
+              "mean": 0.5186813186813187,
+              "median": 1.0,
+              "min": 0,
+              "max": 62
+            },
+            "attention_us": {
+              "count": 9100,
+              "mean": 107.64175824175824,
+              "median": 105.0,
+              "min": 95,
+              "max": 581
+            },
+            "experts_us": {
+              "count": 9100,
+              "mean": 245.07747252747254,
+              "median": 235.0,
+              "min": 170,
+              "max": 4207
+            },
+            "finish_us": {
+              "count": 9100,
+              "mean": 11.582197802197802,
+              "median": 12.0,
+              "min": 6,
+              "max": 40
+            }
+          },
+          "rows": {
+            "count": 9100,
+            "mean": 4.0989010989010985,
+            "median": 4.0,
+            "min": 2,
+            "max": 8
+          },
+          "distinct_experts": {
+            "count": 9100,
+            "mean": 16.965714285714284,
+            "median": 16.0,
+            "min": 6,
+            "max": 40
+          }
+        },
+        "spark_tp4": {
+          "layer_samples": 5460,
+          "stages_us": {
+            "produced_us": {
+              "count": 5460,
+              "mean": 39.245054945054946,
+              "median": 22.0,
+              "min": 20,
+              "max": 835
+            },
+            "index_us": {
+              "count": 5460,
+              "mean": 0.49065934065934064,
+              "median": 0.0,
+              "min": 0,
+              "max": 3
+            },
+            "attention_us": {
+              "count": 5460,
+              "mean": 104.82545787545787,
+              "median": 102.0,
+              "min": 94,
+              "max": 282
+            },
+            "experts_us": {
+              "count": 5460,
+              "mean": 452.5631868131868,
+              "median": 430.0,
+              "min": 229,
+              "max": 2490
+            },
+            "finish_us": {
+              "count": 5460,
+              "mean": 11.589377289377289,
+              "median": 12.0,
+              "min": 7,
+              "max": 26
+            }
+          },
+          "rows": {
+            "count": 5460,
+            "mean": 4.0989010989010985,
+            "median": 4.0,
+            "min": 2,
+            "max": 8
+          },
+          "distinct_experts": {
+            "count": 5460,
+            "mean": 16.052747252747253,
+            "median": 15.0,
+            "min": 6,
+            "max": 38
+          }
+        }
+      },
+      "emitted_per_request_cycle": 2.857142857142857,
+      "verified_draft_per_request_cycle": 3.098901098901099,
+      "throughput": {
+        "concurrency": 1,
+        "samples": 3,
+        "median_aggregate_tps": 109.70470397833641,
+        "min_aggregate_tps": 108.9741475456051,
+        "max_aggregate_tps": 110.53713396057303
+      }
+    },
+    {
+      "case": "topic",
+      "concurrency": 8,
+      "rounds": 707,
+      "verified_draft_tokens": 6295,
+      "accepted_draft_tokens": 4071,
+      "accepted_fraction": 0.6467037331215251,
+      "request_cycles": 2537,
+      "emitted_tokens": 6600,
+      "zero_acceptance_lane_rounds": 158,
+      "stages_us": {
+        "draft_us": {
+          "count": 707,
+          "mean": 5272.615275813296,
+          "median": 5668,
+          "min": 2077,
+          "max": 7486
+        },
+        "verify_us": {
+          "count": 707,
+          "mean": 34201.87270155587,
+          "median": 33662,
+          "min": 19019,
+          "max": 65736
+        },
+        "total_us": {
+          "count": 707,
+          "mean": 40161.142857142855,
+          "median": 40222,
+          "min": 21916,
+          "max": 72865
+        }
+      },
+      "predicted_over_observed_verify": {
+        "count": 692,
+        "mean": 1.1859538404518595,
+        "median": 1.1733779007702507,
+        "min": 0.6706331676789987,
+        "max": 1.5820825147347741
+      },
+      "backends": {
+        "rtx_tp2": {
+          "layer_samples": 17675,
+          "stages_us": {
+            "produced_us": {
+              "count": 17675,
+              "mean": 78.25148514851485,
+              "median": 37,
+              "min": 19,
+              "max": 2560
+            },
+            "index_us": {
+              "count": 17675,
+              "mean": 1.2845261669024046,
+              "median": 1,
+              "min": 0,
+              "max": 9
+            },
+            "attention_us": {
+              "count": 17675,
+              "mean": 180.83564356435645,
+              "median": 162,
+              "min": 94,
+              "max": 2448
+            },
+            "experts_us": {
+              "count": 17675,
+              "mean": 344.08944837340874,
+              "median": 317,
+              "min": 173,
+              "max": 4090
+            },
+            "finish_us": {
+              "count": 17675,
+              "mean": 19.49997171145686,
+              "median": 16,
+              "min": 7,
+              "max": 1018
+            }
+          },
+          "rows": {
+            "count": 17675,
+            "mean": 12.492220650636492,
+            "median": 12,
+            "min": 2,
+            "max": 32
+          },
+          "distinct_experts": {
+            "count": 17675,
+            "mean": 16.573239038189534,
+            "median": 15,
+            "min": 6,
+            "max": 65
+          }
+        },
+        "spark_tp4": {
+          "layer_samples": 10605,
+          "stages_us": {
+            "produced_us": {
+              "count": 10605,
+              "mean": 57.58821310702499,
+              "median": 28,
+              "min": 20,
+              "max": 1208
+            },
+            "index_us": {
+              "count": 10605,
+              "mean": 1.3231494578029233,
+              "median": 1,
+              "min": 0,
+              "max": 8
+            },
+            "attention_us": {
+              "count": 10605,
+              "mean": 161.11522866572372,
+              "median": 134,
+              "min": 90,
+              "max": 2090
+            },
+            "experts_us": {
+              "count": 10605,
+              "mean": 598.0890146157473,
+              "median": 541,
+              "min": 238,
+              "max": 2786
+            },
+            "finish_us": {
+              "count": 10605,
+              "mean": 18.1002357378595,
+              "median": 14,
+              "min": 8,
+              "max": 888
+            }
+          },
+          "rows": {
+            "count": 10605,
+            "mean": 12.492220650636492,
+            "median": 12,
+            "min": 2,
+            "max": 32
+          },
+          "distinct_experts": {
+            "count": 10605,
+            "mean": 15.624705327675624,
+            "median": 15,
+            "min": 6,
+            "max": 54
+          }
+        }
+      },
+      "emitted_per_request_cycle": 2.60149783208514,
+      "verified_draft_per_request_cycle": 2.481277098935751,
+      "throughput": {
+        "concurrency": 8,
+        "samples": 3,
+        "median_aggregate_tps": 497.1081032567983,
+        "min_aggregate_tps": 435.2634556134204,
+        "max_aggregate_tps": 517.2114729723214
+      }
+    }
+  ],
+  "passed": true,
+  "source_base_commit": "74d1b88",
+  "sparkinfer_revision": "fd8f8a68a3fd674e6c8d7d462692beb687b5939f",
+  "configuration": {
+    "rtx_gpus": 2,
+    "sparks": 4,
+    "rtx_expert_layers": 25,
+    "kv_tokens": 14680064,
+    "draft_limit": 7,
+    "prefill_batch_tokens": 2048
+  },
+  "archive": "docs/evidence/v5-exl3-decode-profile.tar.gz",
+  "archive_sha256": "ed85619dc8764bdc3f65592595ea553981da3736163a62134355ba3db5bda36c",
+  "production_restored": true
+}
