@@ -1,0 +1,87 @@
+{
+  "scope": "Configured SwiGLU clamp propagation into tiny-decode phases; no serving backend change.",
+  "candidate_lock": {
+    "schema": 1,
+    "repository": "https://github.com/tpurtell/sparkinfer-glmrt.git",
+    "revision": "fadedecb841091a0c8678f3513409f4efdf54bf7",
+    "source_tree_sha256": "66df9802e108d84718cf600744af1d93446675c83a16854bde4012079bb27f36"
+  },
+  "regression_tests": "......                                                                   [100%]\n6 passed in 2.34s\n",
+  "after": {
+    "scope": "Screen upstream expert numerics at DS41RT geometry before native adaptation.\n\nUses prepared GPU paths, not the serving native ABI. No serving speedup claim.\n",
+    "command": [
+      "python/tools/compare_v41_expert_upstream.py",
+      "--b12x-root",
+      "/home/tj/.cache/ds41rt-upstream-20260916/sparkinfer",
+      "--intermediate",
+      "1152",
+      "--rows",
+      "1",
+      "--activation",
+      "silu",
+      "--output",
+      "/home/tj/.cache/ds41rt-upstream-20260916/expert-upstream-clamped-n1152.json"
+    ],
+    "fork_revision": "fadedecb841091a0c8678f3513409f4efdf54bf7",
+    "script_sha256": "70b131f7febc993daf31c8a7cbf77bdf0bc4815097a43ba83490f0ad1ddea1c5",
+    "device": "_CudaDeviceProperties(name='NVIDIA RTX PRO 6000 Blackwell Workstation Edition', major=12, minor=0, total_memory=97249MB, multi_processor_count=188, uuid=fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, pci_bus_id=17, pci_device_id=0, pci_domain_id=0, L2_cache_size=128MB)",
+    "geometry": {
+      "experts": 384,
+      "hidden": 5120,
+      "intermediate": 1152,
+      "topk": 6
+    },
+    "cases": [
+      {
+        "rows": 1,
+        "activation": "silu",
+        "implementation": "micro",
+        "checks": [
+          {
+            "identical_input_replay_exact": null,
+            "cycle": 0,
+            "relative_l2": 0.04712773114442825,
+            "cosine": 0.9988892078399658,
+            "native_reference_gate": false,
+            "own_reference_relative_l2": 0.04913017153739929,
+            "own_reference_cosine": 0.9987923502922058
+          },
+          {
+            "identical_input_replay_exact": null,
+            "cycle": 1,
+            "relative_l2": 0.045876093208789825,
+            "cosine": 0.9989502429962158,
+            "native_reference_gate": false,
+            "own_reference_relative_l2": 0.043908003717660904,
+            "own_reference_cosine": 0.9990358352661133
+          },
+          {
+            "identical_input_replay_exact": false,
+            "cycle": 2,
+            "relative_l2": 0.045792751014232635,
+            "cosine": 0.9989547729492188,
+            "native_reference_gate": false,
+            "own_reference_relative_l2": 0.04373449832201004,
+            "own_reference_cosine": 0.999043345451355
+          }
+        ]
+      }
+    ],
+    "fork_dirty": "",
+    "fork_source_sha256": {
+      "b12x/moe/_shared/kernels/tiny_decode.py": "bbf0b9dbd5d80229678f397098cc987f3b048dc7c7a11f9bbada7895e0b4fc53",
+      "b12x/moe/fused_moe/_impl.py": "a4c362f874ace2925e1ba127989874d443c64dfe931aff05ad856ba14d784594",
+      "b12x/moe/fused_moe/_preparation.py": "d23c61b2e27094a772bc3b1bee7c1ba2ea1e973750dc84250b1d05d0c360eab8",
+      "b12x/moe/_shared/kernels/reference.py": "d3e6e44ebba3e7c9566a6e6f76b982324713528f95cf96303aa3d2c73af866c1"
+    },
+    "reference_semantics": {
+      "native": "V4.1 BF16 projection boundaries and routing before intermediate FP8 quantization",
+      "generic": "Declared W4A8-MX FP8 activation reference; tiny-decode actually consumes BF16 and accumulates BF16 atomically, so this is not its exact arithmetic oracle"
+    }
+  },
+  "racecheck": {
+    "status": "Terminated during expensive fixture setup before expert comparison; exit 15, no completed sanitizer verdict.",
+    "log": "========= COMPUTE-SANITIZER\n========= Error: process didn't terminate successfully\n========= Target application returned an error\n========= RACECHECK SUMMARY: 0 hazards displayed (0 errors, 0 warnings)\n"
+  },
+  "atomic_oracle_note": "Saturation tests enumerate all legal BF16 atomic accumulation orders. Exact example: 54 additions of 50 round to 2624, not FP32 2700."
+}

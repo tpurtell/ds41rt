@@ -78,6 +78,54 @@ They may still require mechanical merge/import/test fixes when shared library
 surfaces change. Attention/projection parallelization across GPUs is deferred;
 retain the current ownership and expert parallelism in comparisons.
 
+## Tiny-decode clamp fix and numerical-contract clarification (September 16)
+
+[Fix evidence](sparkinfer-upstream-tiny-clamp-20260916.json) identifies the
+N1152/M1 `micro` selection as the two-phase `tiny_decode.py` backend, not the
+similarly named general `micro.py` implementation. That backend explicitly
+consumes BF16 inputs without activation FP8 quantization and uses BF16 atomic
+output accumulation. Therefore the probe's earlier `own_reference` field is
+more accurately the **declared generic W4A8 reference**, not an exact arithmetic
+oracle for tiny decode. Small identical-replay differences can follow from the
+atomic accumulation order and do not independently prove a memory race.
+
+A real missing operation was found: the selected tiny path did not receive or
+apply the declared SwiGLU limit. Fork commit
+[`fadedecb`](https://github.com/tpurtell/sparkinfer-glmrt/commit/fadedecb841091a0c8678f3513409f4efdf54bf7)
+threads the limit through preparation, the custom launch operation and both
+compiled phases, includes it in compile identity, and clips gate/up before the
+SiLU product in aligned and tail paths. No serving native backend was switched.
+
+Six GPU regression cases pass at hidden size 5120, intermediate sizes 1152 and
+1184, and limits None/10/20, including changed-input graph replay. Their exact
+oracle enumerates BF16 atomic accumulation orders rather than comparing with
+a single FP32 sum. The initial FP32-sum test failed even for unchanged unclamped
+behavior: 54 BF16 additions of 50 yield 2624 instead of 2700. The revised oracle
+models that documented arithmetic; it does not widen an arbitrary tolerance.
+
+For the earlier random N1152/M1 input, discrepancy against the declared W4A8
+reference falls **13.38%→4.91% relative L2** after clamping. Native-contract
+error falls approximately **12.62%→4.71%**. It still fails the native numerical
+compatibility gate, as expected for different activation and output arithmetic;
+that gate remains unchanged. These are kernel diagnostics, not model-quality
+or serving-throughput conclusions. The corrected path still needs a conscious
+numerical/performance tradeoff or adaptation to the V4.1 boundaries.
+
+The broad racecheck (session 27536) was deliberately terminated during expensive
+fixture setup with exit 15. Its zero-hazards footer is **not a completed sanitizer
+pass**. Source inspection and the exact saturation oracle explain the observed
+atomic-order variation without requiring that incomplete run as evidence.
+
+The candidate fork is clean and pushed. Its local candidate lock now verifies
+revision `fadedecb` and source digest
+`66df9802e108d84718cf600744af1d93446675c83a16854bde4012079bb27f36`.
+The previous e157965b lock is preserved alongside archived native libraries;
+those artifacts are not relabeled as the new revision. The production lock
+and fork master remain unchanged pending full acceptance. Next compare the
+upstream FP8 materialized/compact expert paths with native boundary semantics,
+then measure complete paths on RTX and Spark. Coordinator serving remains
+stopped for these GPU experiments.
+
 ## Expert numerical screen at actual model geometry (September 16)
 
 [Prepared GPU evidence](sparkinfer-upstream-expert-numerics-20260916.json) and

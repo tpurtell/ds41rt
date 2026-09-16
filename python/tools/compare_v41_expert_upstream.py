@@ -47,6 +47,9 @@ def main():
             'script_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
             'device':str(torch.cuda.get_device_properties(args.device)),
             'geometry':{'experts':e,'hidden':h,'intermediate':n,'topk':6},'cases':[]}
+    report['fork_dirty']=subprocess.check_output(['git','-C',str(args.b12x_root),'status','--porcelain'],text=True)
+    report['fork_source_sha256']={name:hashlib.sha256((args.b12x_root/name).read_bytes()).hexdigest() for name in ['b12x/moe/_shared/kernels/tiny_decode.py','b12x/moe/fused_moe/_impl.py','b12x/moe/fused_moe/_preparation.py','b12x/moe/_shared/kernels/reference.py']}
+    report['reference_semantics']={'native':'V4.1 BF16 projection boundaries and routing before intermediate FP8 quantization','generic':'Declared W4A8-MX FP8 activation reference; tiny-decode actually consumes BF16 and accumulates BF16 atomically, so this is not its exact arithmetic oracle'}
     def save():args.output.write_text(json.dumps(report,indent=2)+'\n')
     save()
     for rows in args.rows:
