@@ -1,0 +1,29 @@
+{
+  "scope": "Daemon-owned compressed GPU allocation and upload on RTX SM120. This uses existing native CUDA memory/copy APIs; it does not launch EXL3 compute or enable quant serving.",
+  "passed": true,
+  "layer": 0,
+  "world": 4,
+  "rank": 2,
+  "intermediate": 512,
+  "experts": 384,
+  "resident_bytes": 1252798480,
+  "device_staging_bytes": 0,
+  "sampled_upload_destinations_equal": 45,
+  "initialized_metadata": "all exact",
+  "read_upload_banks": 2,
+  "read_lanes_per_bank": 16,
+  "source_tensor_jobs_per_expert": 9,
+  "native_memory_library_sha256": "2254da831b98c72dcfa6dd45385f8a9172e96e291404dcd2b3c6205d5820d40a",
+  "qualification_binary_sha256": "45aac0ab2647c1a3cc15238a68138e722f94e085755e35081c21038dc740d921",
+  "limitations": [
+    "640-wide rank test rejected by free-memory guard with the baseline server resident; still requires GPU qualification.",
+    "Initial binary launch needed libpython3.12 search path.",
+    "No startup speed, kernel execution, TP reduction or serving performance qualification."
+  ],
+  "logs": [
+    "evidence/v5-residency-gpu-build-final.log.gz",
+    "evidence/v5-residency-gpu-rtx.log.gz",
+    "evidence/v5-residency-gpu-rtx-attempt2.log.gz",
+    "evidence/v5-residency-gpu-rtx-rank2.log.gz"
+  ]
+}

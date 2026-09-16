@@ -249,3 +249,18 @@ are not yet connected to native device allocation/loading or serving. Staging
 scratch figures in the evidence are minimum capacities; callers may supply
 larger preallocated scratch to batch column reads. Startup speed remains to be
 measured with the final loader and configuration.
+
+`v41_experts/exl3.rs` now owns compressed GPU buffers and uploads the residency
+plan directly. Two banks each hold 16 pinned expert staging slots and bounded
+read scratch. Scoped CPU readers fill one bank while the other bank's stream
+uploads; bank reuse waits for its own stream. There is no device staging copy.
+Stream owners drain before pinned/device storage is released on errors.
+
+[GPU allocation/upload evidence](release-v5-exl3-gpu-residency.json) passed on
+SM120 for all 384 experts of layer 0, TP4 rank 2 (width 512), occupying
+1,252,798,480 payload bytes. Readback checked 45 destinations across the first,
+middle and last experts, plus all initialized metadata. The larger 640-wide
+rank was rejected by the free-memory guard while baseline serving was resident;
+its GPU upload qualification remains pending. This uses the baseline native
+library's memory/copy APIs. The new owner still needs the EXL3 execution adapter
+and serving selection; it is not yet a usable quant serving backend.
