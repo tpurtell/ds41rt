@@ -1,0 +1,57 @@
+{
+  "catalog-full.json": {
+    "tensors": 96085,
+    "coordinator_checkpoint_bytes": 18750160200,
+    "dspark_checkpoint_bytes": 7932874632,
+    "per_spark_checkpoint_bytes": 72194457600,
+    "spark_rank_checkpoint_bytes": [
+      72194457600,
+      72194457600,
+      72194457600,
+      72194457600
+    ],
+    "routed_exl3": false,
+    "host_mapped_bytes": 202758032400
+  },
+  "catalog-fp8ple.json": {
+    "tensors": 190549,
+    "coordinator_checkpoint_bytes": 17068576584,
+    "dspark_checkpoint_bytes": 6251291016,
+    "per_spark_checkpoint_bytes": 61872721920,
+    "spark_rank_checkpoint_bytes": [
+      61872721920,
+      61872721920,
+      49592586240,
+      49592586240
+    ],
+    "routed_exl3": true,
+    "host_mapped_bytes": 202758032400
+  },
+  "catalog-fp4ple.json": {
+    "tensors": 190551,
+    "coordinator_checkpoint_bytes": 17068576584,
+    "dspark_checkpoint_bytes": 6251291016,
+    "per_spark_checkpoint_bytes": 61872721920,
+    "spark_rank_checkpoint_bytes": [
+      61872721920,
+      61872721920,
+      49592586240,
+      49592586240
+    ],
+    "routed_exl3": true,
+    "host_mapped_bytes": 110595290408
+  },
+  "scope": "Validated checkpoint storage and aligned packed reads; not GPU residency or serving qualification",
+  "checks": [
+    "73 loader unit tests passed; 2 opt-in fixture tests ignored before adding the real staging fixture",
+    "K3/K4 gate/up/down packed bytes and rotations reconstruct exactly across TP2/TP4 on the published FP8-PLE checkpoint",
+    "Synthetic K2-K5 staging, all projections and TP1/TP2/TP4, offsets beyond 2 GiB",
+    "ds41rt-daemon cargo check passed"
+  ],
+  "evidence": [
+    "docs/evidence/v5-exl3-staging-real.log.gz",
+    "docs/evidence/v5-loader-catalog-tests.log.gz",
+    "docs/evidence/v5-loader-exl3-fp4ple.log.gz",
+    "docs/evidence/v5-loader-exl3-fp8ple.log.gz"
+  ]
+}

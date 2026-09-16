@@ -108,7 +108,7 @@ pub struct V41Exl3Manifest {
     pub ple_quantization: Option<Value>,
 }
 
-fn read_json(path: &Path, limit: u64) -> Result<Value> {
+pub(crate) fn read_json(path: &Path, limit: u64) -> Result<Value> {
     let mut bytes = Vec::new();
     File::open(path)
         .with_context(|| format!("opening {}", path.display()))?

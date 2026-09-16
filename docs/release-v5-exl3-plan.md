@@ -132,7 +132,26 @@ without reading weight payloads. Raw outputs are preserved in
 separately with `DS41RT_EXL3_SNAPSHOT` and `cargo test -p ds41rt-loader
 v41_exl3 --lib -- --include-ignored --nocapture`.
 
-The production `read_official_v41_catalog` path still needs its EXL3 inventory
-branch, followed by native packing, execution and residency integration. The
-new descriptor is not yet a serving backend. No v5 runtime or quality acceptance
-is claimed yet.
+The production `read_official_v41_catalog` now validates full, EXL3 FP8-PLE,
+and EXL3 NVFP4-PLE inventories, including unchanged non-routed tensors and exact
+index/header coverage. Numbered shard counts are derived for EXL3 rather than
+fixed to the supplied artifact. The original full checkpoint still validates.
+
+`v41_exl3_staging.rs` adds caller-buffer reads of packed projections and rotations.
+It supports TP1/TP2/TP4 with complete H128 blocks and 64-bit file offsets. Full
+reads avoid the column-copy scratch path. Synthetic K2–K5 reads at offsets beyond
+2 GiB pass; K3/K4 gate/up/down and rotation reads from the actual checkpoint
+reconstruct the full bytes exactly across TP2 and TP4. The daemon compiles with
+the catalog changes. [Loader evidence](release-v5-exl3-loader.json) records all
+three validated catalogs and the staging checks.
+
+The catalog accounts for rank-specific storage, including replicated hidden-axis
+rotations. Under the current aligned partition candidate, all-backbone Spark
+weights are 61.87 / 61.87 / 49.59 / 49.59 GB, versus 72.19 GB on each Spark for
+the full checkpoint. These are checkpoint storage budgets before RTX offload,
+kernel conversion, workspace and runtime overhead—not final deployment budgets.
+
+Native packing, GPU execution and residency integration remain required. The
+native FP4 packer explicitly rejects EXL3 input; FP4 PLE requires its own row
+gather implementation. Neither format is claimed as a working serving backend
+yet. No v5 runtime or quality acceptance is claimed.

@@ -17,6 +17,8 @@ fn main() -> Result<()> {
             "coordinator_checkpoint_bytes": budget.coordinator_bytes,
             "dspark_checkpoint_bytes": budget.dspark_bytes,
             "per_spark_checkpoint_bytes": budget.per_spark_bytes,
+            "spark_rank_checkpoint_bytes": budget.spark_rank_bytes,
+            "routed_exl3": catalog.exl3().is_some(),
             "host_mapped_bytes": budget.host_mapped_bytes,
         })
     );

@@ -15,6 +15,8 @@ pub use v41_catalog::{
 };
 mod v41_config;
 mod v41_exl3;
+mod v41_exl3_staging;
+pub use v41_exl3_staging::V41Exl3TensorSlice;
 pub use v41_exl3::{read_v41_exl3_manifest, V41Exl3Manifest, V41Exl3Projection,
     V41Exl3ProjectionKind, V41_EXL3_SCHEMA};
 mod v41_image;

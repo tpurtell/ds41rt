@@ -23,6 +23,9 @@ pub enum V41TensorPlacement {
         expert: usize,
         axis: usize,
     },
+    /// Packed EXL3 projection; rotations and unequal aligned TP slices require
+    /// the projection descriptor rather than the native FP4 slicing rule.
+    BackboneExl3,
 }
 
 #[derive(Debug, Clone)]
@@ -37,6 +40,7 @@ pub struct OfficialV41Catalog {
     config: OfficialV41Config,
     snapshot: PathBuf,
     tensors: Vec<V41Tensor>,
+    exl3: Option<crate::V41Exl3Manifest>,
 }
 
 /// Bounded range reads for a validated, unsharded coordinator tensor.
@@ -69,6 +73,9 @@ impl V41CoordinatorTensorReader {
 }
 
 impl OfficialV41Catalog {
+    pub fn exl3(&self) -> Option<&crate::V41Exl3Manifest> {
+        self.exl3.as_ref()
+    }
     pub fn coordinator_tensor_reader(&self, name: &str) -> Result<V41CoordinatorTensorReader> {
         let tensor = self.tensor(name)?;
         ensure!(
@@ -102,6 +109,10 @@ impl OfficialV41Catalog {
     pub fn device_tensor_bytes(&self, name: &str, spark_rank: Option<usize>) -> Result<u64> {
         let tensor = self.tensor(name)?;
         match tensor.placement {
+            V41TensorPlacement::BackboneExl3 => {
+                let rank = spark_rank.context("EXL3 backbone requires a Spark rank")?;
+                self.exl3_tensor_bytes(name, 4, rank)
+            }
             V41TensorPlacement::HostMappedEngram => {
                 anyhow::bail!("engram tables must be mapped, not eagerly loaded")
             }
@@ -131,6 +142,10 @@ impl OfficialV41Catalog {
         dst: &mut [u8],
         scratch: &mut [u8],
     ) -> Result<usize> {
+        if matches!(self.tensor(name)?.placement, V41TensorPlacement::BackboneExl3) {
+            return self.read_exl3_tensor_into(name, 4,
+                spark_rank.context("EXL3 backbone requires a Spark rank")?, dst, scratch);
+        }
         let bytes = usize::try_from(self.device_tensor_bytes(name, spark_rank)?)?;
         let axis = match self.tensor(name)?.placement {
             V41TensorPlacement::BackboneExpertTp4 { axis, .. } => Some(axis),
@@ -227,6 +242,8 @@ impl OfficialV41Catalog {
     /// # Safety
     /// Checkpoint files must remain immutable for the lifetime of the returned maps.
     pub unsafe fn map_engram(&self, layer: usize) -> Result<crate::EngramTable> {
+        ensure!(self.exl3.as_ref().is_none_or(|m| m.ple_quantization.is_none()),
+            "NVFP4 PLE requires the NVFP4 row gather path");
         ensure!(
             self.config.text().engram_layer_ids.contains(&layer),
             "no engram table at layer {layer}"
@@ -279,9 +296,20 @@ impl OfficialV41Catalog {
                         .per_spark_bytes
                         .checked_add(bytes / 4)
                         .context("Spark weight byte overflow")?;
+                    for rank_bytes in &mut budget.spark_rank_bytes {
+                        *rank_bytes = rank_bytes.checked_add(bytes / 4).context("Spark rank budget overflow")?;
+                    }
+                }
+                V41TensorPlacement::BackboneExl3 => {
+                    for rank in 0..4 {
+                        budget.spark_rank_bytes[rank] = budget.spark_rank_bytes[rank]
+                            .checked_add(self.exl3_tensor_bytes(&tensor.metadata.name, 4, rank)?)
+                            .context("EXL3 Spark rank budget overflow")?;
+                    }
                 }
             }
         }
+        budget.per_spark_bytes = *budget.spark_rank_bytes.iter().max().unwrap();
         Ok(budget)
     }
 }
@@ -292,6 +320,8 @@ pub struct V41StorageBudget {
     /// Included in coordinator_bytes; shared embedding/output tensors are counted only once.
     pub dspark_bytes: u64,
     pub per_spark_bytes: u64,
+    /// Exact per-rank bytes; per_spark_bytes is their maximum for legacy callers.
+    pub spark_rank_bytes: [u64; 4],
     pub host_mapped_bytes: u64,
 }
 
@@ -383,29 +413,56 @@ fn placement(name: &str) -> V41TensorPlacement {
 
 /// Header-only inspection: never reads or eagerly allocates checkpoint tensor payloads.
 pub fn read_official_v41_catalog(model_id: &str, snapshot: &Path) -> Result<OfficialV41Catalog> {
-    let config = read_official_v41_config(model_id, snapshot)?;
+    let raw_config: serde_json::Value = crate::v41_exl3::read_json(&snapshot.join("config.json"), 1024 * 1024)?;
+    let exl3 = if raw_config["quantization_config"]["quant_method"] == "exl3" {
+        Some(crate::read_v41_exl3_manifest(snapshot)?)
+    } else { None };
+    let config = match &exl3 {
+        Some(manifest) => manifest.config.clone(),
+        None => read_official_v41_config(model_id, snapshot)?,
+    };
     #[derive(Deserialize)]
     struct Index {
         weight_map: BTreeMap<String, String>,
     }
     let mut bytes = Vec::new();
     File::open(snapshot.join("model.safetensors.index.json"))?
-        .take(16 * 1024 * 1024 + 1)
+        .take(64 * 1024 * 1024 + 1)
         .read_to_end(&mut bytes)?;
     ensure!(
-        bytes.len() <= 16 * 1024 * 1024,
-        "checkpoint index exceeds sixteen MiB"
+        bytes.len() <= 64 * 1024 * 1024,
+        "checkpoint index exceeds sixty-four MiB"
     );
     let index: Index = serde_json::from_slice(&bytes)?;
-    let expected = expected_tensors()?;
+    let mut expected = expected_tensors()?;
+    if let Some(manifest) = &exl3 {
+        expected.retain(|name, _| !name.contains(".ffn.experts."));
+        for projection in manifest.projections.values() {
+            for (suffix, dtype, shape, bytes) in [
+                ("trellis", DType::I16, projection.trellis_shape().to_vec(), projection.trellis_bytes()),
+                ("suh", DType::F16, vec![projection.input_features], projection.input_features * 2),
+                ("svh", DType::F16, vec![projection.output_features], projection.output_features * 2),
+                ("mcg", DType::I32, vec![], 4),
+            ] {
+                expected.insert(format!("{}.{suffix}", projection.name),
+                    ExpectedTensor { dtype, shape, bytes: bytes as u64 });
+            }
+        }
+        if let Some(ple) = &manifest.ple_quantization {
+            apply_nvfp4_ple_contract(&mut expected, ple, config.text().engram_layer_ids.as_slice())?;
+        }
+    }
     ensure!(
         index.weight_map.len() == expected.len(),
         "official tensor inventory count mismatch: expected {}, got {}",
         expected.len(),
         index.weight_map.len()
     );
-    let allowed_shards: BTreeSet<_> = (1..=48)
-        .map(|i| format!("model-{i:05}-of-00048.safetensors"))
+    let shard_count = if exl3.is_some() {
+        index.weight_map.values().collect::<BTreeSet<_>>().len()
+    } else { 48 };
+    let allowed_shards: BTreeSet<_> = (1..=shard_count)
+        .map(|i| format!("model-{i:05}-of-{shard_count:05}.safetensors"))
         .collect();
     let mut shards: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for (name, shard) in &index.weight_map {
@@ -423,8 +480,8 @@ pub fn read_official_v41_catalog(model_id: &str, snapshot: &Path) -> Result<Offi
             .insert(name.clone());
     }
     ensure!(
-        shards.len() == 48,
-        "official checkpoint requires all 48 shards"
+        shards.len() == shard_count,
+        "checkpoint requires all {shard_count} shards"
     );
     let mut tensors = Vec::with_capacity(expected.len());
     for (shard, names) in shards {
@@ -444,7 +501,10 @@ pub fn read_official_v41_catalog(model_id: &str, snapshot: &Path) -> Result<Offi
             );
             let spec = &expected[&tensor.name];
             validate_tensor(&tensor, spec)?;
-            let target = placement(&tensor.name);
+            let target = if exl3.is_some() && tensor.name.starts_with("layers.")
+                && tensor.name.contains(".ffn.experts.") {
+                V41TensorPlacement::BackboneExl3
+            } else { placement(&tensor.name) };
             if let V41TensorPlacement::BackboneExpertTp4 { axis, .. } = target {
                 ensure!(
                     tensor.shape[axis] % 4 == 0,
@@ -488,6 +548,7 @@ pub fn read_official_v41_catalog(model_id: &str, snapshot: &Path) -> Result<Offi
         config,
         snapshot: snapshot.to_path_buf(),
         tensors,
+        exl3,
     })
 }
 
@@ -513,6 +574,39 @@ fn validate_tensor(tensor: &SafetensorsTensorMetadata, spec: &ExpectedTensor) ->
         spec.bytes,
         tensor.byte_length
     );
+    Ok(())
+}
+
+fn apply_nvfp4_ple_contract(expected: &mut BTreeMap<String, ExpectedTensor>,
+    ple: &serde_json::Value, layers: &[usize]) -> Result<()> {
+    ensure!(ple["schema"] == "ds41rt.nvfp4-ple.v1" && ple["format"] == "nvfp4"
+        && ple["block_size"] == 16 && ple["packing"] == "even-element-low-nibble"
+        && ple["scale_layout"] == "row-major"
+        && ple["reconstruction"] == "E2M1(weight) * FP8_E4M3(weight_scale) * FP32(weight_scale_2)",
+        "unsupported NVFP4 PLE storage contract");
+    let tables = ple["tensors"].as_object().context("missing NVFP4 PLE tables")?;
+    ensure!(tables.len() == layers.len(), "NVFP4 PLE must cover exactly the original tables");
+    for &layer in layers {
+        let prefix = format!("layers.{layer}.engram.embed");
+        let table = tables.get(&prefix).with_context(|| format!("missing {prefix} PLE metadata"))?;
+        let original = expected.get(&format!("{prefix}.weight")).context("missing original PLE weight")?;
+        let shape = original.shape.clone();
+        ensure!(shape.len() == 2 && shape[1] % 16 == 0
+            && table["logical_shape"] == serde_json::to_value(&shape)?
+            && table["weight_dtype"] == "uint8" && table["weight_scale_dtype"] == "float8_e4m3fn"
+            && table["weight_scale_2_dtype"] == "float32"
+            && table["global_scale"].as_f64().is_some_and(|s| s.is_finite() && s > 0.0),
+            "invalid NVFP4 PLE geometry or scale for {prefix}");
+        let rows = shape[0]; let columns = shape[1];
+        ensure!(expected.remove(&format!("{prefix}.scale")).is_some(), "missing original PLE scales");
+        for (suffix, dtype, shape, bytes) in [
+            ("weight", DType::U8, vec![rows, columns / 2], rows as u64 * columns as u64 / 2),
+            ("weight_scale", DType::F8E4M3, vec![rows, columns / 16], rows as u64 * columns as u64 / 16),
+            ("weight_scale_2", DType::F32, vec![], 4),
+        ] {
+            expected.insert(format!("{prefix}.{suffix}"), ExpectedTensor { dtype, shape, bytes });
+        }
+    }
     Ok(())
 }
 
@@ -588,6 +682,7 @@ mod tests {
                 include_bytes!("official-v41-config.json"),
             )
             .unwrap(),
+            exl3: None,
             snapshot: dir.path().into(),
             tensors: vec![V41Tensor {
                 shard: "fixture".into(),
@@ -707,6 +802,7 @@ mod expert_staging_tests {
                 include_bytes!("official-v41-config.json"),
             )
             .unwrap(),
+            exl3: None,
             snapshot: dir.path().into(),
             tensors,
         };
