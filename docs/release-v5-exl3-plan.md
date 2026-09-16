@@ -264,3 +264,22 @@ rank was rejected by the free-memory guard while baseline serving was resident;
 its GPU upload qualification remains pending. This uses the baseline native
 library's memory/copy APIs. The new owner still needs the EXL3 execution adapter
 and serving selection; it is not yet a usable quant serving backend.
+
+## Native module adapter and dSpark geometry
+
+The EXL3 exporter now accepts top-3 dSpark and top-6 backbone routing rather
+than fixing every export to top-6. A native info function reports geometry,
+tier bits and pointer/scalar counts. `ds41rt-ffi::V41Exl3Kernel` owns a loaded
+module and its CUDA context handle, validates the reported contract and checks
+argument table lengths before launch. It is thread-bound and must outlive all
+streams/graphs referencing its code. Execution buffer ownership/order remains
+an explicit unsafe contract pending the daemon's bound execution adapter.
+
+[dSpark/native-module evidence](release-v5-exl3-dspark-aot.json) passes for six
+real stage-0 experts at width 2304/top-3, rows 1, 3, 15 and 16, including graph
+replay with masked routes and poisoned routing metadata. Rust initializes the
+same module outside Python and rejects incomplete argument tables. This caught
+an incomplete link: Python's globally loaded CuTe runtime masked missing symbols.
+The module now explicitly links `cute_dsl_runtime` with undefined-symbol errors
+enabled. Full dSpark residency/execution, Rust compute launches, TP integration
+and quant serving still need completion and qualification.

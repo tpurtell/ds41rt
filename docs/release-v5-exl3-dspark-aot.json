@@ -1,0 +1,78 @@
+{
+  "scope": "Six actual dSpark stage-0 experts, full intermediate width 2304, top-3 K3/K4, native packed compute versus Python B12x. Rust module initialization and argument-count guards also checked; Rust GPU compute calls and quant serving are not yet qualified.",
+  "qualification": {
+    "passed": true,
+    "scope": "native AOT versus B12x, six real checkpoint experts; not full-model qualification",
+    "checkpoint_layer": "mtp.0",
+    "topk": 3,
+    "native_info_verified": true,
+    "sparkinfer_revision": "c024d14ce936ddfc2c863377d033d85e1787924b",
+    "compute": [
+      12,
+      0
+    ],
+    "intermediate": 2304,
+    "direct": false,
+    "route_bridge_sha256": "5a0cf413ba17068bf5acb3e4b5ef88560caf091feaaf3b35285860b9fa8771c4",
+    "snapshot_revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+    "projection_tiers": [
+      [
+        4,
+        4,
+        4
+      ],
+      [
+        3,
+        3,
+        3
+      ],
+      [
+        4,
+        4,
+        4
+      ],
+      [
+        4,
+        4,
+        4
+      ],
+      [
+        3,
+        3,
+        4
+      ],
+      [
+        3,
+        4,
+        4
+      ]
+    ],
+    "aot_manifest_sha256": "94798909cdb2a8dec1c82b225cbd842103260c41c5211ca8eddca4e461107b1f",
+    "bridge_sha256": "8a33dfe8a27f9474f1eb171321bc017b600fbcc0f5c2c46bb48b435a8a3c81f6",
+    "checks": [
+      {
+        "rows": 1,
+        "bitwise_equal": true
+      },
+      {
+        "rows": 3,
+        "bitwise_equal": true
+      },
+      {
+        "rows": 15,
+        "bitwise_equal": true
+      },
+      {
+        "rows": 16,
+        "bitwise_equal": true
+      }
+    ],
+    "graph_changed_inputs_and_routes": true,
+    "packed_metadata_poisoned_before_native": true
+  },
+  "rust_module_initialization_passed": true,
+  "rust_argument_count_guard_passed": true,
+  "link_fix": "Explicitly link cute_dsl_runtime with -Wl,-z,defs. The earlier Python process provided missing runtime symbols globally, masking the incomplete link.",
+  "artifact": "evidence/v5-exl3-dspark-aot.tar.gz",
+  "artifact_sha256": "b37ab2b3b7e33b10a2f1536884b6d62299809fbee694ac5ad081b125a1f175c5"
+}

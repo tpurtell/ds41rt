@@ -14,6 +14,7 @@ def main() -> None:
     parser.add_argument('--aot', type=Path, required=True)
     parser.add_argument('--snapshot', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--dspark-stage', type=int, choices=(0,1,2))
     args = parser.parse_args()
     import torch
     from safetensors import safe_open
@@ -25,11 +26,15 @@ def main() -> None:
     assert meta['bits'] == [3, 4] and meta['experts'] == 6
     assert meta['sparkinfer_revision'] == _pinned_sparkinfer.REVISION
     hidden, width, experts, capacity = meta['hidden'], meta['intermediate'], meta['experts'], meta['capacity']
+    topk = meta['top_k']
+    graph_rows = min(3, capacity)
+    assert topk == (3 if args.dspark_stage is not None else 6)
+    layer_prefix = f'mtp.{args.dspark_stage}' if args.dspark_stage is not None else 'layers.0'
     index = json.loads((args.snapshot/'model.safetensors.index.json').read_text())['weight_map']
     tensors = {}; bitmaps = {}
     for expert in range(experts):
         for projection in ['w1', 'w3', 'w2']:
-            prefix = f'layers.0.ffn.experts.{expert}.{projection}'
+            prefix = f'{layer_prefix}.ffn.experts.{expert}.{projection}'
             for suffix in ['trellis','suh','svh','mcg']:
                 name = prefix+'.'+suffix
                 with safe_open(args.snapshot/index[name], framework='pt', device='cpu') as f:
@@ -61,13 +66,22 @@ def main() -> None:
     props=torch.cuda.get_device_properties(0)
     launch=compile_mixed_trellis(size_m=capacity,hidden_size=hidden,intermediate_size=width,
         tier0_num_experts=experts,tier1_num_experts=experts,route_num_experts=experts,
-        top_k=6,max_m_blocks=meta['route_blocks'],sms=props.multi_processor_count,
+        top_k=topk,max_m_blocks=meta['route_blocks'],sms=props.multi_processor_count,
         max_shared_mem=props.shared_memory_per_block_optin,force_tile_config=tuple(meta['tile']),
         swiglu_limit=10.0, direct_topk_routes=meta['direct'],full_rotation_output_dtype='bf16')
     buffers=make_mixed_trellis_buffers(launch,device=torch.device('cuda',0),sms=props.multi_processor_count)
     binding=bind_mixed_trellis(*prepared.tiers,prepared.global_to_combined,prepared.descriptor_map,prepared.rotations,launch,
         gate_experts=prepared.gate_counts,up_experts=prepared.up_counts)
     lib=ct.CDLL(str(args.aot/'libv41_exl3_probe.so'))
+    info_verified=False
+    if hasattr(lib,'ds41rt_exl3_info'):
+        lib.ds41rt_exl3_info.argtypes=[ct.POINTER(ct.c_uint32),ct.c_uint32]
+        lib.ds41rt_exl3_info.restype=ct.c_int
+        native_info=(ct.c_uint32*15)()
+        assert lib.ds41rt_exl3_info(native_info,15)==0
+        assert list(native_info)==[1,hidden,width,experts,capacity,topk,2,
+            *[len(e[key]) for e in meta['objects'] for key in ['pointer_slots','scalar_slots']],3,4,0,0]
+        info_verified=True
     lib.ds41rt_exl3_create.argtypes=[ct.POINTER(ct.c_void_p)];lib.ds41rt_exl3_create.restype=ct.c_int
     lib.ds41rt_exl3_destroy.argtypes=[ct.c_void_p]
     for role in ['core','sum']:
@@ -76,8 +90,8 @@ def main() -> None:
     context=ct.c_void_p();assert lib.ds41rt_exl3_create(ct.byref(context))==0
     torch.manual_seed(4105)
     x=torch.randn(capacity,hidden,device='cuda',dtype=torch.bfloat16)
-    ids=torch.arange(6,device='cuda',dtype=torch.int32).repeat(capacity,1)
-    weights=torch.softmax(torch.randn(capacity,6,device='cuda'),dim=1)
+    ids=(torch.arange(capacity*topk,device='cuda',dtype=torch.int32).reshape(capacity,topk) % experts)
+    weights=torch.softmax(torch.randn(capacity,topk,device='cuda'),dim=1)
     pointers={name:getattr(buffers,name) for name in meta['buffers']}
     pointers.update(rotation_input_ptr=x,raw_topk_ids=ids,topk_weights_ptr=weights,
         descriptor_map_ptr=binding.descriptor_map,global_to_combined_ptr=binding.global_to_combined,
@@ -134,13 +148,14 @@ def main() -> None:
             assert torch.equal(buffers.output[:rows],expected)
             results.append({'rows':rows,'bitwise_equal':True})
         graph=torch.cuda.CUDAGraph()
-        with torch.cuda.graph(graph): native(3)
+        with torch.cuda.graph(graph): native(graph_rows)
         x.mul_(1.1);ids.copy_(ids.roll(1,dims=1))
         ids[::2,1]=-1
-        expected=run_bound_mixed_trellis(x[:3],weights[:3],ids[:3],binding,buffers).clone()
+        expected=run_bound_mixed_trellis(x[:graph_rows],weights[:graph_rows],ids[:graph_rows],binding,buffers).clone()
         buffers.output.fill_(float('nan'));poison_metadata();graph.replay();torch.cuda.synchronize()
-        assert torch.equal(buffers.output[:3],expected)
-        args.output.write_text(json.dumps({'passed':True,'scope':'native AOT versus B12x, real first six layer-0 experts; not full-model qualification',
+        assert torch.equal(buffers.output[:graph_rows],expected)
+        args.output.write_text(json.dumps({'passed':True,'scope':'native AOT versus B12x, six real checkpoint experts; not full-model qualification',
+            'checkpoint_layer':layer_prefix,'topk':topk,'native_info_verified':info_verified,
             'sparkinfer_revision':_pinned_sparkinfer.REVISION,'compute':meta['compute'],'intermediate':width,
             'direct':meta['direct'],
             'route_bridge_sha256':None if route_lib is None else hashlib.sha256((route_path.parent/'libv41_exl3_routes.so').read_bytes()).hexdigest(),

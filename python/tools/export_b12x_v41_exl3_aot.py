@@ -68,11 +68,21 @@ def write_bridge(output: Path, manifest: dict) -> None:
             'if (!opaque || !p || !s) return int(cudaErrorInvalidValue); auto* ctx = static_cast<Context*>(opaque);',
             'int device = -1; if (cudaGetDevice(&device) != cudaSuccess || device != ctx->device) return int(cudaErrorInvalidDevice);',
             *checks, *declarations, f'return {entry["wrapper"]}({", ".join(args)});', '}']
+    core, epilogue = manifest['objects']
+    info = [1, manifest['hidden'], manifest['intermediate'], manifest['experts'],
+        manifest['capacity'], manifest['top_k'], len(manifest['bits']),
+        len(core['pointer_slots']), len(core['scalar_slots']),
+        len(epilogue['pointer_slots']), len(epilogue['scalar_slots']),
+        *manifest['bits'], *([0] * (4 - len(manifest['bits'])))]
+    lines += ['extern "C" int ds41rt_exl3_info(uint32_t* out, uint32_t words) {',
+        'if (!out || words != 15) return int(cudaErrorInvalidValue);',
+        'const uint32_t info[15] = {' + ','.join(map(str, info)) + '};',
+        'for (int i = 0; i < 15; ++i) out[i] = info[i]; return 0; }']
     (output / 'v41_exl3_bridge.cc').write_text('\n'.join(lines) + '\n')
 
 
 def export(output: Path, intermediate: int, experts: int, capacity: int,
-           bits: tuple[int, ...], routing: str) -> dict:
+           bits: tuple[int, ...], routing: str, topk: int = 6) -> dict:
     import torch
     from b12x.moe._shared.kernels.w4a16.host import route_pack_capacity
     from b12x.moe._shared.kernels.w4a16.mixed_trellis import (
@@ -84,21 +94,21 @@ def export(output: Path, intermediate: int, experts: int, capacity: int,
 
     if len(bits) not in (2, 3) or len(set(bits)) != len(bits) or any(b not in range(2, 6) for b in bits):
         raise ValueError("export requires two or three distinct K2..K5 decoder tiers")
-    if capacity < 1 or experts < 6 or experts > 384:
+    if not 1 <= capacity <= 4096 or topk not in (3, 6) or experts < topk or experts > 384:
         raise ValueError("invalid V4.1 capacity or expert count")
     props = torch.cuda.get_device_properties(0)
     if (props.major, props.minor) not in ((12, 0), (12, 1)):
         raise ValueError("V4.1 export requires native SM120 or SM121")
-    direct = _projection_mixed_direct_topk_routes(capacity, 6, direct_exl3=len(bits) == 2)
+    direct = _projection_mixed_direct_topk_routes(capacity, topk, direct_exl3=len(bits) == 2)
     if routing != "auto":
         direct = routing == "direct"
     if direct and len(bits) != 2:
         raise ValueError("three-tier export requires packed routing")
     block_m = 8
-    route_slots = capacity * 6 if direct else route_pack_capacity(capacity * 6, block_m, experts, topk=6)[1]
+    route_slots = capacity * topk if direct else route_pack_capacity(capacity * topk, block_m, experts, topk=topk)[1]
     route_blocks = route_slots if direct else (route_slots + block_m - 1) // block_m
     options = dict(size_m=capacity, hidden_size=5120, intermediate_size=intermediate,
-        tier0_num_experts=experts, tier1_num_experts=experts, top_k=6,
+        tier0_num_experts=experts, tier1_num_experts=experts, top_k=topk,
         route_num_experts=experts, max_m_blocks=route_blocks,
         sms=props.multi_processor_count, max_shared_mem=props.shared_memory_per_block_optin,
         force_tile_config=_projection_mixed_tile_config(None, hidden_size=5120,
@@ -134,18 +144,19 @@ def export(output: Path, intermediate: int, experts: int, capacity: int,
             "zero_on_create": field.name == "workspace"}
     manifest = {"schema": "ds41rt.v41-exl3-aot.v1", "sparkinfer_revision": _pinned_sparkinfer.REVISION,
         "gpu": props.name, "compute": [props.major, props.minor], "sms": props.multi_processor_count,
-        "hidden": 5120, "intermediate": intermediate, "experts": experts, "top_k": 6,
+        "hidden": 5120, "intermediate": intermediate, "experts": experts, "top_k": topk,
         "capacity": capacity, "bits": list(bits), "swiglu_limit": 10.0,
         "direct": direct, "route_slots": route_slots, "route_blocks": route_blocks,
         "tile": list(options['force_tile_config']), "blocks_per_sm": launch.blocks_per_sm,
         "shared_memory_bytes": launch.shared_memory_bytes, "buffers": layouts, "objects": objects,
         "unique_execution_buffer_bytes": sum(v['bytes'] for k,v in layouts.items() if v['allocation'] == k),
         "requires_route_preparation": not direct,
+        "required_link_libraries": ["cudart", "cute_dsl_runtime"],
         "native_execution_verified": False}
     write_bridge(output, manifest)
     if not direct:
         from export_b12x_v41_exl3_routes_aot import export as export_routes
-        route_manifest = export_routes(output / 'routes', capacity, experts, 6)
+        route_manifest = export_routes(output / 'routes', capacity, experts, topk)
         for name in ('packed_route_indices', 'block_expert_ids', 'packed_route_count', 'expert_offsets', 'expert_counts'):
             if route_manifest['buffers'][name]['bytes'] > layouts[name]['bytes']:
                 raise ValueError(f'mixed execution buffer {name} cannot hold route preparation')
@@ -166,8 +177,9 @@ def main() -> None:
     parser.add_argument("--capacity", type=int, default=16)
     parser.add_argument("--bits", type=int, nargs="+", default=[3, 4])
     parser.add_argument("--routing", choices=("auto", "direct", "packed"), default="auto")
+    parser.add_argument("--topk", type=int, choices=(3, 6), default=6)
     args = parser.parse_args()
-    export(args.output, args.intermediate, args.experts, args.capacity, tuple(args.bits), args.routing)
+    export(args.output, args.intermediate, args.experts, args.capacity, tuple(args.bits), args.routing, args.topk)
 
 
 if __name__ == "__main__":
