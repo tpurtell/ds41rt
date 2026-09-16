@@ -1,0 +1,119 @@
+{
+  "scope": "Same old-sort library, fixed K5, fresh server twice, retained 2K/32K. No short-context warmup before either run.",
+  "launch_script": "#!/bin/bash\nset -eu\ncd /home/tj/Developer/ds41rt\nexec env DS41RT_NATIVE_LIB=/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-narrow.so LD_LIBRARY_PATH=/home/tj/.local/share/uv/python/cpython-3.12.3-linux-x86_64-gnu/lib DS41RT_PYTHON=/home/tj/Developer/ds41rt/.venv/bin/python RUST_LOG=info CUDA_VISIBLE_DEVICES=0,1 rust/target/release/ds41rt serve-native --snapshot /home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277 --native-lib /home/tj/.cache/ds41rt-upstream-20260916/libcandidate-narrow.so --peers 10.55.0.1:19441,10.55.0.2:19441,10.55.0.3:19441,10.55.0.4:19441 --rtx-gpus 2 --listen 0.0.0.0:8000 --prefill-batch-tokens 2048 --concurrency 16 --prefix-cache-entries 24 --max-context-tokens 1048576 --max-output-tokens 393216 --dspark --dspark-fixed --dspark-draft-limit 5\n",
+  "native_sha256": "37ec39843b24c52680e8da78ce7bf4b251f1e21a02f3ea1353eebb226b854284",
+  "daemon_sha256": "82ed41b4a5cdb7e11823e424019e54c7e22a2e0fa8fe3a4d6a330c3fd52b1326",
+  "requests_equal": true,
+  "primes_equal": true,
+  "changed_outputs": [
+    {
+      "context": 2048,
+      "case": "code",
+      "common_output_tokens": 49,
+      "first_sha256": "c207a8b766211d111493ab60e26491a49b67b53ddb63ae4f313bf2da093fb371",
+      "second_sha256": "2458c9d6d5038bceb5ab230b7eca78483f829417b515c1f660e0b90d819df9ef"
+    },
+    {
+      "context": 2048,
+      "case": "fable",
+      "common_output_tokens": 8,
+      "first_sha256": "f9eac3d70ab964f2b43d56e529f947c092fd0547ebfaaf54eac2c550535a4cd5",
+      "second_sha256": "8e325c5b6f0bcd021d3a39f149503714a14e98dbf1025953acd5dfc66ae1db6b"
+    },
+    {
+      "context": 2048,
+      "case": "topic",
+      "common_output_tokens": 33,
+      "first_sha256": "f63d558f536a8f8fbdccaddbc8edd13050fe39343932c912d9b9b75fa2db2b12",
+      "second_sha256": "ecdde85d5de1977e72545032a86855d6c8dcf731cae686f5a0cc8e5991a02db6"
+    },
+    {
+      "context": 2048,
+      "case": "structured-json-schema",
+      "common_output_tokens": 26,
+      "first_sha256": "a6889c971930ec8059ecd4199093a6345f9add7f122457992a54ec1e03a5324d",
+      "second_sha256": "8929913489283778d62464407875f24967f0ab980ae6295a180b45e0c0d437f8"
+    },
+    {
+      "context": 2048,
+      "case": "multilingual",
+      "common_output_tokens": 28,
+      "first_sha256": "9de6e7f52a63446118efa41904a7de0009ea788e42ec7cad40b5b0f6dd7a469e",
+      "second_sha256": "5898aec63fbca341e11324d4dc279ad98dd924d62760d6fc11a4d07bddc94c8f"
+    },
+    {
+      "context": 32768,
+      "case": "code",
+      "common_output_tokens": 44,
+      "first_sha256": "4fd27652625a8e56fa10867e167b175b996b316c34a27f024940b56b9ef91d13",
+      "second_sha256": "878656d6c96f3866a37573062f9533951cda2d8bbc338ad3bdf99771e3fec88e"
+    },
+    {
+      "context": 32768,
+      "case": "fable",
+      "common_output_tokens": 8,
+      "first_sha256": "88df1a6676a180a39ef62d3498d69dfc7bb30ceb7499b4fb84272e6bf4b73602",
+      "second_sha256": "402318682bf6875e0c0928d6941c9ba8e625fa25a9191e3a5b3681169a3586cd"
+    },
+    {
+      "context": 32768,
+      "case": "topic",
+      "common_output_tokens": 24,
+      "first_sha256": "daa8a3305c8cc96474b89119fc3c9e914e71206c026e3f40262153132b46f676",
+      "second_sha256": "57a223b3026963422405b4868aaccf95cb7f6b7c284937acde5a94d5344e95f8"
+    },
+    {
+      "context": 32768,
+      "case": "multilingual",
+      "common_output_tokens": 3,
+      "first_sha256": "25dfeb9ed07b116950376eab829405cc7f58dafb021c6f6a4395fb4887f30069",
+      "second_sha256": "9c159ce1b365eeafda6acd4a05644f55be0e5d5593be771282a937c2d7c50ac2"
+    }
+  ],
+  "runs": {
+    "first": {
+      "path": "/home/tj/.cache/ds41rt-upstream-20260916/index-fixed-first.json",
+      "sha256": "c5818ae6dd2146a3b38752399834c8b3de7c7bfb21e30769c8ea5fbad825137d",
+      "passed": true,
+      "objective_checks_passed": true,
+      "context_summaries": [
+        {
+          "context_tokens": 2048,
+          "samples": 8,
+          "weighted_observed_decode_tokens_per_second": 91.1609036123537,
+          "serving_completed": 8,
+          "cache_valid": 8
+        },
+        {
+          "context_tokens": 32768,
+          "samples": 8,
+          "weighted_observed_decode_tokens_per_second": 86.24927283265981,
+          "serving_completed": 8,
+          "cache_valid": 8
+        }
+      ]
+    },
+    "second": {
+      "path": "/home/tj/.cache/ds41rt-upstream-20260916/index-fixed-second.json",
+      "sha256": "5c82115a5d15d154ae4f3aa9b6d23bd9dea91d68a39044b387a8ed8a10f013ff",
+      "passed": true,
+      "objective_checks_passed": true,
+      "context_summaries": [
+        {
+          "context_tokens": 2048,
+          "samples": 8,
+          "weighted_observed_decode_tokens_per_second": 84.98869378149104,
+          "serving_completed": 8,
+          "cache_valid": 8
+        },
+        {
+          "context_tokens": 32768,
+          "samples": 8,
+          "weighted_observed_decode_tokens_per_second": 83.70970237534411,
+          "serving_completed": 8,
+          "cache_valid": 8
+        }
+      ]
+    }
+  }
+}

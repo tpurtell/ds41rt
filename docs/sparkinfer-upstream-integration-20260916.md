@@ -78,6 +78,34 @@ They may still require mechanical merge/import/test fixes when shared library
 surfaces change. Attention/projection parallelization across GPUs is deferred;
 retain the current ownership and expert parallelism in comparisons.
 
+## Fixed-K5 repeatability control (September 16)
+
+[Fixed-K5 evidence](sparkinfer-upstream-index-fixed-repeatability-20260916.json)
+repeats the old-sort library on two fresh servers with `--dspark-fixed
+--dspark-draft-limit 5`. Both runs start directly with the same retained 2K/32K
+corpus, without the preceding short-context warmup used in the adaptive control.
+The two fixed runs have identical requests and seed replies, matching binary
+identities, and all serving, cache and assessed objective checks pass.
+
+Nevertheless **9 of 16 output hashes differ**: five cases at 2K and four at
+32K. Their common generated-token prefixes range from 3 to 49 tokens. This
+rules out adaptive prefix-length selection as the sole cause of retained-output
+variation. It does not isolate speculative verification itself, because fixed
+K5 still uses the draft/verify path. It also does not establish a quality defect:
+exact prose identity is a diagnostic for comparison, not an output-quality rubric.
+
+| Same fixed-K5 library | First restart | Second restart |
+| --- | ---: | ---: |
+| Weighted TPS, retained 2K | 91.16 | 84.99 |
+| Weighted TPS, retained 32K | 86.25 | 83.71 |
+
+These throughputs involve different continuations and are not suitable for a
+precise kernel speedup claim. The next bounded control is target-only retained
+execution across fresh starts; if that also varies, inspect prefill/cache and
+numerical execution independently of speculation. The diagnostic server is
+currently running the old-sort library with fixed K5; no default flags were
+changed in source. Bounded-sort release acceptance remains pending.
+
 ## Same-library retained-output repeatability (September 16)
 
 [Repeatability evidence](sparkinfer-upstream-index-repeatability-20260916.json)
