@@ -1,0 +1,319 @@
+{
+  "scope": "Prepared GPU expert numerical screening, actual E384/K5120/top6 geometry; RTX hardware only, synthetic encoded weights. Not a native ABI or serving benchmark.",
+  "n576": {
+    "scope": "Screen upstream expert numerics at DS41RT geometry before native adaptation.\n\nUses prepared GPU paths, not the serving native ABI. No serving speedup claim.\n",
+    "command": [
+      "python/tools/compare_v41_expert_upstream.py",
+      "--b12x-root",
+      "/home/tj/.cache/ds41rt-upstream-20260916/sparkinfer",
+      "--intermediate",
+      "576",
+      "--output",
+      "/home/tj/.cache/ds41rt-upstream-20260916/expert-upstream-own-n576.json"
+    ],
+    "fork_revision": "e157965b24b3f9c522b05c50910aaefa87e9fcc8",
+    "script_sha256": "0acc13e33bea6c180cb4b5417d77b9f386d347f878791e4242330e660b379dfc",
+    "device": "_CudaDeviceProperties(name='NVIDIA RTX PRO 6000 Blackwell Workstation Edition', major=12, minor=0, total_memory=97249MB, multi_processor_count=188, uuid=fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, pci_bus_id=17, pci_device_id=0, pci_domain_id=0, L2_cache_size=128MB)",
+    "geometry": {
+      "experts": 384,
+      "hidden": 5120,
+      "intermediate": 576,
+      "topk": 6
+    },
+    "cases": [
+      {
+        "rows": 1,
+        "activation": "silu_v41",
+        "checks": [
+          {
+            "cycle": 0,
+            "relative_l2": 0.0016451379051432014,
+            "cosine": 0.9999986886978149,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.0016451379051432014,
+            "own_reference_cosine": 0.9999986886978149
+          },
+          {
+            "cycle": 1,
+            "relative_l2": 0.001628050347790122,
+            "cosine": 0.9999986886978149,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.001628050347790122,
+            "own_reference_cosine": 0.9999986886978149
+          }
+        ]
+      },
+      {
+        "rows": 1,
+        "activation": "silu",
+        "checks": [
+          {
+            "cycle": 0,
+            "relative_l2": 0.037419695407152176,
+            "cosine": 0.9992998838424683,
+            "native_reference_gate": false,
+            "own_reference_relative_l2": 0.016378866508603096,
+            "own_reference_cosine": 0.9998658895492554
+          },
+          {
+            "cycle": 1,
+            "relative_l2": 0.04230755940079689,
+            "cosine": 0.9991614818572998,
+            "native_reference_gate": false,
+            "own_reference_relative_l2": 0.010770311579108238,
+            "own_reference_cosine": 0.9999419450759888
+          }
+        ]
+      },
+      {
+        "rows": 16,
+        "activation": "silu_v41",
+        "checks": [
+          {
+            "cycle": 0,
+            "relative_l2": 0.0016627312870696187,
+            "cosine": 0.9999986290931702,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.0016627312870696187,
+            "own_reference_cosine": 0.9999986290931702
+          },
+          {
+            "cycle": 1,
+            "relative_l2": 0.0016544113168492913,
+            "cosine": 0.9999986290931702,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.0016544113168492913,
+            "own_reference_cosine": 0.9999986290931702
+          }
+        ]
+      },
+      {
+        "rows": 16,
+        "activation": "silu",
+        "checks": [
+          {
+            "cycle": 0,
+            "relative_l2": 0.037614136934280396,
+            "cosine": 0.9992923140525818,
+            "native_reference_gate": false,
+            "own_reference_relative_l2": 0.015657156705856323,
+            "own_reference_cosine": 0.999877393245697
+          },
+          {
+            "cycle": 1,
+            "relative_l2": 0.03812752664089203,
+            "cosine": 0.9992729425430298,
+            "native_reference_gate": false,
+            "own_reference_relative_l2": 0.016224386170506477,
+            "own_reference_cosine": 0.9998685121536255
+          }
+        ]
+      }
+    ]
+  },
+  "n1152": {
+    "scope": "Screen upstream expert numerics at DS41RT geometry before native adaptation.\n\nUses prepared GPU paths, not the serving native ABI. No serving speedup claim.\n",
+    "command": [
+      "python/tools/compare_v41_expert_upstream.py",
+      "--b12x-root",
+      "/home/tj/.cache/ds41rt-upstream-20260916/sparkinfer",
+      "--intermediate",
+      "1152",
+      "--output",
+      "/home/tj/.cache/ds41rt-upstream-20260916/expert-upstream-own-n1152.json"
+    ],
+    "fork_revision": "e157965b24b3f9c522b05c50910aaefa87e9fcc8",
+    "script_sha256": "0acc13e33bea6c180cb4b5417d77b9f386d347f878791e4242330e660b379dfc",
+    "device": "_CudaDeviceProperties(name='NVIDIA RTX PRO 6000 Blackwell Workstation Edition', major=12, minor=0, total_memory=97249MB, multi_processor_count=188, uuid=fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, pci_bus_id=17, pci_device_id=0, pci_domain_id=0, L2_cache_size=128MB)",
+    "geometry": {
+      "experts": 384,
+      "hidden": 5120,
+      "intermediate": 1152,
+      "topk": 6
+    },
+    "cases": [
+      {
+        "rows": 1,
+        "activation": "silu_v41",
+        "checks": [
+          {
+            "cycle": 0,
+            "relative_l2": 0.0016637123189866543,
+            "cosine": 0.9999985694885254,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.0016637123189866543,
+            "own_reference_cosine": 0.9999985694885254
+          },
+          {
+            "cycle": 1,
+            "relative_l2": 0.001621927716769278,
+            "cosine": 0.9999986886978149,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.001621927716769278,
+            "own_reference_cosine": 0.9999986886978149
+          }
+        ]
+      },
+      {
+        "rows": 1,
+        "activation": "silu",
+        "checks": [
+          {
+            "cycle": 0,
+            "relative_l2": 0.12619076669216156,
+            "cosine": 0.9933202266693115,
+            "native_reference_gate": false,
+            "own_reference_relative_l2": 0.1337386667728424,
+            "own_reference_cosine": 0.9924157857894897
+          },
+          {
+            "cycle": 1,
+            "relative_l2": 0.045750316232442856,
+            "cosine": 0.9989569187164307,
+            "native_reference_gate": false,
+            "own_reference_relative_l2": 0.043892160058021545,
+            "own_reference_cosine": 0.999036431312561
+          }
+        ]
+      },
+      {
+        "rows": 16,
+        "activation": "silu_v41",
+        "checks": [
+          {
+            "cycle": 0,
+            "relative_l2": 0.0016837453003972769,
+            "cosine": 0.9999985694885254,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.0016837453003972769,
+            "own_reference_cosine": 0.9999985694885254
+          },
+          {
+            "cycle": 1,
+            "relative_l2": 0.0016621706308797002,
+            "cosine": 0.9999985098838806,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.0016621706308797002,
+            "own_reference_cosine": 0.9999985098838806
+          }
+        ]
+      },
+      {
+        "rows": 16,
+        "activation": "silu",
+        "checks": [
+          {
+            "cycle": 0,
+            "relative_l2": 0.03960619866847992,
+            "cosine": 0.9992159605026245,
+            "native_reference_gate": false,
+            "own_reference_relative_l2": 0.01882379874587059,
+            "own_reference_cosine": 0.9998229742050171
+          },
+          {
+            "cycle": 1,
+            "relative_l2": 0.0400824174284935,
+            "cosine": 0.9991983771324158,
+            "native_reference_gate": false,
+            "own_reference_relative_l2": 0.01852453127503395,
+            "own_reference_cosine": 0.9998284578323364
+          }
+        ]
+      }
+    ]
+  },
+  "n1152_identical_replay": {
+    "scope": "Screen upstream expert numerics at DS41RT geometry before native adaptation.\n\nUses prepared GPU paths, not the serving native ABI. No serving speedup claim.\n",
+    "command": [
+      "python/tools/compare_v41_expert_upstream.py",
+      "--b12x-root",
+      "/home/tj/.cache/ds41rt-upstream-20260916/sparkinfer",
+      "--intermediate",
+      "1152",
+      "--rows",
+      "1",
+      "--output",
+      "/home/tj/.cache/ds41rt-upstream-20260916/expert-upstream-replay-n1152.json"
+    ],
+    "fork_revision": "e157965b24b3f9c522b05c50910aaefa87e9fcc8",
+    "script_sha256": "ac756bdac4e759f2fefc28779b53019e15a32c26758e247cc10696b9d8f10f52",
+    "device": "_CudaDeviceProperties(name='NVIDIA RTX PRO 6000 Blackwell Workstation Edition', major=12, minor=0, total_memory=97249MB, multi_processor_count=188, uuid=fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, pci_bus_id=17, pci_device_id=0, pci_domain_id=0, L2_cache_size=128MB)",
+    "geometry": {
+      "experts": 384,
+      "hidden": 5120,
+      "intermediate": 1152,
+      "topk": 6
+    },
+    "cases": [
+      {
+        "rows": 1,
+        "activation": "silu_v41",
+        "implementation": "dynamic",
+        "checks": [
+          {
+            "identical_input_replay_exact": null,
+            "cycle": 0,
+            "relative_l2": 0.0016637123189866543,
+            "cosine": 0.9999985694885254,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.0016637123189866543,
+            "own_reference_cosine": 0.9999985694885254
+          },
+          {
+            "identical_input_replay_exact": null,
+            "cycle": 1,
+            "relative_l2": 0.001621927716769278,
+            "cosine": 0.9999986886978149,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.001621927716769278,
+            "own_reference_cosine": 0.9999986886978149
+          },
+          {
+            "identical_input_replay_exact": true,
+            "cycle": 2,
+            "relative_l2": 0.001621927716769278,
+            "cosine": 0.9999986886978149,
+            "native_reference_gate": true,
+            "own_reference_relative_l2": 0.001621927716769278,
+            "own_reference_cosine": 0.9999986886978149
+          }
+        ]
+      },
+      {
+        "rows": 1,
+        "activation": "silu",
+        "implementation": "micro",
+        "checks": [
+          {
+            "identical_input_replay_exact": null,
+            "cycle": 0,
+            "relative_l2": 0.12623439729213715,
+            "cosine": 0.9933065176010132,
+            "native_reference_gate": false,
+            "own_reference_relative_l2": 0.13384124636650085,
+            "own_reference_cosine": 0.9923938512802124
+          },
+          {
+            "identical_input_replay_exact": null,
+            "cycle": 1,
+            "relative_l2": 0.045798689126968384,
+            "cosine": 0.9989542365074158,
+            "native_reference_gate": false,
+            "own_reference_relative_l2": 0.04396210238337517,
+            "own_reference_cosine": 0.999033510684967
+          },
+          {
+            "identical_input_replay_exact": false,
+            "cycle": 2,
+            "relative_l2": 0.04592742770910263,
+            "cosine": 0.9989483952522278,
+            "native_reference_gate": false,
+            "own_reference_relative_l2": 0.04400821402668953,
+            "own_reference_cosine": 0.9990313053131104
+          }
+        ]
+      }
+    ]
+  },
+  "racecheck_status": "Running, session 27536; no terminal result at this checkpoint."
+}

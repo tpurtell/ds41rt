@@ -78,6 +78,43 @@ They may still require mechanical merge/import/test fixes when shared library
 surfaces change. Attention/projection parallelization across GPUs is deferred;
 retain the current ownership and expert parallelism in comparisons.
 
+## Expert numerical screen at actual model geometry (September 16)
+
+[Prepared GPU evidence](sparkinfer-upstream-expert-numerics-20260916.json) and
+[reproducible probe](../python/tools/compare_v41_expert_upstream.py) compare
+native-contract `silu_v41` with generic upstream `silu` using identical encoded
+synthetic weights, E384/K5120/top6, N576 and N1152, and 1/16 live rows. Both
+paths include their prepared quantization, expert execution and reduction.
+This screen runs on RTX SM120, including the Spark-shaped N576 case; it is not
+Spark hardware performance evidence or a comparison through the serving C ABI.
+No throughput claims are made before resolving the numerical differences.
+
+The V4.1 path passes the existing independent reference gate (relative L2 below
+1%, cosine above .9999) in all eight original/changed-input cases, with observed
+relative L2 approximately **0.16–0.17%**. Generic upstream differs from that
+reference by approximately **3.7–4.2% at N576**, **4.0% at N1152/M16**, and
+**4.6–12.6% at N1152/M1**. Outputs remain finite, and changed-input graph replay
+uses stable allocation. This does not establish a model-quality regression;
+the generic implementation has different intermediate/route-weight boundaries
+and is not a drop-in replacement for the native numerical contract.
+
+The generic path was also compared with its own independent upstream reference.
+N576 and N1152/M16 relative errors are approximately 1.1–1.9%; N1152/M1 reaches
+**13.4% relative L2 and .9924 cosine** on the first input. A focused replay
+identifies that path as `micro`; identical changed-input replay is not bitwise
+repeatable, whereas the V4.1 `dynamic` path is repeatable. This merits kernel
+investigation, rather than simply accepting alternate numerics or timing it as
+a replacement. The reference uses FP32 intermediates where some kernels round
+to BF16, so smaller reference differences also need boundary-aware analysis.
+
+A Compute Sanitizer racecheck of the N1152/M1 generic case is currently active
+(session 27536, log `expert-upstream-race-n1152.log` in the integration cache).
+No sanitizer result is claimed yet. The coordinator was stopped to free GPU
+memory for these tests; the four candidate Spark workers remain available.
+Next isolate the micro-path discrepancy and map the generic intermediate
+boundaries, then compare corrected full paths through the native ABI and on
+Spark hardware. Production dependency promotion remains pending.
+
 ## Older-library control and return to expert comparisons (September 16)
 
 [Older-library evidence](sparkinfer-upstream-legacy-cold-control-20260916.json)
