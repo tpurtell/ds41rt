@@ -959,3 +959,35 @@ load order, so neither a loading speedup nor absence of a loading regression is
 established. Matched loading checks and full-weight startup with the reordered
 allocations remain required, alongside generic-tier support, kernel tuning,
 adaptive/acceptance calibration and the complete v5 release qualification.
+
+## Matched-geometry loading and full-weight startup follow-up
+
+[Loading evidence](release-v5-exl3-loading-comparison.json) compares optimized
+73e120f and f2629b0 coordinators with identical 25-layer EXL3 placement, native
+libraries, K7, 2048-token prefill batches, C16, 24 retained entries and the
+14M-token pool (13,094,420,480 global KV/index bytes). One warm-up precedes six
+launches in before/after/after/before/before/after order. All reach health with
+the exact expected cache allocation. This measures coordinator startup only;
+workers remain running and the comparison sends no inference requests.
+
+| Measurement | Before | After |
+|---|---:|---:|
+| Owner startup, measured samples (seconds) | 22.842 / 14.751 / 21.786 | 13.142 / 21.591 / 13.508 |
+| Physical reads per launch (decimal GB) | 123.74 / 21.80 / 108.78 | 16.01 / 111.71 / 15.53 |
+
+Filesystem-cache state varies too much to infer a loading speedup or establish
+absence of regression from the medians. In the similar high-I/O observations,
+both binaries take about 22 seconds. The loader currently reads all layers for
+one rank before the other, and column-sliced compressed reads include full
+source rows. Layer-interleaved rank loading is a concrete page-reuse hypothesis
+to investigate, not a demonstrated optimization.
+
+The full-weight model also passes functional serving after allocation reordering:
+automatic placement selects 20 layers and preserves the same cache pool.
+Arithmetic/reuse, concurrent code/topic smoke, constrained JSON, high-thinking
+tool use, cached tool continuation, a 4822-token needle and 4828-token cached
+follow-up, plus stream cancellation/recovery pass. The code output was capped
+at 128 tokens, so it is not a complete code-quality measurement. Its 22.187-second
+owner startup was not collected under matched loading conditions. Production
+serving was restored after both checks. Final four-configuration startup and
+performance qualification remains required.
