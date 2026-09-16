@@ -78,6 +78,47 @@ They may still require mechanical merge/import/test fixes when shared library
 surfaces change. Attention/projection parallelization across GPUs is deferred;
 retain the current ownership and expert parallelism in comparisons.
 
+## Lagged mHC candidate comparison (September 16)
+
+[Raw mHC evidence](sparkinfer-upstream-mhc-20260916.json) includes **26 passing
+upstream lagged-mHC tests** and the native split-projection qualification:
+774 real-weight cases pass, with maximum coefficient error approximately
+1.07e-6. These cover separate contracts; neither substitutes for native
+integration of the upstream complete operation.
+
+The [component comparison](../python/tools/compare_v41_mhc_upstream.py) measures
+our actual native begin sequence (mixes with scratch, incoming-mix collapse,
+RNE BF16 RMS normalization) against upstream prepared lagged `pre`. Both
+predict the next mix separately from the incoming mix. Random, zero and small
+inputs are checked against the upstream FP32 reference after graph replay with
+changed inputs. The prepared session is frozen and replay allocation is stable.
+
+| Rows | Native begin, µs | Upstream lagged pre, µs |
+| --- | ---: | ---: |
+| 1 | 10.21 | 5.23 |
+| 8 | 12.51 | 7.37 |
+| 16 | 15.25 | 9.42 |
+| 80 | 48.26 | 30.59 |
+
+These are alternating warm graph measurements of synthetic inputs, not serving
+throughput. This is enough evidence to prioritize a native upstream adapter,
+including frozen-capacity live-row coverage and caller-owned scratch. No native
+serving dispatch has changed yet.
+
+**512-row numerical gate remains unresolved.** At unit input scale, the native
+normalized BF16 output exceeds the reference absolute tolerance of 0.008 at
+1/2,621,440 elements (maximum difference 0.015625); upstream exceeds it at four
+elements (maximum 0.03125). At input scale 0.01, upstream exceeds it at two
+elements. All coefficient outputs pass. Timing is deliberately omitted for
+this shape. Investigate collapse and normalization rounding boundaries before
+claiming prefill acceptance; do not interpret this as a new serving regression
+or silently relax the threshold.
+
+The upstream `mla_query_projection` component is a separate geometry:
+per-head 192-to-512 projection plus a 64-dimensional rope component. It is not
+a direct replacement for DS4.1's exported dense Q-A/Q-B/index projections.
+Their dense-kernel changes still require evaluation on our actual shapes.
+
 ## WO projection qualification and fusion probe (September 16)
 
 [Projection evidence](sparkinfer-upstream-wo-projections-20260916.json)
