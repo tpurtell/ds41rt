@@ -105,8 +105,11 @@ impl<'a> AttentionQueryWeights<'a> {
             scratch,
             alpha: DeviceAllocation::new(self.library, 4)?,
             buffers: ROW_BYTES
-                .into_iter()
-                .map(|n| DeviceAllocation::new(self.library, n * capacity as usize))
+                .into_iter().enumerate()
+                .map(|(i, n)| {
+                    if i == 4 && !cfg!(test) { Ok(None) }
+                    else { DeviceAllocation::new(self.library, n * capacity as usize).map(Some) }
+                })
                 .collect::<Result<Vec<_>>>()?,
             norm: self.library.v41_attention_ops()?,
             position_staging: HostAllocation::new(self.library, capacity as usize * 8)?,
@@ -142,6 +145,7 @@ pub(crate) struct AttentionQueryOutput<'a> {
     pub hidden: Ds41rtDeviceBuffer,
     pub raw_rank: Ds41rtDeviceBuffer,
     pub normalized_rank: Ds41rtDeviceBuffer,
+    #[cfg(test)]
     pub projected: Ds41rtDeviceBuffer,
     #[cfg(test)]
     pub qb_scratch: Ds41rtDeviceBuffer,
@@ -164,7 +168,7 @@ pub(crate) struct AttentionQueryWave<'w, 'a> {
     kernels: Vec<V41Fp8Plan<'a>>,
     scratch: Vec<DeviceAllocation<'a>>,
     alpha: DeviceAllocation<'a>,
-    buffers: Vec<DeviceAllocation<'a>>,
+    buffers: Vec<Option<DeviceAllocation<'a>>>,
     position_staging: HostAllocation<'a>,
     norm: V41AttentionOps<'a>,
     weights: &'w AttentionQueryWeights<'a>,
@@ -193,14 +197,15 @@ impl<'w, 'a> AttentionQueryWave<'w, 'a> {
 }
 impl AttentionQueryWave<'_, '_> {
     pub fn device_bytes(library: &NativeLibrary, capacity: u32) -> Result<usize> {
-        let mut bytes = 4 + capacity as usize * ROW_BYTES.iter().sum::<usize>();
+        let mut bytes = 4 + capacity as usize * ROW_BYTES.iter().enumerate()
+            .filter(|(i, _)| *i != 4 || cfg!(test)).map(|(_, bytes)| bytes).sum::<usize>();
         for (k, n) in MATRICES {
             bytes += library.v41_fp8_matrix_plan_info(capacity, k, n)?.scratch_bytes as usize;
         }
         Ok(bytes)
     }
     fn b(&self, i: usize) -> Ds41rtDeviceBuffer {
-        self.buffers[i].buffer
+        self.buffers[i].as_ref().expect("query buffer is allocated").buffer
     }
     pub fn layer(&self) -> usize {
         self.weights.layer
@@ -262,10 +267,16 @@ impl AttentionQueryWave<'_, '_> {
                 rows,
                 self.stream.raw,
             )?;
+            // Preserve the pre-RoPE tensor only for numerical trace fixtures.
+            // Serving rotates the completed projection in place, saving one
+            // 64-head BF16 buffer per lane without changing the kernel math.
+            #[cfg(test)]
+            self.stream.library.copy_d2d_async(self.b(4), self.b(3),
+                rows as usize * ROW_BYTES[3], self.stream.raw)?;
             self.norm.rope(
                 self.b(3),
                 self.b(6),
-                self.b(4),
+                self.b(3),
                 rows,
                 64,
                 false,
@@ -461,10 +472,11 @@ impl AttentionQueryWave<'_, '_> {
             hidden: b(0),
             raw_rank: b(1),
             normalized_rank: b(2),
-            projected: b(3),
+            #[cfg(test)]
+            projected: b(4),
             #[cfg(test)]
             qb_scratch: self.scratch[1].buffer,
-            rotated: b(4),
+            rotated: b(3),
             positions: b(5),
             frequencies: b(6),
             _owner: PhantomData,

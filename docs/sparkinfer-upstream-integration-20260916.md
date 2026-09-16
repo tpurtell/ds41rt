@@ -59,6 +59,18 @@ The [failure evidence](sparkinfer-upstream-single-memory-20260916.json)
 preserves the failed streams and reproduction logs. The dual measurements
 below describe the earlier 512-entry candidate, not a completed release.
 
+The 24-projection/full-producer trial completed with 166.72 TPS mixed C16
+and 251 MiB minimum free. The 32-projection/32-sparse trial completed with
+177.21 TPS and 175 MiB minimum free. Neither meets the performance requirement.
+
+The next [candidate reuses query projection storage for in-place RoPE](sparkinfer-upstream-query-inplace-20260916.json),
+which the existing native API supports. Startup allocation drops by exactly
+**512 MiB across two lanes**, while KV remains **16.681 GB / 18,710,016 logical
+tokens + 32,768 private-tail tokens** and five RTX expert layers stay resident.
+Native separate/in-place parity and the real-weight fixture pass. Full graph
+retention is restored for the serving trial; endurance and performance remain
+unqualified. Test builds retain pre-RoPE diagnostic output separately.
+
 The completed [dual-RTX decode measurements](sparkinfer-upstream-v4-dual-decode-20260916.json)
 use the standard clean images built from `6f118818`, matched published prompts,
 three samples, 400 W per RTX and stock memory clocks. Weighted eight-type

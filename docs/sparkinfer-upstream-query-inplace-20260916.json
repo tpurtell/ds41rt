@@ -1,0 +1,82 @@
+{
+  "scope": "In-place backbone query RoPE removes a serving-only redundant full-width buffer",
+  "startup_occupied_bytes_before": 46524530688,
+  "startup_occupied_bytes_after": 45987659776,
+  "saved_bytes": 536870912,
+  "saved_mib": 512,
+  "lane_capacity_rows": 4096,
+  "lanes": 2,
+  "bytes_per_row": 65536,
+  "global_kv_bytes": 16681077760,
+  "logical_pool_tokens": 18710016,
+  "private_tail_tokens": 32768,
+  "rtx_expert_layers": 5,
+  "graph_retention": "Original full retention restored for serving candidate; bounded-policy trials rejected",
+  "numerical_tests": [
+    {
+      "label": "native-rope",
+      "command": [
+        "docker",
+        "run",
+        "--rm",
+        "--gpus",
+        "\"device=GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0\"",
+        "-v",
+        "/home/tj/Developer/ds41rt:/src:ro",
+        "-v",
+        "/home/tj/.cache/ds41rt-upstream-20260916:/out",
+        "--entrypoint",
+        "python3",
+        "sha256:bc6bc46908bcd09278726eee77aa47c40c04c2b430df6d4f3cc0a9dd95c0b9fb",
+        "-c",
+        "import subprocess; subprocess.run(['c++','-O2','-I/src/native/include','/src/native/tests/cuda_inplace_rope_selftest.cc','-L/opt/ds41rt/lib','-lds41rt_native','-Wl,-rpath,/opt/ds41rt/lib','-o','/out/query-inplace-rope-selftest'],check=True); subprocess.run(['/out/query-inplace-rope-selftest'],check=True)"
+      ],
+      "exit_code": 0
+    },
+    {
+      "label": "real-weight",
+      "command": [
+        "docker",
+        "run",
+        "--rm",
+        "--name",
+        "ds41rt-cold-result-parity",
+        "--gpus",
+        "\"device=GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0\"",
+        "--network",
+        "host",
+        "--ipc",
+        "host",
+        "--ulimit",
+        "memlock=-1:-1",
+        "--device=/dev/infiniband",
+        "-e",
+        "CUDA_VISIBLE_DEVICES=GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0",
+        "-e",
+        "DS41RT_LAYER0_LIBRARY=/opt/ds41rt/lib/libds41rt_native.so",
+        "-e",
+        "DS41RT_LAYER0_MODEL=/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+        "-e",
+        "DS41RT_LAYER0_PEERS=10.55.0.1:19441,10.55.0.2:19441,10.55.0.3:19441,10.55.0.4:19441",
+        "-e",
+        "RUST_LOG=info",
+        "-v",
+        "/home/tj/.cache/huggingface:/root/.cache/huggingface:ro",
+        "-v",
+        "/home/tj/Developer/ds41rt/rust/target/release/deps/ds41rt-691d0823c7a973d1:/tmp/parity-tests:ro",
+        "--entrypoint",
+        "/tmp/parity-tests",
+        "sha256:bc6bc46908bcd09278726eee77aa47c40c04c2b430df6d4f3cc0a9dd95c0b9fb",
+        "real_layer_zero_executes_embedding_attention_tp4_and_mhc",
+        "--nocapture"
+      ],
+      "exit_code": 0
+    }
+  ],
+  "provenance_note": "Real-weight fixture used the same in-place query math with experimental 32/32 graph limits. Full-retention production binary is separately built; its serving run is in progress. Test builds retain a diagnostic copy of pre-RoPE values. Native test verifies in-place versus separate output at 1/40/2048 rows, heads 1/64 and forward/inverse rotation.",
+  "performance_status": "pending matched endurance and performance; no speedup claimed",
+  "archive": {
+    "path": "docs/evidence/upstream-query-inplace-20260916.tar.gz",
+    "sha256": "e687b14910f1e5148ed067901583b1817e1e0031d07e043ec2035b48f83d2ead"
+  }
+}

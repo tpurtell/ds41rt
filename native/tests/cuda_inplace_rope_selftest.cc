@@ -8,8 +8,7 @@
 static void check(bool value) { if (!value) std::abort(); }
 static void ok(ds41rt_status_t value) { check(value == DS41RT_STATUS_OK); }
 int main() {
-  for (int heads : {1, 64}) for (int inverse : {0, 1}) {
-    const int rows = 40;
+  for (int rows : {1, 40, 2048}) for (int heads : {1, 64}) for (int inverse : {0, 1}) {
     const size_t count = size_t(rows)*heads*512, bytes = count*2;
     std::vector<uint16_t> input(count + 1);
     for (size_t i=0; i<count; ++i) input[i] = uint16_t(0x3d00 + (i*17)%1024) | ((i%3 == 0) ? 0x8000 : 0);
@@ -46,5 +45,5 @@ int main() {
     ok(ds41rt_free_device_buffer(&freq)); ok(ds41rt_free_device_buffer(&inplace));
     ok(ds41rt_free_device_buffer(&separate)); ok(ds41rt_free_device_buffer(&source));
   }
-  std::cout << "in-place RoPE matches separate output exactly; partial overlap rejected\n";
+  std::cout << "in-place RoPE matches separate output exactly at 1/40/2048 rows; partial overlap rejected\n";
 }
