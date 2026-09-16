@@ -1,0 +1,141 @@
+{
+  "scope": "Combined native route packing, mixed expert compute and epilogue versus Python B12x on six real layer-0 experts, hidden 5120 and intermediate slice 0:640. BF16 input. Not an independent arithmetic oracle, full expert inventory, TP reduction, FP8 Spark wire input, serving or performance qualification.",
+  "artifact": "evidence/v5-exl3-packed-aot.tar.gz",
+  "artifact_sha256": "ea22fc269c657688ee2b06a1cc1773c5f8412f8a1f66e4a596df306ccacefa66",
+  "results": [
+    {
+      "passed": true,
+      "scope": "native AOT versus B12x, real first six layer-0 experts; not full-model qualification",
+      "sparkinfer_revision": "c024d14ce936ddfc2c863377d033d85e1787924b",
+      "compute": [
+        12,
+        0
+      ],
+      "intermediate": 640,
+      "direct": false,
+      "route_bridge_sha256": "f49c47b0ff99f2dcbf75104d4419a4d600392c8dd368eba1426985a1014712fe",
+      "snapshot_revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+      "projection_tiers": [
+        [
+          3,
+          4,
+          3
+        ],
+        [
+          3,
+          3,
+          3
+        ],
+        [
+          4,
+          4,
+          4
+        ],
+        [
+          3,
+          3,
+          3
+        ],
+        [
+          4,
+          4,
+          4
+        ],
+        [
+          3,
+          3,
+          3
+        ]
+      ],
+      "aot_manifest_sha256": "5c61bef2c4416f6512fe007a64bb4bdc96445296cedb172ae33b9a0aa2573422",
+      "bridge_sha256": "013d66c69a5db3970ecf814301003b8c6b10b3f940151a6c4eb78d0c3ded8640",
+      "checks": [
+        {
+          "rows": 1,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 3,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 15,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 16,
+          "bitwise_equal": true
+        }
+      ],
+      "graph_changed_inputs_and_routes": true,
+      "packed_metadata_poisoned_before_native": true
+    },
+    {
+      "passed": true,
+      "scope": "native AOT versus B12x, real first six layer-0 experts; not full-model qualification",
+      "sparkinfer_revision": "c024d14ce936ddfc2c863377d033d85e1787924b",
+      "compute": [
+        12,
+        1
+      ],
+      "intermediate": 640,
+      "direct": false,
+      "route_bridge_sha256": "99888bda98edf072f4d5cb39f47d694c1d608f2ce50c178d44b8d51e3b5920d8",
+      "snapshot_revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+      "projection_tiers": [
+        [
+          3,
+          4,
+          3
+        ],
+        [
+          3,
+          3,
+          3
+        ],
+        [
+          4,
+          4,
+          4
+        ],
+        [
+          3,
+          3,
+          3
+        ],
+        [
+          4,
+          4,
+          4
+        ],
+        [
+          3,
+          3,
+          3
+        ]
+      ],
+      "aot_manifest_sha256": "7f49f80cefdabce75453d0ccae8901c568e90e347677b44a8ff6ec5133171d83",
+      "bridge_sha256": "11dd58b3a009963c154439baaf1718fafe84032349e5d12c6bb9794a89d2d105",
+      "checks": [
+        {
+          "rows": 1,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 3,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 1023,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 1024,
+          "bitwise_equal": true
+        }
+      ],
+      "graph_changed_inputs_and_routes": true,
+      "packed_metadata_poisoned_before_native": true
+    }
+  ]
+}

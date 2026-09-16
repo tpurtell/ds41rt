@@ -213,3 +213,15 @@ row/byte bounds are rejected. [Results and artifacts](release-v5-exl3-routes.jso
 also document the initial missing Triton scratch arguments and corrected ABI.
 This qualifies standalone route metadata preparation; connecting it to the
 mixed compute bridge and native serving remains outstanding.
+
+The combined packed export now includes the native route bridge and validates
+its buffer requirements against the mixed execution workspace. Route capacity
+uses B12x's bucket policy, including non-power-of-two requested capacities.
+Combined route preparation, mixed compute and epilogue passed on six real
+layer-0 experts at intermediate width 640: RTX planned capacity 16 and Spark
+planned capacity 1,024, each tested at rows 1, 3, capacity-1 and capacity.
+Outputs match Python B12x bitwise. Route metadata is poisoned between the
+reference and native launch; graph replay changes inputs, reorders routes and
+masks some routes. [Combined packed-path evidence](release-v5-exl3-packed.json)
+records the tested binaries. Native serving, full expert inventories, TP
+reduction and Spark wire input remain pending; these tests use BF16 input.

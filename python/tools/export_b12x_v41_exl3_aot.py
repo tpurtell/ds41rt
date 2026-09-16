@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Export mixed EXL3 compute/epilogue objects and exact native buffer metadata.
 
-Packed routing additionally needs the native route-preparation stage. This
-export does not claim that an end-to-end native serving backend is available.
+Packed exports include native route preparation. This export does not claim
+that an end-to-end native serving backend is available.
 """
 from __future__ import annotations
 
@@ -74,7 +74,7 @@ def write_bridge(output: Path, manifest: dict) -> None:
 def export(output: Path, intermediate: int, experts: int, capacity: int,
            bits: tuple[int, ...], routing: str) -> dict:
     import torch
-    from b12x.moe._shared.kernels.w4a16.host import max_packed_route_slots
+    from b12x.moe._shared.kernels.w4a16.host import route_pack_capacity
     from b12x.moe._shared.kernels.w4a16.mixed_trellis import (
         compile_mixed_trellis, compile_mixed_trellis3, make_mixed_trellis_buffers,
     )
@@ -95,7 +95,7 @@ def export(output: Path, intermediate: int, experts: int, capacity: int,
     if direct and len(bits) != 2:
         raise ValueError("three-tier export requires packed routing")
     block_m = 8
-    route_slots = capacity * 6 if direct else max_packed_route_slots(capacity * 6, block_m, experts)
+    route_slots = capacity * 6 if direct else route_pack_capacity(capacity * 6, block_m, experts, topk=6)[1]
     route_blocks = route_slots if direct else (route_slots + block_m - 1) // block_m
     options = dict(size_m=capacity, hidden_size=5120, intermediate_size=intermediate,
         tier0_num_experts=experts, tier1_num_experts=experts, top_k=6,
@@ -143,6 +143,16 @@ def export(output: Path, intermediate: int, experts: int, capacity: int,
         "requires_route_preparation": not direct,
         "native_execution_verified": False}
     write_bridge(output, manifest)
+    if not direct:
+        from export_b12x_v41_exl3_routes_aot import export as export_routes
+        route_manifest = export_routes(output / 'routes', capacity, experts, 6)
+        for name in ('packed_route_indices', 'block_expert_ids', 'packed_route_count', 'expert_offsets', 'expert_counts'):
+            if route_manifest['buffers'][name]['bytes'] > layouts[name]['bytes']:
+                raise ValueError(f'mixed execution buffer {name} cannot hold route preparation')
+        manifest['route_preparation'] = {
+            'manifest': 'routes/v41_exl3_routes.json',
+            'sha256': hashlib.sha256((output / 'routes/v41_exl3_routes.json').read_bytes()).hexdigest(),
+        }
     (output / "v41_exl3.json").write_text(json.dumps(manifest, indent=2) + "\n")
     print(json.dumps({k: manifest[k] for k in ['capacity','intermediate','bits','direct','unique_execution_buffer_bytes']}), flush=True)
     return manifest

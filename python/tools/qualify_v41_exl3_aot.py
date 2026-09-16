@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare a direct native EXL3 AOT bridge with B12x on real checkpoint tiles."""
+"""Compare direct or packed native EXL3 AOT with B12x on real checkpoint tiles."""
 from __future__ import annotations
 import argparse
 import ctypes as ct
@@ -22,7 +22,7 @@ def main() -> None:
         compile_mixed_trellis, make_mixed_trellis_buffers, bind_mixed_trellis, run_bound_mixed_trellis,
     )
     meta = json.loads((args.aot/'v41_exl3.json').read_text())
-    assert meta['direct'] and meta['bits'] == [3, 4] and meta['experts'] == 6
+    assert meta['bits'] == [3, 4] and meta['experts'] == 6
     assert meta['sparkinfer_revision'] == _pinned_sparkinfer.REVISION
     hidden, width, experts, capacity = meta['hidden'], meta['intermediate'], meta['experts'], meta['capacity']
     index = json.loads((args.snapshot/'model.safetensors.index.json').read_text())['weight_map']
@@ -63,7 +63,7 @@ def main() -> None:
         tier0_num_experts=experts,tier1_num_experts=experts,route_num_experts=experts,
         top_k=6,max_m_blocks=meta['route_blocks'],sms=props.multi_processor_count,
         max_shared_mem=props.shared_memory_per_block_optin,force_tile_config=tuple(meta['tile']),
-        swiglu_limit=10.0, direct_topk_routes=True,full_rotation_output_dtype='bf16')
+        swiglu_limit=10.0, direct_topk_routes=meta['direct'],full_rotation_output_dtype='bf16')
     buffers=make_mixed_trellis_buffers(launch,device=torch.device('cuda',0),sms=props.multi_processor_count)
     binding=bind_mixed_trellis(*prepared.tiers,prepared.global_to_combined,prepared.descriptor_map,prepared.rotations,launch,
         gate_experts=prepared.gate_counts,up_experts=prepared.up_counts)
@@ -92,40 +92,69 @@ def main() -> None:
             pointers[f't{i}_{key}_ptr']=getattr(tier,field)
         scalars.update({f'tier{i}_num_experts':experts,f'tier{i}_fc2_experts':binding.fc2_counts[i],
             f'tier{i}_gate_experts':binding.gate_counts[i],f'tier{i}_up_experts':binding.up_counts[i]})
+    route_context=ct.c_void_p(); route_lib=None
+    if not meta['direct']:
+        route_path=args.aot/meta['route_preparation']['manifest']
+        assert hashlib.sha256(route_path.read_bytes()).hexdigest()==meta['route_preparation']['sha256']
+        route_meta=json.loads(route_path.read_text())
+        route_lib=ct.CDLL(str(route_path.parent/'libv41_exl3_routes.so'))
+        route_lib.ds41rt_exl3_routes_create.argtypes=[ct.POINTER(ct.c_void_p)]
+        route_lib.ds41rt_exl3_routes_create.restype=ct.c_int
+        route_lib.ds41rt_exl3_routes_destroy.argtypes=[ct.c_void_p]
+        route_lib.ds41rt_exl3_routes_destroy.restype=ct.c_int
+        route_lib.ds41rt_exl3_routes_launch.argtypes=[ct.c_void_p,ct.POINTER(ct.c_void_p),ct.POINTER(ct.c_uint64),ct.c_int32,ct.c_void_p]
+        route_lib.ds41rt_exl3_routes_launch.restype=ct.c_int
+        route_tensors=dict(topk_ids=ids,expert_map=binding.global_to_combined,
+            **{name:getattr(buffers,name) for name in list(route_meta['buffers'])[2:]})
+        route_p=(ct.c_void_p*7)(*[t.data_ptr() for t in route_tensors.values()])
+        route_bytes=(ct.c_uint64*7)(*[t.numel()*t.element_size() for t in route_tensors.values()])
+        assert route_lib.ds41rt_exl3_routes_create(ct.byref(route_context))==0
     def native(rows):
         scalars['active_m']=rows
+        if route_lib is not None:
+            assert route_lib.ds41rt_exl3_routes_launch(route_context,route_p,route_bytes,rows,
+                ct.c_void_p(torch.cuda.current_stream().cuda_stream))==0
         for entry in meta['objects']:
             role=entry['label'].rsplit('_',1)[1]
             p=(ct.c_void_p*len(entry['pointer_slots']))(*(pointers[n].data_ptr() for n in entry['pointer_slots']))
             s=(ct.c_int32*len(entry['scalar_slots']))(*(scalars[n] for n in entry['scalar_slots']))
             status=getattr(lib,'ds41rt_exl3_'+role)(context,p,s,ct.c_void_p(torch.cuda.current_stream().cuda_stream))
             assert status==0,(role,status)
+    def poison_metadata():
+        if route_lib is not None:
+            for name in ('packed_route_indices','block_expert_ids','packed_route_count','expert_offsets','expert_counts'):
+                getattr(buffers,name).fill_(-777)
     assert any(len({bitmaps[e,p] for p in ['w1','w3','w2']}) > 1 for e in range(experts))
     results=[]; graph=None
     try:
-        for rows in [1,3,capacity]:
+        for rows in sorted(set([1,min(3,capacity),max(1,capacity-1),capacity])):
             expected=run_bound_mixed_trellis(x[:rows],weights[:rows],ids[:rows],binding,buffers).clone()
-            buffers.output.fill_(float('nan'));native(rows);torch.cuda.synchronize()
+            buffers.output.fill_(float('nan'));poison_metadata();native(rows);torch.cuda.synchronize()
             assert torch.isfinite(expected).all() and bool(expected.abs().sum()>0)
             assert torch.equal(buffers.output[:rows],expected)
             results.append({'rows':rows,'bitwise_equal':True})
         graph=torch.cuda.CUDAGraph()
         with torch.cuda.graph(graph): native(3)
         x.mul_(1.1);ids.copy_(ids.roll(1,dims=1))
+        ids[::2,1]=-1
         expected=run_bound_mixed_trellis(x[:3],weights[:3],ids[:3],binding,buffers).clone()
-        buffers.output.fill_(float('nan'));graph.replay();torch.cuda.synchronize()
+        buffers.output.fill_(float('nan'));poison_metadata();graph.replay();torch.cuda.synchronize()
         assert torch.equal(buffers.output[:3],expected)
         args.output.write_text(json.dumps({'passed':True,'scope':'native AOT versus B12x, real first six layer-0 experts; not full-model qualification',
             'sparkinfer_revision':_pinned_sparkinfer.REVISION,'compute':meta['compute'],'intermediate':width,
+            'direct':meta['direct'],
+            'route_bridge_sha256':None if route_lib is None else hashlib.sha256((route_path.parent/'libv41_exl3_routes.so').read_bytes()).hexdigest(),
             'snapshot_revision':args.snapshot.name,
             'projection_tiers':[[bitmaps[e,p] for p in ['w1','w3','w2']] for e in range(experts)],
             'aot_manifest_sha256':hashlib.sha256((args.aot/'v41_exl3.json').read_bytes()).hexdigest(),
             'bridge_sha256':hashlib.sha256((args.aot/'libv41_exl3_probe.so').read_bytes()).hexdigest(),
-            'checks':results,'graph_changed_inputs_and_routes':True},indent=2)+'\n')
+            'checks':results,'graph_changed_inputs_and_routes':True,
+            'packed_metadata_poisoned_before_native':route_lib is not None},indent=2)+'\n')
         print(args.output.read_text(),flush=True)
     finally:
         torch.cuda.synchronize()
         if graph is not None: del graph
+        if route_lib is not None: assert route_lib.ds41rt_exl3_routes_destroy(route_context)==0
         lib.ds41rt_exl3_destroy(context)
 
 
