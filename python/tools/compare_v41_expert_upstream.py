@@ -56,6 +56,7 @@ def main():
     p.add_argument('--device',type=int,default=0)
     p.add_argument('--direct-compact', action='store_true',
                    help='Exercise compact FP8 kernels directly, outside public backend selection')
+    p.add_argument('--compact-native', action='store_true', help='Adapted compact native V4.1 routing and FP32 route output')
     p.add_argument('--cold-timing', action='store_true', help='Also measure after a 256 MiB device-buffer write')
     p.add_argument('--native-lib', type=Path, help='Actual TP2 serving library baseline (N1152 only)')
     p.add_argument('--compare-timing', action='store_true',
@@ -68,6 +69,8 @@ def main():
         p.error('--direct-compact requires --activation silu')
     if args.native_lib and (not args.compare_timing or args.intermediate != 1152):
         p.error('--native-lib requires --compare-timing and --intermediate 1152')
+    if args.compact_native and not args.native_lib:
+        p.error('--compact-native requires --native-lib')
     sys.path.insert(0,str(args.b12x_root))
     import torch
     from tests._reference.helpers import prepare_tp_moe_fp4_experts, make_tp_moe_fp4_binding
@@ -136,6 +139,7 @@ def main():
                                            (original_x * -.5, (original_ids + 1) % e)]]
         owners = ExitStack()
         timed_graphs = []
+        native_route_references = []
         for activation in (args.activation or ['silu_v41','silu']):
             x=original_x.clone();ids=original_ids.clone();output=torch.empty_like(x)
             use_compact = args.direct_compact and activation == 'silu'
@@ -153,15 +157,20 @@ def main():
                 from b12x.moe._shared.kernels.w4a8_compact_micro import launch_w4a8_compact_micro, micro_scratch_nbytes
                 from b12x.moe._shared.kernels.w4a16.kernel import _w4a16_topk_sum_launch_flat
                 runtime = prepared[activation]._impl.representation_for('w4a8_mx')
-                scratch = torch.empty(micro_scratch_nbytes(rows, h, n, 6), device='cuda', dtype=torch.uint8)
+                scratch = torch.empty(micro_scratch_nbytes(rows, h, n, 6, native_v41=args.compact_native), device='cuda', dtype=torch.uint8)
+                route_holder = []
                 def run_compact():
                     routes = launch_w4a8_compact_micro(
                         scratch=scratch, a=x, topk_ids=ids, topk_weights=routing,
                         w13=runtime.w13_rp, w13_scales=runtime.w13_sfb,
                         w2=runtime.w2_rp, w2_scales=runtime.w2_sfb,
                         alpha1=ones, alpha2=ones, input_scale=ones, down_scale=ones,
-                        max_tokens=rows, num_topk=6, swiglu_limit=10, fast_math=False)
-                    _w4a16_topk_sum_launch_flat(routes, output, rows, 6, h, 'bf16', torch.cuda.current_stream().cuda_stream)
+                        max_tokens=rows, num_topk=6, swiglu_limit=10, fast_math=False, native_v41=args.compact_native)
+                    route_holder[:] = [routes]
+                    if args.compact_native:
+                        check(lib.ds41rt_v41_finish_local_experts_async(routes.data_ptr(), None, output.data_ptr(), rows, 0, torch.cuda.current_stream().cuda_stream))
+                    else:
+                        _w4a16_topk_sum_launch_flat(routes, output, rows, 6, h, 'bf16', torch.cuda.current_stream().cuda_stream)
                     return output
                 context = nullcontext(SimpleNamespace(run=run_compact, implementation='direct_compact'))
             else:
@@ -190,17 +199,24 @@ def main():
                     repeat_equal=None if cycle!=2 else torch.equal(actual,previous)
                     previous=actual.clone()
                     checks.append({'identical_input_replay_exact':repeat_equal,'cycle':cycle,'relative_l2':rel,'cosine':cosine,'native_reference_gate':rel<.01 and cosine>.9999,'own_reference_relative_l2':own_rel,'own_reference_cosine':own_cosine})
-                    if use_compact or (activation == 'silu' and n % 128 == 64 and binding.implementation == 'micro'):
+                    if (use_compact and not args.compact_native) or (not args.compact_native and activation == 'silu' and n % 128 == 64 and binding.implementation == 'micro'):
                         compact_wanted = compact_expected[min(cycle, 1)]
                         compact_rel = float((value - compact_wanted).norm() / compact_wanted.norm())
                         compact_cos = float(torch.nn.functional.cosine_similarity(value.flatten(), compact_wanted.flatten(), dim=0))
                         checks[-1].update(compact_reference_relative_l2=compact_rel,
                                           compact_reference_cosine=compact_cos,
                                           compact_reference_gate=compact_rel < .01 and compact_cos > .9999)
+                    if args.native_lib and not use_compact:
+                        native_route_references.append(native.output.clone())
+                    elif args.compact_native:
+                        reference_routes = native_route_references[cycle]
+                        route_rel = float((route_holder[0] - reference_routes).norm() / reference_routes.norm())
+                        checks[-1]['native_route_relative_l2'] = route_rel
+                        assert route_rel < .01, route_rel
                 result={'rows':rows,'activation':activation,'implementation':binding.implementation,'checks':checks}
                 report['cases'].append(result);save();print(json.dumps(result),flush=True)
                 if args.compare_timing:
-                    gate = 'compact_reference_gate' if use_compact else 'native_reference_gate'
+                    gate = 'compact_reference_gate' if use_compact and not args.compact_native else 'native_reference_gate'
                     assert all(check[gate] for check in checks), result
                     timed_graphs.append((activation, graph, result, (binding, x, ids, output, scratch if use_compact else None, (native, wire) if args.native_lib and not use_compact else None)))
                 else:

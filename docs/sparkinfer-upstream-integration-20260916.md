@@ -78,6 +78,32 @@ They may still require mechanical merge/import/test fixes when shared library
 surfaces change. Attention/projection parallelization across GPUs is deferred;
 retain the current ownership and expert parallelism in comparisons.
 
+## Compact experts adapted to native arithmetic (September 16)
+
+Fork commit `80a7be9d` adds an explicit native V4.1 compact specialization:
+routing is applied before the BF16/FP8 intermediate boundary, the intermediate
+amax floor is 1e-4, and FC2 writes FP32 route contributions for TP reduction.
+Generic upstream behavior remains the default. Compile identity and workspace
+layout distinguish the native specialization and its larger FP32 output.
+
+[Adaptation evidence](sparkinfer-upstream-expert-compact-native-20260916.json)
+compares original and changed inputs/IDs against both the independent native
+reference and the actual native TP2 library. At N1152 with 1 and 16 rows,
+FP32 route contributions differ by at most **1.40e-7 relative L2**; native
+reference gates and repeatable, allocation-free graph checks pass. The one-row
+advantage survives: native→adapted compact is **92.3→26.7 µs warm** and
+**127.0→53.2 µs after cache eviction**. Sixteen rows remain approximately tied
+(562.3 µs warm; 589.9→584.9 µs after eviction), with clock variation preventing
+a small-gain claim. These measurements include input quantization and local
+reduction, but exclude cross-device traffic/final TP2 reduction.
+
+Two new GPU tests cover N576/N1152, live rows 1/3/4 under one frozen capacity,
+changed inputs/routing, invalid IDs, tiny input/intermediate floors, poisoned
+outputs and untouched tail storage. Four existing compact generic GPU cases
+also pass. The candidate source lock is advanced; production pins and serving
+libraries are unchanged. A native AOT adapter, complete serving comparisons,
+and actual Spark hardware qualification remain next.
+
 ## Compact expert cost screen against native TP2 (September 16)
 
 [Timing evidence](sparkinfer-upstream-expert-compact-timing-20260916.json)
