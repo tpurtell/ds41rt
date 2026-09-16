@@ -1,0 +1,837 @@
+{
+  "base_url": "http://127.0.0.1:8000",
+  "fixtures": [
+    {
+      "path": "/home/tj/Developer/glmrt-release/third_party/gptqmodel/tests/models/ovis/10016.jpg",
+      "sha256": "a46e0896671c11a26071c41efe0a36bf0021f1b1b6a041ba579daa8291e65c2f"
+    },
+    {
+      "path": "/home/tj/Developer/glmrt-release/third_party/gptqmodel/tests/models/ovis/baidu.png",
+      "sha256": "3342dd06c42f0abc227adf8e3a3602eda301adfb9af1371f22b9f40c6b5f3339"
+    },
+    {
+      "path": "/home/tj/Developer/ds41rt/rust/crates/ds41rt-api/src/native_v41/fixtures/black.png",
+      "sha256": "c47dd9465c00e9a0c8b85e9ea58d3034a0d23b9cf926113602f3460752a4eb96"
+    }
+  ],
+  "cases": [
+    {
+      "name": "mountain",
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "upstream-integration-20260916. Describe the main subject of this image in one sentence."
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:0"
+                }
+              }
+            ]
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 96
+      },
+      "expected_ordered_terms": [
+        "snow",
+        "mountain"
+      ],
+      "response": {
+        "id": "chatcmpl-71662a50-2da2-44be-8492-2634f96cd8d4",
+        "object": "chat.completion",
+        "created": 1789516785,
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "This image captures a majestic, snow-covered mountain peak with steep, rocky ridges rising above a layer of clouds under a soft, pale sky."
+            },
+            "logprobs": null,
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 260,
+          "completion_tokens": 29,
+          "total_tokens": 289,
+          "prompt_tokens_details": {
+            "cached_tokens": 260
+          },
+          "prompt_cache_hit_tokens": 260,
+          "prompt_cache_miss_tokens": 0
+        }
+      },
+      "elapsed_seconds": 0.32715060794726014
+    },
+    {
+      "name": "mountain-exact",
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "upstream-integration-20260916. Describe the main subject of this image in one sentence."
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:0"
+                }
+              }
+            ]
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 96
+      },
+      "expected_ordered_terms": [
+        "snow",
+        "mountain"
+      ],
+      "response": {
+        "id": "chatcmpl-700ddf0a-cc77-4c63-ba7e-f2fb19d37c2c",
+        "object": "chat.completion",
+        "created": 1789516786,
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "This image captures a majestic, snow-covered mountain peak with steep, rocky ridges rising above a layer of clouds under a soft, pale sky."
+            },
+            "logprobs": null,
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 260,
+          "completion_tokens": 29,
+          "total_tokens": 289,
+          "prompt_tokens_details": {
+            "cached_tokens": 260
+          },
+          "prompt_cache_hit_tokens": 260,
+          "prompt_cache_miss_tokens": 0
+        }
+      },
+      "elapsed_seconds": 0.3069785200059414
+    },
+    {
+      "name": "changed-image-logo",
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "upstream-integration-20260916. Describe the main subject of this image in one sentence."
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:1"
+                }
+              }
+            ]
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 96
+      },
+      "expected_ordered_terms": [
+        "baidu"
+      ],
+      "response": {
+        "id": "chatcmpl-34824b67-8e1e-427e-a81c-877c57550523",
+        "object": "chat.completion",
+        "created": 1789516786,
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "This image shows the official logo of Baidu, featuring its red \"Baidu\" and \"百度\" text along with the iconic blue paw print containing the letters \"du\"."
+            },
+            "logprobs": null,
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 226,
+          "completion_tokens": 37,
+          "total_tokens": 263,
+          "prompt_tokens_details": {
+            "cached_tokens": 226
+          },
+          "prompt_cache_hit_tokens": 226,
+          "prompt_cache_miss_tokens": 0
+        }
+      },
+      "elapsed_seconds": 0.43091509595979005
+    },
+    {
+      "name": "changed-image-black",
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "upstream-integration-20260916. Describe the main subject of this image in one sentence."
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:2"
+                }
+              }
+            ]
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 96
+      },
+      "expected_ordered_terms": [
+        [
+          "black",
+          "blank"
+        ]
+      ],
+      "response": {
+        "id": "chatcmpl-5ad26d64-3c0f-4d55-8358-87ccced41f59",
+        "object": "chat.completion",
+        "created": 1789516786,
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "The image is completely blank and contains no visible subject."
+            },
+            "logprobs": null,
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 208,
+          "completion_tokens": 12,
+          "total_tokens": 220,
+          "prompt_tokens_details": {
+            "cached_tokens": 208
+          },
+          "prompt_cache_hit_tokens": 208,
+          "prompt_cache_miss_tokens": 0
+        }
+      },
+      "elapsed_seconds": 0.13344504591077566
+    },
+    {
+      "name": "mountain-logo",
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "upstream-integration-20260916. Describe the first image and then the second image, in that order, in two short sentences."
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:0"
+                }
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:1"
+                }
+              }
+            ]
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 96
+      },
+      "expected_ordered_terms": [
+        "mountain",
+        "baidu"
+      ],
+      "response": {
+        "id": "chatcmpl-b075a6ab-9a35-4fbb-8d3b-d6cef52d02b4",
+        "object": "chat.completion",
+        "created": 1789516786,
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "The first image shows a majestic, snow-covered mountain peak with deep rocky ridges under a soft, hazy sky. The second image displays the Baidu logo, featuring a blue paw print with the white text \"du\" inside, flanked by the red text \"Bai\" and the Chinese characters \"百度\"."
+            },
+            "logprobs": null,
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 471,
+          "completion_tokens": 64,
+          "total_tokens": 535,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "prompt_cache_hit_tokens": 0,
+          "prompt_cache_miss_tokens": 471
+        }
+      },
+      "elapsed_seconds": 0.7455375170102343
+    },
+    {
+      "name": "mountain-black-partial",
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "upstream-integration-20260916. Describe the first image and then the second image, in that order, in two short sentences."
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:0"
+                }
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:2"
+                }
+              }
+            ]
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 96
+      },
+      "expected_ordered_terms": [
+        "mountain",
+        [
+          "black",
+          "blank"
+        ]
+      ],
+      "response": {
+        "id": "chatcmpl-b5d6d9c9-3f74-460b-b1d3-91a47b5de66f",
+        "object": "chat.completion",
+        "created": 1789516787,
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "The first image shows a majestic, snow-covered mountain peak with dark rocky ridges under a hazy, sunlit sky. The second image is a completely solid black square with no visible features."
+            },
+            "logprobs": null,
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 453,
+          "completion_tokens": 39,
+          "total_tokens": 492,
+          "prompt_tokens_details": {
+            "cached_tokens": 138
+          },
+          "prompt_cache_hit_tokens": 138,
+          "prompt_cache_miss_tokens": 315
+        }
+      },
+      "elapsed_seconds": 0.6225249799899757
+    },
+    {
+      "name": "logo-mountain-reordered",
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "upstream-integration-20260916. Describe the first image and then the second image, in that order, in two short sentences."
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:1"
+                }
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:0"
+                }
+              }
+            ]
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 96
+      },
+      "expected_ordered_terms": [
+        "baidu",
+        "mountain"
+      ],
+      "response": {
+        "id": "chatcmpl-403bf52e-d297-4f1a-a5ce-31d2523131e0",
+        "object": "chat.completion",
+        "created": 1789516788,
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "The first image displays the Baidu logo, featuring the red \"Bai\" and \"百度\" characters alongside a blue paw print containing the white letters \"du.\" The second image shows a majestic, snow-covered mountain peak with rugged ridges rising above a layer of clouds under a bright sky."
+            },
+            "logprobs": null,
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 471,
+          "completion_tokens": 59,
+          "total_tokens": 530,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "prompt_cache_hit_tokens": 0,
+          "prompt_cache_miss_tokens": 471
+        }
+      },
+      "elapsed_seconds": 0.9296540569048375
+    },
+    {
+      "name": "completed-turn-resume",
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "upstream-integration-20260916. Describe the main subject of this image in one sentence."
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:0"
+                }
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "content": "This image captures a majestic, snow-covered mountain peak with steep, rocky ridges rising above a layer of clouds under a soft, pale sky."
+          },
+          {
+            "role": "user",
+            "content": "What color covers most of the mountain? Answer in one word."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 96
+      },
+      "expected_ordered_terms": [
+        "white"
+      ],
+      "response": {
+        "id": "chatcmpl-0f827775-c905-4cc0-bef1-7661c890de91",
+        "object": "chat.completion",
+        "created": 1789516789,
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "White"
+            },
+            "logprobs": null,
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 305,
+          "completion_tokens": 2,
+          "total_tokens": 307,
+          "prompt_tokens_details": {
+            "cached_tokens": 289
+          },
+          "prompt_cache_hit_tokens": 289,
+          "prompt_cache_miss_tokens": 16
+        }
+      },
+      "elapsed_seconds": 0.10578820598311722
+    },
+    {
+      "name": "sixteen",
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "sixteen-upstream-integration-20260916. What color fills all of these images? Answer in one word."
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:2"
+                }
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:2"
+                }
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:2"
+                }
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:2"
+                }
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:2"
+                }
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:2"
+                }
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:2"
+                }
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:2"
+                }
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:2"
+                }
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:2"
+                }
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:2"
+                }
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:2"
+                }
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:2"
+                }
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:2"
+                }
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:2"
+                }
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:2"
+                }
+              }
+            ]
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 96
+      },
+      "expected_ordered_terms": [
+        "black"
+      ],
+      "response": {
+        "id": "chatcmpl-f6c0ca50-552a-4a81-b9cc-597abaece2e0",
+        "object": "chat.completion",
+        "created": 1789516789,
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "Black"
+            },
+            "logprobs": null,
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 2987,
+          "completion_tokens": 2,
+          "total_tokens": 2989,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "prompt_cache_hit_tokens": 0,
+          "prompt_cache_miss_tokens": 2987
+        }
+      },
+      "elapsed_seconds": 0.8794765850761905
+    },
+    {
+      "name": "sixteen-exact",
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "sixteen-upstream-integration-20260916. What color fills all of these images? Answer in one word."
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:2"
+                }
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:2"
+                }
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:2"
+                }
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:2"
+                }
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:2"
+                }
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:2"
+                }
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:2"
+                }
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:2"
+                }
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:2"
+                }
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:2"
+                }
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:2"
+                }
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:2"
+                }
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:2"
+                }
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:2"
+                }
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:2"
+                }
+              },
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": "fixture:2"
+                }
+              }
+            ]
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 96
+      },
+      "expected_ordered_terms": [
+        "black"
+      ],
+      "response": {
+        "id": "chatcmpl-d3df1dca-8980-4cb3-9f83-bc7f45ecf6ea",
+        "object": "chat.completion",
+        "created": 1789516790,
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "Black"
+            },
+            "logprobs": null,
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 2987,
+          "completion_tokens": 2,
+          "total_tokens": 2989,
+          "prompt_tokens_details": {
+            "cached_tokens": 2987
+          },
+          "prompt_cache_hit_tokens": 2987,
+          "prompt_cache_miss_tokens": 0
+        }
+      },
+      "elapsed_seconds": 0.07407722901552916
+    }
+  ],
+  "passed": true
+}

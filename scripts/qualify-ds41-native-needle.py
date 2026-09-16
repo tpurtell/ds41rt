@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Retrieve deterministic needles through a 1M prompt and prove exact reuse."""
+"""Retrieve deterministic needles at configured context lengths and prove exact reuse."""
 import argparse
 import hashlib
 import json
@@ -67,8 +67,8 @@ def main():
     if any(not 0 < p < 1 for p in args.positions):
         parser.error('positions must be between zero and one')
     urls = dict(item.split('=', 1) for item in args.base_url)
-    if set(urls) != {'target', 'dspark'}:
-        parser.error('provide exactly target=URL and dspark=URL')
+    if not urls or set(urls) - {'target', 'dspark'}:
+        parser.error('provide target=URL, dspark=URL, or both')
 
     tokenizer = Tokenizer.from_file(str(args.tokenizer))
     source = args.source.read_text()
@@ -103,6 +103,8 @@ def main():
         for mode, base in urls.items():
             cold = stream(base, body, args.timeout)
             exact = stream(base, body, args.timeout)
+            case['runs'][mode] = dict(cold=cold, exact=exact)
+            save()
             for name, run in [('cold', cold), ('exact', exact)]:
                 answer = run['text'].strip()
                 run['retrieved'] = answer == code
@@ -110,7 +112,6 @@ def main():
                 assert run['system_fingerprint'] == f'ds41rt-native-fp4-kv{"-dspark" if mode == "dspark" else ""}'
             assert cold['usage']['prompt_tokens_details']['cached_tokens'] <= 32
             assert exact['usage']['prompt_tokens_details']['cached_tokens'] == exact['usage']['prompt_tokens']
-            case['runs'][mode] = dict(cold=cold, exact=exact)
             save()
         case['passed'] = True
         print('PASS', context, position, code, flush=True)

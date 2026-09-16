@@ -44,7 +44,7 @@ def main():
                 for part in message['content']:
                     if part['type'] == 'image_url':
                         part['image_url']['url'] = 'fixture:' + str(images.index(part['image_url']['url']))
-        record = dict(name=name, request=request)
+        record = dict(name=name, request=request, expected_ordered_terms=contains)
         report['cases'].append(record)
         save()
         started = time.monotonic()
@@ -58,9 +58,12 @@ def main():
         assert result['choices'][0]['finish_reason'] == 'stop', record
         offset = 0
         for word in contains:
-            found = text.find(word, offset)
-            assert found >= offset, (name, contains, text)
-            offset = found + len(word)
+            alternatives = (word,) if isinstance(word, str) else word
+            matches = [(text.find(term, offset), term) for term in alternatives
+                       if text.find(term, offset) >= offset]
+            assert matches, (name, contains, text)
+            found, term = min(matches)
+            offset = found + len(term)
         print(json.dumps(dict(name=name, text=text, usage=result['usage']), ensure_ascii=False), flush=True)
         return result
 
@@ -80,10 +83,11 @@ def main():
     seed = call('mountain', seed_body, ['snow', 'mountain'])
     exact(seed, call('mountain-exact', seed_body, ['snow', 'mountain']))
     call('changed-image-logo', body([1], question), ['baidu'])
-    call('changed-image-black', body([2], question), ['black'])
+    # The question asks for a subject, not a color; a solid black image is blank.
+    call('changed-image-black', body([2], question), [('black', 'blank')])
     question = 'Describe the first image and then the second image, in that order, in two short sentences.'
     call('mountain-logo', body([0, 1], question), ['mountain', 'baidu'])
-    partial = call('mountain-black-partial', body([0, 2], question), ['mountain', 'black'])
+    partial = call('mountain-black-partial', body([0, 2], question), ['mountain', ('black', 'blank')])
     assert 0 < partial['usage']['prompt_cache_hit_tokens'] < partial['usage']['prompt_tokens']
     call('logo-mountain-reordered', body([1, 0], question), ['baidu', 'mountain'])
     follow = copy.deepcopy(seed_body)

@@ -383,6 +383,19 @@ original baseline; code is 145.53 and topic 80.79 TPS. These remain single-pass
 diagnostics. The worker update preserves observed numerics here; remaining
 kernel comparisons, quality qualification and release work are still required.
 
+The complete stack subsequently reaches C16 code **1189.55 TPS** and topic
+**688.69 TPS** with the preserved concurrency prompts (one pass each). Targeted
+[needle retrieval](sparkinfer-upstream-needle-20260916.json) passes at 32768 and
+131072 source tokens, positions 0.1/0.9, with thinking enabled/high and exact
+prompt reuse. This does not cover the full 1M context limit.
+
+[Vision serving checks](sparkinfer-upstream-vision-20260916.json) pass image
+identity changes, order, partial reuse, completed-turn resume, and 16-image
+exact repetition. The initial subject-description check rejected a valid
+"completely blank" description of a solid black image because it required the
+literal word "black". Subject-description checks now accept black or blank;
+the explicit color question still requires black. Raw responses are preserved.
+
 ## Future parallelism and Trellis: analysis only
 
 These observations are retained for subsequent releases at the user's request.

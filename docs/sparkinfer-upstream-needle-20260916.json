@@ -1,0 +1,102 @@
+{
+  "scope": "Retrieve deterministic needles at configured context lengths and prove exact reuse.",
+  "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+  "urls": {
+    "dspark": "http://127.0.0.1:8000"
+  },
+  "tokenizer_sha256": "c90dfa01249db1be4245780a052ede752e1361c612ac6d08e2bdada7d599476b",
+  "source_sha256": "927ec5e2f9b9f98a90dad66b321d8fabbc6c5c829583913687e9dd86af78c219",
+  "cases": [
+    {
+      "context_source_tokens": 32768,
+      "needle_position": 0.1,
+      "needle": "DS41-ECF2983E2A438E72",
+      "prompt_sha256": "336845b0a65765b260e93337fd66a674000b2572f571205e691e61a8d990cf40",
+      "runs": {
+        "dspark": {
+          "cold": {
+            "text": "DS41-ECF2983E2A438E72",
+            "reasoning_content": "We need answer only code. Need find unique retrieval code in prompt. It says \"The unique retrieval code is DS41-ECF2983E2A438E72. Memorize it exactly.\" Need return only code. Ensure exact. ",
+            "usage": {
+              "prompt_tokens": 32878,
+              "completion_tokens": 65,
+              "total_tokens": 32943,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              },
+              "prompt_cache_hit_tokens": 0,
+              "prompt_cache_miss_tokens": 32878
+            },
+            "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+            "elapsed_seconds": 4.867510331096128,
+            "retrieved": true
+          },
+          "exact": {
+            "text": "DS41-ECF2983E2A438E72",
+            "reasoning_content": "We need answer only code. Need find unique retrieval code in prompt. It says \"The unique retrieval code is DS41-ECF2983E2A438E72. Memorize it exactly.\" Need return only code. Ensure exact. ",
+            "usage": {
+              "prompt_tokens": 32878,
+              "completion_tokens": 65,
+              "total_tokens": 32943,
+              "prompt_tokens_details": {
+                "cached_tokens": 32878
+              },
+              "prompt_cache_hit_tokens": 32878,
+              "prompt_cache_miss_tokens": 0
+            },
+            "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+            "elapsed_seconds": 0.5629987659631297,
+            "retrieved": true
+          }
+        }
+      },
+      "passed": true
+    },
+    {
+      "context_source_tokens": 131072,
+      "needle_position": 0.9,
+      "needle": "DS41-C279BDED824CF365",
+      "prompt_sha256": "799ff652ba3684cc342b8275e1675ee7df8b954cd29cb06432281e6fa1ad2744",
+      "runs": {
+        "dspark": {
+          "cold": {
+            "text": "DS41-C279BDED824CF365",
+            "reasoning_content": "We need answer only code. Need identify unique retrieval code in massive prompt. It says \"The unique retrieval code is DS41-C279BDED824CF365. Memorize it exactly.\" Need return only code. Ensure exact. ",
+            "usage": {
+              "prompt_tokens": 131180,
+              "completion_tokens": 58,
+              "total_tokens": 131238,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              },
+              "prompt_cache_hit_tokens": 0,
+              "prompt_cache_miss_tokens": 131180
+            },
+            "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+            "elapsed_seconds": 18.802916754037142,
+            "retrieved": true
+          },
+          "exact": {
+            "text": "DS41-C279BDED824CF365",
+            "reasoning_content": "We need answer only code. Need identify unique retrieval code in massive prompt. It says \"The unique retrieval code is DS41-C279BDED824CF365. Memorize it exactly.\" Need return only code. Ensure exact. ",
+            "usage": {
+              "prompt_tokens": 131180,
+              "completion_tokens": 58,
+              "total_tokens": 131238,
+              "prompt_tokens_details": {
+                "cached_tokens": 131180
+              },
+              "prompt_cache_hit_tokens": 131180,
+              "prompt_cache_miss_tokens": 0
+            },
+            "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+            "elapsed_seconds": 0.6014714289922267,
+            "retrieved": true
+          }
+        }
+      },
+      "passed": true
+    }
+  ],
+  "passed": true
+}
