@@ -1,0 +1,69 @@
+{
+  "passed": true,
+  "scope": "Real four-Spark RoCE execution of EXL3 layer 39, exact rank partials versus B12x with two client lanes. Not full-model serving, GPU target reduction or throughput qualification.",
+  "worker_source_commit": "9f8447d",
+  "snapshot_revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+  "hosts": [
+    "ostrich",
+    "dodo",
+    "emu",
+    "kiwi"
+  ],
+  "peers": [
+    "10.55.0.1:19451",
+    "10.55.0.2:19451",
+    "10.55.0.3:19451",
+    "10.55.0.4:19451"
+  ],
+  "layer": 39,
+  "resident_experts_per_rank": 384,
+  "routed_reference_experts": 6,
+  "tp_widths": [
+    640,
+    640,
+    512,
+    512
+  ],
+  "tp_starts": [
+    0,
+    640,
+    1280,
+    1792
+  ],
+  "worker_maximum": 80,
+  "live_rows": [
+    1,
+    3,
+    16,
+    17,
+    80,
+    1
+  ],
+  "client_lanes": 2,
+  "checks": [
+    "exact BF16 partials from every rank for both lane row orders",
+    "fixture geometry/snapshot/length/SHA256 checks",
+    "matching native/reference tile and routing policies",
+    "same replicated inputs across all four rank references",
+    "every response row received exactly once",
+    "persistent RoCE QP reuse between normal waves",
+    "retained receive slots reject new dispatch and remain unchanged through reset",
+    "abandoned dispatched wave followed by successful recovery",
+    "return to decode capacity 1 after prefill capacity 80"
+  ],
+  "native_library_scope": "New debug ARM worker binary with v4 native library plus wire addon and SM121 EXL3 package. Existing v4 x86 native transport library for the client.",
+  "temporary_workers_removed": true,
+  "production_workers_unchanged": true,
+  "client_source_sha256": "7003a72ffebcb41d65b243d78fc6b5802f76f7b29757c703e191db2c253f542c",
+  "archive": "docs/evidence/v5-exl3-four-spark-roce.tar.gz",
+  "archive_sha256": "c0ffd64d6841c9976163719c1cecdee1597da5a0830ad6256736819f095c3986",
+  "verified_at": "2026-09-16T17:29:48.379517+00:00",
+  "remaining": [
+    "full-model EXL3 serving assembly",
+    "FP4 PLE gather implementation",
+    "generic decoder-tier coverage",
+    "kernel and RTX residency optimization",
+    "post-optimization adaptive profiles and content-type acceptance",
+    "required release quality/performance/quant analyses and v5 publication"
+  ]
+}

@@ -701,3 +701,26 @@ addon and SM121 EXL3 package. They prove capacity dispatch and bounded numerical
 coverage, not four-worker inference or throughput. Four-worker RoCE integration
 is next; full serving, optimization, adaptive calibration and release measurements
 remain required.
+
+## Four-Spark EXL3 RoCE integration
+
+[Four-worker evidence](release-v5-exl3-four-spark-roce.json) now passes real GPU
+expert execution across ostrich/dodo/emu/kiwi through persistent RoCE QPs. Each
+isolated worker loads all 384 experts of layer 39 in its actual TP4 slice
+(640/640/512/512). Two client lanes use different row orders and compare every
+rank's BF16 response bitwise against six-expert B12x fixtures at live rows
+1/3/16/17/80/1. Inputs are identical across ranks; snapshot, geometry, payload
+hashes and matching reference/native tile policies are checked.
+
+The client also verifies complete/nonduplicate response coverage, persistent
+connection reuse, retained-slot admission rejection with stable retained bytes,
+and recovery after abandoning an enqueued wave. The test workers use port 19451
+and were removed afterward; the existing production workers remain running.
+The reusable client is `v41_exl3_roce_qualify` in the transport examples.
+
+This is a one-layer distributed expert integration check with native GPU compute,
+not full-model serving or a throughput benchmark. It uses the new debug ARM
+worker with v4 native libraries plus the EXL3 wire addon and rebuilt modules.
+The next step is full-model EXL3 serving assembly; GPU target reduction in that
+complete path, FP4 PLE gathering, generic tier coverage, optimization and all
+release qualification remain required.
