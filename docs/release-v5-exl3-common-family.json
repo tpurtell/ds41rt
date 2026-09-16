@@ -1,0 +1,91 @@
+{
+  "passed": true,
+  "scope": "Checkpoint-wide decoder-family planning, per-layer subset residency and a native K4-only payload bound to a K3/K4 package. Not arbitrary-quant end-to-end serving qualification.",
+  "implementation": "Compute the sorted K2-K5 family once from all target and draft projection metadata; each layer retains the same tier IDs, with zero counts and no packed payload for absent tiers. Uniform checkpoints retain the adjacent dummy tier.",
+  "tests": [
+    "77 loader tests pass (three environment-dependent tests ignored)",
+    "published checkpoint manifest test passes separately: all 43 layers use K3/K4, preserving prior descriptor layouts and sizes",
+    "per-layer K3/K4, K2/K5 and K2/K3/K4/K5 subsets retain exact compressed payload sizes and descriptor IDs across TP1/TP2/TP4",
+    "daemon cargo check passes",
+    "native all-K4 payload through a K3/K4 package matches reference bitwise at rows 16/1/3/16 and changed-input graph replay"
+  ],
+  "native_result": {
+    "passed": true,
+    "scope": "Qualify native two-to-four-tier dispatch, rows and changed-input graphs.\n\nUniform mode uses zero-membership, minimal-storage adjacent tiers. Homogeneous\nexperts use separate single-tier B12x grids as the reference. With\n--mixed-projections, each expert uses three distinct bitrates and is evaluated\nseparately by the existing three-tier grid before summing reference outputs.\n",
+    "cases": [
+      {
+        "rows": 16,
+        "relative_l2": 0.0
+      },
+      {
+        "rows": 1,
+        "relative_l2": 0.0
+      },
+      {
+        "rows": 3,
+        "relative_l2": 0.0
+      },
+      {
+        "rows": 16,
+        "relative_l2": 0.0
+      },
+      {
+        "graph_step": 0,
+        "relative_l2": 0.0
+      },
+      {
+        "graph_step": 1,
+        "relative_l2": 0.0
+      }
+    ],
+    "source_revision": "fd8f8a68a3fd674e6c8d7d462692beb687b5939f",
+    "uniform_bit": 4,
+    "mixed_projections": false,
+    "projection_tiers": [
+      [
+        1,
+        1,
+        1
+      ],
+      [
+        1,
+        1,
+        1
+      ],
+      [
+        1,
+        1,
+        1
+      ],
+      [
+        1,
+        1,
+        1
+      ],
+      [
+        1,
+        1,
+        1
+      ],
+      [
+        1,
+        1,
+        1
+      ]
+    ],
+    "compute": [
+      12,
+      0
+    ],
+    "output_dtype": "bf16",
+    "bits": [
+      3,
+      4
+    ],
+    "capacity": 16,
+    "hidden": 5120,
+    "intermediate": 512
+  },
+  "archive": "docs/evidence/v5-exl3-common-family.tar.gz",
+  "archive_sha256": "ab662c600da95c48c04a6010e806d0830736ec8178c6a5dd15c35906ba6c3319"
+}

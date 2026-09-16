@@ -1098,3 +1098,24 @@ top-k six. This does not establish every geometry/capacity or end-to-end serving
 with layers that use different decoder subsets. Package/loader alignment for
 those subsets remains to be addressed before generic serving support is claimed.
 The original Spark worker and production coordinator are restored.
+
+## Consistent decoder families across layer subsets
+
+[Common-family evidence](release-v5-exl3-common-family.json) fixes a loader
+mismatch: an all-K4 layer inside a K3/K4 checkpoint previously selected K4/K5
+independently and could not bind to the checkpoint's K3/K4 package. The manifest
+now derives its sorted decoder family once from all target and draft projections.
+Every layer uses those tier IDs; absent tiers have zero projection counts and
+no packed payload. A fully uniform checkpoint still uses an empty adjacent tier.
+Package builds must select this checkpoint-wide family.
+
+Subset tests cover K3/K4, K2/K5 and K2/K3/K4/K5 across TP1/TP2/TP4, checking exact
+packed payload sizes and projection descriptors. All 77 ordinary loader tests
+pass, as does daemon compilation. The separately run published-manifest test
+confirms all 43 target/draft layers already use K3/K4, so their existing layouts
+and allocation sizes are preserved. This is not a new loading-speed measurement.
+
+A native all-K4 payload bound to a K3/K4 package also matches the homogeneous
+reference bitwise at rows 16/1/3/16 and changed-input graph replay. This verifies
+the subset representation alongside the planner tests; arbitrary-quant full
+serving and complete geometry/capacity coverage remain separate release work.

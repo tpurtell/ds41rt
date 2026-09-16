@@ -3,7 +3,6 @@
 use crate::{OfficialV41Catalog, V41Exl3Manifest};
 use anyhow::{ensure, Context, Result};
 use serde::Serialize;
-use std::collections::BTreeSet;
 
 #[derive(Debug, Clone, Copy, Serialize)]
 pub enum V41Exl3Layer {
@@ -137,7 +136,6 @@ impl V41Exl3Manifest {
             }
         };
         let mut projections = Vec::with_capacity(experts);
-        let mut bits = BTreeSet::new();
         for expert in 0..experts {
             let mut row = Vec::new();
             for projection in ["w1", "w3", "w2"] {
@@ -149,18 +147,12 @@ impl V41Exl3Manifest {
                     (2..=5).contains(&p.bits),
                     "EXL3 projection tier outside K2..K5"
                 );
-                bits.insert(p.bits);
                 row.push(p);
             }
             projections.push(row);
         }
-        // The native mixed ABI needs at least two slots; a uniform checkpoint
-        // uses an empty adjacent tier without expanding its compressed payload.
-        if bits.len() == 1 {
-            let bit = *bits.first().unwrap();
-            bits.insert(if bit == 5 { 4 } else { bit + 1 });
-        }
-        let tiers: Vec<_> = bits.into_iter().collect();
+        // All layers retain the package's checkpoint-wide descriptor tier IDs.
+        let tiers = self.decoder_tiers.clone();
         let partition = projections[0][0].intermediate_partition(world, rank)?;
         let width = partition.end - partition.start;
         let hidden = config.hidden_size;
@@ -174,7 +166,8 @@ impl V41Exl3Manifest {
                     p.intermediate_partition(world, rank)? == partition,
                     "inconsistent EXL3 intermediate partition"
                 );
-                let tier = tiers.binary_search(&p.bits).unwrap();
+                let tier = tiers.binary_search(&p.bits)
+                    .map_err(|_| anyhow::anyhow!("projection decoder absent from checkpoint family"))?;
                 let local = counts[tier][projection];
                 ensure!(local < 512, "EXL3 descriptor local exceeds nine bits");
                 locals[expert][projection] = local;
@@ -222,7 +215,8 @@ impl V41Exl3Manifest {
         let mut loads = Vec::new();
         for (expert, row) in projections.iter().enumerate() {
             for (projection, p) in row.iter().enumerate() {
-                let tier = tiers.binary_search(&p.bits).unwrap();
+                let tier = tiers.binary_search(&p.bits)
+                    .map_err(|_| anyhow::anyhow!("projection decoder absent from checkpoint family"))?;
                 let one = hidden * width * p.bits / 8;
                 let slot =
                     locals[expert][projection] + if projection == 1 { counts[tier][0] } else { 0 };
@@ -316,6 +310,7 @@ mod tests {
         }
         V41Exl3Manifest {
             config,
+            decoder_tiers: crate::v41_exl3::decoder_family(&projections).unwrap(),
             projections,
             ple_quantization: None,
         }
@@ -386,4 +381,41 @@ mod tests {
         assert!(manifest.residency(V41Exl3Layer::Backbone(0), 3, 0).is_err());
         assert!(manifest.residency(V41Exl3Layer::Backbone(0), 4, 4).is_err());
     }
+    #[test]
+    fn layer_subsets_keep_checkpoint_family_and_exact_payloads() {
+        for family in [&[3, 4][..], &[2, 5], &[2, 3, 4, 5]] {
+            let mut manifest = fixture(&family[..1]);
+            let original: Vec<_> = manifest.projections.values().cloned().collect();
+            for (layer, &bits) in family.iter().enumerate().skip(1) {
+                for mut p in original.clone() {
+                    p.name = p.name.replacen("layers.0.", &format!("layers.{layer}."), 1);
+                    p.bits = bits;
+                    manifest.projections.insert(p.name.clone(), p);
+                }
+            }
+            manifest.decoder_tiers = crate::v41_exl3::decoder_family(&manifest.projections).unwrap();
+            for world in [1, 2, 4] {
+                for rank in 0..world {
+                    for (layer, &bits) in family.iter().enumerate() {
+                        let plan = manifest.residency(V41Exl3Layer::Backbone(layer), world, rank).unwrap();
+                        assert_eq!(plan.tiers, family);
+                        for (tier, counts) in plan.projection_counts.iter().enumerate() {
+                            assert_eq!(*counts, [if tier == layer { 384 } else { 0 }; 3]);
+                        }
+                        let payload: usize = plan.buffers.iter().filter(|b| b.name.starts_with("tier"))
+                            .map(|b| b.bytes).sum();
+                        assert_eq!(payload, 384 * 3 * 5120 * plan.intermediate * bits / 8);
+                        let descriptor = plan.buffers.iter().find(|b| b.name == "descriptor_map").unwrap();
+                        for projection in 0..3 {
+                            for expert in 0..384 {
+                                assert_eq!(descriptor.initial_words[projection*384*family.len()+expert],
+                                    ((layer << 9) | expert) as i32);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
 }

@@ -3,7 +3,7 @@ use crate::{OfficialV41Config, SafetensorsTensorMetadata, OFFICIAL_V41_MODEL_ID}
 use anyhow::{ensure, Context, Result};
 use ds41rt_core::DType;
 use serde_json::Value;
-use std::{collections::BTreeMap, fs::File, io::Read, ops::Range, path::Path};
+use std::{collections::{BTreeMap, BTreeSet}, fs::File, io::Read, ops::Range, path::Path};
 
 pub const V41_EXL3_SCHEMA: &str = "ds41rt.v41-routed-exl3.v1";
 const MAX_MANIFEST_BYTES: u64 = 64 * 1024 * 1024;
@@ -104,8 +104,28 @@ pub struct V41Exl3Manifest {
     /// Validated original non-routed model geometry and quantization contract.
     pub config: OfficialV41Config,
     pub projections: BTreeMap<String, V41Exl3Projection>,
+    /// One checkpoint-wide family, shared by all target and draft layers.
+    pub(crate) decoder_tiers: Vec<usize>,
     /// Retained for validation by the PLE storage path; never silently discarded.
     pub ple_quantization: Option<Value>,
+}
+
+impl V41Exl3Manifest {
+    pub fn decoder_tiers(&self) -> &[usize] {
+        &self.decoder_tiers
+    }
+}
+
+pub(crate) fn decoder_family(projections: &BTreeMap<String, V41Exl3Projection>) -> Result<Vec<usize>> {
+    let mut bits: BTreeSet<_> = projections.values().map(|p| p.bits).collect();
+    ensure!(!bits.is_empty() && bits.iter().all(|b| (2..=5).contains(b)),
+        "EXL3 decoder family must contain K2..K5 projections");
+    // Native mixed kernels retain an empty adjacent tier for uniform models.
+    if bits.len() == 1 {
+        let bit = *bits.first().unwrap();
+        bits.insert(if bit == 5 { 4 } else { bit + 1 });
+    }
+    Ok(bits.into_iter().collect())
 }
 
 pub(crate) fn read_json(path: &Path, limit: u64) -> Result<Value> {
@@ -217,6 +237,7 @@ fn parse_manifest(mut config: Value, manifest: &Value) -> Result<V41Exl3Manifest
     );
     Ok(V41Exl3Manifest {
         config: validated,
+        decoder_tiers: decoder_family(&projections)?,
         projections,
         ple_quantization,
     })
@@ -284,6 +305,16 @@ mod tests {
         let path = std::env::var_os("DS41RT_EXL3_SNAPSHOT").expect("DS41RT_EXL3_SNAPSHOT");
         let manifest = read_v41_exl3_manifest(Path::new(&path)).unwrap();
         assert_eq!(manifest.projections.len(), 47_232);
+        assert_eq!(manifest.decoder_tiers(), &[3, 4]);
+        // For the published quant the common family equals every old local
+        // family, so descriptor layouts and allocation sizes remain unchanged.
+        let mut families = BTreeMap::<String, BTreeSet<usize>>::new();
+        for p in manifest.projections.values() {
+            let prefix = p.name.split(".ffn.experts.").next().unwrap();
+            families.entry(prefix.into()).or_default().insert(p.bits);
+        }
+        assert_eq!(families.len(), 43);
+        assert!(families.values().all(|bits| bits.iter().copied().collect::<Vec<_>>() == [3, 4]));
         let mut counts = BTreeMap::new();
         for p in manifest.projections.values() {
             *counts.entry(p.bits).or_insert(0usize) += 1;
