@@ -225,3 +225,27 @@ reference and native launch; graph replay changes inputs, reorders routes and
 masks some routes. [Combined packed-path evidence](release-v5-exl3-packed.json)
 records the tested binaries. Native serving, full expert inventories, TP
 reduction and Spark wire input remain pending; these tests use BF16 input.
+
+## Compressed residency plans
+
+`v41_exl3_residency.rs` defines per-layer compressed payload buffers, independent
+gate/up/down tier counts, route/projection maps, unit scales and stored FP16
+rotations. Each staging job reads one source tensor into reusable caller storage
+and lists its destination offsets. Replicated rotation rows share a single read;
+no dequantized weight matrix or complete tier-wide staging copy is needed.
+Reads check the MCG multiplier and reject non-finite stored rotations.
+
+Synthetic K2–K5 uniform/mixed plans cover TP1/TP2/TP4, proving destination
+coverage without overlaps and unchanged compressed byte totals. Uniform plans
+use an empty second tier. Four-tier layout coverage does not establish a
+four-tier executable kernel; generic execution still needs completion.
+
+[Actual checkpoint evidence](release-v5-exl3-residency.json) verifies all 8,064
+staged tensors from backbone layer 0 TP4/rank 0, backbone layer 0 TP2/rank 1,
+and dSpark stage 0 TP1 against independent safetensors slices. Route and
+descriptor maps and projection counts match B12x. The full loader suite passes
+75 tests (three opt-in fixtures ignored), and the daemon compiles. These plans
+are not yet connected to native device allocation/loading or serving. Staging
+scratch figures in the evidence are minimum capacities; callers may supply
+larger preallocated scratch to batch column reads. Startup speed remains to be
+measured with the final loader and configuration.

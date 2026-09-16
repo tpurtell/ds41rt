@@ -1,0 +1,66 @@
+{
+  "scope": "Compressed residency plans and bounded CPU staging; not allocated GPU residency, fast-loading qualification or serving support.",
+  "artifact": "evidence/v5-exl3-residency.tar.gz",
+  "artifact_sha256": "ddf4c5a53de08a5db0b8f6161c9f10d41cf670f7bb6e2a532590c3d18eff6440",
+  "loader_tests": "75 passed, 3 opt-in fixture tests ignored; actual full-layer checks run separately",
+  "daemon_check": "passed, 510 existing warnings",
+  "results": [
+    {
+      "passed": true,
+      "scope": "CPU residency descriptor and compressed staging checks; no device residency, expert execution or serving claim.",
+      "sparkinfer_revision": "c024d14ce936ddfc2c863377d033d85e1787924b",
+      "snapshot_revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+      "plan_sha256": "8c31ff84c1f86994df0ca4c659167a4b3635bb9d9d9fe9fe37642768ed39ee60",
+      "layer": {
+        "Backbone": 0
+      },
+      "world": 4,
+      "rank": 0,
+      "intermediate": 640,
+      "b12x_descriptor_and_route_maps_equal": true,
+      "projection_counts_equal": true,
+      "independently_sliced_tensor_hashes_matched": 3456,
+      "resident_payload_bytes": 1560096784,
+      "staging_bytes": 1638400,
+      "read_scratch_bytes": 18432
+    },
+    {
+      "passed": true,
+      "scope": "CPU residency descriptor and compressed staging checks; no device residency, expert execution or serving claim.",
+      "sparkinfer_revision": "c024d14ce936ddfc2c863377d033d85e1787924b",
+      "snapshot_revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+      "plan_sha256": "ebf190ac943a5695fff2d54737495ae8eebe79f9ab79b0a215ae7f79a3afc194",
+      "layer": {
+        "Backbone": 0
+      },
+      "world": 2,
+      "rank": 1,
+      "intermediate": 1152,
+      "b12x_descriptor_and_route_maps_equal": true,
+      "projection_counts_equal": true,
+      "independently_sliced_tensor_hashes_matched": 3456,
+      "resident_payload_bytes": 2789290000,
+      "staging_bytes": 2949120,
+      "read_scratch_bytes": 18432
+    },
+    {
+      "passed": true,
+      "scope": "CPU residency descriptor and compressed staging checks; no device residency, expert execution or serving claim.",
+      "sparkinfer_revision": "c024d14ce936ddfc2c863377d033d85e1787924b",
+      "snapshot_revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+      "plan_sha256": "f6d16961b315534e216c95b0546a30e06592cfa8a4bbc58d5e175bb9883b31b2",
+      "layer": {
+        "Dspark": 0
+      },
+      "world": 1,
+      "rank": 0,
+      "intermediate": 2304,
+      "b12x_descriptor_and_route_maps_equal": true,
+      "projection_counts_equal": true,
+      "independently_sliced_tensor_hashes_matched": 1152,
+      "resident_payload_bytes": 1851658256,
+      "staging_bytes": 5898240,
+      "read_scratch_bytes": 0
+    }
+  ]
+}
