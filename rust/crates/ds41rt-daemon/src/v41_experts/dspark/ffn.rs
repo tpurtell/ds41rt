@@ -1,13 +1,13 @@
 //! One complete dSpark FFN boundary on its owned expert wave stream.
 use super::{DsparkRouter, DsparkSharedFfn, DsparkWeights, HcSublayer};
-use crate::v41_experts::ExpertExecution;
+use super::expert_backend::DraftExperts;
 use anyhow::{ensure, Context, Result};
 use ds41rt_ffi::{Ds41rtDeviceBuffer, NativeLibrary};
 use std::ffi::c_void;
 
 pub(crate) struct DsparkFfn<'weights, 'library> {
     // Drop drains this stream before any sibling workspace can be released.
-    experts: ExpertExecution<'weights, 'library>,
+    experts: DraftExperts<'weights, 'library>,
     boundary: HcSublayer<'weights, 'library>,
     router: DsparkRouter<'weights, 'library>,
     shared: DsparkSharedFfn<'weights, 'library>,
@@ -17,8 +17,8 @@ pub(crate) struct DsparkFfn<'weights, 'library> {
 }
 impl<'library> DsparkWeights<'library> {
     pub fn ffn_bytes(&self, capacity: u32) -> Result<usize> {
-        let library = self.experts[0].buffers[0].library;
-        let experts = self.experts[0].execution_budget(capacity)?.total()?;
+        let library = self.library;
+        let experts = self.expert_bytes(capacity)?;
         let hc = HcSublayer::device_bytes(capacity as usize)?;
         let router = DsparkRouter::device_bytes(capacity as usize)?;
         let shared = DsparkSharedFfn::device_bytes(library, capacity)?;
@@ -41,12 +41,9 @@ impl<'library> DsparkWeights<'library> {
         ensure!(stage < 3, "invalid dSpark FFN stage");
         let bytes = self.ffn_bytes(capacity)?;
         ensure!(bytes <= budget, "dSpark FFN exceeds device budget");
-        let library = self.experts[stage].buffers[0].library;
+        let library = self.library;
         Ok(DsparkFfn {
-            experts: self.experts[stage].execution(
-                capacity,
-                self.experts[stage].execution_budget(capacity)?.total()?,
-            )?,
+            experts: self.expert_wave(stage, capacity)?,
             boundary: self.hc_sublayer(
                 stage,
                 false,

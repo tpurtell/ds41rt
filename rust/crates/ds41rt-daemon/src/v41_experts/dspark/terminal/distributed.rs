@@ -181,7 +181,7 @@ mod tests {
         let shards = [devices[0].own(|| VocabularyShard::load(&lib, &catalog, 0..64640, 1 << 30, 16 << 20))?,
             devices[1].own(|| VocabularyShard::load(&lib, &catalog, 64640..129280, 1 << 30, 16 << 20))?];
         let full = devices[1].own(|| VocabularyHead::load(&lib, &catalog, 2 << 30, 16 << 20))?;
-        let weights = devices[1].own(|| DsparkWeights::load_with_width(&lib, &catalog, if width == 7 { 256 } else { 80 }, 1, 32usize << 30, 16 << 20, width))?;
+        let weights = devices[1].own(|| DsparkWeights::load_with_width(&lib, &catalog, if width == 7 { 256 } else { 80 }, 1, 32usize << 30, 16 << 20, width, None))?;
         let budgets = DistributedDsparkTerminal::device_bytes_with_width(16, 64640, width)?;
         let mut lanes = [DistributedDsparkTerminal::new(devices, &weights, [&shards[0], &shards[1]], 16, budgets)?,
             DistributedDsparkTerminal::new(devices, &weights, [&shards[0], &shards[1]], 16, budgets)?];

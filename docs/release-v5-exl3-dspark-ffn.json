@@ -1,0 +1,52 @@
+{
+  "passed": true,
+  "scope": "All three loaded EXL3 dSpark FFN stages, two separate owners per stage, eager/graph replay and rejection recovery on RTX0 and RTX1 at capacity 16. Not independent B12x FFN parity, complete draft-chain or serving-performance qualification.",
+  "snapshot_revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+  "gpu_ordinals": [
+    0,
+    1
+  ],
+  "stages": [
+    0,
+    1,
+    2
+  ],
+  "resident_experts_per_stage": 128,
+  "expert_resident_bytes": 5554974768,
+  "auxiliary_resident_bytes": 713428872,
+  "expert_execution_bytes_per_wave_all_three_stages": 86828856,
+  "capacity": 16,
+  "graph_live_rows": 3,
+  "changed_input_seeds": [
+    1,
+    9,
+    2
+  ],
+  "additional_eager_rows": [
+    1,
+    16,
+    3
+  ],
+  "checks": [
+    "bitwise eager/graph output equality with changed inputs",
+    "separate FFN workspace owners",
+    "finite nonzero residual and finite pre-mix",
+    "invalid graph row count clears output, then valid replay recovers",
+    "zero live rows rejected, then valid eager execution recovers"
+  ],
+  "fix_during_qualification": "The existing BF16 add kernel forbids output/input aliasing. Shared and final draft outputs now have separate planned buffers.",
+  "package_manifest_sha256": "a7c06b94c05fe3690678529a7da84bcc675a9b3a9bc56f7310d1cf561be0f732",
+  "native_library_scope": "Wire addon linked to the v4 native library plus packaged EXL3 modules; not a clean release image.",
+  "coordinator_restored_health_http_status": 200,
+  "remaining": [
+    "complete draft chain and retained cache",
+    "larger capacities",
+    "independent dSpark expert reference checks",
+    "four-Spark RoCE serving",
+    "kernel and placement optimization",
+    "post-optimization Spark/RTX adaptive profiles and content-type acceptance"
+  ],
+  "archive": "docs/evidence/v5-exl3-dspark-ffn.tar.gz",
+  "archive_sha256": "b5260354ce87b6414990f2354af5824be75d2e9a1d79e32d237de0828f64fb22",
+  "verified_at": "2026-09-16T16:55:58.055520+00:00"
+}

@@ -34,7 +34,7 @@ impl<'library> DsparkWeights<'library> {
         capacity: u32,
         budget: usize,
     ) -> Result<DsparkMainContext<'_, 'library>> {
-        let library = self.experts[0].buffers[0].library;
+        let library = self.library;
         ensure!(
             DsparkMainContext::device_bytes(library, capacity)? <= budget,
             "dSpark main context exceeds budget"

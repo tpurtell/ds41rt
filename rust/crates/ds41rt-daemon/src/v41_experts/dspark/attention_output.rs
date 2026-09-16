@@ -28,7 +28,7 @@ impl<'library> DsparkWeights<'library> {
         budget: usize,
     ) -> Result<DsparkAttentionOutput<'_, 'library>> {
         ensure!(stage < 3, "invalid dSpark attention output stage");
-        let library = self.experts[stage].buffers[0].library;
+        let library = self.library;
         ensure!(
             DsparkAttentionOutput::device_bytes(library, capacity)? <= budget,
             "dSpark attention output exceeds budget"

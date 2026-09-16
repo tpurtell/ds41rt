@@ -260,6 +260,7 @@ fn worker(
             32 * 1024 * 1024 * 1024,
             16 * 1024 * 1024,
             if args.dspark_draft_limit > 5 { 7 } else { 5 },
+            Some(&args.native_lib.parent().context("native library directory missing")?.join("exl3/dspark")),
         )?)
     } else {
         None

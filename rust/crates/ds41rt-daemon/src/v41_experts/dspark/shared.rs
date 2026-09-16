@@ -65,7 +65,7 @@ impl<'library> DsparkWeights<'library> {
             weights: self,
             stage,
             inner: crate::v41_shared_ffn::SharedFfn::new(
-                self.experts[stage].buffers[0].library,
+                self.library,
                 &self.auxiliary,
                 &format!("mtp.{stage}.ffn.shared_experts"),
                 &self.shared_scales[stage * 3..stage * 3 + 3],
@@ -79,11 +79,14 @@ impl DsparkSharedFfn<'_, '_> {
     pub fn device_bytes(library: &NativeLibrary, capacity: u32) -> Result<usize> {
         crate::v41_shared_ffn::SharedFfn::device_bytes(library, capacity)
     }
+    pub(super) fn matches_stage(&self, weights: &DsparkWeights<'_>, stage: usize) -> bool {
+        self.stage == stage && std::ptr::eq(self.weights, weights)
+    }
     pub(in crate::v41_experts) fn matches(
         &self,
         weights: &crate::v41_experts::ExpertWeights<'_>,
     ) -> bool {
-        std::ptr::eq(&self.weights.experts[self.stage], weights)
+        self.weights.full_expert(self.stage).is_some_and(|stage| std::ptr::eq(stage, weights))
     }
     /// Caller drains the stream before releasing the exclusive scratch borrow.
     pub(in crate::v41_experts) unsafe fn enqueue(

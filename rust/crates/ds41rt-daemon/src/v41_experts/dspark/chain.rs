@@ -105,7 +105,7 @@ impl<'library> DsparkWeights<'library> {
             self.chain_bytes(requests)? <= budget,
             "dSpark chain exceeds budget"
         );
-        let library = self.experts[0].buffers[0].library;
+        let library = self.library;
         let bytes = self.stage_bytes(requests)?;
         Ok(DsparkChain {
             width: self.draft_width,

@@ -19,7 +19,7 @@ impl<'library> DsparkWeights<'library> {
             format!("mtp.{stage}.{kind}_norm.weight"),
         ];
         HcSublayer::new(
-            self.experts[0].buffers[0].library,
+            self.library,
             &self.auxiliary,
             names,
             capacity,

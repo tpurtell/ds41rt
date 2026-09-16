@@ -134,7 +134,7 @@ impl<'library> DsparkWeights<'library> {
     unsafe fn projection_input(
         &self, kind: ProjectionKind, capacity: u32, external: Option<Ds41rtDeviceBuffer>, budget: usize,
     ) -> Result<DsparkProjection<'_, 'library>> {
-        let library = self.experts[0].buffers[0].library;
+        let library = self.library;
         ensure!(
             (if external.is_some() { DsparkProjection::external_input_bytes(library, kind, capacity)? }
                 else { DsparkProjection::device_bytes(library, kind, capacity)? }) <= budget,

@@ -56,7 +56,7 @@ impl<'library> DsparkWeights<'library> {
         let bytes = DsparkTerminal::device_bytes_with_width(capacity, self.draft_width)?
             - if head.is_none() { V41VocabularyProjection::WORKSPACE_BYTES } else { 0 };
         ensure!(bytes <= budget, "dSpark terminal exceeds budget");
-        let library = self.experts[0].buffers[0].library;
+        let library = self.library;
         self.tensor("mtp.2.norm.weight")?;
         let local_head = head.map(|weights| -> Result<_> {
             weights.weight()?;

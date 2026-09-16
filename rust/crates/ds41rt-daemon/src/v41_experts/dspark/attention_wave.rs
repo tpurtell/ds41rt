@@ -33,7 +33,7 @@ impl<'library> DsparkWeights<'library> {
         budget: usize,
     ) -> Result<DsparkAttentionWave<'_, 'library>> {
         ensure!(stage < 3, "invalid dSpark attention stage");
-        let library = self.experts[stage].buffers[0].library;
+        let library = self.library;
         ensure!(
             DsparkAttentionWave::device_bytes_with_width(library, requests, self.draft_width)? <= budget,
             "dSpark attention wave exceeds budget"

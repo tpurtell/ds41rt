@@ -18,7 +18,7 @@ pub(crate) struct DsparkStage<'weights, 'library> {
 impl<'library> DsparkWeights<'library> {
     pub fn stage_bytes(&self, requests: u32) -> Result<usize> {
         let capacity = DsparkAttentionWave::projection_capacity_with_width(requests, self.draft_width)?;
-        let library = self.experts[0].buffers[0].library;
+        let library = self.library;
         let attention = DsparkAttentionWave::device_bytes_with_width(library, requests, self.draft_width)?;
         self.ffn_bytes(capacity)?
             .checked_add(HcSublayer::device_bytes(capacity as usize)?)
@@ -38,7 +38,7 @@ impl<'library> DsparkWeights<'library> {
             "dSpark stage exceeds budget"
         );
         let capacity = DsparkAttentionWave::projection_capacity_with_width(requests, self.draft_width)?;
-        let library = self.experts[0].buffers[0].library;
+        let library = self.library;
         Ok(DsparkStage {
             ffn: self.ffn(stage, capacity, self.ffn_bytes(capacity)?)?,
             boundary: self.hc_sublayer(

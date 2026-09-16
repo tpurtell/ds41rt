@@ -222,7 +222,8 @@ pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Recei
     memory_checkpoint("TP2 transports")?;
     let draft_weights = if args.dspark {
         Some(devices[1].own(|| crate::v41_experts::dspark::DsparkWeights::load_serving_with_width(&lib, &catalog,
-            capacity, args.concurrency, 32 << 30, 16 << 20, if args.dspark_draft_limit > 5 { 7 } else { 5 }))?)
+            capacity, args.concurrency, 32 << 30, 16 << 20, if args.dspark_draft_limit > 5 { 7 } else { 5 },
+            Some(&args.native_lib.parent().context("native library directory missing")?.join("exl3/dspark"))))?)
     } else { None };
     memory_checkpoint("draft weights")?;
     let mut draft = draft_weights.as_ref().map(|weights| DraftRuntime::with_distributed_requests(

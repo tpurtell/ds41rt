@@ -27,7 +27,7 @@ impl<'library> DsparkWeights<'library> {
             bytes <= available_device_bytes,
             "dSpark confidence exceeds device budget"
         );
-        let library = self.experts[0].buffers[0].library;
+        let library = self.library;
         let kernel = library.v41_dspark_confidence()?;
         // Resolve the final-stage checkpoint weight before allocating workspace.
         self.tensor("mtp.2.confidence_head.proj.weight")?;

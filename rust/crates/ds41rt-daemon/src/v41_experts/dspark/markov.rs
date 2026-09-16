@@ -30,7 +30,7 @@ impl<'library> DsparkWeights<'library> {
             bytes <= available_device_bytes,
             "dSpark Markov exceeds device budget"
         );
-        let library = self.experts[0].buffers[0].library;
+        let library = self.library;
         self.tensor("mtp.2.markov_head.embed.weight")?;
         self.tensor("mtp.2.markov_head.head.weight")?;
         let workspace = DeviceAllocation::new(library, V41VocabularyProjection::WORKSPACE_BYTES)?;

@@ -562,3 +562,35 @@ slices, because those inputs are replicated while intermediate weights differ.
 It preserves snapshot/layer/top-k/input-format checks and records the source
 fixture manifest hash. dSpark backend selection is the next integration step;
 four-Spark RoCE, full capacities, FP4 PLE and release qualification remain ahead.
+
+## dSpark compressed FFN integration
+
+dSpark now selects compressed routed weights and EXL3 execution through the
+existing FFN boundary in both single- and dual-RTX startup. Auxiliary owners
+retain a direct native-library reference instead of depending on NVFP4 expert
+storage. Routing, shared experts, mHC and graph ownership use the same component
+paths; each stage/lane has fixed input/output storage and preloaded capacity
+variants. Hidden states stay BF16. The EXL3 BF16 routed sum and shared FFN result
+are added with the existing native addition kernel using separate input/output
+buffers. The initial alias attempt was rejected by that kernel's contract and
+corrected with an explicitly budgeted shared buffer. No allocations or module
+loading are added to replay. The unused standalone legacy execution-wave factory
+was removed; serving constructs complete FFN owners.
+
+[dSpark FFN evidence](release-v5-exl3-dspark-ffn.json) passes on RTX0 and RTX1 for
+all three loaded stages (128 experts each). Two owners per stage agree bitwise
+between eager execution and graph replay at three live rows with changed inputs.
+Live 1/16/3-row execution and recovery after invalid eager/replay row counts also
+pass. Loaded expert payload is 5,554,974,768 bytes, auxiliary payload is
+713,428,872 bytes, and planned routed execution storage across three stages is
+86,828,856 bytes per lane at capacity 16. These are component payloads, not the
+complete draft runtime or device budget; other projection, attention, cache,
+graph and context allocations remain separately accounted.
+
+The complete draft chain/cache and larger capacities remain unqualified for
+EXL3, as do independent dSpark expert references and full-model serving. This
+FFN test compares eager and graph paths, not model quality or throughput. It
+uses the v4 native library plus the wire addon and packaged EXL3 modules.
+Adaptive profiles remain unchanged pending optimized kernel/placement timings;
+separate Spark/RTX calibration and content-type acceptance reporting remain
+required before release measurements are final.

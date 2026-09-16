@@ -28,7 +28,7 @@ impl<'library> DsparkWeights<'library> {
             self.tensor(&format!("mtp.{stage}.ffn.gate.weight"))?,
             self.tensor(&format!("mtp.{stage}.ffn.gate.bias"))?,
         ];
-        let library = self.experts[stage].buffers[0].library;
+        let library = self.library;
         Ok(DsparkRouter {
             _weights: self,
             tensors,
@@ -47,11 +47,14 @@ impl DsparkRouter<'_, '_> {
         );
         Ok(capacity * 128 * 4)
     }
+    pub(super) fn matches_stage(&self, weights: &DsparkWeights<'_>, stage: usize) -> bool {
+        self.stage == stage && std::ptr::eq(self._weights, weights)
+    }
     pub(in crate::v41_experts) fn matches(
         &self,
         weights: &crate::v41_experts::ExpertWeights<'_>,
     ) -> bool {
-        std::ptr::eq(&self._weights.experts[self.stage], weights)
+        self._weights.full_expert(self.stage).is_some_and(|stage| std::ptr::eq(stage, weights))
     }
     /// Caller must drain the stream, including on launch failure, before releasing
     /// this borrow: the first kernel may already be using scores scratch.
