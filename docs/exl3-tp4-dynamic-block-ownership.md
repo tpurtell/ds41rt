@@ -123,6 +123,20 @@ not a complete Spark memory total. Exact results are recorded in
 
 ### GPU work still required
 
+The next checkpoint gate has now passed: `qualify_v41_exl3_paired.py` loads
+all 384 experts from actual layer 30 at hidden size 5120 and compares the sum
+of four paired rank partials with four existing disjoint rank partials. All 24
+checks passed across live row counts 1/8/16/24/64, low/high expert reuse and four
+ownership patterns, including changed-input graph replay and poisoned unused
+intermediates. Maximum normalized absolute error was 0.0036843 and maximum
+relative L2 error was 0.0023791, within the predeclared 0.006/0.003 gates.
+Changing BF16 partial summation groups is not bitwise equivalent; each paired
+rank's graph replay did match its own eager execution exactly. This comparison
+ran the eight partials on one Spark, so it does not qualify distributed
+transport, an independent dequantization oracle, or performance. Results and
+the exact runner are in `release-v5-exl3-paired-checkpoint.json` and
+`evidence/v5-exl3-paired-checkpoint.tar.gz`.
+
 A two-tier CuTe prototype is now on the SparkInfer fork (`ce9bfcec`), in an
 isolated checkout; the engine's vendor lock has not advanced to it. It adds a
 fourth int32 descriptor row containing per-expert local ownership. The physical
@@ -140,10 +154,27 @@ are zeroed. It is not the independent, real-checkpoint four-rank oracle, and
 does not establish reduced measured traffic or a performance gain. Evidence is
 in `release-v5-exl3-paired-kernel.json` and the matching evidence archive.
 
-Next qualification must exercise the real 5120 hidden dimension and checkpoint
-weights, all-rank sums, mixed projection membership, and ownership changes.
-Native export/metadata validation, transport lifetime handling and serving
-integration remain required; the prototype currently covers only two tiers.
+Native export/metadata validation, transport lifetime handling and distributed
+serving integration remain required; the prototype currently covers only two
+tiers. One-versus-two blocks/SM and tiling remain separate performance choices
+to measure on the mixed 512/640 active widths after correctness.
+
+### Compact wire contract
+
+`v41_expert/paired.rs` implements the candidate ownership-word codec without
+enabling paired frame admission. The existing 12-byte route entry is retained:
+expert-word bits 0–8 hold ID 0–383; bits 9–10 hold the two pair-owner selections;
+bits 11–31 must be zero. There are no additional payload bytes or messages.
+Repeated routes for an expert must carry identical ownership throughout the
+batch. Fixed-size batch scratch validates consistency and expands ownership
+to the kernel's int32 row, clearing inactive and padded slots on reuse.
+
+Request flag bit 17 is reserved for this contract and remains rejected by the
+current frame parser. Integration must check the flag against the loaded
+paired/disjoint EXL3 layout in **both** directions before execution. Even an
+all-zero owner selection requires the paired flag; it must never silently run
+on a disjoint or NVFP4 worker. The original model retains its equal 576-channel
+TP4 split, ordinary expert IDs and existing request/response behavior.
 
 The current resident layout and mixed kernel assume one intermediate width
 for every expert in a launch. Supporting this proposal requires a real

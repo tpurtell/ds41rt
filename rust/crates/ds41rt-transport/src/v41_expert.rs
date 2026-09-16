@@ -15,6 +15,8 @@ mod roce;
 pub use roce::{V41Tp4Roce, V41Tp4RocePending};
 mod tcp;
 pub use tcp::{V41Tp4Pending, V41Tp4Tcp};
+mod paired;
+pub use paired::{V41PairedOwnershipBatch, V41PairedRouteWord, V41_EXL3_PAIRED_REQUEST_FLAG};
 
 pub const V41_HIDDEN: u32 = 5120;
 pub const V41_BACKBONE_TOPK: u32 = 6;

@@ -1,0 +1,326 @@
+{
+  "scope": "Compare four paired TP4 partials with four disjoint partials on one Spark.\n\nUses real checkpoint weights and production hidden width. This isolates tensor\npartitioning and graph replay; it does not qualify distributed transport,\nperformance, or the independent dequantized quantization oracle.\n",
+  "source_revision": "e685f48c3b941208a8dc5915a742738a3c2de706",
+  "source_tree_sha256": "4b81e9eecfa750c5b78124b4c60c8b6c29572c75f9b76ac9fb832ec8aa5a6ec1",
+  "snapshot": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+  "layer": 30,
+  "capacity": 80,
+  "gpu": "NVIDIA GB10",
+  "sm_count": 48,
+  "torch": "2.12.0a0+5aff3928d8.nv26.05",
+  "tile": [
+    64,
+    128,
+    64,
+    128
+  ],
+  "ranks": [
+    {
+      "paired": false,
+      "rank": 0,
+      "start": 0,
+      "width": 640,
+      "gate_counts": [
+        330,
+        54
+      ],
+      "up_counts": [
+        294,
+        90
+      ]
+    },
+    {
+      "paired": false,
+      "rank": 1,
+      "start": 640,
+      "width": 640,
+      "gate_counts": [
+        330,
+        54
+      ],
+      "up_counts": [
+        294,
+        90
+      ]
+    },
+    {
+      "paired": false,
+      "rank": 2,
+      "start": 1280,
+      "width": 512,
+      "gate_counts": [
+        330,
+        54
+      ],
+      "up_counts": [
+        294,
+        90
+      ]
+    },
+    {
+      "paired": false,
+      "rank": 3,
+      "start": 1792,
+      "width": 512,
+      "gate_counts": [
+        330,
+        54
+      ],
+      "up_counts": [
+        294,
+        90
+      ]
+    },
+    {
+      "paired": true,
+      "rank": 0,
+      "start": 0,
+      "width": 640,
+      "gate_counts": [
+        330,
+        54
+      ],
+      "up_counts": [
+        294,
+        90
+      ]
+    },
+    {
+      "paired": true,
+      "rank": 1,
+      "start": 512,
+      "width": 640,
+      "gate_counts": [
+        330,
+        54
+      ],
+      "up_counts": [
+        294,
+        90
+      ]
+    },
+    {
+      "paired": true,
+      "rank": 2,
+      "start": 1152,
+      "width": 640,
+      "gate_counts": [
+        330,
+        54
+      ],
+      "up_counts": [
+        294,
+        90
+      ]
+    },
+    {
+      "paired": true,
+      "rank": 3,
+      "start": 1664,
+      "width": 640,
+      "gate_counts": [
+        330,
+        54
+      ],
+      "up_counts": [
+        294,
+        90
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "rows": 1,
+      "unique": 6,
+      "mutation": 0,
+      "relative_max_error": 0.002347417874261737,
+      "relative_l2": 0.0016210646135732532,
+      "passed": true
+    },
+    {
+      "rows": 1,
+      "unique": 6,
+      "mutation": 1,
+      "relative_max_error": 0.0035765378270298243,
+      "relative_l2": 0.0023790388368070126,
+      "passed": true
+    },
+    {
+      "rows": 1,
+      "unique": 6,
+      "mutation": 2,
+      "relative_max_error": 0.003464912297204137,
+      "relative_l2": 0.0023523163981735706,
+      "passed": true
+    },
+    {
+      "rows": 1,
+      "unique": 6,
+      "mutation": 3,
+      "relative_max_error": 0.0027190332766622305,
+      "relative_l2": 0.002327854046598077,
+      "passed": true
+    },
+    {
+      "rows": 8,
+      "unique": 6,
+      "mutation": 0,
+      "relative_max_error": 0.0029271862003952265,
+      "relative_l2": 0.001677062944509089,
+      "passed": true
+    },
+    {
+      "rows": 8,
+      "unique": 6,
+      "mutation": 1,
+      "relative_max_error": 0.0029429986607283354,
+      "relative_l2": 0.0023767673410475254,
+      "passed": true
+    },
+    {
+      "rows": 8,
+      "unique": 6,
+      "mutation": 2,
+      "relative_max_error": 0.003645200515165925,
+      "relative_l2": 0.0023392965085804462,
+      "passed": true
+    },
+    {
+      "rows": 8,
+      "unique": 6,
+      "mutation": 3,
+      "relative_max_error": 0.0028735632076859474,
+      "relative_l2": 0.0023721458856016397,
+      "passed": true
+    },
+    {
+      "rows": 8,
+      "unique": 30,
+      "mutation": 0,
+      "relative_max_error": 0.0018301610834896564,
+      "relative_l2": 0.0016400233143940568,
+      "passed": true
+    },
+    {
+      "rows": 8,
+      "unique": 30,
+      "mutation": 1,
+      "relative_max_error": 0.0032362460624426603,
+      "relative_l2": 0.0023474725894629955,
+      "passed": true
+    },
+    {
+      "rows": 8,
+      "unique": 30,
+      "mutation": 2,
+      "relative_max_error": 0.002463054144755006,
+      "relative_l2": 0.0023270118981599808,
+      "passed": true
+    },
+    {
+      "rows": 8,
+      "unique": 30,
+      "mutation": 3,
+      "relative_max_error": 0.0028368793427944183,
+      "relative_l2": 0.0023259136360138655,
+      "passed": true
+    },
+    {
+      "rows": 16,
+      "unique": 60,
+      "mutation": 0,
+      "relative_max_error": 0.002518891589716077,
+      "relative_l2": 0.0016718946862965822,
+      "passed": true
+    },
+    {
+      "rows": 16,
+      "unique": 60,
+      "mutation": 1,
+      "relative_max_error": 0.003095518797636032,
+      "relative_l2": 0.0023582889698445797,
+      "passed": true
+    },
+    {
+      "rows": 16,
+      "unique": 60,
+      "mutation": 2,
+      "relative_max_error": 0.0029380342457443476,
+      "relative_l2": 0.002324832370504737,
+      "passed": true
+    },
+    {
+      "rows": 16,
+      "unique": 60,
+      "mutation": 3,
+      "relative_max_error": 0.0030624999199062586,
+      "relative_l2": 0.0023222644813358784,
+      "passed": true
+    },
+    {
+      "rows": 24,
+      "unique": 60,
+      "mutation": 0,
+      "relative_max_error": 0.0023419202771037817,
+      "relative_l2": 0.0016555244801566005,
+      "passed": true
+    },
+    {
+      "rows": 24,
+      "unique": 60,
+      "mutation": 1,
+      "relative_max_error": 0.0027563394978642464,
+      "relative_l2": 0.0023464567493647337,
+      "passed": true
+    },
+    {
+      "rows": 24,
+      "unique": 60,
+      "mutation": 2,
+      "relative_max_error": 0.0036842105910182,
+      "relative_l2": 0.0023518188390880823,
+      "passed": true
+    },
+    {
+      "rows": 24,
+      "unique": 60,
+      "mutation": 3,
+      "relative_max_error": 0.002923976629972458,
+      "relative_l2": 0.0023447375278919935,
+      "passed": true
+    },
+    {
+      "rows": 64,
+      "unique": 384,
+      "mutation": 0,
+      "relative_max_error": 0.002453987719491124,
+      "relative_l2": 0.0016490239650011063,
+      "passed": true
+    },
+    {
+      "rows": 64,
+      "unique": 384,
+      "mutation": 1,
+      "relative_max_error": 0.0026836832985281944,
+      "relative_l2": 0.0023441642988473177,
+      "passed": true
+    },
+    {
+      "rows": 64,
+      "unique": 384,
+      "mutation": 2,
+      "relative_max_error": 0.003275681287050247,
+      "relative_l2": 0.002341571031138301,
+      "passed": true
+    },
+    {
+      "rows": 64,
+      "unique": 384,
+      "mutation": 3,
+      "relative_max_error": 0.003372853621840477,
+      "relative_l2": 0.0023366224486380816,
+      "passed": true
+    }
+  ],
+  "passed": true
+}
