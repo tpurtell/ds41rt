@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Summarize instrumented native draft observations; do not predict serving TPS."""
 import argparse
-from collections import defaultdict
+from collections import Counter, defaultdict
 import hashlib
 import json
 import math
@@ -19,12 +19,15 @@ def parse(text):
         if 'native draft policy observation' in line:
             fields = dict(FIELDS.findall(line))
             confidence = json.loads(fields['raw_confidence'])
-            if len(confidence) != 5 or not all(math.isfinite(x) for x in confidence):
+            if not confidence or not all(math.isfinite(x) for x in confidence):
                 raise ValueError('invalid confidence vector')
+            rows, matched = int(fields['verifier_rows']), int(fields['matched_prefix'])
+            if not 0 <= matched < rows <= len(confidence) + 1:
+                raise ValueError('invalid verified prefix')
             observations.append(dict(
                 request_id=int(fields['request_id']), lane=int(fields['lane']),
-                generated=int(fields['generated']), rows=int(fields['verifier_rows']),
-                matched=int(fields['matched_prefix']), confidence=confidence,
+                generated=int(fields['generated']), rows=rows,
+                matched=matched, confidence=confidence,
                 constrained=fields['constrained'] == 'true',
                 terminal=fields['eos'] == 'true' or fields['length_limit'] == 'true'))
         elif 'native scheduler round' in line:
@@ -36,9 +39,10 @@ def parse(text):
 
 def summarize(observations, rounds):
     calibration = []
-    for position in range(5):
-        rows = [x for x in observations if not x['constrained'] and not x['terminal']
-                and x['rows'] > position + 1 and x['matched'] >= position]
+    eligible = [x for x in observations if not x['constrained'] and not x['terminal']]
+    for position in range(max((len(x['confidence']) for x in observations), default=0)):
+        rows = [x for x in eligible
+                if x['rows'] > position + 1 and x['matched'] >= position]
         bins = defaultdict(list)
         for row in rows:
             logit = row['confidence'][position]
@@ -50,7 +54,19 @@ def summarize(observations, rounds):
     costs = defaultdict(list)
     for row in rounds:
         costs[row['requests'], row['requests'] + row['proposed']].append(row)
+    proposed = sum(x['rows'] - 1 for x in eligible)
+    accepted = sum(x['matched'] for x in eligible)
     return dict(scope=__doc__, observations=len(observations), rounds=len(rounds),
+                acceptance=dict(observations=len(eligible),
+                    excluded_terminal_or_constrained=len(observations)-len(eligible),
+                    requests=len({x['request_id'] for x in eligible}),
+                    proposed_drafts=proposed, accepted_drafts=accepted,
+                    accepted_fraction=accepted/proposed if proposed else None,
+                    mean_accepted_drafts=accepted/len(eligible) if eligible else None,
+                    mean_verified_drafts=proposed/len(eligible) if eligible else None,
+                    verified_width_counts=dict(sorted(Counter(
+                        x['rows']-1 for x in eligible).items())),
+                    interpretation='Prefix acceptance among verified drafts, excluding terminal and constrained observations. Adaptive selection censors unverified drafts; this is not unconditional draft accuracy.'),
                 calibration=calibration, costs=[dict(requests=n, verifier_rows=m, samples=len(rows),
                     **{key: dict(median=statistics.median(r[key] for r in rows),
                                  minimum=min(r[key] for r in rows), maximum=max(r[key] for r in rows))

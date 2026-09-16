@@ -1,4 +1,5 @@
 import runpy
+import pytest
 from pathlib import Path
 
 MODULE = runpy.run_path(str(Path(__file__).parents[1] / 'summarize-ds41-native-policy.py'))
@@ -21,3 +22,34 @@ def test_short_full_match_does_not_label_unverified_suffix():
                constrained=False, terminal=False, matched=1)
     result = MODULE['summarize']([row], [])['calibration']
     assert [r['samples'] for r in result] == [1, 0, 0, 0, 0]
+
+
+def trace(rows=8, matched=7):
+    return (f'native draft policy observation request_id=1 lane=0 generated=10 '
+            f'verifier_rows={rows} matched_prefix={matched} raw_confidence=[0,0,0,0,0,0,0] '
+            'constrained=false eos=false length_limit=false')
+
+
+def test_k7_summary_includes_last_two_positions_and_explicit_denominators():
+    observations, rounds = MODULE['parse'](trace() + '\n' + trace(matched=5))
+    result = MODULE['summarize'](observations, rounds)
+    assert [r['samples'] for r in result['calibration']] == [2, 2, 2, 2, 2, 2, 1]
+    acceptance = result['acceptance']
+    assert acceptance['proposed_drafts'] == 14
+    assert acceptance['accepted_drafts'] == 12
+    assert acceptance['accepted_fraction'] == 12 / 14
+    assert acceptance['verified_width_counts'] == {7: 2}
+
+
+@pytest.mark.parametrize('rows,matched', [(9, 7), (8, 8), (0, 0), (8, -1)])
+def test_parser_rejects_impossible_observations(rows, matched):
+    with pytest.raises(ValueError, match='invalid verified prefix'):
+        MODULE['parse'](trace(rows, matched))
+
+
+def test_terminal_observations_do_not_lower_acceptance():
+    observations, _ = MODULE['parse'](trace() + '\n' + trace(matched=0).replace('eos=false', 'eos=true'))
+    result = MODULE['summarize'](observations, [])['acceptance']
+    assert result['accepted_fraction'] == 1
+    assert result['observations'] == 1
+    assert result['excluded_terminal_or_constrained'] == 1
