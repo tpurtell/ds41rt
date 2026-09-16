@@ -6,6 +6,8 @@ use std::{ffi::c_void, marker::PhantomData, path::Path, ptr::NonNull, rc::Rc};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct V41Exl3Info {
+    /// Bytes per output element: BF16 (2) or FP32 (4).
+    pub output_element_bytes: usize,
     pub hidden: usize,
     pub intermediate: usize,
     pub experts: usize,
@@ -47,13 +49,14 @@ impl V41Exl3Kernel {
         let core = *library.get::<Launch>(b"ds41rt_exl3_core")?;
         let sum = *library.get::<Launch>(b"ds41rt_exl3_sum")?;
         let destroy = *library.get::<Destroy>(b"ds41rt_exl3_destroy")?;
-        let mut words = [0; 15];
+        let mut words = [0; 16];
         ensure!(
-            query(words.as_mut_ptr(), 15) == 0,
+            query(words.as_mut_ptr(), 16) == 0,
             "EXL3 native info query failed"
         );
         ensure!(
-            words[0] == 1
+            words[0] == 2
+                && matches!(words[15], 2 | 4)
                 && words[1] == 5120
                 && matches!(words[2], 512 | 640 | 1152 | 2304)
                 && words[3] <= 384
@@ -75,6 +78,7 @@ impl V41Exl3Kernel {
             "invalid EXL3 pointer/scalar ABI"
         );
         let info = V41Exl3Info {
+            output_element_bytes: words[15] as usize,
             hidden: words[1] as usize,
             intermediate: words[2] as usize,
             experts: words[3] as usize,

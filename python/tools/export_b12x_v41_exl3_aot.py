@@ -69,20 +69,23 @@ def write_bridge(output: Path, manifest: dict) -> None:
             'int device = -1; if (cudaGetDevice(&device) != cudaSuccess || device != ctx->device) return int(cudaErrorInvalidDevice);',
             *checks, *declarations, f'return {entry["wrapper"]}({", ".join(args)});', '}']
     core, epilogue = manifest['objects']
-    info = [1, manifest['hidden'], manifest['intermediate'], manifest['experts'],
+    info = [2, manifest['hidden'], manifest['intermediate'], manifest['experts'],
         manifest['capacity'], manifest['top_k'], len(manifest['bits']),
         len(core['pointer_slots']), len(core['scalar_slots']),
         len(epilogue['pointer_slots']), len(epilogue['scalar_slots']),
-        *manifest['bits'], *([0] * (4 - len(manifest['bits'])))]
+        *manifest['bits'], *([0] * (4 - len(manifest['bits']))),
+        2 if manifest['output_dtype'] == 'bf16' else 4]
     lines += ['extern "C" int ds41rt_exl3_info(uint32_t* out, uint32_t words) {',
-        'if (!out || words != 15) return int(cudaErrorInvalidValue);',
-        'const uint32_t info[15] = {' + ','.join(map(str, info)) + '};',
-        'for (int i = 0; i < 15; ++i) out[i] = info[i]; return 0; }']
+        'if (!out || words != 16) return int(cudaErrorInvalidValue);',
+        'const uint32_t info[16] = {' + ','.join(map(str, info)) + '};',
+        'for (int i = 0; i < 16; ++i) out[i] = info[i]; return 0; }']
     (output / 'v41_exl3_bridge.cc').write_text('\n'.join(lines) + '\n')
 
 
 def export(output: Path, intermediate: int, experts: int, capacity: int,
-           bits: tuple[int, ...], routing: str, topk: int = 6) -> dict:
+           bits: tuple[int, ...], routing: str, topk: int = 6, output_dtype: str = "bf16") -> dict:
+    if output_dtype not in ("bf16", "fp32"):
+        raise ValueError("EXL3 output must be bf16 or fp32")
     import torch
     from b12x.moe._shared.kernels.w4a16.host import route_pack_capacity
     from b12x.moe._shared.kernels.w4a16.mixed_trellis import (
@@ -114,7 +117,7 @@ def export(output: Path, intermediate: int, experts: int, capacity: int,
         force_tile_config=_projection_mixed_tile_config(None, hidden_size=5120,
             intermediate_size=intermediate, token_count=capacity, direct_topk_routes=direct),
         tier0_bits=bits[0], tier1_bits=bits[1], trellis_codebook="mcg", swiglu_limit=10.0,
-        moe_block_size=block_m, rotation_input_dtype="bf16", full_rotation_output_dtype="bf16",
+        moe_block_size=block_m, rotation_input_dtype="bf16", full_rotation_output_dtype=output_dtype,
         route_ids_dtype=torch.int32)
     if len(bits) == 2:
         launch = compile_mixed_trellis(**options, direct_topk_routes=direct)
@@ -147,7 +150,7 @@ def export(output: Path, intermediate: int, experts: int, capacity: int,
     manifest = {"schema": "ds41rt.v41-exl3-aot.v1", "sparkinfer_revision": _pinned_sparkinfer.REVISION,
         "gpu": props.name, "compute": [props.major, props.minor], "sms": props.multi_processor_count,
         "hidden": 5120, "intermediate": intermediate, "experts": experts, "top_k": topk,
-        "capacity": capacity, "bits": list(bits), "swiglu_limit": 10.0,
+        "capacity": capacity, "output_dtype": output_dtype, "bits": list(bits), "swiglu_limit": 10.0,
         "direct": direct, "route_slots": route_slots, "route_blocks": route_blocks,
         "tile": list(options['force_tile_config']), "blocks_per_sm": launch.blocks_per_sm,
         "shared_memory_bytes": launch.shared_memory_bytes, "buffers": layouts, "objects": objects,
@@ -182,8 +185,9 @@ def main() -> None:
     parser.add_argument("--bits", type=int, nargs="+", default=[3, 4])
     parser.add_argument("--routing", choices=("auto", "direct", "packed"), default="auto")
     parser.add_argument("--topk", type=int, choices=(3, 6), default=6)
+    parser.add_argument("--output-dtype", choices=("bf16", "fp32"), default="bf16")
     args = parser.parse_args()
-    export(args.output, args.intermediate, args.experts, args.capacity, tuple(args.bits), args.routing, args.topk)
+    export(args.output, args.intermediate, args.experts, args.capacity, tuple(args.bits), args.routing, args.topk, args.output_dtype)
 
 
 if __name__ == "__main__":

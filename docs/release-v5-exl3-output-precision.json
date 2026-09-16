@@ -1,0 +1,154 @@
+{
+  "scope": "Native EXL3 output precision and ABI on RTX, six real checkpoint experts. Not cross-GPU reduction, full-model correctness or performance qualification.",
+  "native_abi": 2,
+  "results": [
+    {
+      "passed": true,
+      "scope": "native AOT versus B12x, six real checkpoint experts; not full-model qualification",
+      "output_dtype": "fp32",
+      "checkpoint_layer": "layers.0",
+      "topk": 6,
+      "native_info_verified": true,
+      "slice_start": 0,
+      "sparkinfer_revision": "c024d14ce936ddfc2c863377d033d85e1787924b",
+      "compute": [
+        12,
+        0
+      ],
+      "intermediate": 1152,
+      "direct": false,
+      "route_bridge_sha256": "f49c47b0ff99f2dcbf75104d4419a4d600392c8dd368eba1426985a1014712fe",
+      "snapshot_revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+      "projection_tiers": [
+        [
+          3,
+          4,
+          3
+        ],
+        [
+          3,
+          3,
+          3
+        ],
+        [
+          4,
+          4,
+          4
+        ],
+        [
+          3,
+          3,
+          3
+        ],
+        [
+          4,
+          4,
+          4
+        ],
+        [
+          3,
+          3,
+          3
+        ]
+      ],
+      "aot_manifest_sha256": "d56402b9655430f942ba7751816bc75b290218b9b1c9939e50c5ce4010fc9dcc",
+      "bridge_sha256": "10f8a52230270cd90136d78c71a68b0b47812a09f43f5e994a1906b28445c35c",
+      "checks": [
+        {
+          "rows": 1,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 3,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 15,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 16,
+          "bitwise_equal": true
+        }
+      ],
+      "graph_changed_inputs_and_routes": true,
+      "packed_metadata_poisoned_before_native": true
+    },
+    {
+      "passed": true,
+      "scope": "native AOT versus B12x, six real checkpoint experts; not full-model qualification",
+      "output_dtype": "bf16",
+      "checkpoint_layer": "layers.0",
+      "topk": 6,
+      "native_info_verified": true,
+      "slice_start": 1280,
+      "sparkinfer_revision": "c024d14ce936ddfc2c863377d033d85e1787924b",
+      "compute": [
+        12,
+        0
+      ],
+      "intermediate": 512,
+      "direct": true,
+      "route_bridge_sha256": null,
+      "snapshot_revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+      "projection_tiers": [
+        [
+          3,
+          4,
+          3
+        ],
+        [
+          3,
+          3,
+          3
+        ],
+        [
+          4,
+          4,
+          4
+        ],
+        [
+          3,
+          3,
+          3
+        ],
+        [
+          4,
+          4,
+          4
+        ],
+        [
+          3,
+          3,
+          3
+        ]
+      ],
+      "aot_manifest_sha256": "6247eecbe492d8651047bfa37a1bff78b0021c63973d7f48811fca198c49a027",
+      "bridge_sha256": "38114871dd5a5f3bbe48de01f740ea94cb823748b1284644aef3bf263a9bc730",
+      "checks": [
+        {
+          "rows": 1,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 3,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 15,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 16,
+          "bitwise_equal": true
+        }
+      ],
+      "graph_changed_inputs_and_routes": true,
+      "packed_metadata_poisoned_before_native": false
+    }
+  ],
+  "rust_fp32_module_load_passed": true,
+  "daemon_cargo_check_passed": true,
+  "archive": "docs/evidence/v5-exl3-output-precision.tar.gz",
+  "archive_sha256": "e65d42481666e0ffc2129d4b24ad593fb9aa285638b8b087a0fee5bf3f5e5b0f"
+}

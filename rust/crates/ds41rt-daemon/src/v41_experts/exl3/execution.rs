@@ -11,6 +11,7 @@ use std::{collections::BTreeMap, ffi::c_void, path::Path};
 #[derive(Deserialize)]
 struct Buffer {
     bytes: usize,
+    dtype: String,
     allocation: String,
     zero_on_create: bool,
 }
@@ -34,6 +35,7 @@ struct RouteManifest {
 #[derive(Deserialize)]
 struct Manifest {
     schema: String,
+    output_dtype: String,
     sparkinfer_revision: String,
     hidden: usize,
     intermediate: usize,
@@ -124,6 +126,7 @@ pub(crate) struct Exl3Execution<'a, 'w> {
     route_pointers: [*mut c_void; 7],
     route_bytes: [u64; 7],
     output: Ds41rtDeviceBuffer,
+    output_element_bytes: usize,
     device: i32,
     capacity: usize,
     topk: usize,
@@ -185,6 +188,16 @@ impl<'a, 'w> Exl3Execution<'a, 'w> {
                     .eq(meta.bits.iter().copied()),
             "EXL3 binary/manifest mismatch"
         );
+        let output_dtype = match info.output_element_bytes {
+            2 => ("bf16", "torch.bfloat16"),
+            4 => ("fp32", "torch.float32"),
+            _ => anyhow::bail!("unsupported EXL3 output precision"),
+        };
+        let output_spec = meta.buffers.get("output").context("missing EXL3 output")?;
+        ensure!(meta.output_dtype == output_dtype.0
+            && output_spec.dtype == output_dtype.1
+            && output_spec.bytes == meta.capacity * meta.hidden * info.output_element_bytes,
+            "EXL3 output precision/size mismatch");
         let mut storage = Vec::new();
         let mut pointers = BTreeMap::new();
         for (name, spec) in &meta.buffers {
@@ -334,6 +347,7 @@ impl<'a, 'w> Exl3Execution<'a, 'w> {
             sum,
             route_pointers,
             route_bytes,
+            output_element_bytes: info.output_element_bytes,
             output: *pointers.get("output").context("missing EXL3 output")?,
             device: library.cuda_get_device()?,
             capacity: meta.capacity,
@@ -391,7 +405,7 @@ impl<'a, 'w> Exl3Execution<'a, 'w> {
         self.kernel
             .launch_sum(&self.sum.pointers, &self.sum.scalars, stream)?;
         let mut output = self.output;
-        output.bytes = rows * 5120 * 2;
+        output.bytes = rows * 5120 * self.output_element_bytes;
         Ok(output)
     }
 }
@@ -416,8 +430,9 @@ mod tests {
         let aot = std::path::PathBuf::from(std::env::var("DS41RT_EXL3_AOT")?);
         let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(aot.join("v41_exl3.json"))?)?;
         ensure!(info["direct"].is_boolean() && info["direct"] == manifest["direct"]
-            && info["tile"].is_array() && info["tile"] == manifest["tile"],
-            "EXL3 fixture must match routing/tile policy for bitwise comparison");
+            && info["tile"].is_array() && info["tile"] == manifest["tile"]
+            && info["output_dtype"].is_string() && info["output_dtype"] == manifest["output_dtype"],
+            "EXL3 fixture must match routing/tile/output policy for bitwise comparison");
         ensure!(
             info["slice_start"] == 1280
                 && info["width"] == 512

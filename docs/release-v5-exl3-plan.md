@@ -333,3 +333,22 @@ against B12x on the same reconstructed activations. Only six expert IDs are
 exercised by that reference. Full ARM64 Rust serving and TP reduction are still
 unqualified. The separate reconstruction launch and buffer need performance
 measurement and may be candidates for fusion; no speed claim is made.
+
+## EXL3 output precision
+
+The native exporter now exposes BF16 or FP32 top-k output. This allows RTX
+partial sums to retain FP32 precision before TP reduction, while Spark may use
+BF16 output for the existing compact transport. ABI version 2 reports output
+element width; Rust checks it against the manifest dtype and allocation size,
+and returns the correct live output byte count. Earlier unpublished ABI-1
+component exports must be regenerated. Fixture comparisons also require matching
+output precision.
+
+[Output precision evidence](release-v5-exl3-output-precision.json) passes on RTX
+for a packed 1,152-channel FP32 shard and a direct 512-channel BF16 shard. Each
+uses six real checkpoint experts, rows 1/3/15/16, and changed-input/route graph
+replay, with bitwise equality to the matching B12x reference. Standalone Rust
+loads the FP32 module and validates its ABI; the daemon compiles. This does not
+yet verify paired TP2 reduction or a complete serving request. Production backend
+selection, reusable per-lane workspace across layers, AOT packaging and the
+remaining model formats still need integration before release qualification.

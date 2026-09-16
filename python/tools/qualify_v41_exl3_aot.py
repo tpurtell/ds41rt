@@ -73,7 +73,7 @@ def main() -> None:
         tier0_num_experts=experts,tier1_num_experts=experts,route_num_experts=experts,
         top_k=topk,max_m_blocks=meta['route_blocks'],sms=props.multi_processor_count,
         max_shared_mem=props.shared_memory_per_block_optin,force_tile_config=tuple(meta['tile']),
-        swiglu_limit=10.0, direct_topk_routes=meta['direct'],full_rotation_output_dtype='bf16')
+        swiglu_limit=10.0, direct_topk_routes=meta['direct'],full_rotation_output_dtype=meta['output_dtype'])
     buffers=make_mixed_trellis_buffers(launch,device=torch.device('cuda',0),sms=props.multi_processor_count)
     binding=bind_mixed_trellis(*prepared.tiers,prepared.global_to_combined,prepared.descriptor_map,prepared.rotations,launch,
         gate_experts=prepared.gate_counts,up_experts=prepared.up_counts)
@@ -82,10 +82,10 @@ def main() -> None:
     if hasattr(lib,'ds41rt_exl3_info'):
         lib.ds41rt_exl3_info.argtypes=[ct.POINTER(ct.c_uint32),ct.c_uint32]
         lib.ds41rt_exl3_info.restype=ct.c_int
-        native_info=(ct.c_uint32*15)()
-        assert lib.ds41rt_exl3_info(native_info,15)==0
-        assert list(native_info)==[1,hidden,width,experts,capacity,topk,2,
-            *[len(e[key]) for e in meta['objects'] for key in ['pointer_slots','scalar_slots']],3,4,0,0]
+        native_info=(ct.c_uint32*16)()
+        assert lib.ds41rt_exl3_info(native_info,16)==0
+        assert list(native_info)==[2,hidden,width,experts,capacity,topk,2,
+            *[len(e[key]) for e in meta['objects'] for key in ['pointer_slots','scalar_slots']],3,4,0,0,2 if meta['output_dtype']=='bf16' else 4]
         info_verified=True
     lib.ds41rt_exl3_create.argtypes=[ct.POINTER(ct.c_void_p)];lib.ds41rt_exl3_create.restype=ct.c_int
     lib.ds41rt_exl3_destroy.argtypes=[ct.c_void_p]
@@ -178,10 +178,10 @@ def main() -> None:
             (args.fixture/'fixture.json').write_text(json.dumps({'layer':layer_prefix,'slice_start':start,
                 'width':width,'capacity':capacity,'topk':topk,'reference_experts':experts,
                 'direct':meta['direct'],'tile':meta['tile'],
-                'input_format':args.fixture_format,
+                'input_format':args.fixture_format,'output_dtype':meta['output_dtype'],
                 'snapshot_revision':args.snapshot.name,'artifacts':artifacts},indent=2)+'\n')
         args.output.write_text(json.dumps({'passed':True,'scope':'native AOT versus B12x, six real checkpoint experts; not full-model qualification',
-            'checkpoint_layer':layer_prefix,'topk':topk,'native_info_verified':info_verified,
+            'output_dtype':meta['output_dtype'],'checkpoint_layer':layer_prefix,'topk':topk,'native_info_verified':info_verified,
             'slice_start':start,
             'sparkinfer_revision':_pinned_sparkinfer.REVISION,'compute':meta['compute'],'intermediate':width,
             'direct':meta['direct'],
