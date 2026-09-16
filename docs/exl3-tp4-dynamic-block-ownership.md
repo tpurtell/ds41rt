@@ -205,6 +205,17 @@ compute launch correctness or performance. Evidence is in
 `release-v5-exl3-paired-export.json` and its archive. Worker launch integration
 and paired frame admission are still pending.
 
+The exported C compute path has subsequently passed real-checkpoint comparison
+with B12x JIT for disjoint, paired-first and paired-last artifacts. Each used
+six layer-30 experts and hidden size 5120, with live row counts 1, 3, 79 and 80;
+all outputs were bitwise equal. The paired artifacts used two blocks/SM and
+also passed four ownership changes through a captured native graph, including
+poisoned unused FC1 storage and route metadata. The qualifier validates the
+version-3 information contract and the old-query rejection before execution.
+These are exported-kernel tests, not Rust-worker or transport tests. Evidence:
+`release-v5-exl3-paired-native.json` and its archive. Paired fixture emission is
+explicitly rejected until fixtures carry ownership metadata.
+
 The current resident layout and mixed kernel assume one intermediate width
 for every expert in a launch. Supporting this proposal requires a real
 per-expert active extent and boundary-block selection inside the fused path.

@@ -34,6 +34,9 @@ def main() -> None:
     meta = json.loads((args.aot/'v41_exl3.json').read_text())
     assert meta['bits'] == [3, 4] and meta['experts'] == 6
     assert meta['sparkinfer_revision'] == _pinned_sparkinfer.REVISION
+    paired = meta.get('paired_boundary')
+    assert paired in (None, 'first', 'last')
+    assert paired is None or (meta.get('descriptor_rows') == 4 and args.fixture is None), 'paired fixture emission is not implemented'
     hidden, width, experts, capacity = meta['hidden'], meta['intermediate'], meta['experts'], meta['capacity']
     start=args.slice_start
     assert start >= 0 and start % 128 == 0 and start+width <= 2304
@@ -94,7 +97,8 @@ def main() -> None:
         top_k=topk,max_m_blocks=meta['route_blocks'],sms=props.multi_processor_count,
         max_shared_mem=props.shared_memory_per_block_optin,force_tile_config=tuple(meta['tile']),
         swiglu_limit=10.0, direct_topk_routes=meta['direct'],full_rotation_output_dtype=meta['output_dtype'],
-        force_blocks_per_sm=meta['blocks_per_sm'] if meta['blocks_per_sm'] > 1 else None)
+        force_blocks_per_sm=meta['blocks_per_sm'] if meta['blocks_per_sm'] > 1 else None,
+        **({'paired_boundary':paired} if paired is not None else {}))
     buffers=make_mixed_trellis_buffers(launch,device=torch.device('cuda',0),sms=props.multi_processor_count)
     # Native route initialization covers the packer's rounded bucket. Use the
     # exported allocation contract for both paths, including non-power-of-two
@@ -102,17 +106,32 @@ def main() -> None:
     buffers=replace(buffers, **{name:torch.empty(meta['buffers'][name]['shape'],
         device='cuda',dtype=torch.int32)
         for name in ('packed_route_indices','block_expert_ids')})
-    binding=bind_mixed_trellis(*prepared.tiers,prepared.global_to_combined,prepared.descriptor_map,prepared.rotations,launch,
+    descriptor=prepared.descriptor_map
+    ownership=None
+    if paired is not None:
+        descriptor=torch.cat((descriptor,torch.ones(experts*2,device='cuda',dtype=torch.int32)))
+        descriptor._mt_projection_counts=prepared.descriptor_map._mt_projection_counts
+        ownership=descriptor[-experts*2:]
+    binding=bind_mixed_trellis(*prepared.tiers,prepared.global_to_combined,descriptor,prepared.rotations,launch,
         gate_experts=prepared.gate_counts,up_experts=prepared.up_counts)
     lib=ct.CDLL(str(args.aot/'libds41rt_exl3.so'))
     info_verified=False
     if hasattr(lib,'ds41rt_exl3_info'):
         lib.ds41rt_exl3_info.argtypes=[ct.POINTER(ct.c_uint32),ct.c_uint32]
         lib.ds41rt_exl3_info.restype=ct.c_int
-        native_info=(ct.c_uint32*16)()
-        assert lib.ds41rt_exl3_info(native_info,16)==0
-        assert list(native_info)==[2,hidden,width,experts,capacity,topk,2,
+        if paired is not None:
+            assert lib.ds41rt_exl3_info((ct.c_uint32*16)(),16)!=0
+            query=lib.ds41rt_exl3_paired_info
+            query.argtypes=[ct.POINTER(ct.c_uint32),ct.c_uint32];query.restype=ct.c_int
+            count=18
+        else:
+            query=lib.ds41rt_exl3_info;count=16
+        native_info=(ct.c_uint32*count)()
+        assert query(native_info,count)==0
+        expected_info=[3 if paired else 2,hidden,width,experts,capacity,topk,2,
             *[len(e[key]) for e in meta['objects'] for key in ['pointer_slots','scalar_slots']],3,4,0,0,2 if meta['output_dtype']=='bf16' else 4]
+        if paired: expected_info += [1 if paired=='first' else 2,4]
+        assert list(native_info)==expected_info
         info_verified=True
     lib.ds41rt_exl3_create.argtypes=[ct.POINTER(ct.c_void_p)];lib.ds41rt_exl3_create.restype=ct.c_int
     lib.ds41rt_exl3_destroy.argtypes=[ct.c_void_p]
@@ -189,6 +208,18 @@ def main() -> None:
         expected=run_bound_mixed_trellis(x[:graph_rows],weights[:graph_rows],ids[:graph_rows],binding,buffers).clone()
         buffers.output.fill_(float('nan'));poison_metadata();graph.replay();torch.cuda.synchronize()
         assert torch.equal(buffers.output[:graph_rows],expected)
+        ownership_checks=[]
+        if ownership is not None:
+            for pattern in ([0]*experts, [i%2 for i in range(experts)], [(i+1)%2 for i in range(experts)], [1]*experts):
+                ownership.fill_(0)
+                ownership[:experts].copy_(torch.tensor(pattern,device='cuda',dtype=torch.int32))
+                x.mul_(-.75)
+                expected=run_bound_mixed_trellis(x[:graph_rows],weights[:graph_rows],ids[:graph_rows],binding,buffers).clone()
+                assert torch.isfinite(expected).all() and expected.abs().max()>0
+                buffers.fc1.fill_(float('nan'));buffers.output.fill_(float('nan'));poison_metadata()
+                graph.replay();torch.cuda.synchronize()
+                assert torch.equal(buffers.output[:graph_rows],expected)
+                ownership_checks.append({'owners':pattern,'rows':graph_rows,'bitwise_equal':True})
         if args.fixture is not None:
             args.fixture.mkdir(parents=True,exist_ok=True)
             if args.fixture_canonical_routes:
@@ -239,7 +270,7 @@ def main() -> None:
                 'snapshot_revision':args.snapshot.name,'artifacts':artifacts},indent=2)+'\n')
         args.output.write_text(json.dumps({'passed':True,'scope':'native AOT versus B12x, six real checkpoint experts; not full-model qualification',
             'output_dtype':meta['output_dtype'],'checkpoint_layer':layer_prefix,'topk':topk,'native_info_verified':info_verified,
-            'slice_start':start,
+            'slice_start':start,'paired_boundary':paired,'ownership_graph_checks':ownership_checks,
             'sparkinfer_revision':_pinned_sparkinfer.REVISION,'compute':meta['compute'],'intermediate':width,
             'direct':meta['direct'],
             'route_bridge_sha256':None if route_lib is None else hashlib.sha256((route_path.parent/'libv41_exl3_routes.so').read_bytes()).hexdigest(),

@@ -1,0 +1,326 @@
+{
+  "scope": "Native exported entry points versus B12x JIT on six real layer-30 experts; not distributed worker/serving qualification",
+  "results": [
+    {
+      "passed": true,
+      "scope": "native AOT versus B12x, six real checkpoint experts; not full-model qualification",
+      "output_dtype": "bf16",
+      "checkpoint_layer": "layers.30",
+      "topk": 6,
+      "native_info_verified": true,
+      "slice_start": 0,
+      "paired_boundary": null,
+      "ownership_graph_checks": [],
+      "sparkinfer_revision": "e685f48c3b941208a8dc5915a742738a3c2de706",
+      "compute": [
+        12,
+        1
+      ],
+      "intermediate": 640,
+      "direct": false,
+      "route_bridge_sha256": "e21c4b53d5cf9a89d66baec32a15c54b37c516e32b4db56e5c7b087c81973e3d",
+      "snapshot_revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+      "projection_tiers": [
+        [
+          3,
+          3,
+          3
+        ],
+        [
+          3,
+          3,
+          3
+        ],
+        [
+          4,
+          4,
+          4
+        ],
+        [
+          3,
+          3,
+          3
+        ],
+        [
+          3,
+          3,
+          4
+        ],
+        [
+          3,
+          3,
+          3
+        ]
+      ],
+      "aot_manifest_sha256": "e75a91c46d553cd9309975442df3277ecd93f089d6319dd9b6fe4843607f1ed0",
+      "bridge_sha256": "5dc8fdfc8599a182f0b40c06a2ea67e513306e868c6f63860829a5c414bca33a",
+      "checks": [
+        {
+          "rows": 1,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 3,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 79,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 80,
+          "bitwise_equal": true
+        }
+      ],
+      "graph_changed_inputs_and_routes": true,
+      "packed_metadata_poisoned_before_native": true
+    },
+    {
+      "passed": true,
+      "scope": "native AOT versus B12x, six real checkpoint experts; not full-model qualification",
+      "output_dtype": "bf16",
+      "checkpoint_layer": "layers.30",
+      "topk": 6,
+      "native_info_verified": true,
+      "slice_start": 512,
+      "paired_boundary": "first",
+      "ownership_graph_checks": [
+        {
+          "owners": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "rows": 3,
+          "bitwise_equal": true
+        },
+        {
+          "owners": [
+            0,
+            1,
+            0,
+            1,
+            0,
+            1
+          ],
+          "rows": 3,
+          "bitwise_equal": true
+        },
+        {
+          "owners": [
+            1,
+            0,
+            1,
+            0,
+            1,
+            0
+          ],
+          "rows": 3,
+          "bitwise_equal": true
+        },
+        {
+          "owners": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "rows": 3,
+          "bitwise_equal": true
+        }
+      ],
+      "sparkinfer_revision": "e685f48c3b941208a8dc5915a742738a3c2de706",
+      "compute": [
+        12,
+        1
+      ],
+      "intermediate": 640,
+      "direct": false,
+      "route_bridge_sha256": "e21c4b53d5cf9a89d66baec32a15c54b37c516e32b4db56e5c7b087c81973e3d",
+      "snapshot_revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+      "projection_tiers": [
+        [
+          3,
+          3,
+          3
+        ],
+        [
+          3,
+          3,
+          3
+        ],
+        [
+          4,
+          4,
+          4
+        ],
+        [
+          3,
+          3,
+          3
+        ],
+        [
+          3,
+          3,
+          4
+        ],
+        [
+          3,
+          3,
+          3
+        ]
+      ],
+      "aot_manifest_sha256": "0441ad9b38e8f34b40dd6377fb1b085f446de56fa50ff4131226b382053d3fa4",
+      "bridge_sha256": "c24721b619f268d665cdccc7313077abecc6ef84ff2fc8071ffb8e3f1ce67c50",
+      "checks": [
+        {
+          "rows": 1,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 3,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 79,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 80,
+          "bitwise_equal": true
+        }
+      ],
+      "graph_changed_inputs_and_routes": true,
+      "packed_metadata_poisoned_before_native": true
+    },
+    {
+      "passed": true,
+      "scope": "native AOT versus B12x, six real checkpoint experts; not full-model qualification",
+      "output_dtype": "bf16",
+      "checkpoint_layer": "layers.30",
+      "topk": 6,
+      "native_info_verified": true,
+      "slice_start": 0,
+      "paired_boundary": "last",
+      "ownership_graph_checks": [
+        {
+          "owners": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "rows": 3,
+          "bitwise_equal": true
+        },
+        {
+          "owners": [
+            0,
+            1,
+            0,
+            1,
+            0,
+            1
+          ],
+          "rows": 3,
+          "bitwise_equal": true
+        },
+        {
+          "owners": [
+            1,
+            0,
+            1,
+            0,
+            1,
+            0
+          ],
+          "rows": 3,
+          "bitwise_equal": true
+        },
+        {
+          "owners": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "rows": 3,
+          "bitwise_equal": true
+        }
+      ],
+      "sparkinfer_revision": "e685f48c3b941208a8dc5915a742738a3c2de706",
+      "compute": [
+        12,
+        1
+      ],
+      "intermediate": 640,
+      "direct": false,
+      "route_bridge_sha256": "e21c4b53d5cf9a89d66baec32a15c54b37c516e32b4db56e5c7b087c81973e3d",
+      "snapshot_revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+      "projection_tiers": [
+        [
+          3,
+          3,
+          3
+        ],
+        [
+          3,
+          3,
+          3
+        ],
+        [
+          4,
+          4,
+          4
+        ],
+        [
+          3,
+          3,
+          3
+        ],
+        [
+          3,
+          3,
+          4
+        ],
+        [
+          3,
+          3,
+          3
+        ]
+      ],
+      "aot_manifest_sha256": "42ffd784cfab24b284e063d2b2cd11814ded1c96ac7afcc0786ddd61ce929deb",
+      "bridge_sha256": "11056b1601d9f707f7ecd8018e7bbf5650c801e34b28d3a0b6f94fb499b505b3",
+      "checks": [
+        {
+          "rows": 1,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 3,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 79,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 80,
+          "bitwise_equal": true
+        }
+      ],
+      "graph_changed_inputs_and_routes": true,
+      "packed_metadata_poisoned_before_native": true
+    }
+  ],
+  "passed": true
+}
