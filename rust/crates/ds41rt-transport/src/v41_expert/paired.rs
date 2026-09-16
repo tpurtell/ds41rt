@@ -173,6 +173,39 @@ mod tests {
     }
 
     #[test]
+    fn paired_chunked_responses_complete_all_ranks_without_request_flag() {
+        use crate::v41_expert::{V41BackboneRequest, V41Tp4ChunkReceiver, V41_PARTIAL_ROW_BYTES};
+        let mut request = crate::v41_expert::tests::request(3);
+        request.header.flags |= V41_EXL3_PAIRED_REQUEST_FLAG;
+        for route in &mut request.routes {
+            route.expert_id = V41PairedRouteWord { expert_id: route.expert_id, owners: 3 }.encode().unwrap();
+        }
+        let frame = request.encode().unwrap();
+        let native = V41BackboneRequest::parse_paired(&frame, 3).unwrap();
+        let budget = frame.len().max(2 * V41_PARTIAL_ROW_BYTES as usize + 256);
+        let mut receiver = V41Tp4ChunkReceiver::from_owned(&request, 3, [1, 2, 3, 4], budget).unwrap();
+        for rank in 0..4 {
+            for (start, rows) in [(0, 2), (2, 1)] {
+                let payload = vec![rank as u8; rows * V41_PARTIAL_ROW_BYTES as usize];
+                let mut indices = [0; 2];
+                let response = native.response_chunk(rank + 1, start, &payload, &mut indices, budget).unwrap();
+                assert_eq!(response.header.flags & V41_EXL3_PAIRED_REQUEST_FLAG, 0);
+                let encoded = response.to_owned().unwrap().encode().unwrap();
+                receiver.push(&encoded, |received_rank, first, bytes| {
+                    assert_eq!(received_rank, rank as usize);
+                    assert_eq!(first, start);
+                    assert_eq!(bytes, payload);
+                    Ok(())
+                }).unwrap();
+            }
+        }
+        assert!(receiver.complete());
+        assert_eq!(receiver.received_rows(), [3; 4]);
+        request.routes[6].expert_id ^= 1 << OWNERS_SHIFT;
+        assert!(V41Tp4ChunkReceiver::from_owned(&request, 3, [1, 2, 3, 4], budget).is_err());
+    }
+
+    #[test]
     fn paired_frames_preserve_size_routes_and_responses_and_reject_conflicts() {
         use crate::v41_expert::V41BackboneRequest;
         let original = crate::v41_expert::tests::request(3);

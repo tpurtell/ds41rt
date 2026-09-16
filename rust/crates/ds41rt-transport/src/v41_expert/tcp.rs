@@ -83,7 +83,11 @@ impl V41Tp4Tcp {
             frame.len() <= self.max_frame_bytes,
             "native request exceeds TCP frame budget"
         );
-        let native = V41BackboneRequest::parse(&frame, self.capacity)?;
+        let native = if request.header.flags & super::V41_EXL3_PAIRED_REQUEST_FLAG != 0 {
+            V41BackboneRequest::parse_paired(&frame, self.capacity)?
+        } else {
+            V41BackboneRequest::parse(&frame, self.capacity)?
+        };
         let receiver = V41Tp4ChunkReceiver::new(&native, self.executors, self.max_frame_bytes)?;
         let pending = futures::future::try_join_all(
             self.clients

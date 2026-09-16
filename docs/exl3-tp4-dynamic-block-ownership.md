@@ -256,6 +256,13 @@ CPU test covers all ranks, wrong boundaries and mixed capacity packages.
 Coordinator assignment/encoding, exporting matching serving packages, and live
 rejection/cancellation/recovery tests remain required before deployment.
 
+Coordinator response collection now validates explicitly flagged paired requests
+for RoCE and TCP dispatch. Indexed response chunks strip the request-only
+ownership flag, just as full responses do. The transport suite passes 158 tests
+(three environment tests ignored), including two chunks per rank across all
+four ranks and rejection of conflicting ownership before dispatch. This is
+host-side framing evidence; live RoCE/GPU qualification remains pending.
+
 The current resident layout and mixed kernel assume one intermediate width
 for every expert in a launch. Supporting this proposal requires a real
 per-expert active extent and boundary-block selection inside the fused path.

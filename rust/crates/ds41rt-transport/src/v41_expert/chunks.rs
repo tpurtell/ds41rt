@@ -77,7 +77,7 @@ impl V41BackboneRequest<'_> {
                 output_row_stride_bytes: V41_PARTIAL_ROW_BYTES,
                 output_payload_bytes: partials.len() as u64,
                 status: ExpertProtocolV2Status::Ok,
-                flags: request.flags
+                flags: (request.flags & !super::V41_EXL3_PAIRED_REQUEST_FLAG)
                     | EXPERT_PROTOCOL_V2_FLAG_RESPONSE_ROW_INDICES
                     | if end < self.rows() {
                         EXPERT_PROTOCOL_V2_FLAG_RESPONSE_MORE_CHUNKS
@@ -129,7 +129,11 @@ impl V41Tp4ChunkReceiver {
         executors: [u64; 4],
         max_frame_bytes: usize,
     ) -> Result<Self> {
-        V41BackboneRequest::validate_owned(request, max_rows)?;
+        if request.header.flags & super::V41_EXL3_PAIRED_REQUEST_FLAG != 0 {
+            V41BackboneRequest::validate_owned_paired(request, max_rows)?;
+        } else {
+            V41BackboneRequest::validate_owned(request, max_rows)?;
+        }
         ensure!(request.wire_stats().wire_bytes <= max_frame_bytes,
             "native request exceeds RoCE frame budget");
         let header_bytes = if request.header.flags & EXPERT_PROTOCOL_V2_FLAG_DEBUG_CHECKSUM != 0 {
