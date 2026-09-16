@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Qualify native four-tier dispatch, dynamic rows and changed-input graphs.
+"""Qualify native two-to-four-tier dispatch, rows and changed-input graphs.
 
-Homogeneous experts use separate single-tier B12x grids as the reference. With
+Uniform mode uses zero-membership, minimal-storage adjacent tiers. Homogeneous
+experts use separate single-tier B12x grids as the reference. With
 --mixed-projections, each expert uses three distinct bitrates and is evaluated
 separately by the existing three-tier grid before summing reference outputs.
 """
@@ -19,10 +20,15 @@ def main():
     parser.add_argument('--aot', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument("--mixed-projections", action="store_true")
+    parser.add_argument("--uniform-bit", type=int, choices=(2,3,4,5))
     args = parser.parse_args()
     import torch
     meta = json.loads((args.aot / 'v41_exl3.json').read_text())
-    assert meta['bits'] == [2, 3, 4, 5] and meta['experts'] == 6
+    assert 2 <= len(meta['bits']) <= 4 and meta['experts'] == 6
+    tier_count = len(meta['bits'])
+    uniform_tier = None if args.uniform_bit is None else meta['bits'].index(args.uniform_bit)
+    assert not args.mixed_projections or (meta['bits'] == [2,3,4,5] and uniform_tier is None)
+    assert not meta['direct'], 'this harness qualifies packed routing'
     assert meta['sparkinfer_revision'] == _pinned_sparkinfer.REVISION
     props = torch.cuda.get_device_properties(0)
     assert [props.major, props.minor] == meta['compute']
@@ -38,13 +44,13 @@ def main():
     x = (torch.randn(cap, h, device=device) * .001).to(torch.bfloat16)
     ids = torch.arange(cap*topk, dtype=torch.int32, device=device).reshape(cap, topk) % 6
     weights = torch.softmax(torch.randn(cap, topk, device=device), dim=-1)
-    maps = [torch.tensor([e if e % 4 == tier else -1 for e in range(6)],
-        dtype=torch.int32, device=device) for tier in range(4)]
+    maps = [torch.tensor([e if (e % tier_count if uniform_tier is None else uniform_tier) == tier else -1 for e in range(6)],
+        dtype=torch.int32, device=device) for tier in range(tier_count)]
     identity = torch.arange(6, dtype=torch.int32, device=device)
-    descriptor = torch.full((3, 24), -1, dtype=torch.int32, device=device)
+    descriptor = torch.full((3, 6*tier_count), -1, dtype=torch.int32, device=device)
     # Existing three-tier preparation accepts consecutive bitrates. Alternate
     # K2/K3/K4 and K3/K4/K5, rotating projection order to cover every decoder.
-    choices = [[(e % 2 + (e+p) % 3) if args.mixed_projections else e % 4
+    choices = [[(e % 2 + (e+p) % 3) if args.mixed_projections else (e % tier_count if uniform_tier is None else uniform_tier)
         for p in range(3)] for e in range(6)]
     for e in range(6):
         for projection in range(3):
@@ -55,7 +61,7 @@ def main():
         else:
             projection = {'gate_suh':0, 'up_suh':1, 'down_svh':2}[name]
             rows = torch.stack([getattr(tiers[choices[e][projection]], name)[e] for e in range(6)])
-        return torch.cat((rows, torch.zeros((18, rows.shape[1]), dtype=rows.dtype, device=device)))
+        return torch.cat((rows, torch.zeros((6*(tier_count-1), rows.shape[1]), dtype=rows.dtype, device=device)))
     allocations = {}
     buffers = {}
     for name, entry in meta['buffers'].items():
@@ -73,12 +79,19 @@ def main():
         gate_suh_ptr=rotations('gate_suh'), up_suh_ptr=rotations('up_suh'),
         trellis_lut_ptr=lut, fc2_ptr=buffers['fc2'], output_ptr=buffers['output'],
         route_expert_ids_ptr=ids, expert_map_ptr=identity, svh_ptr=rotations('down_svh'))
-    scalars = dict(grid_x=meta['blocks_per_sm']*meta['sms'], route_num_experts=6, weight_num_experts=24)
+    scalars = dict(grid_x=meta['blocks_per_sm']*meta['sms'], route_num_experts=6, weight_num_experts=6*tier_count)
     for i, tier in enumerate(tiers):
         for key, field in [('w13','w13'),('w2','w2'),('w13_scales','w13_scale'),('w2_scales','w2_scale'),('w13_global','w13_global_scale'),('w2_global','w2_global_scale')]:
             pointers[f't{i}_{key}_ptr'] = getattr(tier, field)
         for key in ('num_experts', 'fc2_experts', 'gate_experts', 'up_experts'):
             scalars[f'tier{i}_{key}'] = 6
+        if uniform_tier is not None and i != uniform_tier:
+            # Match the loader's empty tier: non-null minimal payload pointers,
+            # full descriptor stride, zero projection memberships.
+            for key in ('w13', 'w2'):
+                pointers[f't{i}_{key}_ptr'] = torch.zeros(4, dtype=torch.int32, device=device)
+            for key in ('fc2_experts', 'gate_experts', 'up_experts'):
+                scalars[f'tier{i}_{key}'] = 0
     lib = ct.CDLL(str(args.aot/'libds41rt_exl3.so'))
     lib.ds41rt_exl3_create.argtypes = [ct.POINTER(ct.c_void_p)]
     lib.ds41rt_exl3_destroy.argtypes = [ct.c_void_p]
@@ -100,7 +113,7 @@ def main():
         fn = getattr(lib, 'ds41rt_exl3_'+entry['label'].rsplit('_',1)[1])
         fn.argtypes = [ct.c_void_p, ct.POINTER(ct.c_void_p), ct.POINTER(ct.c_int32), ct.c_void_p]
         p = (ct.c_void_p*len(entry['pointer_slots']))(*[pointers[n].data_ptr() for n in entry['pointer_slots']])
-        s = (ct.c_int32*len(entry['scalar_slots']))(*[scalars.get(n, 1) for n in entry['scalar_slots']])
+        s = (ct.c_int32*len(entry['scalar_slots']))(*[(1 if n == 'active_m' else scalars[n]) for n in entry['scalar_slots']])
         calls.append((fn, p, s, entry['scalar_slots'].index('active_m')))
     def native(rows):
         stream = ct.c_void_p(torch.cuda.current_stream().cuda_stream)
@@ -194,7 +207,7 @@ def main():
             assert torch.equal(actual, buffers['output'])
             results.append(dict(graph_step=step, relative_l2=relative))
         report = dict(passed=True, scope=__doc__, cases=results, source_revision=_pinned_sparkinfer.REVISION,
-            mixed_projections=args.mixed_projections, projection_tiers=choices, compute=meta['compute'], output_dtype=meta['output_dtype'], bits=meta['bits'], capacity=cap, hidden=h, intermediate=w)
+            uniform_bit=args.uniform_bit, mixed_projections=args.mixed_projections, projection_tiers=choices, compute=meta['compute'], output_dtype=meta['output_dtype'], bits=meta['bits'], capacity=cap, hidden=h, intermediate=w)
         args.output.write_text(json.dumps(report, indent=2)+'\n')
         print(json.dumps(report), flush=True)
     finally:

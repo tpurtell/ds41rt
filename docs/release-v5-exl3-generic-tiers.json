@@ -1,0 +1,1410 @@
+{
+  "passed": true,
+  "scope": "18 native packed-routing cases: uniform K2/K3/K4/K5 plus nonconsecutive sets K2/K4, K2/K5, K3/K5, K2/K3/K5, K2/K4/K5 on SM120 and SM121; hidden 5120, width 512, capacity 16, six experts/top-k six. Homogeneous per-expert bitrates; mixed projections use previous separate evidence.",
+  "results": [
+    {
+      "passed": true,
+      "scope": "Qualify native four-tier dispatch, dynamic rows and changed-input graphs.\n\nHomogeneous experts use separate single-tier B12x grids as the reference. With\n--mixed-projections, each expert uses three distinct bitrates and is evaluated\nseparately by the existing three-tier grid before summing reference outputs.\n",
+      "cases": [
+        {
+          "rows": 16,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 1,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 3,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 16,
+          "relative_l2": 0.0
+        },
+        {
+          "graph_step": 0,
+          "relative_l2": 0.0
+        },
+        {
+          "graph_step": 1,
+          "relative_l2": 0.0
+        }
+      ],
+      "source_revision": "fd8f8a68a3fd674e6c8d7d462692beb687b5939f",
+      "uniform_bit": 2,
+      "mixed_projections": false,
+      "projection_tiers": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "compute": [
+        12,
+        0
+      ],
+      "output_dtype": "bf16",
+      "bits": [
+        2,
+        3
+      ],
+      "capacity": 16,
+      "hidden": 5120,
+      "intermediate": 512
+    },
+    {
+      "passed": true,
+      "scope": "Qualify native four-tier dispatch, dynamic rows and changed-input graphs.\n\nHomogeneous experts use separate single-tier B12x grids as the reference. With\n--mixed-projections, each expert uses three distinct bitrates and is evaluated\nseparately by the existing three-tier grid before summing reference outputs.\n",
+      "cases": [
+        {
+          "rows": 16,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 1,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 3,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 16,
+          "relative_l2": 0.0
+        },
+        {
+          "graph_step": 0,
+          "relative_l2": 0.0
+        },
+        {
+          "graph_step": 1,
+          "relative_l2": 0.0
+        }
+      ],
+      "source_revision": "fd8f8a68a3fd674e6c8d7d462692beb687b5939f",
+      "uniform_bit": 3,
+      "mixed_projections": false,
+      "projection_tiers": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "compute": [
+        12,
+        0
+      ],
+      "output_dtype": "bf16",
+      "bits": [
+        3,
+        4
+      ],
+      "capacity": 16,
+      "hidden": 5120,
+      "intermediate": 512
+    },
+    {
+      "passed": true,
+      "scope": "Qualify native four-tier dispatch, dynamic rows and changed-input graphs.\n\nHomogeneous experts use separate single-tier B12x grids as the reference. With\n--mixed-projections, each expert uses three distinct bitrates and is evaluated\nseparately by the existing three-tier grid before summing reference outputs.\n",
+      "cases": [
+        {
+          "rows": 16,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 1,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 3,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 16,
+          "relative_l2": 0.0
+        },
+        {
+          "graph_step": 0,
+          "relative_l2": 0.0
+        },
+        {
+          "graph_step": 1,
+          "relative_l2": 0.0
+        }
+      ],
+      "source_revision": "fd8f8a68a3fd674e6c8d7d462692beb687b5939f",
+      "uniform_bit": 4,
+      "mixed_projections": false,
+      "projection_tiers": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "compute": [
+        12,
+        0
+      ],
+      "output_dtype": "bf16",
+      "bits": [
+        4,
+        5
+      ],
+      "capacity": 16,
+      "hidden": 5120,
+      "intermediate": 512
+    },
+    {
+      "passed": true,
+      "scope": "Qualify native four-tier dispatch, dynamic rows and changed-input graphs.\n\nHomogeneous experts use separate single-tier B12x grids as the reference. With\n--mixed-projections, each expert uses three distinct bitrates and is evaluated\nseparately by the existing three-tier grid before summing reference outputs.\n",
+      "cases": [
+        {
+          "rows": 16,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 1,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 3,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 16,
+          "relative_l2": 0.0
+        },
+        {
+          "graph_step": 0,
+          "relative_l2": 0.0
+        },
+        {
+          "graph_step": 1,
+          "relative_l2": 0.0
+        }
+      ],
+      "source_revision": "fd8f8a68a3fd674e6c8d7d462692beb687b5939f",
+      "uniform_bit": 5,
+      "mixed_projections": false,
+      "projection_tiers": [
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1
+        ]
+      ],
+      "compute": [
+        12,
+        0
+      ],
+      "output_dtype": "bf16",
+      "bits": [
+        4,
+        5
+      ],
+      "capacity": 16,
+      "hidden": 5120,
+      "intermediate": 512
+    },
+    {
+      "passed": true,
+      "scope": "Qualify native four-tier dispatch, dynamic rows and changed-input graphs.\n\nHomogeneous experts use separate single-tier B12x grids as the reference. With\n--mixed-projections, each expert uses three distinct bitrates and is evaluated\nseparately by the existing three-tier grid before summing reference outputs.\n",
+      "cases": [
+        {
+          "rows": 16,
+          "relative_l2": 9.910443168337224e-07
+        },
+        {
+          "rows": 1,
+          "relative_l2": 2.0285772279748926e-06
+        },
+        {
+          "rows": 3,
+          "relative_l2": 2.613115384519915e-06
+        },
+        {
+          "rows": 16,
+          "relative_l2": 9.910443168337224e-07
+        },
+        {
+          "graph_step": 0,
+          "relative_l2": 2.8112688596593216e-05
+        },
+        {
+          "graph_step": 1,
+          "relative_l2": 2.2317724869935773e-05
+        }
+      ],
+      "source_revision": "fd8f8a68a3fd674e6c8d7d462692beb687b5939f",
+      "uniform_bit": null,
+      "mixed_projections": false,
+      "projection_tiers": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          1
+        ]
+      ],
+      "compute": [
+        12,
+        0
+      ],
+      "output_dtype": "bf16",
+      "bits": [
+        2,
+        4
+      ],
+      "capacity": 16,
+      "hidden": 5120,
+      "intermediate": 512
+    },
+    {
+      "passed": true,
+      "scope": "Qualify native four-tier dispatch, dynamic rows and changed-input graphs.\n\nHomogeneous experts use separate single-tier B12x grids as the reference. With\n--mixed-projections, each expert uses three distinct bitrates and is evaluated\nseparately by the existing three-tier grid before summing reference outputs.\n",
+      "cases": [
+        {
+          "rows": 16,
+          "relative_l2": 3.486768651583816e-09
+        },
+        {
+          "rows": 1,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 3,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 16,
+          "relative_l2": 3.486768651583816e-09
+        },
+        {
+          "graph_step": 0,
+          "relative_l2": 3.4297092952328967e-06
+        },
+        {
+          "graph_step": 1,
+          "relative_l2": 1.1662616998364683e-05
+        }
+      ],
+      "source_revision": "fd8f8a68a3fd674e6c8d7d462692beb687b5939f",
+      "uniform_bit": null,
+      "mixed_projections": false,
+      "projection_tiers": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          1
+        ]
+      ],
+      "compute": [
+        12,
+        0
+      ],
+      "output_dtype": "bf16",
+      "bits": [
+        2,
+        5
+      ],
+      "capacity": 16,
+      "hidden": 5120,
+      "intermediate": 512
+    },
+    {
+      "passed": true,
+      "scope": "Qualify native four-tier dispatch, dynamic rows and changed-input graphs.\n\nHomogeneous experts use separate single-tier B12x grids as the reference. With\n--mixed-projections, each expert uses three distinct bitrates and is evaluated\nseparately by the existing three-tier grid before summing reference outputs.\n",
+      "cases": [
+        {
+          "rows": 16,
+          "relative_l2": 4.4975658397561347e-07
+        },
+        {
+          "rows": 1,
+          "relative_l2": 6.254104079062017e-08
+        },
+        {
+          "rows": 3,
+          "relative_l2": 1.174578869722609e-06
+        },
+        {
+          "rows": 16,
+          "relative_l2": 4.4975658397561347e-07
+        },
+        {
+          "graph_step": 0,
+          "relative_l2": 6.240790753508918e-06
+        },
+        {
+          "graph_step": 1,
+          "relative_l2": 1.422048171662027e-06
+        }
+      ],
+      "source_revision": "fd8f8a68a3fd674e6c8d7d462692beb687b5939f",
+      "uniform_bit": null,
+      "mixed_projections": false,
+      "projection_tiers": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          1
+        ]
+      ],
+      "compute": [
+        12,
+        0
+      ],
+      "output_dtype": "bf16",
+      "bits": [
+        3,
+        5
+      ],
+      "capacity": 16,
+      "hidden": 5120,
+      "intermediate": 512
+    },
+    {
+      "passed": true,
+      "scope": "Qualify native four-tier dispatch, dynamic rows and changed-input graphs.\n\nHomogeneous experts use separate single-tier B12x grids as the reference. With\n--mixed-projections, each expert uses three distinct bitrates and is evaluated\nseparately by the existing three-tier grid before summing reference outputs.\n",
+      "cases": [
+        {
+          "rows": 16,
+          "relative_l2": 1.4219269360182807e-05
+        },
+        {
+          "rows": 1,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 3,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 16,
+          "relative_l2": 1.4219269360182807e-05
+        },
+        {
+          "graph_step": 0,
+          "relative_l2": 1.1751470765375416e-06
+        },
+        {
+          "graph_step": 1,
+          "relative_l2": 4.509926657192409e-05
+        }
+      ],
+      "source_revision": "fd8f8a68a3fd674e6c8d7d462692beb687b5939f",
+      "uniform_bit": null,
+      "mixed_projections": false,
+      "projection_tiers": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          2,
+          2,
+          2
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          2,
+          2,
+          2
+        ]
+      ],
+      "compute": [
+        12,
+        0
+      ],
+      "output_dtype": "bf16",
+      "bits": [
+        2,
+        3,
+        5
+      ],
+      "capacity": 16,
+      "hidden": 5120,
+      "intermediate": 512
+    },
+    {
+      "passed": true,
+      "scope": "Qualify native four-tier dispatch, dynamic rows and changed-input graphs.\n\nHomogeneous experts use separate single-tier B12x grids as the reference. With\n--mixed-projections, each expert uses three distinct bitrates and is evaluated\nseparately by the existing three-tier grid before summing reference outputs.\n",
+      "cases": [
+        {
+          "rows": 16,
+          "relative_l2": 5.5697839229651436e-08
+        },
+        {
+          "rows": 1,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 3,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 16,
+          "relative_l2": 5.5697839229651436e-08
+        },
+        {
+          "graph_step": 0,
+          "relative_l2": 4.4510881025416893e-07
+        },
+        {
+          "graph_step": 1,
+          "relative_l2": 3.4940563864438445e-07
+        }
+      ],
+      "source_revision": "fd8f8a68a3fd674e6c8d7d462692beb687b5939f",
+      "uniform_bit": null,
+      "mixed_projections": false,
+      "projection_tiers": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          2,
+          2,
+          2
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          2,
+          2,
+          2
+        ]
+      ],
+      "compute": [
+        12,
+        0
+      ],
+      "output_dtype": "bf16",
+      "bits": [
+        2,
+        4,
+        5
+      ],
+      "capacity": 16,
+      "hidden": 5120,
+      "intermediate": 512
+    },
+    {
+      "passed": true,
+      "scope": "Qualify native four-tier dispatch, dynamic rows and changed-input graphs.\n\nHomogeneous experts use separate single-tier B12x grids as the reference. With\n--mixed-projections, each expert uses three distinct bitrates and is evaluated\nseparately by the existing three-tier grid before summing reference outputs.\n",
+      "cases": [
+        {
+          "rows": 16,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 1,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 3,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 16,
+          "relative_l2": 0.0
+        },
+        {
+          "graph_step": 0,
+          "relative_l2": 0.0
+        },
+        {
+          "graph_step": 1,
+          "relative_l2": 0.0
+        }
+      ],
+      "source_revision": "fd8f8a68a3fd674e6c8d7d462692beb687b5939f",
+      "uniform_bit": 2,
+      "mixed_projections": false,
+      "projection_tiers": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "compute": [
+        12,
+        1
+      ],
+      "output_dtype": "bf16",
+      "bits": [
+        2,
+        3
+      ],
+      "capacity": 16,
+      "hidden": 5120,
+      "intermediate": 512
+    },
+    {
+      "passed": true,
+      "scope": "Qualify native four-tier dispatch, dynamic rows and changed-input graphs.\n\nHomogeneous experts use separate single-tier B12x grids as the reference. With\n--mixed-projections, each expert uses three distinct bitrates and is evaluated\nseparately by the existing three-tier grid before summing reference outputs.\n",
+      "cases": [
+        {
+          "rows": 16,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 1,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 3,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 16,
+          "relative_l2": 0.0
+        },
+        {
+          "graph_step": 0,
+          "relative_l2": 0.0
+        },
+        {
+          "graph_step": 1,
+          "relative_l2": 0.0
+        }
+      ],
+      "source_revision": "fd8f8a68a3fd674e6c8d7d462692beb687b5939f",
+      "uniform_bit": 3,
+      "mixed_projections": false,
+      "projection_tiers": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "compute": [
+        12,
+        1
+      ],
+      "output_dtype": "bf16",
+      "bits": [
+        3,
+        4
+      ],
+      "capacity": 16,
+      "hidden": 5120,
+      "intermediate": 512
+    },
+    {
+      "passed": true,
+      "scope": "Qualify native four-tier dispatch, dynamic rows and changed-input graphs.\n\nHomogeneous experts use separate single-tier B12x grids as the reference. With\n--mixed-projections, each expert uses three distinct bitrates and is evaluated\nseparately by the existing three-tier grid before summing reference outputs.\n",
+      "cases": [
+        {
+          "rows": 16,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 1,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 3,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 16,
+          "relative_l2": 0.0
+        },
+        {
+          "graph_step": 0,
+          "relative_l2": 0.0
+        },
+        {
+          "graph_step": 1,
+          "relative_l2": 0.0
+        }
+      ],
+      "source_revision": "fd8f8a68a3fd674e6c8d7d462692beb687b5939f",
+      "uniform_bit": 4,
+      "mixed_projections": false,
+      "projection_tiers": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "compute": [
+        12,
+        1
+      ],
+      "output_dtype": "bf16",
+      "bits": [
+        4,
+        5
+      ],
+      "capacity": 16,
+      "hidden": 5120,
+      "intermediate": 512
+    },
+    {
+      "passed": true,
+      "scope": "Qualify native four-tier dispatch, dynamic rows and changed-input graphs.\n\nHomogeneous experts use separate single-tier B12x grids as the reference. With\n--mixed-projections, each expert uses three distinct bitrates and is evaluated\nseparately by the existing three-tier grid before summing reference outputs.\n",
+      "cases": [
+        {
+          "rows": 16,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 1,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 3,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 16,
+          "relative_l2": 0.0
+        },
+        {
+          "graph_step": 0,
+          "relative_l2": 0.0
+        },
+        {
+          "graph_step": 1,
+          "relative_l2": 0.0
+        }
+      ],
+      "source_revision": "fd8f8a68a3fd674e6c8d7d462692beb687b5939f",
+      "uniform_bit": 5,
+      "mixed_projections": false,
+      "projection_tiers": [
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1
+        ]
+      ],
+      "compute": [
+        12,
+        1
+      ],
+      "output_dtype": "bf16",
+      "bits": [
+        4,
+        5
+      ],
+      "capacity": 16,
+      "hidden": 5120,
+      "intermediate": 512
+    },
+    {
+      "passed": true,
+      "scope": "Qualify native four-tier dispatch, dynamic rows and changed-input graphs.\n\nHomogeneous experts use separate single-tier B12x grids as the reference. With\n--mixed-projections, each expert uses three distinct bitrates and is evaluated\nseparately by the existing three-tier grid before summing reference outputs.\n",
+      "cases": [
+        {
+          "rows": 16,
+          "relative_l2": 1.2623108887055423e-06
+        },
+        {
+          "rows": 1,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 3,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 16,
+          "relative_l2": 1.2623108887055423e-06
+        },
+        {
+          "graph_step": 0,
+          "relative_l2": 1.254631752090063e-05
+        },
+        {
+          "graph_step": 1,
+          "relative_l2": 6.249654688872397e-06
+        }
+      ],
+      "source_revision": "fd8f8a68a3fd674e6c8d7d462692beb687b5939f",
+      "uniform_bit": null,
+      "mixed_projections": false,
+      "projection_tiers": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          1
+        ]
+      ],
+      "compute": [
+        12,
+        1
+      ],
+      "output_dtype": "bf16",
+      "bits": [
+        2,
+        4
+      ],
+      "capacity": 16,
+      "hidden": 5120,
+      "intermediate": 512
+    },
+    {
+      "passed": true,
+      "scope": "Qualify native four-tier dispatch, dynamic rows and changed-input graphs.\n\nHomogeneous experts use separate single-tier B12x grids as the reference. With\n--mixed-projections, each expert uses three distinct bitrates and is evaluated\nseparately by the existing three-tier grid before summing reference outputs.\n",
+      "cases": [
+        {
+          "rows": 16,
+          "relative_l2": 3.212648516637273e-05
+        },
+        {
+          "rows": 1,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 3,
+          "relative_l2": 3.8177036913111806e-05
+        },
+        {
+          "rows": 16,
+          "relative_l2": 3.212648516637273e-05
+        },
+        {
+          "graph_step": 0,
+          "relative_l2": 6.169722954751933e-09
+        },
+        {
+          "graph_step": 1,
+          "relative_l2": 0.0
+        }
+      ],
+      "source_revision": "fd8f8a68a3fd674e6c8d7d462692beb687b5939f",
+      "uniform_bit": null,
+      "mixed_projections": false,
+      "projection_tiers": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          1
+        ]
+      ],
+      "compute": [
+        12,
+        1
+      ],
+      "output_dtype": "bf16",
+      "bits": [
+        2,
+        5
+      ],
+      "capacity": 16,
+      "hidden": 5120,
+      "intermediate": 512
+    },
+    {
+      "passed": true,
+      "scope": "Qualify native four-tier dispatch, dynamic rows and changed-input graphs.\n\nHomogeneous experts use separate single-tier B12x grids as the reference. With\n--mixed-projections, each expert uses three distinct bitrates and is evaluated\nseparately by the existing three-tier grid before summing reference outputs.\n",
+      "cases": [
+        {
+          "rows": 16,
+          "relative_l2": 1.7757581645128084e-06
+        },
+        {
+          "rows": 1,
+          "relative_l2": 1.2728328613320627e-07
+        },
+        {
+          "rows": 3,
+          "relative_l2": 7.449042271900908e-08
+        },
+        {
+          "rows": 16,
+          "relative_l2": 1.7757581645128084e-06
+        },
+        {
+          "graph_step": 0,
+          "relative_l2": 7.896962870290736e-07
+        },
+        {
+          "graph_step": 1,
+          "relative_l2": 5.668434823746793e-06
+        }
+      ],
+      "source_revision": "fd8f8a68a3fd674e6c8d7d462692beb687b5939f",
+      "uniform_bit": null,
+      "mixed_projections": false,
+      "projection_tiers": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          1
+        ]
+      ],
+      "compute": [
+        12,
+        1
+      ],
+      "output_dtype": "bf16",
+      "bits": [
+        3,
+        5
+      ],
+      "capacity": 16,
+      "hidden": 5120,
+      "intermediate": 512
+    },
+    {
+      "passed": true,
+      "scope": "Qualify native four-tier dispatch, dynamic rows and changed-input graphs.\n\nHomogeneous experts use separate single-tier B12x grids as the reference. With\n--mixed-projections, each expert uses three distinct bitrates and is evaluated\nseparately by the existing three-tier grid before summing reference outputs.\n",
+      "cases": [
+        {
+          "rows": 16,
+          "relative_l2": 1.1215397677233341e-07
+        },
+        {
+          "rows": 1,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 3,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 16,
+          "relative_l2": 1.1215397677233341e-07
+        },
+        {
+          "graph_step": 0,
+          "relative_l2": 1.256751420442015e-05
+        },
+        {
+          "graph_step": 1,
+          "relative_l2": 1.1165696378157008e-05
+        }
+      ],
+      "source_revision": "fd8f8a68a3fd674e6c8d7d462692beb687b5939f",
+      "uniform_bit": null,
+      "mixed_projections": false,
+      "projection_tiers": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          2,
+          2,
+          2
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          2,
+          2,
+          2
+        ]
+      ],
+      "compute": [
+        12,
+        1
+      ],
+      "output_dtype": "bf16",
+      "bits": [
+        2,
+        3,
+        5
+      ],
+      "capacity": 16,
+      "hidden": 5120,
+      "intermediate": 512
+    },
+    {
+      "passed": true,
+      "scope": "Qualify native four-tier dispatch, dynamic rows and changed-input graphs.\n\nHomogeneous experts use separate single-tier B12x grids as the reference. With\n--mixed-projections, each expert uses three distinct bitrates and is evaluated\nseparately by the existing three-tier grid before summing reference outputs.\n",
+      "cases": [
+        {
+          "rows": 16,
+          "relative_l2": 9.397097544550093e-10
+        },
+        {
+          "rows": 1,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 3,
+          "relative_l2": 0.0
+        },
+        {
+          "rows": 16,
+          "relative_l2": 9.397097544550093e-10
+        },
+        {
+          "graph_step": 0,
+          "relative_l2": 1.5785896039233194e-06
+        },
+        {
+          "graph_step": 1,
+          "relative_l2": 1.3757191936747404e-06
+        }
+      ],
+      "source_revision": "fd8f8a68a3fd674e6c8d7d462692beb687b5939f",
+      "uniform_bit": null,
+      "mixed_projections": false,
+      "projection_tiers": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          2,
+          2,
+          2
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          2,
+          2,
+          2
+        ]
+      ],
+      "compute": [
+        12,
+        1
+      ],
+      "output_dtype": "bf16",
+      "bits": [
+        2,
+        4,
+        5
+      ],
+      "capacity": 16,
+      "hidden": 5120,
+      "intermediate": 512
+    }
+  ],
+  "max_relative_l2": 4.509926657192409e-05,
+  "threshold_relative_l2": 0.004,
+  "uniform_bitwise_reference_equal": true,
+  "graph_eager_bitwise_equal": true,
+  "uniform_empty_tier": "Zero gate/up/down counts and minimal non-null packed buffers; descriptor stride retains both tiers.",
+  "remaining": [
+    "Package/loader alignment for differing per-layer decoder subsets",
+    "All-capacity serving geometry qualification",
+    "Rebuild release AOT packages under current source lock",
+    "Kernel/placement optimization then adaptive calibration and full release requirements"
+  ],
+  "archive": "docs/evidence/v5-exl3-generic-tiers.tar.gz",
+  "archive_sha256": "f8d03e777bab8b4e3329851dadb973a6a90cd144366b4c471de27bd03c6393e1",
+  "production_restored": true
+}

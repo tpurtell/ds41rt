@@ -1077,3 +1077,24 @@ The Rust loader already represents uniform K2/K3/K4/K5 checkpoints with an
 empty adjacent decoder tier and no expanded compressed payload. Uniform GPU
 execution and remaining generic bitrate combinations still need qualification,
 alongside release package rebuilding and the remaining optimization/release work.
+
+## Uniform and nonconsecutive decoder execution
+
+[Generic-tier evidence](release-v5-exl3-generic-tiers.json) adds 18 native packed
+execution cases across SM120 and SM121. Uniform K2/K3/K4/K5 uses the loader's
+empty adjacent tier: descriptor stride retains both tiers, unused projection
+counts are zero, and unused packed buffers have minimal non-null storage.
+All uniform outputs match separate homogeneous references bitwise at live rows
+16/1/3/16 and after two changed-input graph replays.
+
+Nonconsecutive sets K2/K4, K2/K5, K3/K5, K2/K3/K5 and K2/K4/K5 also pass on both
+devices. These assign a homogeneous bitrate to each expert and compare with
+separate single-tier grids; the earlier four-tier tests cover mixed gate/up/down
+assignments. All numerical errors meet the 0.004 relative L2 threshold, and all
+captured outputs match fresh eager execution bitwise.
+
+The tested shape is hidden 5120, intermediate 512, capacity 16, six experts and
+top-k six. This does not establish every geometry/capacity or end-to-end serving
+with layers that use different decoder subsets. Package/loader alignment for
+those subsets remains to be addressed before generic serving support is claimed.
+The original Spark worker and production coordinator are restored.
