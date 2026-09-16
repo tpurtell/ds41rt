@@ -1,0 +1,46 @@
+{
+  "passed": true,
+  "scope": "Full SM121 EXL3 package build, relocation/ABI, selected route oracles and existing rank-2 ARM worker numerical regression. Package staging on all four Sparks; not four-worker RoCE inference or full-model serving.",
+  "capacities": [
+    1,
+    16,
+    80,
+    256,
+    1024,
+    4096
+  ],
+  "variants": 24,
+  "ranks": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "compute": [
+    12,
+    1
+  ],
+  "package_manifest_sha256": "a3df337e42363bb84215e22eaa325caa2c64d137d12fa3e30ad3016684dd8440",
+  "sparkinfer_revision": "c024d14ce936ddfc2c863377d033d85e1787924b",
+  "checks": [
+    "24 modules load concurrently after package relocation",
+    "six integrity rejection checks",
+    "rank 0/2 route packing CPU-oracle checks at 80/4096 including guards and changed graph inputs",
+    "rank-2 full 384-expert ARM worker matches six routed B12x reference experts at 1/3/16/1 live rows",
+    "mapped BF16 response, checksum/chunk fallback, rejection and sink-failure recovery",
+    "identical package manifest and complete package verification on ostrich/dodo/emu/kiwi"
+  ],
+  "worker_workspace_bytes": 8976796,
+  "worker_native_library_scope": "Existing ARM test binary and v4 native library with wire addon; newly rebuilt EXL3 package. Not a clean full release image.",
+  "production_workers_unchanged": true,
+  "archive": "docs/evidence/v5-exl3-spark-full-package.tar.gz",
+  "archive_sha256": "9107226094821ec720c2773a2a73b1c745f7d11456ba5a1809b3444a5840c2e4",
+  "verified_at": "2026-09-16T17:16:44.829229+00:00",
+  "remaining": [
+    "preloaded worker capacity dispatch before throughput qualification",
+    "four-worker RoCE inference with EXL3",
+    "larger-capacity expert numerical checks on SM121",
+    "FP4 PLE gathering",
+    "full-model serving, optimization and complete release qualification"
+  ]
+}

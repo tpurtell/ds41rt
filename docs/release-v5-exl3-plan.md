@@ -649,3 +649,28 @@ library with the wire addon and rebuilt SM120 EXL3 modules. Next integration is
 the updated full-capacity SM121 package and four-Spark RoCE path, alongside the
 remaining FP4 PLE gathering implementation, before full-model optimization and
 release qualification.
+
+## Full-capacity Spark package
+
+[SM121 package evidence](release-v5-exl3-spark-full-package.json) now covers all
+24 rank/capacity variants (four ranks, capacities 1/16/80/256/1024/4096), rebuilt
+with the shared AOT module-lifetime and rounded route-storage fixes. Relocation,
+concurrent native module initialization and six integrity-rejection checks pass.
+GPU route packing matches the CPU oracle at 80 and 4096 for rank-0 and rank-2
+packages, including guards and changed graph inputs. The rank-2 ARM worker
+regression passes with all 384 experts loaded and six B12x reference experts
+routed at 1/3/16/1 live rows, including mapped output, checksum/chunk fallback,
+invalid-request rejection and sink-failure recovery.
+
+The identical package is staged and integrity-verified on all four Sparks in the
+project cache; production worker containers remain running. The numerical worker
+check uses the existing ARM test binary and v4 native library plus wire addon,
+with the newly rebuilt EXL3 modules. This is not four-worker RoCE inference or a
+clean release-image qualification. Larger-capacity expert compute numerics on
+SM121 still need coverage beyond metadata/kernel initialization.
+
+Before throughput qualification, the Spark worker must select among preloaded
+capacity variants: it currently uses one configured capacity for every request,
+which would apply prefill-sized compute to decode when configured for large
+batches. That dispatch and its workspace accounting are the next serving changes,
+followed by four-worker integration and full-model execution.
