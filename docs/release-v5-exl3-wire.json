@@ -1,0 +1,64 @@
+{
+  "scope": "FP8 wire boundary on RTX/Spark; full Rust packed wire-input layer test on RTX with 384 resident experts and six routed IDs. Not full ARM64 Rust serving, TP reduction or performance qualification.",
+  "decoder_results": [
+    {
+      "passed": true,
+      "scope": "FP8 wire to BF16 boundary only; no expert/serving performance claim.",
+      "gpu": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+      "compute": [
+        12,
+        0
+      ],
+      "library_sha256": "cfb9a89b0120c754a635e7c5689977ac74b404b8b437a76fb36298f91cdd2472",
+      "rows": [
+        1,
+        3,
+        16,
+        1023,
+        4096
+      ],
+      "all_fp8_codes_and_scale_bytes": true,
+      "finite_bits_and_nan_masks_equal": true,
+      "actual_b12x_wire_quantizer": true,
+      "zero_and_small_groups": true,
+      "changed_input_graph_replay": true,
+      "allocation_guards_and_tail": true,
+      "invalid_bounds_and_alias_rejected": true
+    },
+    {
+      "passed": true,
+      "scope": "FP8 wire to BF16 boundary only; no expert/serving performance claim.",
+      "gpu": "NVIDIA GB10",
+      "compute": [
+        12,
+        1
+      ],
+      "library_sha256": "4f44274781c47f347bd84251a2a65b804da85e793e1a8224ffd6c8bca128a7d7",
+      "rows": [
+        1,
+        3,
+        16,
+        1023,
+        4096
+      ],
+      "all_fp8_codes_and_scale_bytes": true,
+      "finite_bits_and_nan_masks_equal": true,
+      "actual_b12x_wire_quantizer": true,
+      "zero_and_small_groups": true,
+      "changed_input_graph_replay": true,
+      "allocation_guards_and_tail": true,
+      "invalid_bounds_and_alias_rejected": true
+    }
+  ],
+  "rust_layer_and_graph_passed": true,
+  "input_row_bytes": 5280,
+  "decoded_row_bytes": 10240,
+  "extra_device_workspace_per_lane": "capacity * 10240 bytes",
+  "implementation": "Separate graph-safe CUDA reconstruction launch before BF16 EXL3 compute. No change to network wire payload. Cost/fusion opportunity remains to be measured.",
+  "cuda_source_sha256": "032f1cb8bf04c65d136794f0e4d7eaeb7f97a61e3a61faae7300f74347626ba5",
+  "rust_binary_sha256": "a20990246bc592fedd4fa8e618f2f4e7300c54fbf873da45169498cdde79a09a",
+  "test_linkage": "Wire CUDA source compiled as an extension linked to the existing v4 native library for stable memory/RDMA APIs. CMake source list updated; full clean native build remains pending.",
+  "base_native_sha256": "2254da831b98c72dcfa6dd45385f8a9172e96e291404dcd2b3c6205d5820d40a",
+  "artifact": "evidence/v5-exl3-wire.tar.gz",
+  "artifact_sha256": "a077c9ccc372315e25c53ad694d92063ff10a9b768ae703a16cf839dd39586ad"
+}

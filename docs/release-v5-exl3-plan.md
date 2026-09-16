@@ -313,3 +313,23 @@ reference, Rust output is bitwise equal. Fixtures now record routing/tile policy
 and the test rejects mismatches before comparing bytes. This does not establish
 model agreement or quality. Large-prefill Rust execution and Spark integration
 remain pending.
+
+## Spark FP8 wire input
+
+`v41_exl3_wire.cu` reconstructs the existing 5,280-byte E4M3/UE8M0 K32 transfer
+row into 5,120 BF16 activations. It uses CUDA conversion semantics, initializes
+before graph capture, checks buffer extents/overlap and launches without host
+synchronization or allocation. CMake includes the new source. The Rust EXL3
+execution owner can now select this input format and owns a preallocated BF16
+buffer of `capacity * 10240` bytes per lane. Network payload size is unchanged.
+
+[Wire and integrated-layer evidence](release-v5-exl3-wire.json) passes on SM120
+and SM121 for rows 1, 3, 16, 1,023 and 4,096, covering every FP8 value/scale byte,
+finite bit patterns, NaN masks, allocation guards, output tails, invalid buffer
+bounds and graph replay. The actual B12x wire quantizer is exercised with normal,
+zero and small groups. A full 384-expert resident shard on RTX also passes Rust
+wire reconstruction, packed compute and changed/restored-input graph replay
+against B12x on the same reconstructed activations. Only six expert IDs are
+exercised by that reference. Full ARM64 Rust serving and TP reduction are still
+unqualified. The separate reconstruction launch and buffer need performance
+measurement and may be candidates for fusion; no speed claim is made.

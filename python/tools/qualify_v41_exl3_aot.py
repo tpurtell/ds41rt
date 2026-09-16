@@ -17,6 +17,7 @@ def main() -> None:
     parser.add_argument('--dspark-stage', type=int, choices=(0,1,2))
     parser.add_argument('--slice-start', type=int, default=0)
     parser.add_argument('--fixture', type=Path)
+    parser.add_argument('--fixture-format', choices=('bf16','fp8_k32'), default='bf16')
     args = parser.parse_args()
     import torch
     from safetensors import safe_open
@@ -160,15 +161,24 @@ def main() -> None:
         assert torch.equal(buffers.output[:graph_rows],expected)
         if args.fixture is not None:
             args.fixture.mkdir(parents=True,exist_ok=True)
+            fixture_input=x
+            if args.fixture_format=='fp8_k32':
+                from qualify_v41_exl3_wire import quantize_wire
+                fixture_input=torch.empty(capacity,5280,dtype=torch.uint8,device='cuda')
+                quantize_wire(x,fixture_input)
+                values=fixture_input[:,:5120].contiguous().view(torch.float8_e4m3fn).float()
+                scales=fixture_input[:,5120:].int().repeat_interleave(32,dim=1)-127
+                x=torch.ldexp(values,scales).to(torch.bfloat16)
             expected=run_bound_mixed_trellis(x,weights,ids,binding,buffers).clone()
             artifacts={}
-            for name,value in [('input',x),('ids',ids),('weights',weights),('expected',expected)]:
+            for name,value in [('input',fixture_input),('ids',ids),('weights',weights),('expected',expected)]:
                 raw=value.contiguous().view(torch.uint8).cpu().numpy().tobytes()
                 (args.fixture/(name+'.bin')).write_bytes(raw)
                 artifacts[name]={'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest()}
             (args.fixture/'fixture.json').write_text(json.dumps({'layer':layer_prefix,'slice_start':start,
                 'width':width,'capacity':capacity,'topk':topk,'reference_experts':experts,
                 'direct':meta['direct'],'tile':meta['tile'],
+                'input_format':args.fixture_format,
                 'snapshot_revision':args.snapshot.name,'artifacts':artifacts},indent=2)+'\n')
         args.output.write_text(json.dumps({'passed':True,'scope':'native AOT versus B12x, six real checkpoint experts; not full-model qualification',
             'checkpoint_layer':layer_prefix,'topk':topk,'native_info_verified':info_verified,

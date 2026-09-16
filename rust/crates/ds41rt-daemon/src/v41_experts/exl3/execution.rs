@@ -116,6 +116,7 @@ impl Table {
 pub(crate) struct Exl3Execution<'a, 'w> {
     kernel: V41Exl3Kernel,
     routes: Option<V41Exl3Routes>,
+    wire: Option<(ds41rt_ffi::V41Exl3Wire<'a>, DeviceAllocation<'a>)>,
     _storage: Vec<DeviceAllocation<'a>>,
     _weights: &'w Exl3Weights<'a>,
     core: Table,
@@ -129,6 +130,9 @@ pub(crate) struct Exl3Execution<'a, 'w> {
     library: &'a NativeLibrary,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Exl3InputFormat { Bf16, Fp8K32 }
+
 impl<'a, 'w> Exl3Execution<'a, 'w> {
     /// Trusted build artifacts only. Each owner is exclusive to one decode lane;
     /// callers drain work and destroy graphs before releasing it or its weights.
@@ -137,6 +141,11 @@ impl<'a, 'w> Exl3Execution<'a, 'w> {
         weights: &'w Exl3Weights<'a>,
         directory: &Path,
     ) -> Result<Self> {
+        Self::with_input_format(library, weights, directory, Exl3InputFormat::Bf16)
+    }
+
+    pub(crate) unsafe fn with_input_format(library: &'a NativeLibrary,
+        weights: &'w Exl3Weights<'a>, directory: &Path, format: Exl3InputFormat) -> Result<Self> {
         let meta: Manifest =
             serde_json::from_slice(&std::fs::read(directory.join("v41_exl3.json"))?)?;
         let lock: serde_json::Value = serde_json::from_str(include_str!(
@@ -311,9 +320,14 @@ impl<'a, 'w> Exl3Execution<'a, 'w> {
                 path.parent().unwrap().join("libv41_exl3_routes.so"),
             )?)
         };
+        let wire = if format == Exl3InputFormat::Fp8K32 {
+            ensure!(weights.layout.world == 4, "FP8 wire input requires a Spark TP4 shard");
+            Some((library.v41_exl3_wire()?, DeviceAllocation::new(library, meta.capacity * 5120 * 2)?))
+        } else { None };
         Ok(Self {
             kernel,
             routes,
+            wire,
             _storage: storage,
             _weights: weights,
             core,
@@ -329,12 +343,13 @@ impl<'a, 'w> Exl3Execution<'a, 'w> {
     }
 
     /// # Safety
-    /// Inputs are BF16[rows,5120], int32[rows,topk], FP32[rows,topk], contiguous
+    /// Inputs are BF16[rows,5120] or FP8 wire[rows,5280] as selected at setup,
+    /// int32[rows,topk], FP32[rows,topk], contiguous
     /// on this owner device and live through completion. No overlapping input /
     /// workspace storage or concurrent use of this lane, including graph replay.
     pub(crate) unsafe fn launch(
         &mut self,
-        inputs: [Ds41rtDeviceBuffer; 3],
+        mut inputs: [Ds41rtDeviceBuffer; 3],
         rows: usize,
         stream: *mut c_void,
     ) -> Result<Ds41rtDeviceBuffer> {
@@ -349,7 +364,7 @@ impl<'a, 'w> Exl3Execution<'a, 'w> {
         for (buffer, bytes) in
             inputs
                 .iter()
-                .zip([rows * 5120 * 2, rows * self.topk * 4, rows * self.topk * 4])
+                .zip([rows * if self.wire.is_some() { 5280 } else { 5120 * 2 }, rows * self.topk * 4, rows * self.topk * 4])
         {
             ensure!(
                 !buffer.ptr.is_null()
@@ -358,6 +373,10 @@ impl<'a, 'w> Exl3Execution<'a, 'w> {
                     && buffer.device_id == self.device,
                 "EXL3 input buffer contract mismatch"
             );
+        }
+        if let Some((wire, decoded)) = &self.wire {
+            wire.decode(inputs[0], decoded.buffer, rows, stream)?;
+            inputs[0] = decoded.buffer;
         }
         if let Some(routes) = &self.routes {
             self.route_pointers[0] = inputs[1].ptr;
@@ -415,11 +434,13 @@ mod tests {
             "insufficient GPU headroom"
         );
         let weights = Exl3Weights::load(&library, &catalog, layer, budget.resident_bytes)?;
+        let input_format = if info["input_format"] == "fp8_k32" { Exl3InputFormat::Fp8K32 } else { Exl3InputFormat::Bf16 };
         let mut execution = unsafe {
-            Exl3Execution::new(
+            Exl3Execution::with_input_format(
                 &library,
                 &weights,
                 Path::new(&std::env::var("DS41RT_EXL3_AOT")?),
+                input_format,
             )?
         };
         let mut inputs = Vec::new();

@@ -242,6 +242,7 @@ if(DS41RT_ENABLE_CUDA)
   find_package(CUDAToolkit REQUIRED)
   list(APPEND DS41RT_NATIVE_SOURCES
     cuda/kernels/v41_expert_pack.cu
+    cuda/kernels/v41_exl3_wire.cu
     cuda/kernels/v41_route_reduce.cu
     cuda/kernels/engram.cu
     cuda/kernels/v41_dspark.cu
