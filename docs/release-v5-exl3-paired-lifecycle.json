@@ -1,0 +1,20 @@
+{
+  "scope": "Dual RTX paired TP4 m80 two-block candidate focused lifecycle; not complete release qualification",
+  "passed": true,
+  "needle_prompt_tokens": 32815,
+  "needle_cold_correct": true,
+  "needle_warm_correct": true,
+  "warm_cache_hit_tokens": 32815,
+  "retained_turn_cache_hit_tokens": 32821,
+  "retained_turn_correct": true,
+  "cancelled_requests": 8,
+  "surviving_requests": 8,
+  "survivors_correct": true,
+  "post_cancel_recovery_correct": true,
+  "mixed_concurrency": [
+    4,
+    16
+  ],
+  "all_original_services_restored": true,
+  "archive_sha256": "b4102c0370a439f73a6e5a753c592f3f9fcfbb3a00e443b925535d0766349020"
+}

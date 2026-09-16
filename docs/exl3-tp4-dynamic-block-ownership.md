@@ -403,3 +403,14 @@ Two-block m80 is retained as the preferred paired candidate, not a default
 release policy. Paired mode remains opt-in pending the remaining calibration
 and qualification. All original services were restored. Evidence:
 `release-v5-exl3-paired-residency-comparison.json` and the adjacent raw archive.
+
+### Preferred candidate lifecycle
+
+The paired two-block m80 candidate passed mixed C4/C16, a 32,815-token needle
+prompt, full prompt-cache reuse, and retained-turn continuation (32,821 cached
+tokens). A 16-request batch cancelled eight requests after content while all
+eight survivors completed the exact requested sequence; a subsequent recovery
+request also passed. This covers larger prefill-to-decode transitions and basic
+cache/cancellation behavior for the dual-RTX candidate, not the entire release
+quality suite or 1M-context behavior. Original services were restored. Evidence:
+`release-v5-exl3-paired-lifecycle.json` and the adjacent archive.
