@@ -1195,5 +1195,9 @@
     ],
     "artifact": "/home/tj/.cache/ds41rt-upstream-20260916/clean-standard-restart-topic.json",
     "sha256": "91640f1c906b29a893c7e897bc9cbf9c06224008aac383dca43efbfa8faf01e6"
+  },
+  "evidence_archive": {
+    "path": "docs/evidence/upstream-clean-adaptive-20260916.tar.gz",
+    "sha256": "6ea4cd8e18d723cf051782092be1948d42bd1105c91b6f26f0d1a881c4bf84ca"
   }
 }
