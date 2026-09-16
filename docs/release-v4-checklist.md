@@ -19,6 +19,11 @@ upstream integration; the published September 14 v3 is unchanged.
   isolation, C16 branching, streaming cancellation, and recovery.
 - [x] Complete and review exactly three final high-thinking tool-eval runs,
   preserving failures and complete raw evidence.
+- [x] Reproduce and correct the post-mixed decode slowdown; verify bounded
+  graph reuse with current-input CUDA replay, prefix equivalence, C16 divergent
+  branches and cold/exact 1.04M retrieval. Preserve pre-fix measurements.
+- [x] Build and launch the corrected revision through standard build.sh/run.sh
+  and verify matching images on all four Spark workers.
 - [ ] Refresh all one/two-RTX performance tables with matched prompts and three
   samples: target/dSpark content types, counting/code/topic concurrency, mixed
   traffic, prefill, and retained-context decode. Add the separate 2K retained

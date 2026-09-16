@@ -37,7 +37,7 @@ prompt-matched results at 400 W per RTX with stock memory clocks; the
 [raw evidence and comparisons](sparkinfer-upstream-v4-dual-decode-20260916.json)
 preserve ranges and individual cases.
 
-The full tool and vision campaigns used the clean candidate before the final
+The three tool campaigns and vision checks used the clean candidate before the final
 graph-reuse correction. That correction changes graph lifetime, not kernel
 arithmetic; it separately passed prefix equivalence, all 16 divergent cache
 branches, a CUDA graph lifetime test, and cold/exact 1.04M-token retrieval.
