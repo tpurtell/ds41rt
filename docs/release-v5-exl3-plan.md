@@ -674,3 +674,30 @@ capacity variants: it currently uses one configured capacity for every request,
 which would apply prefill-sized compute to decode when configured for large
 batches. That dispatch and its workspace accounting are the next serving changes,
 followed by four-worker integration and full-model execution.
+
+## Spark worker capacity dispatch
+
+[Capacity-dispatch evidence](release-v5-exl3-worker-capacity.json) closes the
+single-kernel worker limitation. EXL3 workers now preload the ordered capacity
+variants up to their configured limit and select the smallest fitting variant
+per request. The configured request limit remains enforced even when the last
+compiled capacity rounds upward. Compressed weights and input allocations are
+shared across these variants; each variant currently owns its execution scratch.
+The rank-root directory (`exl3/tp4-rankN`, containing `m1`, `m16`, etc.) is now the
+default and the `--exl3-aot-dir` override contract. Request dispatch performs no
+allocation, file lookup, module loading or compilation.
+
+The ARM64 SM121 worker test loads all 384 rank-2 experts of layer 0, routes six
+real reference experts and matches B12x bitwise at live rows
+1/3/16/17/80/81/256/257/1024/1025/4096/1. Each capacity uses a matching-policy
+reference. Mapped response guards, checksum/chunk fallback, identity/layer
+rejection and sink-failure recovery pass throughout. Capacity bounds and rounding
+also pass CPU checks. All six variants' execution storage plus shared inputs total
+941,376,128 bytes (about 898 MiB), checked against actual allocated payload. This
+is worker workspace, excluding resident weights and transport storage.
+
+These checks use the newly built ARM worker with the v4 native library plus wire
+addon and SM121 EXL3 package. They prove capacity dispatch and bounded numerical
+coverage, not four-worker inference or throughput. Four-worker RoCE integration
+is next; full serving, optimization, adaptive calibration and release measurements
+remain required.

@@ -19,7 +19,8 @@ use std::{path::Path, rc::Rc};
 pub(crate) struct Exl3Worker<'a> {
     // Drain the stream before dropping kernels, weights or input allocations.
     stream: LoadStream<'a>,
-    execution: Exl3Execution<'a>,
+    executions: Vec<Exl3Execution<'a>>,
+    capacity: usize,
     inputs: [DeviceAllocation<'a>; 3],
     library: &'a NativeLibrary,
     first_layer: usize,
@@ -29,10 +30,28 @@ pub(crate) struct Exl3Worker<'a> {
 }
 
 impl<'a> Exl3Worker<'a> {
+    fn capacities(capacity: u32) -> Result<Vec<u32>> {
+        let capacities = [1, 16, 80, 256, 1024, 4096];
+        ensure!(
+            (1..=4096).contains(&capacity),
+            "invalid EXL3 worker capacity"
+        );
+        let maximum = capacities.into_iter().find(|&c| c >= capacity).unwrap();
+        Ok(capacities.into_iter().filter(|&c| c <= maximum).collect())
+    }
+
     pub(crate) fn plan(directory: &Path, capacity: u32) -> Result<usize> {
-        Exl3Execution::plan(directory, Exl3InputFormat::Fp8K32)?
-            .checked_add(capacity as usize * (5280 + 6 * 8))
-            .context("EXL3 worker workspace budget overflow")
+        Self::capacities(capacity)?.into_iter().try_fold(
+            capacity as usize * (5280 + 6 * 8),
+            |bytes, c| {
+                bytes
+                    .checked_add(Exl3Execution::plan(
+                        &directory.join(format!("m{c}")),
+                        Exl3InputFormat::Fp8K32,
+                    )?)
+                    .context("EXL3 worker workspace budget overflow")
+            },
+        )
     }
 
     pub(crate) fn new(
@@ -64,20 +83,33 @@ impl<'a> Exl3Worker<'a> {
             budget <= available_bytes,
             "EXL3 worker workspace exceeds device budget"
         );
-        let execution = unsafe {
-            Exl3Execution::with_input_format(library, weights, directory, Exl3InputFormat::Fp8K32)?
-        };
-        ensure!(
-            execution.capacity() == capacity as usize && execution.output_element_bytes() == 2,
-            "EXL3 Spark export must match worker capacity and BF16 response precision"
-        );
+        let mut executions = Vec::new();
+        for c in Self::capacities(capacity)? {
+            let execution = unsafe {
+                Exl3Execution::with_input_format(
+                    library,
+                    weights.clone(),
+                    &directory.join(format!("m{c}")),
+                    Exl3InputFormat::Fp8K32,
+                )?
+            };
+            ensure!(
+                execution.capacity() == c as usize && execution.output_element_bytes() == 2,
+                "EXL3 Spark export must match planned capacity and BF16 response precision"
+            );
+            executions.push(execution);
+        }
         let inputs = [
             DeviceAllocation::new(library, capacity as usize * 5280)?,
             DeviceAllocation::new(library, capacity as usize * 6 * 4)?,
             DeviceAllocation::new(library, capacity as usize * 6 * 4)?,
         ];
         ensure!(
-            execution.workspace_bytes() + inputs.iter().map(|b| b.buffer.bytes).sum::<usize>()
+            executions
+                .iter()
+                .map(|e| e.workspace_bytes())
+                .sum::<usize>()
+                + inputs.iter().map(|b| b.buffer.bytes).sum::<usize>()
                 == budget,
             "EXL3 worker workspace plan mismatch"
         );
@@ -87,7 +119,8 @@ impl<'a> Exl3Worker<'a> {
         };
         Ok(Self {
             stream,
-            execution,
+            executions,
+            capacity: capacity as usize,
             inputs,
             library,
             first_layer,
@@ -122,7 +155,7 @@ impl<'a> Exl3Worker<'a> {
             "EXL3 response executor identity mismatch"
         );
         ensure!(
-            request.rows() as usize <= self.execution.capacity(),
+            request.rows() > 0 && request.rows() as usize <= self.capacity,
             "EXL3 request exceeds capacity"
         );
         request.require_input_dtype(ExpertV2Dtype::Fp8E4m3Ue8m0K32 as u32)?;
@@ -151,16 +184,23 @@ impl<'a> Exl3Worker<'a> {
             )?;
         }
         let inputs = std::array::from_fn(|i| self.inputs[i].buffer);
+        // Modules and storage are resolved before accepting requests. This
+        // bounded selection performs no allocation, loading or compilation.
+        let execution = self
+            .executions
+            .iter_mut()
+            .find(|e| e.capacity() >= request.rows() as usize)
+            .context("missing preloaded EXL3 worker capacity")?;
         let output = unsafe {
             match destination {
-                Some(output) => self.execution.launch_layer_into(
+                Some(output) => execution.launch_layer_into(
                     self.layer,
                     inputs,
                     request.rows() as usize,
                     self.stream.raw,
                     output,
                 )?,
-                None => self.execution.launch_layer(
+                None => execution.launch_layer(
                     self.layer,
                     inputs,
                     request.rows() as usize,

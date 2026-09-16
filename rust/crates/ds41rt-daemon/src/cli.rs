@@ -152,7 +152,7 @@ pub(crate) struct NativeExpertDaemonArgs {
     /// Spark-role native library built with V4.1 expert AOT kernels.
     #[arg(long)]
     pub(crate) native_lib: PathBuf,
-    /// Override the native EXL3 export directory for this rank and capacity.
+    /// Override the native EXL3 rank directory containing m1, m16 and larger capacities.
     #[arg(long)]
     pub(crate) exl3_aot_dir: Option<PathBuf>,
     #[arg(long, value_parser = clap::value_parser!(u32).range(0..4))]

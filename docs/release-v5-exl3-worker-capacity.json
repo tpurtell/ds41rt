@@ -1,0 +1,80 @@
+{
+  "passed": true,
+  "scope": "Spark EXL3 worker capacity dispatch and rank-2 numerical/response regression on ARM64 SM121 with maximum 4096. Not four-worker RoCE inference or serving throughput.",
+  "snapshot_revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+  "preloaded_capacities": [
+    1,
+    16,
+    80,
+    256,
+    1024,
+    4096
+  ],
+  "live_rows": [
+    1,
+    3,
+    16,
+    17,
+    80,
+    81,
+    256,
+    257,
+    1024,
+    1025,
+    4096,
+    1
+  ],
+  "selected_capacities": [
+    1,
+    16,
+    16,
+    80,
+    80,
+    256,
+    256,
+    1024,
+    1024,
+    4096,
+    4096,
+    1
+  ],
+  "maximum": 4096,
+  "rank": 2,
+  "intermediate": 512,
+  "resident_experts": 384,
+  "routed_reference_experts": 6,
+  "workspace_bytes": 941376128,
+  "changes": [
+    "preload ordered capacity variants sharing compressed resident weights",
+    "select smallest fitting capacity without allocation or module loading in request dispatch",
+    "budget every capacity workspace plus shared input storage",
+    "rank-root package directory default and CLI override"
+  ],
+  "checks": [
+    "unit capacity rounding and bounds",
+    "native mapped BF16 outputs equal matching-policy B12x fixtures at every boundary",
+    "output guards",
+    "checksum/chunked host response fallback",
+    "identity and layer rejection",
+    "sink-failure recovery",
+    "return to batch 1 after batch 4096",
+    "actual allocation payload equals planned workspace"
+  ],
+  "native_library_scope": "New ARM worker binary with v4 native library plus EXL3 wire addon and rebuilt SM121 EXL3 package. Not a clean release image.",
+  "source_sha256": {
+    "rust/crates/ds41rt-daemon/src/cli.rs": "d39f25dfc1355f32885898f31c6580f8706537b645c375076b4600ff5dcc1f6e",
+    "rust/crates/ds41rt-daemon/src/v41_experts/exl3/worker.rs": "83012aa249ba7292e1df16e2d4d905a12c0f07f4ae6dcc9dd3401e9544002f52",
+    "rust/crates/ds41rt-daemon/src/v41_experts/exl3/worker/tests.rs": "ce4c06129be67280e9421c7a833e4e4da1fd8c283412c503aef4c17ddcc41a7b",
+    "rust/crates/ds41rt-daemon/src/v41_experts/service.rs": "08b6e61b9b7fab4a2f1e34abb67c439f2606a966c258b5c958dd4348081e9cb9"
+  },
+  "archive": "docs/evidence/v5-exl3-worker-capacity.tar.gz",
+  "archive_sha256": "0710bcec02f3ab306142833ee140a224030009a63dfac8404590dfbe956233ca",
+  "verified_at": "2026-09-16T17:23:04.024506+00:00",
+  "remaining": [
+    "four-worker RoCE integration",
+    "FP4 PLE gathering",
+    "full-model serving and kernel/residency optimization",
+    "final adaptive calibration and content-type acceptance",
+    "all requested release measurements, quant analysis and v5 publication"
+  ]
+}
