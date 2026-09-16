@@ -78,6 +78,44 @@ They may still require mechanical merge/import/test fixes when shared library
 surfaces change. Attention/projection parallelization across GPUs is deferred;
 retain the current ownership and expert parallelism in comparisons.
 
+## WO projection qualification and fusion probe (September 16)
+
+[Projection evidence](sparkinfer-upstream-wo-projections-20260916.json)
+records the published and candidate native-library hashes and raw measurements.
+The actual native grouped WO-A path passes random, tiny and zero input checks
+against the quantized oracle across planned capacities through 4096, including
+sparse live rows. The candidate fused inverse-RoPE path matches its unfused
+counterpart exactly, including changed inputs replayed through graphs.
+WO-A decode timings are effectively unchanged from the published library:
+approximately 30.7 µs at one row. These component measurements use 256 MiB
+flushes without clock admission; they are not formal release performance data.
+
+The upstream WO planner additionally fuses WO-B activation quantization into
+its GEMM for exact planned counts of at most eight rows. Its explicit tile
+specialization targets two groups; DS41RT currently has eight groups because
+attention is not tensor-parallel. The generic fused implementation supports our
+shape, so it was tested before attempting a native adapter. The standalone AOT
+export presently lacks group-stride and split-K support, which an adapter would
+also need to address.
+
+The [reproducible probe](../python/tools/compare_v41_wo_b_fusion.py) compares
+upstream unfused quantization plus GEMM against fused quantization/GEMM for
+8 groups × 1024 rank → 5120 hidden dimensions. All three cases pass exact
+comparison, changed-input graph replay and stable replay-allocation checks.
+Six alternating warm samples, each containing 1000 GPU launches, give:
+
+| Planned/live rows | Separate quantization + GEMM, µs | Fused, µs |
+| --- | ---: | ---: |
+| 1 | 12.58 | 14.23 |
+| 4 | 12.58 | 17.58 |
+| 8 | 11.62 | 18.94 |
+
+This is a warm GPU component probe through upstream Python entry points, not
+the native serving ABI, a full WO-A/WO-B chain comparison, or an exhaustive
+tile search. It does not justify adopting generic WO-B fusion. Keep the native
+path while evaluating the remaining projection opportunities. No serving
+policy, weight storage, KV capacity or GPU ownership changed in this probe.
+
 ## Initial attention kernel comparison (September 16)
 
 The candidate's H16 FP8 decode regression now passes Compute Sanitizer memcheck:
