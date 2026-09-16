@@ -15,6 +15,8 @@ def main():
     p.add_argument('--b12x-root', type=Path, required=True)
     p.add_argument('--native', type=Path, required=True)
     p.add_argument('--output', type=Path, required=True)
+    p.add_argument('--aot', type=Path, help='Optional native lagged-pre probe shared library')
+    p.add_argument('--rows', type=int, nargs='+', default=[1,8,16,80,512])
     args = p.parse_args()
     sys.path.insert(0, str(args.b12x_root.resolve()))
     import torch
@@ -28,11 +30,17 @@ def main():
     lib.ds41rt_v41_hc_pre.argtypes = [C.c_void_p]*3 + [C.c_int32, C.c_void_p]
     lib.ds41rt_cuda_ds4_rmsnorm_bf16_rne_async.argtypes = [C.c_void_p]*3 + [C.c_int, C.c_int, C.c_float, C.c_void_p]
     assert lib.ds41rt_v41_hc_project_initialize() == 0
+    aot = C.CDLL(str(args.aot.resolve())) if args.aot else None
+    if aot:
+        aot.launch.argtypes = [C.c_void_p]*11 + [C.c_int32,C.c_void_p]
+        assert aot.initialize() == 0
     report = {'scope': 'Native begin versus upstream prepared lagged pre; warm component diagnostic, not serving',
               'command': sys.argv, 'native_sha256': hashlib.sha256(args.native.read_bytes()).hexdigest(),
               'revision': subprocess.check_output(['git','-C',str(args.b12x_root),'rev-parse','HEAD'], text=True).strip(),
               'gpu': subprocess.check_output(['nvidia-smi','--query-gpu=uuid,name,power.limit,clocks.mem','--format=csv'],text=True), 'cases': []}
-    for rows in (1, 8, 16, 80, 512):
+    if args.aot:
+        report['aot_sha256'] = hashlib.sha256(args.aot.read_bytes()).hexdigest()
+    for rows in args.rows:
         residual = torch.randn((rows,4,5120), device='cuda', dtype=torch.bfloat16)
         fn = torch.randn((24,20480), device='cuda') * 0.01
         scale = torch.tensor([0.1]*3, device='cuda')
@@ -45,6 +53,12 @@ def main():
         native_comb = torch.empty((rows,4,4), device='cuda')
         collapsed = torch.empty((rows,5120),device='cuda',dtype=torch.bfloat16)
         normalized = torch.empty_like(collapsed)
+        if aot:
+            aot_outputs = [torch.empty_like(t) for t in (native_post,native_comb,normalized,native_pre)]
+            aot_scratch = torch.empty((rows*2000+16,),device='cuda')
+            def native_aot():
+                post,comb,y,pre = aot_outputs
+                assert aot.launch(*[t.data_ptr() for t in (residual,fn,scale,bias,incoming,weight,pre,post,comb,y,aot_scratch)],rows,torch.cuda.current_stream().cuda_stream) == 0
         opts = dict(pre_mix=incoming,norm_weight=weight,norm_eps=1e-20,rms_eps=1e-20,hc_eps=1e-6,sinkhorn_iters=20)
         with PreparationSession(device=residual.device,autotune=False,compile_workers=2) as session:
             plan = prepare(session,'pre',(residual,fn,scale,bias),opts)
@@ -62,7 +76,10 @@ def main():
             actual = upstream()
             torch.cuda.synchronize()
             graphs = {}
-            for name, call in [('native',native),('upstream',upstream)]:
+            calls = [('native',native),('upstream',upstream)]
+            if aot:
+                calls.append(('aot',native_aot))
+            for name, call in calls:
                 call()
                 torch.cuda.synchronize()
                 graph = torch.cuda.CUDAGraph()
@@ -74,9 +91,19 @@ def main():
             for amplitude in (1.0,0.0,0.01):
                 residual.normal_().mul_(amplitude)
                 incoming.uniform_()
+                saved_residual = residual.clone()
+                if aot:
+                    aot_scratch.fill_(12345)
+                    for out in aot_outputs:
+                        out.fill_(float('nan'))
                 for graph in graphs.values():
                     graph.replay()
                 torch.cuda.synchronize()
+                assert torch.equal(residual,saved_residual), 'Input residual was modified'
+                if aot:
+                    assert (aot_scratch[rows*2000:] == 12345).all()
+                    for out, ref in zip(aot_outputs,(*actual[1:],predicted),strict=True):
+                        torch.testing.assert_close(out,ref,rtol=0,atol=0)
                 expected = _lagged_reference(residual,fn,scale,bias,incoming,weight)
                 for name, outputs in [('native',(native_post,native_comb,normalized,native_pre)),
                                       ('upstream',(*actual[1:],predicted))]:
@@ -89,7 +116,7 @@ def main():
                             failures.append({'component':component,'error':str(error)})
                     errors.append({'amplitude':amplitude,'path':name,'oracle_pass':not failures,'failures':failures})
             if any(not check['oracle_pass'] for check in errors):
-                case = {'rows':rows,'checks':errors,'timing_skipped':'Numerical gate failed'}
+                case = {'rows':rows,'aot_exact_replay_and_scratch_guard':bool(aot),'checks':errors,'timing_skipped':'Numerical gate failed'}
                 report['cases'].append(case)
                 args.output.write_text(json.dumps(report,indent=2)+'\n')
                 print(json.dumps(case),flush=True)
@@ -99,7 +126,8 @@ def main():
             samples = {name:[] for name in graphs}
             allocated = torch.cuda.memory_allocated()
             for i in range(6):
-                for name in (('native','upstream') if i%2 else ('upstream','native')):
+                order = list(graphs)
+                for name in (order if i%2 else list(reversed(order))):
                     start,end = torch.cuda.Event(enable_timing=True),torch.cuda.Event(enable_timing=True)
                     start.record()
                     for _ in range(50):
@@ -107,7 +135,7 @@ def main():
                     end.record(); end.synchronize()
                     samples[name].append(start.elapsed_time(end))
             assert torch.cuda.memory_allocated() == allocated
-            case = {'rows':rows,'checks':errors,'warm_us':samples,
+            case = {'rows':rows,'aot_exact_replay_and_scratch_guard':bool(aot),'checks':errors,'warm_us':samples,
                     'median_us':{k:statistics.median(v) for k,v in samples.items()}}
             report['cases'].append(case)
             args.output.write_text(json.dumps(report,indent=2)+'\n')

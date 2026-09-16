@@ -1,0 +1,447 @@
+{
+  "scope": "Native begin versus upstream prepared lagged pre; warm component diagnostic, not serving",
+  "command": [
+    "python/tools/compare_v41_mhc_upstream.py",
+    "--b12x-root",
+    "/home/tj/.cache/ds41rt-upstream-20260916/sparkinfer",
+    "--native",
+    "/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-attention.so",
+    "--aot",
+    "/home/tj/.cache/ds41rt-upstream-20260916/mhc-aot/libprobe.so",
+    "--rows",
+    "1",
+    "2",
+    "7",
+    "8",
+    "16",
+    "80",
+    "--output",
+    "/home/tj/.cache/ds41rt-upstream-20260916/mhc-aot-probe.json"
+  ],
+  "native_sha256": "c2332ac7582c189bc618b2245f09b626a020f3397153a7e73f53d5afb0084aef",
+  "revision": "5bda5b2f81c1da620f9024590e7eeea6b50b5fcf",
+  "gpu": "uuid, name, power.limit [W], clocks.current.memory [MHz]\nGPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, NVIDIA RTX PRO 6000 Blackwell Workstation Edition, 400.00 W, 405 MHz\nGPU-95f8f212-9131-df99-fd53-7535965197d7, NVIDIA RTX PRO 6000 Blackwell Workstation Edition, 400.00 W, 405 MHz\n",
+  "cases": [
+    {
+      "rows": 1,
+      "aot_exact_replay_and_scratch_guard": true,
+      "checks": [
+        {
+          "amplitude": 1.0,
+          "path": "native",
+          "oracle_pass": true,
+          "failures": []
+        },
+        {
+          "amplitude": 1.0,
+          "path": "upstream",
+          "oracle_pass": true,
+          "failures": []
+        },
+        {
+          "amplitude": 0.0,
+          "path": "native",
+          "oracle_pass": true,
+          "failures": []
+        },
+        {
+          "amplitude": 0.0,
+          "path": "upstream",
+          "oracle_pass": true,
+          "failures": []
+        },
+        {
+          "amplitude": 0.01,
+          "path": "native",
+          "oracle_pass": true,
+          "failures": []
+        },
+        {
+          "amplitude": 0.01,
+          "path": "upstream",
+          "oracle_pass": true,
+          "failures": []
+        }
+      ],
+      "warm_us": {
+        "native": [
+          10.23043155670166,
+          10.212767601013184,
+          10.236448287963867,
+          10.214240074157715,
+          10.236703872680664,
+          10.220128059387207
+        ],
+        "upstream": [
+          5.223872184753418,
+          5.224671840667725,
+          5.225279808044434,
+          5.2244157791137695,
+          5.225088119506836,
+          5.223360061645508
+        ],
+        "aot": [
+          4.8230719566345215,
+          4.812672138214111,
+          4.811200141906738,
+          4.814464092254639,
+          4.814784049987793,
+          4.8158721923828125
+        ]
+      },
+      "median_us": {
+        "native": 10.225279808044434,
+        "upstream": 5.224543809890747,
+        "aot": 4.814624071121216
+      }
+    },
+    {
+      "rows": 2,
+      "aot_exact_replay_and_scratch_guard": true,
+      "checks": [
+        {
+          "amplitude": 1.0,
+          "path": "native",
+          "oracle_pass": true,
+          "failures": []
+        },
+        {
+          "amplitude": 1.0,
+          "path": "upstream",
+          "oracle_pass": true,
+          "failures": []
+        },
+        {
+          "amplitude": 0.0,
+          "path": "native",
+          "oracle_pass": true,
+          "failures": []
+        },
+        {
+          "amplitude": 0.0,
+          "path": "upstream",
+          "oracle_pass": true,
+          "failures": []
+        },
+        {
+          "amplitude": 0.01,
+          "path": "native",
+          "oracle_pass": true,
+          "failures": []
+        },
+        {
+          "amplitude": 0.01,
+          "path": "upstream",
+          "oracle_pass": true,
+          "failures": []
+        }
+      ],
+      "warm_us": {
+        "native": [
+          10.447327613830566,
+          10.442879676818848,
+          10.44752025604248,
+          10.450592041015625,
+          10.44825553894043,
+          10.455936431884766
+        ],
+        "upstream": [
+          5.632800102233887,
+          5.631999969482422,
+          5.632383823394775,
+          5.631904125213623,
+          5.632800102233887,
+          5.631743907928467
+        ],
+        "aot": [
+          5.229087829589844,
+          5.22540807723999,
+          5.2254719734191895,
+          5.222400188446045,
+          5.2248640060424805,
+          5.222559928894043
+        ]
+      },
+      "median_us": {
+        "native": 10.447887897491455,
+        "upstream": 5.632191896438599,
+        "aot": 5.225136041641235
+      }
+    },
+    {
+      "rows": 7,
+      "aot_exact_replay_and_scratch_guard": true,
+      "checks": [
+        {
+          "amplitude": 1.0,
+          "path": "native",
+          "oracle_pass": true,
+          "failures": []
+        },
+        {
+          "amplitude": 1.0,
+          "path": "upstream",
+          "oracle_pass": true,
+          "failures": []
+        },
+        {
+          "amplitude": 0.0,
+          "path": "native",
+          "oracle_pass": true,
+          "failures": []
+        },
+        {
+          "amplitude": 0.0,
+          "path": "upstream",
+          "oracle_pass": true,
+          "failures": []
+        },
+        {
+          "amplitude": 0.01,
+          "path": "native",
+          "oracle_pass": true,
+          "failures": []
+        },
+        {
+          "amplitude": 0.01,
+          "path": "upstream",
+          "oracle_pass": true,
+          "failures": []
+        }
+      ],
+      "warm_us": {
+        "native": [
+          12.109151840209961,
+          12.105792045593262,
+          12.107872009277344,
+          12.129759788513184,
+          12.133536338806152,
+          12.131648063659668
+        ],
+        "upstream": [
+          7.103295803070068,
+          7.106400012969971,
+          7.094143867492676,
+          7.114304065704346,
+          7.123007774353027,
+          7.1187520027160645
+        ],
+        "aot": [
+          6.653439998626709,
+          6.649727821350098,
+          6.646880149841309,
+          6.655104160308838,
+          6.65561580657959,
+          6.659200191497803
+        ]
+      },
+      "median_us": {
+        "native": 12.119455814361572,
+        "upstream": 7.110352039337158,
+        "aot": 6.654272079467773
+      }
+    },
+    {
+      "rows": 8,
+      "aot_exact_replay_and_scratch_guard": true,
+      "checks": [
+        {
+          "amplitude": 1.0,
+          "path": "native",
+          "oracle_pass": true,
+          "failures": []
+        },
+        {
+          "amplitude": 1.0,
+          "path": "upstream",
+          "oracle_pass": true,
+          "failures": []
+        },
+        {
+          "amplitude": 0.0,
+          "path": "native",
+          "oracle_pass": true,
+          "failures": []
+        },
+        {
+          "amplitude": 0.0,
+          "path": "upstream",
+          "oracle_pass": true,
+          "failures": []
+        },
+        {
+          "amplitude": 0.01,
+          "path": "native",
+          "oracle_pass": true,
+          "failures": []
+        },
+        {
+          "amplitude": 0.01,
+          "path": "upstream",
+          "oracle_pass": true,
+          "failures": []
+        }
+      ],
+      "warm_us": {
+        "native": [
+          12.474495887756348,
+          12.48748779296875,
+          12.48572826385498,
+          12.483360290527344,
+          12.4835844039917,
+          12.491519927978516
+        ],
+        "upstream": [
+          7.325344085693359,
+          7.321663856506348,
+          7.328671932220459,
+          7.332767963409424,
+          7.328256130218506,
+          7.337823867797852
+        ],
+        "aot": [
+          6.88486385345459,
+          6.879903793334961,
+          6.879327774047852,
+          6.876607894897461,
+          6.886079788208008,
+          6.898943901062012
+        ]
+      },
+      "median_us": {
+        "native": 12.48465633392334,
+        "upstream": 7.328464031219482,
+        "aot": 6.882383823394775
+      }
+    },
+    {
+      "rows": 16,
+      "aot_exact_replay_and_scratch_guard": true,
+      "checks": [
+        {
+          "amplitude": 1.0,
+          "path": "native",
+          "oracle_pass": true,
+          "failures": []
+        },
+        {
+          "amplitude": 1.0,
+          "path": "upstream",
+          "oracle_pass": true,
+          "failures": []
+        },
+        {
+          "amplitude": 0.0,
+          "path": "native",
+          "oracle_pass": true,
+          "failures": []
+        },
+        {
+          "amplitude": 0.0,
+          "path": "upstream",
+          "oracle_pass": true,
+          "failures": []
+        },
+        {
+          "amplitude": 0.01,
+          "path": "native",
+          "oracle_pass": true,
+          "failures": []
+        },
+        {
+          "amplitude": 0.01,
+          "path": "upstream",
+          "oracle_pass": true,
+          "failures": []
+        }
+      ],
+      "warm_us": {
+        "native": [
+          15.185343742370605,
+          15.18943977355957,
+          15.173567771911621,
+          15.183839797973633,
+          15.177791595458984,
+          15.198944091796875
+        ],
+        "upstream": [
+          9.425663948059082,
+          9.424448013305664,
+          9.411423683166504,
+          9.41750431060791,
+          9.409536361694336,
+          9.445119857788086
+        ],
+        "aot": [
+          9.015711784362793,
+          8.997759819030762,
+          8.992480278015137,
+          8.990464210510254,
+          8.984095573425293,
+          9.01251220703125
+        ]
+      },
+      "median_us": {
+        "native": 15.18459177017212,
+        "upstream": 9.420976161956787,
+        "aot": 8.99512004852295
+      }
+    },
+    {
+      "rows": 80,
+      "aot_exact_replay_and_scratch_guard": true,
+      "checks": [
+        {
+          "amplitude": 1.0,
+          "path": "native",
+          "oracle_pass": true,
+          "failures": []
+        },
+        {
+          "amplitude": 1.0,
+          "path": "upstream",
+          "oracle_pass": true,
+          "failures": []
+        },
+        {
+          "amplitude": 0.0,
+          "path": "native",
+          "oracle_pass": true,
+          "failures": []
+        },
+        {
+          "amplitude": 0.0,
+          "path": "upstream",
+          "oracle_pass": true,
+          "failures": []
+        },
+        {
+          "amplitude": 0.01,
+          "path": "native",
+          "oracle_pass": false,
+          "failures": [
+            {
+              "component": 2,
+              "error": "Tensor-likes are not close!\n\nMismatched elements: 1 / 409600 (0.0%)\nGreatest absolute difference: 0.015625 at index (2, 4754) (up to 0.008 allowed)\nGreatest relative difference: 0.006378173828125 at index (2, 4754) (up to 2e-05 allowed)"
+            }
+          ]
+        },
+        {
+          "amplitude": 0.01,
+          "path": "upstream",
+          "oracle_pass": true,
+          "failures": []
+        }
+      ],
+      "timing_skipped": "Numerical gate failed"
+    }
+  ],
+  "aot_sha256": "c61687bc41219e57f338c2803ef7bebfe63cac3a03891ce1f6b5b6f4467ce0e3",
+  "artifact_sha256": {
+    "mhc-aot/v41_hc_lagged.o": "4f1ce093ca326ae778ca9cdd8dcc24c40a6fee28258ff71c5b5d7dadda0bc996",
+    "mhc-aot/v41_hc_lagged.h": "3c7217cdb85886c239cc5b4e2a49ce3d943823204d7ed87b6b0d6a1183163fc1",
+    "sparkinfer/b12x/norm/mhc/_v41_lagged_aot.py": "952409b2483002812baf3774b241e8b0df12c7267d8ed60db770d0babbc1db52",
+    "sparkinfer/b12x/norm/mhc/_kernels.py": "7b4459b059fee424ce892ce39f97e272a6391d526923c1ef9175170f6ae48dd9"
+  },
+  "regression_test_log": "..........................                                               [100%]\n=============================== warnings summary ===============================\ntests/norm/test_mhc_lagged.py::test_standalone_collapse_fp32_accumulation_and_frozen_replay[4096]\ntests/norm/test_mhc_lagged.py::test_standalone_collapse_fp32_accumulation_and_frozen_replay[5120]\ntests/norm/test_mhc_lagged.py::test_standalone_collapse_fp32_accumulation_and_frozen_replay[7168]\n  /home/tj/Developer/ds41rt/.venv/lib/python3.12/site-packages/torch/cuda/graphs.py:169: UserWarning: The CUDA Graph is empty. This usually means that the graph was attempted to be captured on wrong device or stream. (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/cuda/CUDAGraph.cpp:210.)\n    super().capture_end()\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n26 passed, 3 warnings in 11.35s\n"
+}

@@ -78,6 +78,44 @@ They may still require mechanical merge/import/test fixes when shared library
 surfaces change. Attention/projection parallelization across GPUs is deferred;
 retain the current ownership and expert parallelism in comparisons.
 
+## Native lagged mHC adapter (September 16)
+
+Candidate fork revision `5bda5b2f` adds a pointer-only AOT wrapper around the
+upstream partial and finalize kernels. It accepts runtime rows with no row
+count in its compile identity. Scratch is 8000 bytes per row, which fits the
+existing 10240-byte-per-row collapsed buffer. The pre-only kernel can omit its
+redundant residual copy; the native wrapper uses this mode, preserving input
+immutability without allocating a second expanded residual. Existing upstream
+callers keep the original behavior, and all 26 lagged tests still pass.
+
+[Native adapter evidence](sparkinfer-upstream-mhc-native-20260916.json) records
+source/object/library identities. The component C harness launches the actual
+exported object. One compiled callable handles 1, 2, 7, 8, 16 and 80 rows;
+outputs match prepared upstream **exactly** after changed-input graph replay.
+Residual immutability and the scratch end guard pass. This is still a component
+harness, not integrated serving dispatch or final native-boundary validation.
+
+| Rows | Existing native begin, µs | Native upstream adapter, µs |
+| --- | ---: | ---: |
+| 1 | 10.23 | 4.81 |
+| 2 | 10.45 | 5.23 |
+| 7 | 12.12 | 6.65 |
+| 8 | 12.48 | 6.88 |
+| 16 | 15.18 | 9.00 |
+
+These are warm component timings. The 80-row case has no timing acceptance:
+with this input sequence, the old native normalized output exceeds the FP32
+reference tolerance at one element; upstream and the adapter pass and remain
+exactly equal. The test exits nonzero while retaining all evidence. The earlier
+512-row discrepancy is also still open. Neither failure is hidden by changing
+the numerical tolerance.
+
+Next integrate the export/manifest, per-device initialization and bounded
+native bridge, then connect the existing HcSublayer begin operation and run
+real-weight and serving comparisons. Retain larger-row fallback until its
+rounding behavior and performance are qualified. The production pin remains
+unchanged pending complete integration acceptance.
+
 ## Lagged mHC candidate comparison (September 16)
 
 [Raw mHC evidence](sparkinfer-upstream-mhc-20260916.json) includes **26 passing
