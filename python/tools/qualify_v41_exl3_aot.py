@@ -168,6 +168,7 @@ def main() -> None:
                 artifacts[name]={'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest()}
             (args.fixture/'fixture.json').write_text(json.dumps({'layer':layer_prefix,'slice_start':start,
                 'width':width,'capacity':capacity,'topk':topk,'reference_experts':experts,
+                'direct':meta['direct'],'tile':meta['tile'],
                 'snapshot_revision':args.snapshot.name,'artifacts':artifacts},indent=2)+'\n')
         args.output.write_text(json.dumps({'passed':True,'scope':'native AOT versus B12x, six real checkpoint experts; not full-model qualification',
             'checkpoint_layer':layer_prefix,'topk':topk,'native_info_verified':info_verified,

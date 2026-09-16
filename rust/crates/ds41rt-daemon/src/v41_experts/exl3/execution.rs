@@ -394,6 +394,11 @@ mod tests {
         let fixture = std::path::PathBuf::from(std::env::var("DS41RT_EXL3_FIXTURE")?);
         let info: serde_json::Value =
             serde_json::from_slice(&std::fs::read(fixture.join("fixture.json"))?)?;
+        let aot = std::path::PathBuf::from(std::env::var("DS41RT_EXL3_AOT")?);
+        let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(aot.join("v41_exl3.json"))?)?;
+        ensure!(info["direct"].is_boolean() && info["direct"] == manifest["direct"]
+            && info["tile"].is_array() && info["tile"] == manifest["tile"],
+            "EXL3 fixture must match routing/tile policy for bitwise comparison");
         ensure!(
             info["slice_start"] == 1280
                 && info["width"] == 512

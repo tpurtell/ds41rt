@@ -302,3 +302,14 @@ input and matches the reference again after restoring input, with output
 poisoned before each replay. This proves a native Rust layer compute path, not
 TP reduction or full-model serving. Spark wire decoding, remaining geometries,
 packed Rust execution, build packaging and serving selection remain required.
+
+The combined Rust packed path now also passes at capacity 16 with the same
+384-expert TP4/rank-2 resident shard: rows 16/3/1/16, masked routes and changed /
+restored-input graph replay. [Packed Rust evidence](release-v5-exl3-rust-packed.json)
+preserves the initial comparison against the wrong tile policy. Direct uses
+64/256 tiles and packed uses 128/128; their independently generated B12x outputs
+differ by 0.084% relative L2 on this component fixture. With the matched packed
+reference, Rust output is bitwise equal. Fixtures now record routing/tile policy
+and the test rejects mismatches before comparing bytes. This does not establish
+model agreement or quality. Large-prefill Rust execution and Spark integration
+remain pending.

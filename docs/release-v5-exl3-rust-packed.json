@@ -1,0 +1,31 @@
+{
+  "passed": true,
+  "scope": "Rust packed route preparation, compute, epilogue and graph replay for one 384-expert layer shard. Six expert IDs exercised. Not full-model serving, Spark wire input, large prefill or performance qualification.",
+  "rows": [
+    16,
+    3,
+    1,
+    16
+  ],
+  "world": 4,
+  "rank": 2,
+  "intermediate": 512,
+  "resident_experts": 384,
+  "bitwise_equal_to_matching_b12x_reference": true,
+  "masked_routes": true,
+  "changed_and_restored_graph_inputs": "exact",
+  "workspace_payload_bytes": 21046608,
+  "comparison_correction": "Initial run compared against direct 64/256 tiles; packed uses 128/128 tiles. Matched packed reference passes exactly. Fixtures now record and validate routing and tile policy before comparison.",
+  "cross_policy_component_difference": {
+    "same_inputs": true,
+    "relative_l2": 0.0008394316076377856,
+    "max_abs": 0.03125,
+    "equal_elements_fraction": 0.90245361328125,
+    "scope": "Two B12x tile policies on a component fixture, not quant/model agreement"
+  },
+  "native_compute_sha256": "cbfe5e14a2217e7b374fa9a8d3b849c88ada3613db393b25eaafab94013dba95",
+  "native_route_sha256": "b15d75e953645a52ff4c571c284c098c26444a1edfeb74a839f68c3d8231d106",
+  "rust_binary_sha256": "e0ecb108d41c1167e6bc646fd2fbaa492cbd68acbb897e587fda420f104adc45",
+  "artifact": "evidence/v5-exl3-rust-packed.tar.gz",
+  "artifact_sha256": "2e3274456f5e2caac4529470c6aa0653f4769fd35befcec1860af1dbca61775e"
+}
