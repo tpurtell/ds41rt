@@ -19,6 +19,8 @@ use std::{path::Path, rc::Rc};
 pub(crate) struct Exl3Worker<'a> {
     // Drain the stream before dropping kernels, weights or input allocations.
     stream: LoadStream<'a>,
+    // Opt-in diagnostics: allocate events once; the default path never records them.
+    timing: Option<[crate::v41_memory::device::Event<'a>; 2]>,
     executions: Vec<Exl3Execution<'a>>,
     capacity: usize,
     inputs: [DeviceAllocation<'a>; 3],
@@ -116,8 +118,21 @@ impl<'a> Exl3Worker<'a> {
             library,
             raw: library.cuda_stream_create()?,
         };
+        let timing = if std::env::var_os("DS41RT_EXL3_WORKER_TIMING").is_some() {
+            let device = crate::v41_memory::device::Device {
+                library,
+                id: library.cuda_get_device()?,
+            };
+            Some([
+                crate::v41_memory::device::Event::new(device)?,
+                crate::v41_memory::device::Event::new(device)?,
+            ])
+        } else {
+            None
+        };
         Ok(Self {
             stream,
+            timing,
             executions,
             capacity: capacity as usize,
             inputs,
@@ -163,6 +178,7 @@ impl<'a> Exl3Worker<'a> {
             exchange.partials.len() >= bytes,
             "EXL3 host exchange is too small"
         );
+        let started = self.timing.as_ref().map(|_| std::time::Instant::now());
         request.copy_routes_into(&mut exchange.ids, &mut exchange.routing)?;
         ensure!(
             cfg!(target_endian = "little"),
@@ -181,6 +197,10 @@ impl<'a> Exl3Worker<'a> {
                 self.inputs[2].buffer,
                 std::slice::from_raw_parts(exchange.routing.as_ptr().cast::<u8>(), routes * 4),
             )?;
+        }
+        let uploaded_us = started.map(|t| t.elapsed().as_micros() as u64).unwrap_or(0);
+        if let Some([start, _]) = &self.timing {
+            unsafe { self.library.cuda_event_record(start.raw, self.stream.raw)?; }
         }
         let inputs = std::array::from_fn(|i| self.inputs[i].buffer);
         // Modules and storage are resolved before accepting requests. This
@@ -207,12 +227,31 @@ impl<'a> Exl3Worker<'a> {
                 )?,
             }
         };
+        let enqueued_us = started.map(|t| t.elapsed().as_micros() as u64).unwrap_or(0);
+        if let Some([_, end]) = &self.timing {
+            unsafe { self.library.cuda_event_record(end.raw, self.stream.raw)?; }
+        }
         unsafe {
             self.library.cuda_stream_synchronize(self.stream.raw)?;
         }
+        let completed_us = started.map(|t| t.elapsed().as_micros() as u64).unwrap_or(0);
         if destination.is_none() {
             self.library
                 .copy_d2h(&mut exchange.partials[..bytes], output)?;
+        }
+        if let (Some(started), Some([start, end])) = (started, &self.timing) {
+            // This interval overlaps host enqueue/wait and includes all stream work,
+            // including routing and output reduction, not just the expert kernel.
+            let gpu_us = unsafe { self.library.cuda_event_elapsed_ms(start.raw, end.raw)? } * 1000.;
+            let mut seen = [false; 384];
+            for &id in &exchange.ids[..routes] {
+                if let Some(value) = seen.get_mut(id as usize) { *value = true; }
+            }
+            tracing::info!(target: "ds41rt::worker_timing", executor_id, layer=request.layer(), rows=request.rows(),
+                distinct_experts=seen.iter().filter(|&&v| v).count(), mapped=destination.is_some(),
+                upload_us=uploaded_us, enqueue_us=enqueued_us-uploaded_us,
+                wait_us=completed_us-enqueued_us, gpu_us, total_us=started.elapsed().as_micros() as u64,
+                "EXL3 worker execution");
         }
         Ok(())
     }

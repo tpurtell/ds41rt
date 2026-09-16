@@ -1,0 +1,2197 @@
+{
+  "scope": "Summarize opt-in Spark timings within conservatively trimmed workload windows.",
+  "trim_seconds": 1.0,
+  "clock_bounds": {
+    "ostrich": [
+      {
+        "round_trip_ms": 863.706947,
+        "offset_low_ms": 3.366223,
+        "offset_high_ms": 867.07317
+      },
+      {
+        "round_trip_ms": 615.875091,
+        "offset_low_ms": 2.8763,
+        "offset_high_ms": 618.751391
+      },
+      {
+        "round_trip_ms": 638.927185,
+        "offset_low_ms": 3.105848,
+        "offset_high_ms": 642.033033
+      }
+    ],
+    "dodo": [
+      {
+        "round_trip_ms": 819.2409,
+        "offset_low_ms": 5.128145,
+        "offset_high_ms": 824.369045
+      },
+      {
+        "round_trip_ms": 624.050063,
+        "offset_low_ms": 4.810846,
+        "offset_high_ms": 628.860909
+      },
+      {
+        "round_trip_ms": 596.588679,
+        "offset_low_ms": 4.70812,
+        "offset_high_ms": 601.296799
+      }
+    ],
+    "emu": [
+      {
+        "round_trip_ms": 721.467881,
+        "offset_low_ms": -16.180695,
+        "offset_high_ms": 705.287186
+      },
+      {
+        "round_trip_ms": 530.548698,
+        "offset_low_ms": -16.535716,
+        "offset_high_ms": 514.012982
+      },
+      {
+        "round_trip_ms": 519.615479,
+        "offset_low_ms": -16.393586,
+        "offset_high_ms": 503.221893
+      }
+    ],
+    "kiwi": [
+      {
+        "round_trip_ms": 733.09669,
+        "offset_low_ms": -2.359981,
+        "offset_high_ms": 730.736709
+      },
+      {
+        "round_trip_ms": 522.281722,
+        "offset_low_ms": -2.204801,
+        "offset_high_ms": 520.076921
+      },
+      {
+        "round_trip_ms": 512.614811,
+        "offset_low_ms": -1.696687,
+        "offset_high_ms": 510.918124
+      }
+    ]
+  },
+  "caveats": [
+    "Only rows <= 80; includes warmup and any small prefill executions in these windows.",
+    "Window assignment uses host/worker wall clocks; post-run SSH bounds fit the trim, but do not prove historical clock stability.",
+    "GPU time is a CUDA event interval including wire decode, routing, expert computation, output reduction and possible submission gaps; not isolated kernel busy time.",
+    "GPU time overlaps enqueue and wait; these columns must not be added together.",
+    "Worker timing begins after connection polling, so excludes time waiting behind another connection.",
+    "Rank averages are not request-matched maximums and cannot be subtracted from coordinator stage averages to measure transport latency.",
+    "Tracing perturbs timing; these are optimization diagnostics, not release benchmarks."
+  ],
+  "results": [
+    {
+      "case": "code",
+      "concurrency": 1,
+      "ranks": [
+        {
+          "rank": 0,
+          "intermediate_width": 640,
+          "count": 1640,
+          "metrics": {
+            "rows": {
+              "mean": 7.341463414634147,
+              "median": 8.0
+            },
+            "distinct_experts": {
+              "mean": 28.366463414634147,
+              "median": 30.0
+            },
+            "upload_us": {
+              "mean": 18.771341463414632,
+              "median": 17.0
+            },
+            "enqueue_us": {
+              "mean": 11.225,
+              "median": 11.0
+            },
+            "wait_us": {
+              "mean": 579.8853658536585,
+              "median": 602.5
+            },
+            "gpu_us": {
+              "mean": 585.6652484149467,
+              "median": 609.2640380859375
+            },
+            "total_us": {
+              "mean": 610.2676829268293,
+              "median": 631.0
+            }
+          },
+          "by_capacity": {
+            "16": {
+              "count": 1640,
+              "metrics": {
+                "rows": {
+                  "mean": 7.341463414634147,
+                  "median": 8.0
+                },
+                "distinct_experts": {
+                  "mean": 28.366463414634147,
+                  "median": 30.0
+                },
+                "upload_us": {
+                  "mean": 18.771341463414632,
+                  "median": 17.0
+                },
+                "enqueue_us": {
+                  "mean": 11.225,
+                  "median": 11.0
+                },
+                "wait_us": {
+                  "mean": 579.8853658536585,
+                  "median": 602.5
+                },
+                "gpu_us": {
+                  "mean": 585.6652484149467,
+                  "median": 609.2640380859375
+                },
+                "total_us": {
+                  "mean": 610.2676829268293,
+                  "median": 631.0
+                }
+              }
+            }
+          }
+        },
+        {
+          "rank": 1,
+          "intermediate_width": 640,
+          "count": 1639,
+          "metrics": {
+            "rows": {
+              "mean": 7.341061622940818,
+              "median": 8.0
+            },
+            "distinct_experts": {
+              "mean": 28.356314826113483,
+              "median": 30.0
+            },
+            "upload_us": {
+              "mean": 18.765710799267847,
+              "median": 17.0
+            },
+            "enqueue_us": {
+              "mean": 11.192190359975594,
+              "median": 11.0
+            },
+            "wait_us": {
+              "mean": 578.2910311165344,
+              "median": 601.0
+            },
+            "gpu_us": {
+              "mean": 584.2016436871849,
+              "median": 607.6480102539062
+            },
+            "total_us": {
+              "mean": 608.5997559487492,
+              "median": 630.0
+            }
+          },
+          "by_capacity": {
+            "16": {
+              "count": 1639,
+              "metrics": {
+                "rows": {
+                  "mean": 7.341061622940818,
+                  "median": 8.0
+                },
+                "distinct_experts": {
+                  "mean": 28.356314826113483,
+                  "median": 30.0
+                },
+                "upload_us": {
+                  "mean": 18.765710799267847,
+                  "median": 17.0
+                },
+                "enqueue_us": {
+                  "mean": 11.192190359975594,
+                  "median": 11.0
+                },
+                "wait_us": {
+                  "mean": 578.2910311165344,
+                  "median": 601.0
+                },
+                "gpu_us": {
+                  "mean": 584.2016436871849,
+                  "median": 607.6480102539062
+                },
+                "total_us": {
+                  "mean": 608.5997559487492,
+                  "median": 630.0
+                }
+              }
+            }
+          }
+        },
+        {
+          "rank": 2,
+          "intermediate_width": 512,
+          "count": 1641,
+          "metrics": {
+            "rows": {
+              "mean": 7.323583180987203,
+              "median": 8.0
+            },
+            "distinct_experts": {
+              "mean": 28.308957952468006,
+              "median": 30.0
+            },
+            "upload_us": {
+              "mean": 18.30773918342474,
+              "median": 17.0
+            },
+            "enqueue_us": {
+              "mean": 11.124314442413162,
+              "median": 11.0
+            },
+            "wait_us": {
+              "mean": 479.80804387568554,
+              "median": 495.0
+            },
+            "gpu_us": {
+              "mean": 485.7168073729725,
+              "median": 501.1839904785156
+            },
+            "total_us": {
+              "mean": 509.5886654478976,
+              "median": 526.0
+            }
+          },
+          "by_capacity": {
+            "16": {
+              "count": 1641,
+              "metrics": {
+                "rows": {
+                  "mean": 7.323583180987203,
+                  "median": 8.0
+                },
+                "distinct_experts": {
+                  "mean": 28.308957952468006,
+                  "median": 30.0
+                },
+                "upload_us": {
+                  "mean": 18.30773918342474,
+                  "median": 17.0
+                },
+                "enqueue_us": {
+                  "mean": 11.124314442413162,
+                  "median": 11.0
+                },
+                "wait_us": {
+                  "mean": 479.80804387568554,
+                  "median": 495.0
+                },
+                "gpu_us": {
+                  "mean": 485.7168073729725,
+                  "median": 501.1839904785156
+                },
+                "total_us": {
+                  "mean": 509.5886654478976,
+                  "median": 526.0
+                }
+              }
+            }
+          }
+        },
+        {
+          "rank": 3,
+          "intermediate_width": 512,
+          "count": 1636,
+          "metrics": {
+            "rows": {
+              "mean": 7.3398533007334965,
+              "median": 8.0
+            },
+            "distinct_experts": {
+              "mean": 28.369193154034228,
+              "median": 30.0
+            },
+            "upload_us": {
+              "mean": 18.154034229828852,
+              "median": 17.0
+            },
+            "enqueue_us": {
+              "mean": 11.13325183374083,
+              "median": 11.0
+            },
+            "wait_us": {
+              "mean": 478.3630806845966,
+              "median": 495.0
+            },
+            "gpu_us": {
+              "mean": 484.46648372472936,
+              "median": 501.16798400878906
+            },
+            "total_us": {
+              "mean": 508.01039119804403,
+              "median": 525.0
+            }
+          },
+          "by_capacity": {
+            "16": {
+              "count": 1636,
+              "metrics": {
+                "rows": {
+                  "mean": 7.3398533007334965,
+                  "median": 8.0
+                },
+                "distinct_experts": {
+                  "mean": 28.369193154034228,
+                  "median": 30.0
+                },
+                "upload_us": {
+                  "mean": 18.154034229828852,
+                  "median": 17.0
+                },
+                "enqueue_us": {
+                  "mean": 11.13325183374083,
+                  "median": 11.0
+                },
+                "wait_us": {
+                  "mean": 478.3630806845966,
+                  "median": 495.0
+                },
+                "gpu_us": {
+                  "mean": 484.46648372472936,
+                  "median": 501.16798400878906
+                },
+                "total_us": {
+                  "mean": 508.01039119804403,
+                  "median": 525.0
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "case": "code",
+      "concurrency": 8,
+      "ranks": [
+        {
+          "rank": 0,
+          "intermediate_width": 640,
+          "count": 2811,
+          "metrics": {
+            "rows": {
+              "mean": 27.17289220917823,
+              "median": 32.0
+            },
+            "distinct_experts": {
+              "mean": 30.397367484880824,
+              "median": 31.0
+            },
+            "upload_us": {
+              "mean": 24.740661686232656,
+              "median": 25.0
+            },
+            "enqueue_us": {
+              "mean": 11.192813945215226,
+              "median": 11.0
+            },
+            "wait_us": {
+              "mean": 693.9626467449307,
+              "median": 699.0
+            },
+            "gpu_us": {
+              "mean": 700.0574088569894,
+              "median": 705.6640014648438
+            },
+            "total_us": {
+              "mean": 730.3080754180007,
+              "median": 736.0
+            }
+          },
+          "by_capacity": {
+            "16": {
+              "count": 486,
+              "metrics": {
+                "rows": {
+                  "mean": 12.41358024691358,
+                  "median": 12.0
+                },
+                "distinct_experts": {
+                  "mean": 17.911522633744855,
+                  "median": 15.0
+                },
+                "upload_us": {
+                  "mean": 20.52880658436214,
+                  "median": 19.0
+                },
+                "enqueue_us": {
+                  "mean": 11.205761316872428,
+                  "median": 11.0
+                },
+                "wait_us": {
+                  "mean": 398.6934156378601,
+                  "median": 351.0
+                },
+                "gpu_us": {
+                  "mean": 404.52753837805227,
+                  "median": 355.31201171875
+                },
+                "total_us": {
+                  "mean": 430.7880658436214,
+                  "median": 383.5
+                }
+              }
+            },
+            "80": {
+              "count": 2325,
+              "metrics": {
+                "rows": {
+                  "mean": 30.258064516129032,
+                  "median": 32.0
+                },
+                "distinct_experts": {
+                  "mean": 33.00731182795699,
+                  "median": 32.0
+                },
+                "upload_us": {
+                  "mean": 25.621075268817204,
+                  "median": 25.0
+                },
+                "enqueue_us": {
+                  "mean": 11.19010752688172,
+                  "median": 11.0
+                },
+                "wait_us": {
+                  "mean": 755.683440860215,
+                  "median": 724.0
+                },
+                "gpu_us": {
+                  "mean": 761.8326850087155,
+                  "median": 730.8159790039062
+                },
+                "total_us": {
+                  "mean": 792.9174193548387,
+                  "median": 761.0
+                }
+              }
+            }
+          }
+        },
+        {
+          "rank": 1,
+          "intermediate_width": 640,
+          "count": 2815,
+          "metrics": {
+            "rows": {
+              "mean": 27.12859680284192,
+              "median": 32.0
+            },
+            "distinct_experts": {
+              "mean": 30.386856127886322,
+              "median": 31.0
+            },
+            "upload_us": {
+              "mean": 23.353463587921848,
+              "median": 23.0
+            },
+            "enqueue_us": {
+              "mean": 10.553818827708703,
+              "median": 10.0
+            },
+            "wait_us": {
+              "mean": 690.0955595026643,
+              "median": 696.0
+            },
+            "gpu_us": {
+              "mean": 695.723503912321,
+              "median": 701.5039672851562
+            },
+            "total_us": {
+              "mean": 724.4124333925399,
+              "median": 730.0
+            }
+          },
+          "by_capacity": {
+            "16": {
+              "count": 492,
+              "metrics": {
+                "rows": {
+                  "mean": 12.359756097560975,
+                  "median": 12.0
+                },
+                "distinct_experts": {
+                  "mean": 18.010162601626018,
+                  "median": 15.0
+                },
+                "upload_us": {
+                  "mean": 19.64430894308943,
+                  "median": 18.0
+                },
+                "enqueue_us": {
+                  "mean": 10.71951219512195,
+                  "median": 11.0
+                },
+                "wait_us": {
+                  "mean": 399.2134146341463,
+                  "median": 350.5
+                },
+                "gpu_us": {
+                  "mean": 404.86874799030585,
+                  "median": 355.760009765625
+                },
+                "total_us": {
+                  "mean": 429.9573170731707,
+                  "median": 381.5
+                }
+              }
+            },
+            "80": {
+              "count": 2323,
+              "metrics": {
+                "rows": {
+                  "mean": 30.256564786913476,
+                  "median": 32.0
+                },
+                "distinct_experts": {
+                  "mean": 33.008179078777445,
+                  "median": 32.0
+                },
+                "upload_us": {
+                  "mean": 24.13904433921653,
+                  "median": 24.0
+                },
+                "enqueue_us": {
+                  "mean": 10.51872578562204,
+                  "median": 10.0
+                },
+                "wait_us": {
+                  "mean": 751.7029702970297,
+                  "median": 723.0
+                },
+                "gpu_us": {
+                  "mean": 757.3251138622269,
+                  "median": 728.47998046875
+                },
+                "total_us": {
+                  "mean": 786.7765820060267,
+                  "median": 757.0
+                }
+              }
+            }
+          }
+        },
+        {
+          "rank": 2,
+          "intermediate_width": 512,
+          "count": 2805,
+          "metrics": {
+            "rows": {
+              "mean": 27.21390374331551,
+              "median": 32.0
+            },
+            "distinct_experts": {
+              "mean": 30.38716577540107,
+              "median": 31.0
+            },
+            "upload_us": {
+              "mean": 24.454901960784312,
+              "median": 24.0
+            },
+            "enqueue_us": {
+              "mean": 10.910160427807487,
+              "median": 11.0
+            },
+            "wait_us": {
+              "mean": 547.2345811051694,
+              "median": 545.0
+            },
+            "gpu_us": {
+              "mean": 552.9907567967706,
+              "median": 550.6880493164062
+            },
+            "total_us": {
+              "mean": 583.0160427807486,
+              "median": 581.0
+            }
+          },
+          "by_capacity": {
+            "16": {
+              "count": 480,
+              "metrics": {
+                "rows": {
+                  "mean": 12.46875,
+                  "median": 12.0
+                },
+                "distinct_experts": {
+                  "mean": 17.695833333333333,
+                  "median": 15.0
+                },
+                "upload_us": {
+                  "mean": 19.004166666666666,
+                  "median": 18.0
+                },
+                "enqueue_us": {
+                  "mean": 11.066666666666666,
+                  "median": 11.0
+                },
+                "wait_us": {
+                  "mean": 327.45208333333335,
+                  "median": 285.0
+                },
+                "gpu_us": {
+                  "mean": 333.4336664199829,
+                  "median": 290.719970703125
+                },
+                "total_us": {
+                  "mean": 357.88958333333335,
+                  "median": 315.0
+                }
+              }
+            },
+            "80": {
+              "count": 2325,
+              "metrics": {
+                "rows": {
+                  "mean": 30.258064516129032,
+                  "median": 32.0
+                },
+                "distinct_experts": {
+                  "mean": 33.00731182795699,
+                  "median": 32.0
+                },
+                "upload_us": {
+                  "mean": 25.580215053763443,
+                  "median": 25.0
+                },
+                "enqueue_us": {
+                  "mean": 10.87784946236559,
+                  "median": 11.0
+                },
+                "wait_us": {
+                  "mean": 592.6090322580645,
+                  "median": 581.0
+                },
+                "gpu_us": {
+                  "mean": 598.3186722293976,
+                  "median": 586.6240234375
+                },
+                "total_us": {
+                  "mean": 629.4937634408602,
+                  "median": 617.0
+                }
+              }
+            }
+          }
+        },
+        {
+          "rank": 3,
+          "intermediate_width": 512,
+          "count": 2807,
+          "metrics": {
+            "rows": {
+              "mean": 27.200213751335944,
+              "median": 32.0
+            },
+            "distinct_experts": {
+              "mean": 30.39187744923406,
+              "median": 31.0
+            },
+            "upload_us": {
+              "mean": 23.529034556465977,
+              "median": 23.0
+            },
+            "enqueue_us": {
+              "mean": 10.518703241895262,
+              "median": 10.0
+            },
+            "wait_us": {
+              "mean": 544.3879586747418,
+              "median": 543.0
+            },
+            "gpu_us": {
+              "mean": 549.8976562032506,
+              "median": 548.511962890625
+            },
+            "total_us": {
+              "mean": 578.8525115781973,
+              "median": 578.0
+            }
+          },
+          "by_capacity": {
+            "16": {
+              "count": 482,
+              "metrics": {
+                "rows": {
+                  "mean": 12.450207468879668,
+                  "median": 12.0
+                },
+                "distinct_experts": {
+                  "mean": 17.775933609958507,
+                  "median": 15.0
+                },
+                "upload_us": {
+                  "mean": 18.695020746887966,
+                  "median": 18.0
+                },
+                "enqueue_us": {
+                  "mean": 10.647302904564315,
+                  "median": 10.0
+                },
+                "wait_us": {
+                  "mean": 324.850622406639,
+                  "median": 282.5
+                },
+                "gpu_us": {
+                  "mean": 330.61417502882074,
+                  "median": 288.5120086669922
+                },
+                "total_us": {
+                  "mean": 354.58921161825725,
+                  "median": 312.5
+                }
+              }
+            },
+            "80": {
+              "count": 2325,
+              "metrics": {
+                "rows": {
+                  "mean": 30.258064516129032,
+                  "median": 32.0
+                },
+                "distinct_experts": {
+                  "mean": 33.00731182795699,
+                  "median": 32.0
+                },
+                "upload_us": {
+                  "mean": 24.531182795698925,
+                  "median": 23.0
+                },
+                "enqueue_us": {
+                  "mean": 10.492043010752688,
+                  "median": 10.0
+                },
+                "wait_us": {
+                  "mean": 589.9006451612903,
+                  "median": 581.0
+                },
+                "gpu_us": {
+                  "mean": 595.3577155262936,
+                  "median": 586.1759643554688
+                },
+                "total_us": {
+                  "mean": 625.3449462365592,
+                  "median": 617.0
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "case": "topic",
+      "concurrency": 1,
+      "ranks": [
+        {
+          "rank": 0,
+          "intermediate_width": 640,
+          "count": 4402,
+          "metrics": {
+            "rows": {
+              "mean": 4.126306224443435,
+              "median": 4.0
+            },
+            "distinct_experts": {
+              "mean": 16.120399818264424,
+              "median": 15.0
+            },
+            "upload_us": {
+              "mean": 17.03021353930032,
+              "median": 16.0
+            },
+            "enqueue_us": {
+              "mean": 11.448205361199454,
+              "median": 11.0
+            },
+            "wait_us": {
+              "mean": 338.78736937755565,
+              "median": 323.5
+            },
+            "gpu_us": {
+              "mean": 345.14303685924455,
+              "median": 330.14398193359375
+            },
+            "total_us": {
+              "mean": 367.65129486597,
+              "median": 352.0
+            }
+          },
+          "by_capacity": {
+            "16": {
+              "count": 4402,
+              "metrics": {
+                "rows": {
+                  "mean": 4.126306224443435,
+                  "median": 4.0
+                },
+                "distinct_experts": {
+                  "mean": 16.120399818264424,
+                  "median": 15.0
+                },
+                "upload_us": {
+                  "mean": 17.03021353930032,
+                  "median": 16.0
+                },
+                "enqueue_us": {
+                  "mean": 11.448205361199454,
+                  "median": 11.0
+                },
+                "wait_us": {
+                  "mean": 338.78736937755565,
+                  "median": 323.5
+                },
+                "gpu_us": {
+                  "mean": 345.14303685924455,
+                  "median": 330.14398193359375
+                },
+                "total_us": {
+                  "mean": 367.65129486597,
+                  "median": 352.0
+                }
+              }
+            }
+          }
+        },
+        {
+          "rank": 1,
+          "intermediate_width": 640,
+          "count": 4395,
+          "metrics": {
+            "rows": {
+              "mean": 4.129692832764505,
+              "median": 4.0
+            },
+            "distinct_experts": {
+              "mean": 16.133105802047783,
+              "median": 15.0
+            },
+            "upload_us": {
+              "mean": 16.793401592719,
+              "median": 16.0
+            },
+            "enqueue_us": {
+              "mean": 10.971331058020478,
+              "median": 11.0
+            },
+            "wait_us": {
+              "mean": 339.03071672354946,
+              "median": 325.0
+            },
+            "gpu_us": {
+              "mean": 344.989604719941,
+              "median": 331.10400390625
+            },
+            "total_us": {
+              "mean": 367.16405005688284,
+              "median": 353.0
+            }
+          },
+          "by_capacity": {
+            "16": {
+              "count": 4395,
+              "metrics": {
+                "rows": {
+                  "mean": 4.129692832764505,
+                  "median": 4.0
+                },
+                "distinct_experts": {
+                  "mean": 16.133105802047783,
+                  "median": 15.0
+                },
+                "upload_us": {
+                  "mean": 16.793401592719,
+                  "median": 16.0
+                },
+                "enqueue_us": {
+                  "mean": 10.971331058020478,
+                  "median": 11.0
+                },
+                "wait_us": {
+                  "mean": 339.03071672354946,
+                  "median": 325.0
+                },
+                "gpu_us": {
+                  "mean": 344.989604719941,
+                  "median": 331.10400390625
+                },
+                "total_us": {
+                  "mean": 367.16405005688284,
+                  "median": 353.0
+                }
+              }
+            }
+          }
+        },
+        {
+          "rank": 2,
+          "intermediate_width": 512,
+          "count": 4396,
+          "metrics": {
+            "rows": {
+              "mean": 4.12943585077343,
+              "median": 4.0
+            },
+            "distinct_experts": {
+              "mean": 16.133075523202912,
+              "median": 15.0
+            },
+            "upload_us": {
+              "mean": 16.573248407643312,
+              "median": 16.0
+            },
+            "enqueue_us": {
+              "mean": 11.083030027297543,
+              "median": 11.0
+            },
+            "wait_us": {
+              "mean": 282.47998180163785,
+              "median": 265.0
+            },
+            "gpu_us": {
+              "mean": 288.5639379482252,
+              "median": 271.0240020751953
+            },
+            "total_us": {
+              "mean": 310.50864422202,
+              "median": 293.0
+            }
+          },
+          "by_capacity": {
+            "16": {
+              "count": 4396,
+              "metrics": {
+                "rows": {
+                  "mean": 4.12943585077343,
+                  "median": 4.0
+                },
+                "distinct_experts": {
+                  "mean": 16.133075523202912,
+                  "median": 15.0
+                },
+                "upload_us": {
+                  "mean": 16.573248407643312,
+                  "median": 16.0
+                },
+                "enqueue_us": {
+                  "mean": 11.083030027297543,
+                  "median": 11.0
+                },
+                "wait_us": {
+                  "mean": 282.47998180163785,
+                  "median": 265.0
+                },
+                "gpu_us": {
+                  "mean": 288.5639379482252,
+                  "median": 271.0240020751953
+                },
+                "total_us": {
+                  "mean": 310.50864422202,
+                  "median": 293.0
+                }
+              }
+            }
+          }
+        },
+        {
+          "rank": 3,
+          "intermediate_width": 512,
+          "count": 4410,
+          "metrics": {
+            "rows": {
+              "mean": 4.122448979591836,
+              "median": 4.0
+            },
+            "distinct_experts": {
+              "mean": 16.10612244897959,
+              "median": 15.0
+            },
+            "upload_us": {
+              "mean": 16.700226757369613,
+              "median": 16.0
+            },
+            "enqueue_us": {
+              "mean": 11.031746031746032,
+              "median": 11.0
+            },
+            "wait_us": {
+              "mean": 281.2807256235828,
+              "median": 264.0
+            },
+            "gpu_us": {
+              "mean": 287.41326063160454,
+              "median": 270.1759948730469
+            },
+            "total_us": {
+              "mean": 309.3736961451247,
+              "median": 292.0
+            }
+          },
+          "by_capacity": {
+            "16": {
+              "count": 4410,
+              "metrics": {
+                "rows": {
+                  "mean": 4.122448979591836,
+                  "median": 4.0
+                },
+                "distinct_experts": {
+                  "mean": 16.10612244897959,
+                  "median": 15.0
+                },
+                "upload_us": {
+                  "mean": 16.700226757369613,
+                  "median": 16.0
+                },
+                "enqueue_us": {
+                  "mean": 11.031746031746032,
+                  "median": 11.0
+                },
+                "wait_us": {
+                  "mean": 281.2807256235828,
+                  "median": 264.0
+                },
+                "gpu_us": {
+                  "mean": 287.41326063160454,
+                  "median": 270.1759948730469
+                },
+                "total_us": {
+                  "mean": 309.3736961451247,
+                  "median": 292.0
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "case": "topic",
+      "concurrency": 8,
+      "ranks": [
+        {
+          "rank": 0,
+          "intermediate_width": 640,
+          "count": 9094,
+          "metrics": {
+            "rows": {
+              "mean": 13.134814163184517,
+              "median": 12.0
+            },
+            "distinct_experts": {
+              "mean": 14.39311634044425,
+              "median": 14.0
+            },
+            "upload_us": {
+              "mean": 19.96646140312294,
+              "median": 18.0
+            },
+            "enqueue_us": {
+              "mean": 10.964152188255992,
+              "median": 11.0
+            },
+            "wait_us": {
+              "mean": 333.5160545414559,
+              "median": 318.5
+            },
+            "gpu_us": {
+              "mean": 339.3503831939328,
+              "median": 324.3840026855469
+            },
+            "total_us": {
+              "mean": 364.8334066417418,
+              "median": 349.0
+            }
+          },
+          "by_capacity": {
+            "16": {
+              "count": 7729,
+              "metrics": {
+                "rows": {
+                  "mean": 11.239228878250744,
+                  "median": 12.0
+                },
+                "distinct_experts": {
+                  "mean": 13.093414413248803,
+                  "median": 13.0
+                },
+                "upload_us": {
+                  "mean": 19.395135205071806,
+                  "median": 18.0
+                },
+                "enqueue_us": {
+                  "mean": 10.971406391512485,
+                  "median": 11.0
+                },
+                "wait_us": {
+                  "mean": 300.1738905421141,
+                  "median": 294.0
+                },
+                "gpu_us": {
+                  "mean": 305.99944334342325,
+                  "median": 300.54400634765625
+                },
+                "total_us": {
+                  "mean": 330.92521671626344,
+                  "median": 326.0
+                }
+              }
+            },
+            "80": {
+              "count": 1365,
+              "metrics": {
+                "rows": {
+                  "mean": 23.86813186813187,
+                  "median": 24.0
+                },
+                "distinct_experts": {
+                  "mean": 21.752380952380953,
+                  "median": 21.0
+                },
+                "upload_us": {
+                  "mean": 23.2014652014652,
+                  "median": 22.0
+                },
+                "enqueue_us": {
+                  "mean": 10.923076923076923,
+                  "median": 11.0
+                },
+                "wait_us": {
+                  "mean": 522.3084249084249,
+                  "median": 502.0
+                },
+                "gpu_us": {
+                  "mean": 528.1924448090159,
+                  "median": 508.4800109863281
+                },
+                "total_us": {
+                  "mean": 556.8307692307692,
+                  "median": 536.0
+                }
+              }
+            }
+          }
+        },
+        {
+          "rank": 1,
+          "intermediate_width": 640,
+          "count": 9090,
+          "metrics": {
+            "rows": {
+              "mean": 13.135313531353136,
+              "median": 12.0
+            },
+            "distinct_experts": {
+              "mean": 14.394829482948294,
+              "median": 14.0
+            },
+            "upload_us": {
+              "mean": 19.47106710671067,
+              "median": 18.0
+            },
+            "enqueue_us": {
+              "mean": 10.633443344334433,
+              "median": 10.0
+            },
+            "wait_us": {
+              "mean": 333.33971397139715,
+              "median": 320.0
+            },
+            "gpu_us": {
+              "mean": 338.99863574507475,
+              "median": 325.6800079345703
+            },
+            "total_us": {
+              "mean": 363.8305830583058,
+              "median": 350.0
+            }
+          },
+          "by_capacity": {
+            "16": {
+              "count": 7725,
+              "metrics": {
+                "rows": {
+                  "mean": 11.23883495145631,
+                  "median": 12.0
+                },
+                "distinct_experts": {
+                  "mean": 13.094757281553399,
+                  "median": 13.0
+                },
+                "upload_us": {
+                  "mean": 19.01799352750809,
+                  "median": 18.0
+                },
+                "enqueue_us": {
+                  "mean": 10.644789644012945,
+                  "median": 10.0
+                },
+                "wait_us": {
+                  "mean": 300.32362459546925,
+                  "median": 295.0
+                },
+                "gpu_us": {
+                  "mean": 305.96881400790414,
+                  "median": 300.9599914550781
+                },
+                "total_us": {
+                  "mean": 330.37113268608414,
+                  "median": 326.0
+                }
+              }
+            },
+            "80": {
+              "count": 1365,
+              "metrics": {
+                "rows": {
+                  "mean": 23.86813186813187,
+                  "median": 24.0
+                },
+                "distinct_experts": {
+                  "mean": 21.752380952380953,
+                  "median": 21.0
+                },
+                "upload_us": {
+                  "mean": 22.035164835164835,
+                  "median": 21.0
+                },
+                "enqueue_us": {
+                  "mean": 10.569230769230769,
+                  "median": 10.0
+                },
+                "wait_us": {
+                  "mean": 520.189010989011,
+                  "median": 500.0
+                },
+                "gpu_us": {
+                  "mean": 525.9256488730183,
+                  "median": 506.2400207519531
+                },
+                "total_us": {
+                  "mean": 553.189010989011,
+                  "median": 531.0
+                }
+              }
+            }
+          }
+        },
+        {
+          "rank": 2,
+          "intermediate_width": 512,
+          "count": 9100,
+          "metrics": {
+            "rows": {
+              "mean": 13.147252747252747,
+              "median": 12.0
+            },
+            "distinct_experts": {
+              "mean": 14.387472527472527,
+              "median": 14.0
+            },
+            "upload_us": {
+              "mean": 19.525824175824177,
+              "median": 18.0
+            },
+            "enqueue_us": {
+              "mean": 10.895604395604396,
+              "median": 11.0
+            },
+            "wait_us": {
+              "mean": 275.9517582417582,
+              "median": 262.0
+            },
+            "gpu_us": {
+              "mean": 281.79771758949363,
+              "median": 267.7919921875
+            },
+            "total_us": {
+              "mean": 306.7542857142857,
+              "median": 292.0
+            }
+          },
+          "by_capacity": {
+            "16": {
+              "count": 7735,
+              "metrics": {
+                "rows": {
+                  "mean": 11.255332902391727,
+                  "median": 12.0
+                },
+                "distinct_experts": {
+                  "mean": 13.087782805429864,
+                  "median": 13.0
+                },
+                "upload_us": {
+                  "mean": 18.86606334841629,
+                  "median": 18.0
+                },
+                "enqueue_us": {
+                  "mean": 10.886360698125404,
+                  "median": 11.0
+                },
+                "wait_us": {
+                  "mean": 252.65067873303167,
+                  "median": 247.0
+                },
+                "gpu_us": {
+                  "mean": 258.48553714271355,
+                  "median": 253.12001037597656
+                },
+                "total_us": {
+                  "mean": 282.78009049773755,
+                  "median": 277.0
+                }
+              }
+            },
+            "80": {
+              "count": 1365,
+              "metrics": {
+                "rows": {
+                  "mean": 23.86813186813187,
+                  "median": 24.0
+                },
+                "distinct_experts": {
+                  "mean": 21.752380952380953,
+                  "median": 21.0
+                },
+                "upload_us": {
+                  "mean": 23.264468864468864,
+                  "median": 22.0
+                },
+                "enqueue_us": {
+                  "mean": 10.947985347985348,
+                  "median": 11.0
+                },
+                "wait_us": {
+                  "mean": 407.9912087912088,
+                  "median": 406.0
+                },
+                "gpu_us": {
+                  "mean": 413.9000734545809,
+                  "median": 411.87200927734375
+                },
+                "total_us": {
+                  "mean": 442.6080586080586,
+                  "median": 440.0
+                }
+              }
+            }
+          }
+        },
+        {
+          "rank": 3,
+          "intermediate_width": 512,
+          "count": 9100,
+          "metrics": {
+            "rows": {
+              "mean": 13.134945054945055,
+              "median": 12.0
+            },
+            "distinct_experts": {
+              "mean": 14.392197802197803,
+              "median": 14.0
+            },
+            "upload_us": {
+              "mean": 19.247912087912088,
+              "median": 18.0
+            },
+            "enqueue_us": {
+              "mean": 10.543186813186813,
+              "median": 10.0
+            },
+            "wait_us": {
+              "mean": 275.0421978021978,
+              "median": 260.0
+            },
+            "gpu_us": {
+              "mean": 280.67256247719564,
+              "median": 265.88800048828125
+            },
+            "total_us": {
+              "mean": 305.21516483516484,
+              "median": 289.5
+            }
+          },
+          "by_capacity": {
+            "16": {
+              "count": 7735,
+              "metrics": {
+                "rows": {
+                  "mean": 11.240853264382675,
+                  "median": 12.0
+                },
+                "distinct_experts": {
+                  "mean": 13.093341952165481,
+                  "median": 13.0
+                },
+                "upload_us": {
+                  "mean": 18.625210084033615,
+                  "median": 18.0
+                },
+                "enqueue_us": {
+                  "mean": 10.522689075630252,
+                  "median": 10.0
+                },
+                "wait_us": {
+                  "mean": 251.3709114414997,
+                  "median": 246.0
+                },
+                "gpu_us": {
+                  "mean": 257.0182990223959,
+                  "median": 251.52000427246094
+                },
+                "total_us": {
+                  "mean": 280.8967032967033,
+                  "median": 275.0
+                }
+              }
+            },
+            "80": {
+              "count": 1365,
+              "metrics": {
+                "rows": {
+                  "mean": 23.86813186813187,
+                  "median": 24.0
+                },
+                "distinct_experts": {
+                  "mean": 21.752380952380953,
+                  "median": 21.0
+                },
+                "upload_us": {
+                  "mean": 22.776556776556777,
+                  "median": 21.0
+                },
+                "enqueue_us": {
+                  "mean": 10.659340659340659,
+                  "median": 10.0
+                },
+                "wait_us": {
+                  "mean": 409.1794871794872,
+                  "median": 408.0
+                },
+                "gpu_us": {
+                  "mean": 414.7133887210608,
+                  "median": 414.2080078125
+                },
+                "total_us": {
+                  "mean": 443.0197802197802,
+                  "median": 444.0
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "coordinator": {
+    "scope": "Summarize opt-in serving traces; elapsed stages include scheduler/transport waits.",
+    "caveats": [
+      "Includes benchmark warmup and all three measured samples.",
+      "Concurrent lanes overlap; layer times must not be added as end-to-end wall time.",
+      "Zero acceptance counts lane rounds, not individual request cycles.",
+      "Tracing perturbs throughput; these are optimization diagnostics, not release tables."
+    ],
+    "results": [
+      {
+        "case": "code",
+        "concurrency": 1,
+        "rounds": 144,
+        "verified_draft_tokens": 912,
+        "accepted_draft_tokens": 712,
+        "accepted_fraction": 0.7807017543859649,
+        "request_cycles": 144,
+        "emitted_tokens": 852,
+        "zero_acceptance_lane_rounds": 4,
+        "stages_us": {
+          "draft_us": {
+            "count": 144,
+            "mean": 2563.284722222222,
+            "median": 2575.0,
+            "min": 2159,
+            "max": 6470
+          },
+          "verify_us": {
+            "count": 144,
+            "mean": 29895,
+            "median": 30183.0,
+            "min": 20316,
+            "max": 54813
+          },
+          "total_us": {
+            "count": 144,
+            "mean": 32881.57638888889,
+            "median": 33117.5,
+            "min": 23095,
+            "max": 61913
+          }
+        },
+        "predicted_over_observed_verify": {
+          "count": 140,
+          "mean": 1.428287435440938,
+          "median": 1.4462566109047446,
+          "min": 0.8773048646517,
+          "max": 1.6584902211661487
+        },
+        "backends": {
+          "rtx_tp2": {
+            "layer_samples": 3600,
+            "stages_us": {
+              "produced_us": {
+                "count": 3600,
+                "mean": 45.58888888888889,
+                "median": 22.0,
+                "min": 20,
+                "max": 1247
+              },
+              "index_us": {
+                "count": 3600,
+                "mean": 0.5569444444444445,
+                "median": 1.0,
+                "min": 0,
+                "max": 4
+              },
+              "attention_us": {
+                "count": 3600,
+                "mean": 122.31833333333333,
+                "median": 120.0,
+                "min": 99,
+                "max": 439
+              },
+              "experts_us": {
+                "count": 3600,
+                "mean": 294.78583333333336,
+                "median": 298.0,
+                "min": 193,
+                "max": 517
+              },
+              "finish_us": {
+                "count": 3600,
+                "mean": 12.243333333333334,
+                "median": 12.0,
+                "min": 7,
+                "max": 34
+              }
+            },
+            "rows": {
+              "count": 3600,
+              "mean": 7.333333333333333,
+              "median": 8.0,
+              "min": 3,
+              "max": 8
+            },
+            "distinct_experts": {
+              "count": 3600,
+              "mean": 25.302222222222223,
+              "median": 25.0,
+              "min": 10,
+              "max": 45
+            }
+          },
+          "spark_tp4": {
+            "layer_samples": 2160,
+            "stages_us": {
+              "produced_us": {
+                "count": 2160,
+                "mean": 41.02777777777778,
+                "median": 22.0,
+                "min": 19,
+                "max": 767
+              },
+              "index_us": {
+                "count": 2160,
+                "mean": 0.5694444444444444,
+                "median": 1.0,
+                "min": 0,
+                "max": 3
+              },
+              "attention_us": {
+                "count": 2160,
+                "mean": 121.03981481481482,
+                "median": 119.0,
+                "min": 99,
+                "max": 430
+              },
+              "experts_us": {
+                "count": 2160,
+                "mean": 720.2671296296296,
+                "median": 732.0,
+                "min": 291,
+                "max": 10146
+              },
+              "finish_us": {
+                "count": 2160,
+                "mean": 11.920833333333333,
+                "median": 12.0,
+                "min": 8,
+                "max": 27
+              }
+            },
+            "rows": {
+              "count": 2160,
+              "mean": 7.333333333333333,
+              "median": 8.0,
+              "min": 3,
+              "max": 8
+            },
+            "distinct_experts": {
+              "count": 2160,
+              "mean": 28.34259259259259,
+              "median": 30.0,
+              "min": 9,
+              "max": 44
+            }
+          }
+        },
+        "emitted_per_request_cycle": 5.916666666666667,
+        "verified_draft_per_request_cycle": 6.333333333333333
+      },
+      {
+        "case": "code",
+        "concurrency": 8,
+        "rounds": 255,
+        "verified_draft_tokens": 5433,
+        "accepted_draft_tokens": 4488,
+        "accepted_fraction": 0.8260629486471562,
+        "request_cycles": 908,
+        "emitted_tokens": 5371,
+        "zero_acceptance_lane_rounds": 1,
+        "stages_us": {
+          "draft_us": {
+            "count": 255,
+            "mean": 5473.839215686275,
+            "median": 5798,
+            "min": 2163,
+            "max": 7672
+          },
+          "verify_us": {
+            "count": 255,
+            "mean": 51448.882352941175,
+            "median": 51251,
+            "min": 20326,
+            "max": 528631
+          },
+          "total_us": {
+            "count": 255,
+            "mean": 57693.592156862745,
+            "median": 58342,
+            "min": 23117,
+            "max": 537301
+          }
+        },
+        "predicted_over_observed_verify": {
+          "count": 247,
+          "mean": 1.2173496764655978,
+          "median": 1.2148841877994734,
+          "min": 0.6009400466112962,
+          "max": 1.648701744249034
+        },
+        "backends": {
+          "rtx_tp2": {
+            "layer_samples": 6375,
+            "stages_us": {
+              "produced_us": {
+                "count": 6375,
+                "mean": 101.2473725490196,
+                "median": 79,
+                "min": 20,
+                "max": 1472
+              },
+              "index_us": {
+                "count": 6375,
+                "mean": 1.4192941176470588,
+                "median": 1,
+                "min": 0,
+                "max": 7
+              },
+              "attention_us": {
+                "count": 6375,
+                "mean": 255.8321568627451,
+                "median": 224,
+                "min": 100,
+                "max": 1841
+              },
+              "experts_us": {
+                "count": 6375,
+                "mean": 446.4436078431373,
+                "median": 434,
+                "min": 193,
+                "max": 3149
+              },
+              "finish_us": {
+                "count": 6375,
+                "mean": 21.469333333333335,
+                "median": 19,
+                "min": 8,
+                "max": 876
+              }
+            },
+            "rows": {
+              "count": 6375,
+              "mean": 24.866666666666667,
+              "median": 32,
+              "min": 3,
+              "max": 32
+            },
+            "distinct_experts": {
+              "count": 6375,
+              "mean": 26.419450980392156,
+              "median": 26,
+              "min": 9,
+              "max": 72
+            }
+          },
+          "spark_tp4": {
+            "layer_samples": 3825,
+            "stages_us": {
+              "produced_us": {
+                "count": 3825,
+                "mean": 178.3840522875817,
+                "median": 34,
+                "min": 20,
+                "max": 454949
+              },
+              "index_us": {
+                "count": 3825,
+                "mean": 1.4747712418300654,
+                "median": 1,
+                "min": 0,
+                "max": 11
+              },
+              "attention_us": {
+                "count": 3825,
+                "mean": 191.5367320261438,
+                "median": 175,
+                "min": 99,
+                "max": 1928
+              },
+              "experts_us": {
+                "count": 3825,
+                "mean": 1193.0708496732027,
+                "median": 1100,
+                "min": 296,
+                "max": 455318
+              },
+              "finish_us": {
+                "count": 3825,
+                "mean": 17.34797385620915,
+                "median": 16,
+                "min": 8,
+                "max": 1029
+              }
+            },
+            "rows": {
+              "count": 3825,
+              "mean": 24.866666666666667,
+              "median": 32,
+              "min": 3,
+              "max": 32
+            },
+            "distinct_experts": {
+              "count": 3825,
+              "mean": 29.679738562091504,
+              "median": 30,
+              "min": 9,
+              "max": 66
+            }
+          }
+        },
+        "emitted_per_request_cycle": 5.915198237885463,
+        "verified_draft_per_request_cycle": 5.983480176211454
+      },
+      {
+        "case": "topic",
+        "concurrency": 1,
+        "rounds": 364,
+        "verified_draft_tokens": 1128,
+        "accepted_draft_tokens": 680,
+        "accepted_fraction": 0.6028368794326241,
+        "request_cycles": 364,
+        "emitted_tokens": 1040,
+        "zero_acceptance_lane_rounds": 72,
+        "stages_us": {
+          "draft_us": {
+            "count": 364,
+            "mean": 2525.414835164835,
+            "median": 2582.5,
+            "min": 2070,
+            "max": 2696
+          },
+          "verify_us": {
+            "count": 364,
+            "mean": 23793.923076923078,
+            "median": 23156.0,
+            "min": 18962,
+            "max": 41110
+          },
+          "total_us": {
+            "count": 364,
+            "mean": 26703.728021978022,
+            "median": 26094.5,
+            "min": 21814,
+            "max": 43799
+          }
+        },
+        "predicted_over_observed_verify": {
+          "count": 356,
+          "mean": 1.4106862320625724,
+          "median": 1.4246818185837988,
+          "min": 0.9263955502264855,
+          "max": 1.6141569306216645
+        },
+        "backends": {
+          "rtx_tp2": {
+            "layer_samples": 9100,
+            "stages_us": {
+              "produced_us": {
+                "count": 9100,
+                "mean": 43.598351648351645,
+                "median": 22.0,
+                "min": 19,
+                "max": 810
+              },
+              "index_us": {
+                "count": 9100,
+                "mean": 0.5015384615384615,
+                "median": 0.0,
+                "min": 0,
+                "max": 3
+              },
+              "attention_us": {
+                "count": 9100,
+                "mean": 107.61065934065934,
+                "median": 105.0,
+                "min": 95,
+                "max": 619
+              },
+              "experts_us": {
+                "count": 9100,
+                "mean": 244.75131868131868,
+                "median": 235.0,
+                "min": 171,
+                "max": 923
+              },
+              "finish_us": {
+                "count": 9100,
+                "mean": 11.568351648351648,
+                "median": 12.0,
+                "min": 7,
+                "max": 27
+              }
+            },
+            "rows": {
+              "count": 9100,
+              "mean": 4.0989010989010985,
+              "median": 4.0,
+              "min": 2,
+              "max": 8
+            },
+            "distinct_experts": {
+              "count": 9100,
+              "mean": 16.965714285714284,
+              "median": 16.0,
+              "min": 6,
+              "max": 40
+            }
+          },
+          "spark_tp4": {
+            "layer_samples": 5460,
+            "stages_us": {
+              "produced_us": {
+                "count": 5460,
+                "mean": 39.312820512820515,
+                "median": 22.0,
+                "min": 19,
+                "max": 852
+              },
+              "index_us": {
+                "count": 5460,
+                "mean": 0.5115384615384615,
+                "median": 1.0,
+                "min": 0,
+                "max": 4
+              },
+              "attention_us": {
+                "count": 5460,
+                "mean": 104.99835164835164,
+                "median": 102.0,
+                "min": 94,
+                "max": 935
+              },
+              "experts_us": {
+                "count": 5460,
+                "mean": 452.7197802197802,
+                "median": 431.0,
+                "min": 229,
+                "max": 3353
+              },
+              "finish_us": {
+                "count": 5460,
+                "mean": 11.442307692307692,
+                "median": 12.0,
+                "min": 7,
+                "max": 25
+              }
+            },
+            "rows": {
+              "count": 5460,
+              "mean": 4.0989010989010985,
+              "median": 4.0,
+              "min": 2,
+              "max": 8
+            },
+            "distinct_experts": {
+              "count": 5460,
+              "mean": 16.052747252747253,
+              "median": 15.0,
+              "min": 6,
+              "max": 38
+            }
+          }
+        },
+        "emitted_per_request_cycle": 2.857142857142857,
+        "verified_draft_per_request_cycle": 3.098901098901099
+      },
+      {
+        "case": "topic",
+        "concurrency": 8,
+        "rounds": 695,
+        "verified_draft_tokens": 6214,
+        "accepted_draft_tokens": 4038,
+        "accepted_fraction": 0.6498229803669134,
+        "request_cycles": 2507,
+        "emitted_tokens": 6536,
+        "zero_acceptance_lane_rounds": 176,
+        "stages_us": {
+          "draft_us": {
+            "count": 695,
+            "mean": 5545.640287769784,
+            "median": 6006,
+            "min": 2092,
+            "max": 14316
+          },
+          "verify_us": {
+            "count": 695,
+            "mean": 32752.631654676257,
+            "median": 32688,
+            "min": 18995,
+            "max": 62837
+          },
+          "total_us": {
+            "count": 695,
+            "mean": 38968.55683453238,
+            "median": 39314,
+            "min": 21792,
+            "max": 70095
+          }
+        },
+        "predicted_over_observed_verify": {
+          "count": 681,
+          "mean": 1.210538480400159,
+          "median": 1.1900995151824445,
+          "min": 0.8033276621297037,
+          "max": 1.5942091954841697
+        },
+        "backends": {
+          "rtx_tp2": {
+            "layer_samples": 17375,
+            "stages_us": {
+              "produced_us": {
+                "count": 17375,
+                "mean": 76.44569784172661,
+                "median": 38,
+                "min": 20,
+                "max": 1151
+              },
+              "index_us": {
+                "count": 17375,
+                "mean": 1.2236546762589928,
+                "median": 1,
+                "min": 0,
+                "max": 16
+              },
+              "attention_us": {
+                "count": 17375,
+                "mean": 182.01105035971224,
+                "median": 168,
+                "min": 94,
+                "max": 1713
+              },
+              "experts_us": {
+                "count": 17375,
+                "mean": 329.19119424460433,
+                "median": 306,
+                "min": 174,
+                "max": 3541
+              },
+              "finish_us": {
+                "count": 17375,
+                "mean": 20.22705035971223,
+                "median": 16,
+                "min": 7,
+                "max": 883
+              }
+            },
+            "rows": {
+              "count": 17375,
+              "mean": 12.54820143884892,
+              "median": 12,
+              "min": 2,
+              "max": 32
+            },
+            "distinct_experts": {
+              "count": 17375,
+              "mean": 15.17789928057554,
+              "median": 14,
+              "min": 6,
+              "max": 40
+            }
+          },
+          "spark_tp4": {
+            "layer_samples": 10425,
+            "stages_us": {
+              "produced_us": {
+                "count": 10425,
+                "mean": 52.52968824940048,
+                "median": 26,
+                "min": 20,
+                "max": 1474
+              },
+              "index_us": {
+                "count": 10425,
+                "mean": 1.3070503597122303,
+                "median": 1,
+                "min": 0,
+                "max": 11
+              },
+              "attention_us": {
+                "count": 10425,
+                "mean": 148.64498800959234,
+                "median": 131,
+                "min": 91,
+                "max": 1793
+              },
+              "experts_us": {
+                "count": 10425,
+                "mean": 562.9066666666666,
+                "median": 510,
+                "min": 243,
+                "max": 9805
+              },
+              "finish_us": {
+                "count": 10425,
+                "mean": 17.43107913669065,
+                "median": 14,
+                "min": 8,
+                "max": 890
+              }
+            },
+            "rows": {
+              "count": 10425,
+              "mean": 12.54820143884892,
+              "median": 12,
+              "min": 2,
+              "max": 32
+            },
+            "distinct_experts": {
+              "count": 10425,
+              "mean": 14.40326139088729,
+              "median": 14,
+              "min": 6,
+              "max": 38
+            }
+          }
+        },
+        "emitted_per_request_cycle": 2.6071001196649384,
+        "verified_draft_per_request_cycle": 2.478659752692461
+      }
+    ]
+  },
+  "findings": [
+    "Spark ranks 0/1 have 640-wide intermediate slices; ranks 2/3 have 512-wide slices. Wider ranks consistently take longer in this run.",
+    "Code C1 mean CUDA interval on rank 0 is 586 us; C8 is 700 us. Topic C1 is 345 us; C8 is 339 us. This is much less growth than coordinator expert-stage elapsed time.",
+    "The native local service owns one execution workspace/stream and synchronously executes a connection before polling the next. Cross-connection waiting is outside these worker measurements; it is a plausible contributor to the higher concurrent coordinator expert latency, not directly measured here.",
+    "Investigate worker scheduling and kernel throughput together. Concurrent GPU submission alone does not increase available memory bandwidth and needs an end-to-end experiment before adoption."
+  ],
+  "configuration": {
+    "engine_commit": "5479f9a",
+    "binary_engine_commit": "74d1b88",
+    "worker": "74d1b88 plus opt-in timing patch committed with this report",
+    "rtx_gpus": 2,
+    "spark_gpus": 4,
+    "rtx_expert_layers": 25,
+    "kv_tokens": 14680064,
+    "draft_limit": 7,
+    "ple": "FP8",
+    "samples_per_case": 3
+  },
+  "validation": [
+    "cargo check -p ds41rt-daemon passed for timing patch; optimized ARM build succeeded.",
+    "All four code/topic benchmark commands completed successfully.",
+    "Candidate stopped; logs saved and original coordinator plus all four Spark workers restored."
+  ],
+  "performance": [
+    {
+      "case": "code-c1",
+      "summaries": [
+        {
+          "concurrency": 1,
+          "samples": 3,
+          "median_aggregate_tps": 185.86579398499615,
+          "min_aggregate_tps": 184.05674340738577,
+          "max_aggregate_tps": 188.0312559793682
+        }
+      ],
+      "passed": true,
+      "corpus_sha256": "e14ff2894de9290827a07aef2ff55e2bb5c792abe91dcdc029fa9d6ed97990bc"
+    },
+    {
+      "case": "code-c8",
+      "summaries": [
+        {
+          "concurrency": 8,
+          "samples": 3,
+          "median_aggregate_tps": 858.0118531338738,
+          "min_aggregate_tps": 586.5563411879731,
+          "max_aggregate_tps": 860.2004525657402
+        }
+      ],
+      "passed": true,
+      "corpus_sha256": "e14ff2894de9290827a07aef2ff55e2bb5c792abe91dcdc029fa9d6ed97990bc"
+    },
+    {
+      "case": "topic-c1",
+      "summaries": [
+        {
+          "concurrency": 1,
+          "samples": 3,
+          "median_aggregate_tps": 110.07550593327325,
+          "min_aggregate_tps": 109.0224183386542,
+          "max_aggregate_tps": 110.2993519980527
+        }
+      ],
+      "passed": true,
+      "corpus_sha256": "e14ff2894de9290827a07aef2ff55e2bb5c792abe91dcdc029fa9d6ed97990bc"
+    },
+    {
+      "case": "topic-c8",
+      "summaries": [
+        {
+          "concurrency": 8,
+          "samples": 3,
+          "median_aggregate_tps": 507.5906574128548,
+          "min_aggregate_tps": 495.18955799100837,
+          "max_aggregate_tps": 514.6469856844859
+        }
+      ],
+      "passed": true,
+      "corpus_sha256": "e14ff2894de9290827a07aef2ff55e2bb5c792abe91dcdc029fa9d6ed97990bc"
+    }
+  ]
+}
