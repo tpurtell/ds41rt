@@ -1,0 +1,21 @@
+{
+  "scope": "Coordinator compilation and RTX artifact package verification; live paired serving pending",
+  "engine_revision": "444fcfd",
+  "staging_lock_revision": "e685f48c3b941208a8dc5915a742738a3c2de706",
+  "binary_sha256": "d54c0cae5d0442ee6fa1174e1fc6131bedc2d0cf95463266632c82762cf548be",
+  "coordinator_package_variants": 18,
+  "compute": [
+    12,
+    0
+  ],
+  "package_manifest_sha256": "2ea0c160c2d374ceec6f9b2922b8ae21022675b4eeb610d381ea8100a361ff6f",
+  "initial_profile": {
+    "unit": "packed projection bytes per H128 block",
+    "min": 737280,
+    "max": 983040,
+    "per_row_cost": 0,
+    "calibrated": false,
+    "sha256": "babed53538ae097dcd1aa5fc69d4f9cd4ddd10ee832c045648c7e1bfc3959171"
+  },
+  "passed": true
+}
