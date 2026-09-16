@@ -17,7 +17,7 @@ upstream integration; the published September 14 v3 is unchanged.
 - [x] Pass 32K, 128K, 512K, and 1.04M high-thinking needle retrieval with cold
   and exact reuse; pass vision, divergent/shorter cache branches, retained parent
   isolation, C16 branching, streaming cancellation, and recovery.
-- [ ] Complete and review exactly three final high-thinking tool-eval runs,
+- [x] Complete and review exactly three final high-thinking tool-eval runs,
   preserving failures and complete raw evidence.
 - [ ] Refresh all one/two-RTX performance tables with matched prompts and three
   samples: target/dSpark content types, counting/code/topic concurrency, mixed

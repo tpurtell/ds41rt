@@ -22,5 +22,9 @@ the comparisons and implementation choices. The [clean-image evidence](
 sparkinfer-upstream-clean-serving-20260916.json) covers vision, 1.04M-token
 retrieval, exact and partial cache reuse, concurrent branching, and cancellation.
 
-Release performance tables, final tool-evaluation results, image digests, and
-downloadable assets will be added after qualification finishes.
+The [three-run high-thinking tool evaluation](sparkinfer-upstream-tool-eval-20260916.md)
+completed all 264 scenarios with a mean of 157/176 points. The report states
+the benchmark output cap and preserves every partial and failed result.
+
+Release performance tables, image digests, and downloadable assets will be
+added after qualification finishes.

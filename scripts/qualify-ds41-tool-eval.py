@@ -3,6 +3,8 @@
 
 Runs are sequential; the benchmark uses the requested concurrency internally.
 The vllm label selects its OpenAI-compatible adapter, not the serving engine.
+The benchmark caps each response, including reasoning, at 4096 tokens by default.
+Use --max-tokens to select another cap explicitly.
 Use --runs 3 only for the final qualified release artifact. Preserve the whole
 output directory, including failed cases, commands, logs and raw tool traces.
 """
@@ -39,7 +41,9 @@ def collect(directory):
                    statuses=dict(collections.Counter(r['status'] for r in scenarios)),
                    failures=[{k: r[k] for k in ['scenario_id', 'summary', 'points']}
                              for r in scenarios if r['status'] == 'fail'],
-                   output_cap=config['extra_params'].get('max_tokens'),
+                   output_cap=config['extra_params'].get('max_tokens', 4096),
+                   output_cap_override=config['extra_params'].get('max_tokens'),
+                   output_cap_source='explicit override' if 'max_tokens' in config['extra_params'] else 'benchmark default',
                    backend_note='vllm is the compatibility adapter label; the server is ds41rt serve-native.')
     (directory / 'summary.json').write_text(json.dumps(summary, ensure_ascii=False, indent=2) + '\n')
     return summary
@@ -53,8 +57,8 @@ def main():
     parser.add_argument('--parallel', type=int, default=16)
     parser.add_argument('--timeout', type=int, default=900)
     parser.add_argument('--max-turns', type=int, default=12)
-    parser.add_argument('--max-tokens', type=int,
-                        help='Explicit development override; omit for the qualified server output policy.')
+    parser.add_argument('--max-tokens', type=int, default=4096,
+                        help='Per-response output cap including reasoning (benchmark default: 4096).')
     parser.add_argument('--reference-date', required=True)
     parser.add_argument('--label', default='ds41-native-thinking-high')
     parser.add_argument('--collect-only', action='store_true',

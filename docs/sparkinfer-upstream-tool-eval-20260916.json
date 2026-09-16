@@ -1,0 +1,271 @@
+{
+  "scope": "Three sequential clean dual-RTX dSpark tool-eval campaigns at C16; model-quality scores retain all failures without retries.",
+  "benchmark_version": "2.6.1.dev45+gcf54b4bfe",
+  "reference_date": "2026-09-16",
+  "coordinator_image": "sha256:3d95c6a7feed2dfc9fc8240815446295949f56ab75da361cd53257bf554b10e3",
+  "labels": {
+    "com.nvidia.build.id": "313520559",
+    "com.nvidia.build.ref": "30a5fc6cbfce157e75fae3d0cf1fd8e273a3dc25",
+    "com.nvidia.cublas.version": "13.4.1.1",
+    "com.nvidia.cublasmp.version": "0.8.1.2360",
+    "com.nvidia.cuda.version": "9.0",
+    "com.nvidia.cudla.version": "13.2.75",
+    "com.nvidia.cudnn.version": "9.22.0.52",
+    "com.nvidia.cufft.version": "12.2.0.46",
+    "com.nvidia.curand.version": "10.4.2.55",
+    "com.nvidia.cusolver.version": "12.2.0.1",
+    "com.nvidia.cusolvermp.version": "0.8.0.3126",
+    "com.nvidia.cusparse.version": "12.7.10.1",
+    "com.nvidia.cusparselt.version": "0.9.1.1",
+    "com.nvidia.nccl.version": "2.30.4",
+    "com.nvidia.npp.version": "13.1.0.48",
+    "com.nvidia.nsightcompute.version": "2026.1.1.2",
+    "com.nvidia.nsightsystems.version": "2026.2.1.210",
+    "com.nvidia.nvjpeg.version": "13.1.0.48",
+    "com.nvidia.nvvm.version": "13.2.78",
+    "com.nvidia.pytorch.version": "2.12.0a0+5aff392",
+    "com.nvidia.tensorrt.version": "10.16.1.11",
+    "com.nvidia.tensorrtoss.version": "",
+    "com.nvidia.volumes.needed": "nvidia_driver",
+    "io.ds41rt.cuda_arch": "120",
+    "io.ds41rt.role": "coordinator",
+    "io.ds41rt.source-manifest.sha256": "fa74a1c9289ff62ad09f91575f4912ac49e260b32e2e5677253deb5bdfb951c2",
+    "io.ds41rt.sparkinfer.revision": "4e31d0a10ea7ca24ac48d522fb65eaafbc27ad30",
+    "org.opencontainers.image.description": "DeepSeek V4.1 Flash inference for one or two RTX PRO 6000 GPUs and four DGX Spark expert workers",
+    "org.opencontainers.image.licenses": "MIT",
+    "org.opencontainers.image.revision": "83808905f007bf4bd608b929385fa325320c654c-dirty-fa74a1c9289f",
+    "org.opencontainers.image.source": "https://github.com/tpurtell/ds41rt",
+    "org.opencontainers.image.title": "DS41RT inference",
+    "org.opencontainers.image.version": "upstream-candidate"
+  },
+  "server_command": [
+    "ds41rt",
+    "serve-native",
+    "--snapshot",
+    "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+    "--native-lib",
+    "/opt/ds41rt/lib/libds41rt_native.so",
+    "--peers",
+    "10.55.0.1:19441,10.55.0.2:19441,10.55.0.3:19441,10.55.0.4:19441",
+    "--rtx-gpus",
+    "2",
+    "--listen",
+    "0.0.0.0:8000",
+    "--prefill-batch-tokens",
+    "2048",
+    "--concurrency",
+    "16",
+    "--prefix-cache-entries",
+    "24",
+    "--max-context-tokens",
+    "1048576",
+    "--max-output-tokens",
+    "393216",
+    "--dspark"
+  ],
+  "hardware": "uuid, name, power.limit [W], clocks.current.memory [MHz], memory.used [MiB]\nGPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, NVIDIA RTX PRO 6000 Blackwell Workstation Edition, 400.00 W, 13365 MHz, 95452 MiB\nGPU-95f8f212-9131-df99-fd53-7535965197d7, NVIDIA RTX PRO 6000 Blackwell Workstation Edition, 400.00 W, 13365 MHz, 95628 MiB\n",
+  "runs": [
+    {
+      "run_id": "2026-09-16T04-12-34.961137Z_2214ecfb",
+      "thinking": true,
+      "reasoning_effort": "high",
+      "concurrency": 16,
+      "basic_points": 124,
+      "basic_max": 138,
+      "hard_points": 31,
+      "hard_max": 38,
+      "total_points": 155,
+      "total_max": 176,
+      "statuses": {
+        "pass": 69,
+        "partial": 17,
+        "fail": 2
+      },
+      "failures": [
+        {
+          "scenario_id": "TC-43",
+          "summary": "Called web_search with an empty query \u2014 violated required parameter constraint.",
+          "points": 0
+        },
+        {
+          "scenario_id": "TC-74",
+          "summary": "Sent an unsafe, duplicate, or premature confirmation email.",
+          "points": 0
+        }
+      ],
+      "output_cap": 4096,
+      "backend_note": "vllm is the compatibility adapter label; the server is ds41rt serve-native.",
+      "output_cap_override": null,
+      "output_cap_source": "benchmark default"
+    },
+    {
+      "run_id": "2026-09-16T04-17-40.551606Z_43911d6a",
+      "thinking": true,
+      "reasoning_effort": "high",
+      "concurrency": 16,
+      "basic_points": 126,
+      "basic_max": 138,
+      "hard_points": 34,
+      "hard_max": 38,
+      "total_points": 160,
+      "total_max": 176,
+      "statuses": {
+        "pass": 73,
+        "partial": 14,
+        "fail": 1
+      },
+      "failures": [
+        {
+          "scenario_id": "TC-43",
+          "summary": "Called web_search with an empty query \u2014 violated required parameter constraint.",
+          "points": 0
+        }
+      ],
+      "output_cap": 4096,
+      "backend_note": "vllm is the compatibility adapter label; the server is ds41rt serve-native.",
+      "output_cap_override": null,
+      "output_cap_source": "benchmark default"
+    },
+    {
+      "run_id": "2026-09-16T04-22-39.602726Z_81eaa393",
+      "thinking": true,
+      "reasoning_effort": "high",
+      "concurrency": 16,
+      "basic_points": 123,
+      "basic_max": 138,
+      "hard_points": 33,
+      "hard_max": 38,
+      "total_points": 156,
+      "total_max": 176,
+      "statuses": {
+        "pass": 72,
+        "partial": 12,
+        "fail": 4
+      },
+      "failures": [
+        {
+          "scenario_id": "TC-43",
+          "summary": "Called web_search with an empty query \u2014 violated required parameter constraint.",
+          "points": 0
+        },
+        {
+          "scenario_id": "TC-61",
+          "summary": "Did not attempt to run the analysis script.",
+          "points": 0
+        },
+        {
+          "scenario_id": "TC-68",
+          "summary": "Called tools when none were needed.",
+          "points": 0
+        },
+        {
+          "scenario_id": "TC-88",
+          "summary": "Returned extra text or a value that was not exactly 20 digits.",
+          "points": 0
+        }
+      ],
+      "output_cap": 4096,
+      "backend_note": "vllm is the compatibility adapter label; the server is ds41rt serve-native.",
+      "output_cap_override": null,
+      "output_cap_source": "benchmark default"
+    }
+  ],
+  "mean": {
+    "basic_points": 124.33333333333333,
+    "hard_points": 32.666666666666664,
+    "total_points": 157
+  },
+  "completed_scenarios": 264,
+  "artifacts": [
+    {
+      "path": "clean-tool-eval/run-01/tool-eval.json",
+      "bytes": 529372,
+      "sha256": "e6a5fc887f1ca857396ff1d339ba72baa6cc761a10fb0e3ff0a6322f9f0aee09"
+    },
+    {
+      "path": "clean-tool-eval/run-01/tool-eval-traces.json",
+      "bytes": 437941,
+      "sha256": "4de9ab501f770a6234a764d85449950f32d27d8ec2afb53cbe5ac39dfa1171e5"
+    },
+    {
+      "path": "clean-tool-eval/run-01/tool-eval-command.json",
+      "bytes": 731,
+      "sha256": "b7f4a30e5d948c2a4864e4b4d8b5855c9231964373f5bbbf484045d9b1b5f4d4"
+    },
+    {
+      "path": "clean-tool-eval/run-01/tool-eval.log",
+      "bytes": 24106,
+      "sha256": "ab45009a5bbc53b3d9de6ec9e65aef4e8eff4fddc00c454f90ae628574afd527"
+    },
+    {
+      "path": "clean-tool-eval/run-01/data/benchmarks.sqlite",
+      "bytes": 1155072,
+      "sha256": "2344a5cf48c4c7a6abd84f15cd8d8c382b0d6180c8ba6a1a52b46714533948eb"
+    },
+    {
+      "path": "clean-tool-eval/run-02/tool-eval.json",
+      "bytes": 501849,
+      "sha256": "e3a196fd8bb265a16b23d2a80eaeaf230224cc3646db61a9c9880c959d729cbd"
+    },
+    {
+      "path": "clean-tool-eval/run-02/tool-eval-traces.json",
+      "bytes": 412953,
+      "sha256": "6a986dca2f8793f3af771f536c30d6e963040fd881ed89ef434f5e08351bf22b"
+    },
+    {
+      "path": "clean-tool-eval/run-02/tool-eval-command.json",
+      "bytes": 731,
+      "sha256": "ff24282faf60dbb96b1b1f6f2133460e0ee24de08b8fb0927e67ae8ea136cbc7"
+    },
+    {
+      "path": "clean-tool-eval/run-02/tool-eval.log",
+      "bytes": 24093,
+      "sha256": "8ed3b203508b36f64ab1f7b78aaedd7c01e5b89c384955a4e7e4fbdf625fb524"
+    },
+    {
+      "path": "clean-tool-eval/run-02/data/benchmarks.sqlite",
+      "bytes": 1114112,
+      "sha256": "5a22cc4de20c54a6d1b5fe43199be242d7535c6fbc33577b1b073e76d0f11ddd"
+    },
+    {
+      "path": "clean-tool-eval/run-03/tool-eval.json",
+      "bytes": 535979,
+      "sha256": "f8a56717a0e634b61c6e3d92fe5e816d97d65c9ccba7dd8f0dd300a1ced8f0a3"
+    },
+    {
+      "path": "clean-tool-eval/run-03/tool-eval-traces.json",
+      "bytes": 447321,
+      "sha256": "6ba3cd2b3dc2709fbcb5abeaaf44bb6d1c450670bc51a39f0912628a41034a73"
+    },
+    {
+      "path": "clean-tool-eval/run-03/tool-eval-command.json",
+      "bytes": 731,
+      "sha256": "bd02356739e6daa6fd0f7ad7f7d0567c8aefa59032c609851af43b5f26ff8c1d"
+    },
+    {
+      "path": "clean-tool-eval/run-03/tool-eval.log",
+      "bytes": 24087,
+      "sha256": "f7821c4f0b42765fb3f1dfef83c00ad71144d6af260e4669cb32e3e2cade932b"
+    },
+    {
+      "path": "clean-tool-eval/run-03/data/benchmarks.sqlite",
+      "bytes": 1167360,
+      "sha256": "6ef101d2501908c1af2a6f9d5daac3a9556f2cec61f70280f706fdaef0e8ca88"
+    }
+  ],
+  "archive": {
+    "path": "docs/evidence/upstream-clean-tools-20260916.tar.gz",
+    "bytes": 1523348,
+    "sha256": "9c653e075d02ddc3239f201f417a15c473d2712abed6b66f68d2c56f378a56cd"
+  },
+  "output_policy": {
+    "effective_max_tokens_per_response": 4096,
+    "includes_reasoning": true,
+    "explicit_override": null,
+    "source": "Installed benchmark orchestrator passes max_tokens=4096; adapter places it in the HTTP payload. Original raw summary output_cap=null meant no override, not no cap.",
+    "source_files": {
+      "runner/orchestrator.py": "032a2fac24a9c32acf9578c0d80ad01ef28dae832b91cab5e4401b3a0f137b8e",
+      "adapters/openai_compat.py": "e64f09b1c8bfead40b0141beaf77711a6e3fca6e744a02a7ef2493e85ca19855"
+    }
+  }
+}

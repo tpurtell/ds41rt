@@ -53,8 +53,11 @@ contexts, both cold and with full exact reuse. The cold/exact durations were
 functional observations, not a prefill speedup claim. Streaming cancellation
 and recovery passed, followed by all 16 concurrent divergent cache branches.
 The [raw results](evidence/upstream-clean-serving-20260916.json.gz) preserve the
-responses and usage accounting. Three high-thinking tool-evaluation runs are
-now in progress; final performance and publication remain pending.
+responses and usage accounting. Three high-thinking tool-evaluation runs completed with scores 155, 160 and
+156 out of 176 (mean 157). The [tool report](sparkinfer-upstream-tool-eval-20260916.md)
+retains all failures and documents the benchmark's effective 4096-token cap;
+the previous wrapper description of an omitted override was incorrect.
+Final performance collection is now running; publication remains pending.
 
 The upcoming performance collection preserves the published concurrency prompt
 label/nonce (`phase2-release-final`, `20260914`), direct-corpus seed 61001 and
