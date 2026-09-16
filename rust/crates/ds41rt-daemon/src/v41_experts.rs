@@ -1,6 +1,7 @@
 //! Native V4.1 expert residency; one GPU worker owns each layer and its buffers.
 use crate::v41_memory::{DeviceAllocation, HostAllocation, LoadStream};
 pub(crate) mod coordinator;
+pub(crate) mod paired;
 pub(crate) mod local;
 pub(crate) mod tp2;
 pub(crate) mod tp2_ffn;

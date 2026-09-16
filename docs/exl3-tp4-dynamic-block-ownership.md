@@ -74,6 +74,16 @@ deterministic ties. Inactive experts carry an invalid ownership sentinel.
 The returned borrowed assignment prevents planner reuse while that view lives;
 transport must still retain its own batch-owned assignment through completion.
 
+The daemon's `v41_experts/paired.rs` adapter now builds these costs from
+per-expert weight-streaming and per-routed-row coefficients, using fixed
+384-expert histogram/cost scratch and a lane-owned planner. Its current model
+uses the same marginal cost for each of an expert's four mandatory blocks
+within a pair. It validates the ordinary request and all cost arithmetic before
+encoding ownership, retaining route order and exact routing weights. A request
+owns its encoded decisions independently of later scratch reuse. Cost-profile
+selection and installation into serving lanes remain pending; these coefficients
+are not yet calibrated performance predictions.
+
 Four focused CPU tests cover all four ownership combinations (each of the 18
 global blocks exactly once), the six-expert 27/27/27/27 example, unequal costs
 and initial rank loads, inactive experts, scratch reuse, invalid extents and
