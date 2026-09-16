@@ -1,0 +1,511 @@
+{
+  "scope": "TP4 two-block width640/capacity80 candidate, ABBA serving comparison",
+  "engine_source": "cddb7f6",
+  "sparkinfer_source": "eb5c1bcc1f82ec7b23c873e5eac14611e848f1a1",
+  "configuration": {
+    "rtx": 2,
+    "sparks": 4,
+    "rtx_expert_layers": 25,
+    "draft_limit": 7,
+    "prefill_batch": 2048,
+    "retained_requests": 24,
+    "kv_tokens": 14680064,
+    "ple": "FP8"
+  },
+  "artifacts": {
+    "ds41rt-release-residency": {
+      "bytes": 33805232,
+      "sha256": "d97e077e44a35b8a7a3b989d67aa1796d3d822479faefedb979bed0dc9b0ab36"
+    },
+    "ds41rt-arm-release-residency": {
+      "bytes": 32781888,
+      "sha256": "ca6473e258a461027ad7f9121eb2835154ff7c698ec0cd9f139e693867a29a6d"
+    },
+    "package-residency-120/exl3/manifest.json": {
+      "bytes": 18153,
+      "sha256": "faa32c43de9ac042d25107927d939ddb033be53ad23ebede934dc5e87ce735db"
+    },
+    "spark-residency-baseline/manifest.json": {
+      "bytes": 24366,
+      "sha256": "acaa0108754af2a32ef246d7303b3bddd5c2dbe01a56b334d198ee6ab11bb254"
+    },
+    "spark-residency-candidate/manifest.json": {
+      "bytes": 24366,
+      "sha256": "4551d800f17cc90f0378070539e8733b28c4f015c2660dde256a26dbacb51118"
+    }
+  },
+  "artifact_difference": {
+    "changed_paths": [
+      "manifest.json",
+      "tp4-rank0/m80/libds41rt_exl3.so",
+      "tp4-rank0/m80/v41_exl3.json",
+      "tp4-rank1/m80/libds41rt_exl3.so",
+      "tp4-rank1/m80/v41_exl3.json"
+    ],
+    "scope": "All other package files bitwise identical; workspace layouts unchanged."
+  },
+  "caveats": [
+    "Three samples per configuration per run, six per arm overall. Warmups excluded; no measured outliers removed.",
+    "Concurrent topic responses vary across runs; output hashes and lengths are included. No prose-quality or quant top-1 claim.",
+    "The first candidate startup attempt raced worker readiness and failed before generation. Its logs are preserved; the harness then waited for all four workers and resumed without repeating the completed baseline.",
+    "Power configuration is 400 W per RTX with standard memory speed. This diagnostic did not continuously record throttle state.",
+    "Automatic serving policy is unchanged; this is an explicitly exported candidate."
+  ],
+  "results": [
+    {
+      "case": "code",
+      "concurrency": 1,
+      "baseline_tps": 169.85540528871906,
+      "candidate_tps": 170.46690063547314,
+      "change_percent": 0.36000935367035414,
+      "samples": {
+        "0-baseline": [
+          169.78933919590582,
+          170.5214025073961,
+          169.56521619621904
+        ],
+        "1-candidate": [
+          170.52458404195187,
+          170.4092172289944,
+          170.5750613230135
+        ],
+        "2-candidate": [
+          170.62278162575635,
+          170.32589760540137,
+          169.75217991328782
+        ],
+        "3-baseline": [
+          169.63849009235366,
+          170.6848556806283,
+          169.9214713815323
+        ]
+      },
+      "output_distributions": {
+        "0-baseline": [
+          {
+            "completion_tokens": 214,
+            "sha256": "896d5c3910afcdbd73ee3468bd9723053cbe66ee5bb9751d7c1f9aa40982fdd2",
+            "requests": 3
+          }
+        ],
+        "1-candidate": [
+          {
+            "completion_tokens": 214,
+            "sha256": "896d5c3910afcdbd73ee3468bd9723053cbe66ee5bb9751d7c1f9aa40982fdd2",
+            "requests": 3
+          }
+        ],
+        "2-candidate": [
+          {
+            "completion_tokens": 214,
+            "sha256": "896d5c3910afcdbd73ee3468bd9723053cbe66ee5bb9751d7c1f9aa40982fdd2",
+            "requests": 3
+          }
+        ],
+        "3-baseline": [
+          {
+            "completion_tokens": 214,
+            "sha256": "896d5c3910afcdbd73ee3468bd9723053cbe66ee5bb9751d7c1f9aa40982fdd2",
+            "requests": 3
+          }
+        ]
+      }
+    },
+    {
+      "case": "code",
+      "concurrency": 8,
+      "baseline_tps": 857.0216115539424,
+      "candidate_tps": 880.3920100600301,
+      "change_percent": 2.726932225631118,
+      "samples": {
+        "0-baseline": [
+          648.6102156867695,
+          854.9865913333103,
+          859.970929057292
+        ],
+        "1-candidate": [
+          794.3015816153442,
+          884.3836071014344,
+          879.8576349845425
+        ],
+        "2-candidate": [
+          877.8322993964632,
+          890.8868124066616,
+          880.9263851355175
+        ],
+        "3-baseline": [
+          862.1087828336673,
+          859.0566317745744,
+          749.7771745878354
+        ]
+      },
+      "output_distributions": {
+        "0-baseline": [
+          {
+            "completion_tokens": 214,
+            "sha256": "896d5c3910afcdbd73ee3468bd9723053cbe66ee5bb9751d7c1f9aa40982fdd2",
+            "requests": 2
+          },
+          {
+            "completion_tokens": 214,
+            "sha256": "aea30d7d3de93624c30a56d11825a2469affb700c2a55b977d0fec727d31faba",
+            "requests": 22
+          }
+        ],
+        "1-candidate": [
+          {
+            "completion_tokens": 214,
+            "sha256": "896d5c3910afcdbd73ee3468bd9723053cbe66ee5bb9751d7c1f9aa40982fdd2",
+            "requests": 2
+          },
+          {
+            "completion_tokens": 214,
+            "sha256": "aea30d7d3de93624c30a56d11825a2469affb700c2a55b977d0fec727d31faba",
+            "requests": 22
+          }
+        ],
+        "2-candidate": [
+          {
+            "completion_tokens": 214,
+            "sha256": "aea30d7d3de93624c30a56d11825a2469affb700c2a55b977d0fec727d31faba",
+            "requests": 24
+          }
+        ],
+        "3-baseline": [
+          {
+            "completion_tokens": 214,
+            "sha256": "aea30d7d3de93624c30a56d11825a2469affb700c2a55b977d0fec727d31faba",
+            "requests": 23
+          },
+          {
+            "completion_tokens": 214,
+            "sha256": "896d5c3910afcdbd73ee3468bd9723053cbe66ee5bb9751d7c1f9aa40982fdd2",
+            "requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "case": "code",
+      "concurrency": 16,
+      "baseline_tps": 1374.6209821947027,
+      "candidate_tps": 1433.475923521581,
+      "change_percent": 4.2815395726690575,
+      "samples": {
+        "0-baseline": [
+          1387.8767850708225,
+          1391.319861667726,
+          1117.6631251520937
+        ],
+        "1-candidate": [
+          1436.9265904884408,
+          1439.7570595414702,
+          1436.0138212031993
+        ],
+        "2-candidate": [
+          1429.6743621693952,
+          1430.938025839963,
+          1145.1690163692465
+        ],
+        "3-baseline": [
+          1381.2898711221642,
+          1367.9520932672415,
+          1358.8824640010212
+        ]
+      },
+      "output_distributions": {
+        "0-baseline": [
+          {
+            "completion_tokens": 214,
+            "sha256": "896d5c3910afcdbd73ee3468bd9723053cbe66ee5bb9751d7c1f9aa40982fdd2",
+            "requests": 47
+          },
+          {
+            "completion_tokens": 214,
+            "sha256": "aea30d7d3de93624c30a56d11825a2469affb700c2a55b977d0fec727d31faba",
+            "requests": 1
+          }
+        ],
+        "1-candidate": [
+          {
+            "completion_tokens": 214,
+            "sha256": "896d5c3910afcdbd73ee3468bd9723053cbe66ee5bb9751d7c1f9aa40982fdd2",
+            "requests": 48
+          }
+        ],
+        "2-candidate": [
+          {
+            "completion_tokens": 214,
+            "sha256": "896d5c3910afcdbd73ee3468bd9723053cbe66ee5bb9751d7c1f9aa40982fdd2",
+            "requests": 47
+          },
+          {
+            "completion_tokens": 214,
+            "sha256": "aea30d7d3de93624c30a56d11825a2469affb700c2a55b977d0fec727d31faba",
+            "requests": 1
+          }
+        ],
+        "3-baseline": [
+          {
+            "completion_tokens": 214,
+            "sha256": "896d5c3910afcdbd73ee3468bd9723053cbe66ee5bb9751d7c1f9aa40982fdd2",
+            "requests": 48
+          }
+        ]
+      }
+    },
+    {
+      "case": "topic",
+      "concurrency": 1,
+      "baseline_tps": 99.77189365706101,
+      "candidate_tps": 99.66173203612175,
+      "change_percent": -0.11041348109309679,
+      "samples": {
+        "0-baseline": [
+          99.57459520181504,
+          100.11026783647756,
+          99.96919211230698
+        ],
+        "1-candidate": [
+          100.12373812029622,
+          98.46689268122134,
+          99.80491480052912
+        ],
+        "2-candidate": [
+          99.63714732827691,
+          99.68631674396659,
+          98.92805464058031
+        ],
+        "3-baseline": [
+          98.80835631402344,
+          100.060829272034,
+          99.51439773876473
+        ]
+      },
+      "output_distributions": {
+        "0-baseline": [
+          {
+            "completion_tokens": 280,
+            "sha256": "4a119add53c4f084a4b24f96ab07e9709d0dc4c42dddc86bdf7678a829b414cb",
+            "requests": 3
+          }
+        ],
+        "1-candidate": [
+          {
+            "completion_tokens": 280,
+            "sha256": "4a119add53c4f084a4b24f96ab07e9709d0dc4c42dddc86bdf7678a829b414cb",
+            "requests": 3
+          }
+        ],
+        "2-candidate": [
+          {
+            "completion_tokens": 280,
+            "sha256": "4a119add53c4f084a4b24f96ab07e9709d0dc4c42dddc86bdf7678a829b414cb",
+            "requests": 3
+          }
+        ],
+        "3-baseline": [
+          {
+            "completion_tokens": 280,
+            "sha256": "4a119add53c4f084a4b24f96ab07e9709d0dc4c42dddc86bdf7678a829b414cb",
+            "requests": 3
+          }
+        ]
+      }
+    },
+    {
+      "case": "topic",
+      "concurrency": 8,
+      "baseline_tps": 481.4864717654923,
+      "candidate_tps": 473.721104783029,
+      "change_percent": -1.6127902730038612,
+      "samples": {
+        "0-baseline": [
+          480.6245096203041,
+          482.31905068752883,
+          484.76546230831457
+        ],
+        "1-candidate": [
+          464.9162752896904,
+          487.68886108379115,
+          462.6707174216268
+        ],
+        "2-candidate": [
+          421.40829960464305,
+          482.5259342763675,
+          487.94561204534403
+        ],
+        "3-baseline": [
+          476.80816799199226,
+          480.65389284345576,
+          487.3761461052985
+        ]
+      },
+      "output_distributions": {
+        "0-baseline": [
+          {
+            "completion_tokens": 259,
+            "sha256": "b87d8eb8ed4bcd1402d84e3f580ee654c9079cab500e8a6196d158e9a1837c94",
+            "requests": 24
+          }
+        ],
+        "1-candidate": [
+          {
+            "completion_tokens": 259,
+            "sha256": "b87d8eb8ed4bcd1402d84e3f580ee654c9079cab500e8a6196d158e9a1837c94",
+            "requests": 12
+          },
+          {
+            "completion_tokens": 253,
+            "sha256": "a6e364f17ca3fe6f73981f5cf950b18b38e6c0e8de8a6f453e41d6467fd5d46b",
+            "requests": 12
+          }
+        ],
+        "2-candidate": [
+          {
+            "completion_tokens": 266,
+            "sha256": "d47e4fbb7583a1ad23f3a53734b1bc99625d8f1b6721ebd0f19b0bd602689267",
+            "requests": 1
+          },
+          {
+            "completion_tokens": 267,
+            "sha256": "c11c31f8c2afe68ffa5ef82359e3624607b5f45e3f96e9343bcf3455f8735f27",
+            "requests": 4
+          },
+          {
+            "completion_tokens": 274,
+            "sha256": "70ed01626ae336a879704494f8667236800f618644056f52698efc14ad50f567",
+            "requests": 3
+          },
+          {
+            "completion_tokens": 259,
+            "sha256": "b87d8eb8ed4bcd1402d84e3f580ee654c9079cab500e8a6196d158e9a1837c94",
+            "requests": 16
+          }
+        ],
+        "3-baseline": [
+          {
+            "completion_tokens": 259,
+            "sha256": "b87d8eb8ed4bcd1402d84e3f580ee654c9079cab500e8a6196d158e9a1837c94",
+            "requests": 20
+          },
+          {
+            "completion_tokens": 273,
+            "sha256": "7a3a2f3d93ec310eb4504a6b8415677a1cbba8032cad02d065eb51f717e43f53",
+            "requests": 4
+          }
+        ]
+      }
+    },
+    {
+      "case": "topic",
+      "concurrency": 16,
+      "baseline_tps": 785.137355281655,
+      "candidate_tps": 775.7194465916099,
+      "change_percent": -1.1995237045709817,
+      "samples": {
+        "0-baseline": [
+          752.5782152802129,
+          790.3209450720321,
+          790.8761789852281
+        ],
+        "1-candidate": [
+          760.3119885485618,
+          788.6694225472534,
+          792.1479841227864
+        ],
+        "2-candidate": [
+          752.4874766432777,
+          794.451940074886,
+          762.7694706359664
+        ],
+        "3-baseline": [
+          750.6855800215043,
+          779.9537654912779,
+          798.23405189337
+        ]
+      },
+      "output_distributions": {
+        "0-baseline": [
+          {
+            "completion_tokens": 256,
+            "sha256": "ae79afd2456ce66bbc8f7bf26dcbbed7dc72d2f14a37be2066ff1e207a3a389a",
+            "requests": 8
+          },
+          {
+            "completion_tokens": 257,
+            "sha256": "b92f792938ddafed46e12dba0ab77fdaa98f2606797561ecf98fea6324c677ca",
+            "requests": 8
+          },
+          {
+            "completion_tokens": 258,
+            "sha256": "fcd8407cc3fa76a8da7c7e63c9b81ea22c2a935d33ebd988bcd2fd57e70c8bdd",
+            "requests": 24
+          },
+          {
+            "completion_tokens": 258,
+            "sha256": "84f7935f345f2b4f6f07da901534a5b05d4a2db97edb537bbeec26f22c10aeae",
+            "requests": 8
+          }
+        ],
+        "1-candidate": [
+          {
+            "completion_tokens": 258,
+            "sha256": "fcd8407cc3fa76a8da7c7e63c9b81ea22c2a935d33ebd988bcd2fd57e70c8bdd",
+            "requests": 32
+          },
+          {
+            "completion_tokens": 242,
+            "sha256": "3c57c195ceaaf709107517b0590358dfef81c0cc42728510cc28f59e9ab4f6ab",
+            "requests": 8
+          },
+          {
+            "completion_tokens": 256,
+            "sha256": "68ab4cbae142b2f87401cea9c259e8e1065eb41fc2bedefa01fe77947e32a26f",
+            "requests": 8
+          }
+        ],
+        "2-candidate": [
+          {
+            "completion_tokens": 258,
+            "sha256": "fcd8407cc3fa76a8da7c7e63c9b81ea22c2a935d33ebd988bcd2fd57e70c8bdd",
+            "requests": 24
+          },
+          {
+            "completion_tokens": 264,
+            "sha256": "cd12ae0a3e110619cf0a7891bf897dbf5dce11b65123afa8ce186daafd180d5e",
+            "requests": 8
+          },
+          {
+            "completion_tokens": 258,
+            "sha256": "84f7935f345f2b4f6f07da901534a5b05d4a2db97edb537bbeec26f22c10aeae",
+            "requests": 8
+          },
+          {
+            "completion_tokens": 256,
+            "sha256": "62b026eda2e7d6534e422900a6abac574a2f14273ae85418c3dc1004eccac968",
+            "requests": 8
+          }
+        ],
+        "3-baseline": [
+          {
+            "completion_tokens": 264,
+            "sha256": "cd12ae0a3e110619cf0a7891bf897dbf5dce11b65123afa8ce186daafd180d5e",
+            "requests": 8
+          },
+          {
+            "completion_tokens": 258,
+            "sha256": "fcd8407cc3fa76a8da7c7e63c9b81ea22c2a935d33ebd988bcd2fd57e70c8bdd",
+            "requests": 32
+          },
+          {
+            "completion_tokens": 258,
+            "sha256": "84f7935f345f2b4f6f07da901534a5b05d4a2db97edb537bbeec26f22c10aeae",
+            "requests": 8
+          }
+        ]
+      }
+    }
+  ],
+  "decision": "Keep the two-block export as a candidate, not a default: code improves, topic is slightly lower with response variability. Mixed-traffic qualification remains pending; dynamic whole-block ownership is a separate proposed TP4 optimization."
+}
