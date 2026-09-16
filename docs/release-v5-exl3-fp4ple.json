@@ -1,0 +1,242 @@
+{
+  "passed": true,
+  "scope": "FP4-PLE decoder, real-row serving upload, and full-model dual-RTX functional serving. Not throughput, formal tool/quality qualification, or clean release images.",
+  "source_base_commit": "c70e721",
+  "snapshot_revision": "04cada4d3f38584f069e0a7debc53720832d738e",
+  "encoding": "E2M1 even-low nibble x E4M3 scale per 16 values x FP32 table global scale; BF16 output",
+  "allocation_policy": "Retains existing FP8 CPU, pinned staging and GPU allocation budgets; FP4 weights and scales share the weight arena. No full-table expansion or extra quantization.",
+  "decoder": {
+    "cases": [
+      {
+        "device": 0,
+        "rows": 1,
+        "global_scales": 4,
+        "bitwise_equal": true,
+        "graph_changed_inputs": true,
+        "output_guards": true,
+        "invalid_arguments_rejected": true
+      },
+      {
+        "device": 0,
+        "rows": 24,
+        "global_scales": 4,
+        "bitwise_equal": true,
+        "graph_changed_inputs": true,
+        "output_guards": true,
+        "invalid_arguments_rejected": true
+      },
+      {
+        "device": 0,
+        "rows": 384,
+        "global_scales": 4,
+        "bitwise_equal": true,
+        "graph_changed_inputs": true,
+        "output_guards": true,
+        "invalid_arguments_rejected": true
+      },
+      {
+        "device": 0,
+        "rows": 4096,
+        "global_scales": 4,
+        "bitwise_equal": true,
+        "graph_changed_inputs": true,
+        "output_guards": true,
+        "invalid_arguments_rejected": true
+      },
+      {
+        "device": 0,
+        "checkpoint_layer": 1,
+        "rows": 192,
+        "bitwise_equal": true
+      },
+      {
+        "device": 0,
+        "checkpoint_layer": 14,
+        "rows": 192,
+        "bitwise_equal": true
+      },
+      {
+        "device": 1,
+        "rows": 1,
+        "global_scales": 4,
+        "bitwise_equal": true,
+        "graph_changed_inputs": true,
+        "output_guards": true,
+        "invalid_arguments_rejected": true
+      },
+      {
+        "device": 1,
+        "rows": 24,
+        "global_scales": 4,
+        "bitwise_equal": true,
+        "graph_changed_inputs": true,
+        "output_guards": true,
+        "invalid_arguments_rejected": true
+      },
+      {
+        "device": 1,
+        "rows": 384,
+        "global_scales": 4,
+        "bitwise_equal": true,
+        "graph_changed_inputs": true,
+        "output_guards": true,
+        "invalid_arguments_rejected": true
+      },
+      {
+        "device": 1,
+        "rows": 4096,
+        "global_scales": 4,
+        "bitwise_equal": true,
+        "graph_changed_inputs": true,
+        "output_guards": true,
+        "invalid_arguments_rejected": true
+      },
+      {
+        "device": 1,
+        "checkpoint_layer": 1,
+        "rows": 192,
+        "bitwise_equal": true
+      },
+      {
+        "device": 1,
+        "checkpoint_layer": 14,
+        "rows": 192,
+        "bitwise_equal": true
+      }
+    ]
+  },
+  "real_tables": [
+    {
+      "layer": 1,
+      "encoding": "Nvfp4",
+      "global_scale": 0.004092262126505375,
+      "hash_rows": 192,
+      "weights_bytes": 24576,
+      "scales_bytes": 3072,
+      "text_mask": [
+        1,
+        0,
+        1,
+        1,
+        1,
+        0,
+        1,
+        1
+      ]
+    },
+    {
+      "layer": 14,
+      "encoding": "Nvfp4",
+      "global_scale": 0.008928571827709675,
+      "hash_rows": 192,
+      "weights_bytes": 24576,
+      "scales_bytes": 3072,
+      "text_mask": [
+        1,
+        0,
+        1,
+        1,
+        1,
+        0,
+        1,
+        1
+      ]
+    }
+  ],
+  "upload_checks": [
+    "both GPUs, both table global scales",
+    "live token rows 1/8/3/8 with capacity 16",
+    "synchronous and cooperative output bitwise equal to CPU oracle",
+    "pending cancellation and reuse",
+    "FP4/FP8 format switching with the same allocations",
+    "text masks and allocation pointers preserved"
+  ],
+  "loader_tests": {
+    "passed": 76,
+    "ignored": 3,
+    "failed": 0
+  },
+  "serving": {
+    "rtx_gpus": 2,
+    "rtx_expert_layers": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19
+    ],
+    "spark_expert_layers": [
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39
+    ],
+    "draft_limit": 7,
+    "prefill_batch_tokens": 2048,
+    "concurrency_limit": 16,
+    "concurrent_requests_exercised": 2,
+    "retained_entries": 24,
+    "max_context_tokens": 1048576,
+    "global_kv_bytes": 13094420480,
+    "kv_token_target": 14680064,
+    "private_tail_tokens": 32768,
+    "checks": [
+      "arithmetic",
+      "concurrent code/topic",
+      "exact prompt cache hit",
+      "JSON schema answer 42",
+      "high-thinking tool Paris",
+      "tool continuation, 364 cached tokens",
+      "4822-token needle, follow-up 4828 cached tokens",
+      "SSE cancellation after eight events and recovery"
+    ],
+    "code_output_note": "Reached explicit 128-token cap; not a complete-answer quality score.",
+    "native_scope": "Optimized host coordinator, debug ARM workers, v4 native base with EXL3 and PLE addons; clean images pending."
+  },
+  "adaptive_recalibrated": false,
+  "performance_qualified": false,
+  "verified_at": "2026-09-16T18:04:08.981213+00:00",
+  "coordinator_binary_sha256": "32db8ce6f3d76310db904ca072405eb83361ed8de885460f6c35622c7fb7a6e4",
+  "archive": "docs/evidence/v5-exl3-fp4ple.tar.gz",
+  "archive_sha256": "68c874751c5ae62003c799794dd7c7f3dd2f30690ead42bbe298f182b3c2cb32",
+  "temporary_workers_removed": true,
+  "temporary_candidate_stopped": true,
+  "production_restored_health_http_status": 200,
+  "production_worker_ports_restored": [
+    19441,
+    19441,
+    19441,
+    19441
+  ]
+}

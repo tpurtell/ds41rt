@@ -791,3 +791,40 @@ Next implementation is FP4 PLE gathering, followed by remaining generic-tier
 coverage and kernel/workspace/residency optimization. Adaptive profile updates,
 content-type acceptance, all requested tables/tool tests and the deferred quant
 agreement measurement still precede the v5 release.
+
+## Packed FP4 PLE and full-model serving
+
+[FP4-PLE evidence](release-v5-exl3-fp4ple.json) now covers direct packed-row
+gathering and decoding. The loader maps the checkpoint's 128-byte E2M1 weight
+rows and 16-byte E4M3 scale rows, checks the scalar global scale against the
+manifest, and carries all three directly to the GPU BF16 decoder. FP4 weights
+and scales fit together inside the existing FP8 weight arenas. CPU staging,
+pinned buffers and GPU allocation budgets do not grow, and no table is expanded
+or requantized on loading.
+
+The independent CPU oracle matches CUDA bit-for-bit on both RTX GPUs for all
+16 E2M1 codes, all finite nonnegative E4M3 encodings, four global scales and
+1/24/384/4096 hash rows. Captured graphs pass with changed inputs; output guards
+and invalid arguments are checked. The test explicitly creates a capture stream
+on each GPU, after finding that PyTorch's implicit shared capture stream could
+otherwise belong to the first GPU. Real gathered rows from both checkpoint
+tables also match. Serving uploads pass synchronous/cooperative parity against
+that oracle at changing live sizes, cancellation/reuse and FP4-to-FP8 format
+switches in the same allocation. The loader suite passes 76 tests, with three
+existing tests ignored.
+
+The optimized host binary serves the FP4-PLE variant with layers 0–19 on RTX TP2,
+layers 20–39 on four Sparks, and K7 dSpark. Functional checks pass concurrent
+code/topic output, arithmetic, JSON schema, a high-thinking tool call, tool
+continuation with 364 cached tokens, a 4822-token needle and a follow-up with
+4828 cached tokens, and stream cancellation/recovery. C16 is configured; the
+smoke exercises C2. Code output reaches its explicit 128-token cap. This is
+functional evidence, not a full quality or performance score. The run uses the
+v4 native base plus new addons, so clean-image qualification remains ahead.
+
+Both PLE variants now have functional full-model coverage. Remaining work is
+generic tier coverage, kernel/workspace/residency optimization, then adaptive
+calibration and acceptance by content type. The requested performance tables,
+three thinking-enabled tool campaigns per quant variant, deferred top-1
+comparison, conditional default choice, clean packaging and v5 publication
+remain required. Performance benchmarks continue to use FP8 PLE only.

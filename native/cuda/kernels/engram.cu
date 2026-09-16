@@ -1,6 +1,7 @@
 #include "common.h"
 #include <cuda_bf16.h>
 #include <cuda_fp8.h>
+#include <cmath>
 
 namespace {
 constexpr int kEngramDim = 5120;
@@ -102,5 +103,32 @@ extern "C" ds41rt_status_t ds41rt_cuda_engram_dequant_bf16_async(
     return DS41RT_STATUS_INVALID_ARGUMENT;
   }
   engram_dequant_kernel<<<hash_rows, 256, 0, reinterpret_cast<cudaStream_t>(cuda_stream)>>>(weights, scales, out);
+  return status_from_cuda(cudaGetLastError());
+}
+
+namespace {
+__global__ void engram_nvfp4_dequant_kernel(const uint8_t* weights, const uint8_t* scales,
+    float global_scale, uint16_t* out) {
+  const size_t row = blockIdx.x;
+  const size_t col = threadIdx.x;
+  const uint8_t packed = weights[row * 128 + col / 2];
+  const uint8_t code = (packed >> ((col & 1) * 4)) & 15;
+  const float magnitudes[8] = {0.f, 0.5f, 1.f, 1.5f, 2.f, 3.f, 4.f, 6.f};
+  const float value = (code & 8) ? -magnitudes[code & 7] : magnitudes[code & 7];
+  __nv_fp8_e4m3 scale;
+  scale.__x = scales[row * 16 + col / 16];
+  out[row * 256 + col] = __bfloat16_as_ushort(__float2bfloat16_rn(
+      __fmul_rn(__fmul_rn(value, static_cast<float>(scale)), global_scale)));
+}
+}
+extern "C" ds41rt_status_t ds41rt_cuda_engram_nvfp4_dequant_bf16_async(
+    const uint8_t* weights, const uint8_t* scales, float global_scale,
+    uint16_t* out, int hash_rows, void* cuda_stream) {
+  if (!weights || !scales || !out || hash_rows <= 0 || !std::isfinite(global_scale) || global_scale <= 0.f) {
+    ds41rt_set_last_error_message("NVFP4 engram dequant requires tensors, positive rows and a finite positive global scale");
+    return DS41RT_STATUS_INVALID_ARGUMENT;
+  }
+  engram_nvfp4_dequant_kernel<<<hash_rows, 256, 0,
+      reinterpret_cast<cudaStream_t>(cuda_stream)>>>(weights, scales, global_scale, out);
   return status_from_cuda(cudaGetLastError());
 }

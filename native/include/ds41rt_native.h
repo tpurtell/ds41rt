@@ -717,6 +717,12 @@ ds41rt_status_t ds41rt_cuda_rmsnorm_f32_async(const float* x, const float* weigh
 ds41rt_status_t ds41rt_cuda_engram_dequant_bf16_async(
     const uint8_t* weights, const uint8_t* scales, uint16_t* out, int hash_rows, void* cuda_stream);
 
+// NVFP4 gathered rows: packed E2M1 [hash_rows,128], E4M3 scales
+// [hash_rows,16], and the checkpoint FP32 global scale. Output is BF16.
+ds41rt_status_t ds41rt_cuda_engram_nvfp4_dequant_bf16_async(
+    const uint8_t* weights, const uint8_t* scales, float global_scale,
+    uint16_t* out, int hash_rows, void* cuda_stream);
+
 // V4.1 engram gate: BF16 x/out [rows,4,5120], projected kv [rows,5,5120],
 // q/k weights [4,5120], optional U8 text_mask [rows] (zero preserves x).
 // All pointers are device-resident; out may equal x but must not alias kv/weights.

@@ -242,8 +242,6 @@ impl OfficialV41Catalog {
     /// # Safety
     /// Checkpoint files must remain immutable for the lifetime of the returned maps.
     pub unsafe fn map_engram(&self, layer: usize) -> Result<crate::EngramTable> {
-        ensure!(self.exl3.as_ref().is_none_or(|m| m.ple_quantization.is_none()),
-            "NVFP4 PLE requires the NVFP4 row gather path");
         ensure!(
             self.config.text().engram_layer_ids.contains(&layer),
             "no engram table at layer {layer}"
@@ -260,7 +258,19 @@ impl OfficialV41Catalog {
                 )
             }
         };
-        crate::EngramTable::new(map("weight")?, map("scale")?)
+        if let Some(ple) = self.exl3.as_ref().and_then(|m| m.ple_quantization.as_ref()) {
+            use std::os::unix::fs::FileExt;
+            let prefix = format!("layers.{layer}.engram.embed");
+            let tensor = self.tensor(&format!("{prefix}.weight_scale_2"))?;
+            let mut bytes = [0; 4];
+            File::open(self.snapshot.join(&tensor.shard))?.read_exact_at(&mut bytes, tensor.metadata.byte_offset)?;
+            let global = f32::from_le_bytes(bytes);
+            let declared = ple["tensors"][&prefix]["global_scale"].as_f64().context("missing NVFP4 global scale")? as f32;
+            ensure!(global.to_bits() == declared.to_bits(), "NVFP4 global scale differs from metadata");
+            crate::EngramTable::new_nvfp4(map("weight")?, map("weight_scale")?, global)
+        } else {
+            crate::EngramTable::new(map("weight")?, map("scale")?)
+        }
     }
 
     /// Physical checkpoint bytes only; packing, caches and execution scratch are additional.

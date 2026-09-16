@@ -7,12 +7,29 @@ use std::sync::{
 };
 use std::thread::{self, JoinHandle};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EngramEncoding { Fp8, Nvfp4 }
+impl EngramEncoding {
+    pub fn weight_bytes(self) -> usize { match self { Self::Fp8 => 256, Self::Nvfp4 => 128 } }
+    pub fn scale_bytes(self) -> usize { match self { Self::Fp8 => 8, Self::Nvfp4 => 16 } }
+}
+
 pub struct EngramTable {
     weights: MappedRows,
     scales: MappedRows,
+    encoding: EngramEncoding,
+    global_scale: f32,
 }
 
 impl EngramTable {
+    pub fn encoding(&self) -> EngramEncoding { self.encoding }
+    pub fn global_scale(&self) -> f32 { self.global_scale }
+    pub fn new_nvfp4(weights: MappedRows, scales: MappedRows, global_scale: f32) -> Result<Self> {
+        ensure!(weights.rows() == scales.rows() && weights.row_bytes() == 128 && scales.row_bytes() == 16,
+            "NVFP4 engram requires paired 128-byte weight and 16-byte scale rows");
+        ensure!(global_scale.is_finite() && global_scale > 0.0, "invalid NVFP4 engram global scale");
+        Ok(Self { weights, scales, encoding: EngramEncoding::Nvfp4, global_scale })
+    }
     pub fn weights(&self) -> &MappedRows {
         &self.weights
     }
@@ -77,7 +94,7 @@ impl EngramTable {
             weights.row_bytes() == 256 && scales.row_bytes() == 8,
             "native engram rows require 256 FP8 bytes and eight UE8M0 scale bytes"
         );
-        Ok(Self { weights, scales })
+        Ok(Self { weights, scales, encoding: EngramEncoding::Fp8, global_scale: 1.0 })
     }
 }
 

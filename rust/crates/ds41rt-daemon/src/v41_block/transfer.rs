@@ -431,6 +431,7 @@ mod tests {
             let gathered_scales = vec![127; rows * 24 * 8];
             let mask: Vec<u8> = (0..rows).map(|i| (i % 2) as u8).collect();
             let gathered = ds41rt_loader::EngramGatherView {
+                encoding: ds41rt_loader::EngramEncoding::Fp8, global_scale: 1.0,
                 weights: &gathered_weights,
                 scales: &gathered_scales,
                 text_mask: &mask,

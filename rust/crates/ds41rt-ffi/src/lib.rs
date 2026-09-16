@@ -5809,6 +5809,27 @@ impl NativeLibrary {
         self.status_to_result(NAME, status)
     }
 
+    /// Decode packed NVFP4 PLE rows directly to BF16 without another quantization.
+    /// # Safety
+    /// Input/output regions must not overlap and must remain live on the stream's device.
+    pub unsafe fn cuda_engram_nvfp4_dequant_bf16_async(
+        &self, weights: Ds41rtDeviceBuffer, scales: Ds41rtDeviceBuffer, global_scale: f32,
+        out: Ds41rtDeviceBuffer, hash_rows: i32, cuda_stream: *mut c_void,
+    ) -> Result<()> {
+        const NAME: &str = "ds41rt_cuda_engram_nvfp4_dequant_bf16_async";
+        anyhow::ensure!(global_scale.is_finite() && global_scale > 0.0, "invalid NVFP4 PLE global scale");
+        validate_f32_rows(NAME, hash_rows, 256)?;
+        let values = checked_row_values(NAME, hash_rows as usize, 256)?;
+        validate_device_buffer_bytes(NAME, weights, values / 2)?;
+        validate_device_buffer_bytes(NAME, scales, values / 16)?;
+        validate_u16_buffer_values(NAME, out, values)?;
+        type Kernel = unsafe extern "C" fn(*const u8, *const u8, f32, *mut u16, i32, *mut c_void) -> Ds41rtStatus;
+        let kernel: Symbol<Kernel> = unsafe { self.lib.get(b"ds41rt_cuda_engram_nvfp4_dequant_bf16_async")? };
+        let status = unsafe { kernel(weights.ptr.cast(), scales.ptr.cast(), global_scale,
+            out.ptr.cast(), hash_rows, cuda_stream) };
+        self.status_to_result(NAME, status)
+    }
+
     /// Fused official V4.1 engram gate; buffers must remain live on the stream.
     ///
     /// # Safety

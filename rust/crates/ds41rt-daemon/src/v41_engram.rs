@@ -109,6 +109,32 @@ impl<'a> EngramDeviceRows<'a> {
             ready: None,
         })
     }
+    fn gathered_buffers(&self, gathered: &EngramGatherView<'_>) -> (Ds41rtDeviceBuffer, Ds41rtDeviceBuffer) {
+        let mut scales = self.scales.buffer;
+        if gathered.encoding == ds41rt_loader::EngramEncoding::Nvfp4 {
+            // Compact FP4 rows leave enough room for their scales in the existing
+            // weight allocation, so FP8 and FP4 need identical GPU budgets.
+            scales = self.weights.buffer;
+            scales.ptr = unsafe { scales.ptr.cast::<u8>().add(gathered.weights.len()).cast() };
+            scales.bytes = gathered.scales.len();
+        }
+        let mut weights = self.weights.buffer;
+        weights.bytes = gathered.weights.len();
+        (weights, scales)
+    }
+    unsafe fn dequantize(&self, gathered: &EngramGatherView<'_>) -> Result<()> {
+        let (weights, scales) = self.gathered_buffers(gathered);
+        let rows = i32::try_from(gathered.rows * 24)?;
+        match gathered.encoding {
+            ds41rt_loader::EngramEncoding::Fp8 => unsafe {
+                self.library.cuda_engram_dequant_bf16_async(weights, scales, self.embeddings.buffer, rows, self.stream.raw)
+            },
+            ds41rt_loader::EngramEncoding::Nvfp4 => unsafe {
+                self.library.cuda_engram_nvfp4_dequant_bf16_async(weights, scales, gathered.global_scale,
+                    self.embeddings.buffer, rows, self.stream.raw)
+            },
+        }
+    }
     /// Consume a completed I/O-worker gather; this method never reads mapped tables.
     /// Output is contiguous BF16 [token,24,256] plus a byte-per-token text mask.
     pub fn upload(&mut self, gathered: &EngramGatherView<'_>) -> Result<EngramDeviceView> {
@@ -119,26 +145,20 @@ impl<'a> EngramDeviceRows<'a> {
         );
         let hash_rows = gathered.rows * 24;
         ensure!(
-            gathered.weights.len() == hash_rows * 256
-                && gathered.scales.len() == hash_rows * 8
+            gathered.weights.len() == hash_rows * gathered.encoding.weight_bytes()
+                && gathered.scales.len() == hash_rows * gathered.encoding.scale_bytes()
                 && gathered.text_mask.len() == gathered.rows
                 && gathered.text_mask.iter().all(|value| *value <= 1),
             "invalid gathered engram storage"
         );
         self.synchronize()?;
-        self.library
-            .copy_h2d(self.weights.buffer, gathered.weights)?;
-        self.library.copy_h2d(self.scales.buffer, gathered.scales)?;
+        let (weights, scales) = self.gathered_buffers(gathered);
+        self.library.copy_h2d(weights, gathered.weights)?;
+        self.library.copy_h2d(scales, gathered.scales)?;
         self.library
             .copy_h2d(self.text_mask.buffer, gathered.text_mask)?;
         unsafe {
-            self.library.cuda_engram_dequant_bf16_async(
-                self.weights.buffer,
-                self.scales.buffer,
-                self.embeddings.buffer,
-                i32::try_from(hash_rows)?,
-                self.stream.raw,
-            )?;
+            self.dequantize(gathered)?;
         }
         self.synchronize()?;
         self.ready = Some((gathered.rows, gathered.layer_index));
@@ -154,8 +174,8 @@ impl<'a> EngramDeviceRows<'a> {
         );
         let hash_rows = gathered.rows * 24;
         ensure!(
-            gathered.weights.len() == hash_rows * 256
-                && gathered.scales.len() == hash_rows * 8
+            gathered.weights.len() == hash_rows * gathered.encoding.weight_bytes()
+                && gathered.scales.len() == hash_rows * gathered.encoding.scale_bytes()
                 && gathered.text_mask.len() == gathered.rows
                 && gathered.text_mask.iter().all(|value| *value <= 1),
             "invalid gathered engram storage"
@@ -167,15 +187,15 @@ impl<'a> EngramDeviceRows<'a> {
         }
         let launched = (|| -> Result<()> {
             let mut offset = 0;
-            for (destination, bytes) in [(self.weights.buffer, gathered.weights.len()),
-                (self.scales.buffer, gathered.scales.len()), (self.text_mask.buffer, gathered.text_mask.len())] {
+            let (weights, scales) = self.gathered_buffers(gathered);
+            for (destination, bytes) in [(weights, gathered.weights.len()),
+                (scales, gathered.scales.len()), (self.text_mask.buffer, gathered.text_mask.len())] {
                 let mut host = self.staging.buffer;
                 host.ptr = unsafe { host.ptr.cast::<u8>().add(offset).cast() }; host.bytes = bytes;
                 unsafe { self.library.copy_host_buffer_h2d_async(destination, host, bytes, self.stream.raw)?; }
                 offset += bytes;
             }
-            unsafe { self.library.cuda_engram_dequant_bf16_async(self.weights.buffer, self.scales.buffer,
-                self.embeddings.buffer, i32::try_from(hash_rows)?, self.stream.raw) }
+            unsafe { self.dequantize(gathered) }
         })();
         if let Err(error) = launched { self.synchronize()?; return Err(error); }
         self.stream.wait().await?;
@@ -223,5 +243,69 @@ impl Drop for EngramDeviceRows<'_> {
         if let Err(error) = self.synchronize() {
             tracing::error!(%error, "draining native engram row production");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[ignore = "requires CUDA native library and real packed PLE fixture with CPU reference"]
+    fn nvfp4_ple_upload_matches_cpu_reference() -> Result<()> {
+        let library = unsafe { NativeLibrary::load(std::env::var("DS41RT_NATIVE_LIB")?)? };
+        let root = std::path::PathBuf::from(std::env::var("DS41RT_PLE_FIXTURE")?);
+        let fixtures: serde_json::Value = serde_json::from_slice(&std::fs::read(root.join("manifest.json"))?)?;
+        let runtime = tokio::runtime::Builder::new_current_thread().build()?;
+        for device in 0..2 {
+            library.cuda_set_device(device)?;
+            let mut owner = EngramDeviceRows::new(&library, 16, EngramDeviceRows::device_bytes(16)?)?;
+            let pointers = (owner.weights.buffer.ptr, owner.scales.buffer.ptr, owner.embeddings.buffer.ptr);
+            for _ in 0..2 {
+                for (index, fixture) in fixtures.as_array().context("fixture array")?.iter().enumerate() {
+                    let layer = fixture["layer"].as_u64().context("layer")?;
+                    let weights = std::fs::read(root.join(format!("layer{layer}-weights.bin")))?;
+                    let scales = std::fs::read(root.join(format!("layer{layer}-scales.bin")))?;
+                    let expected = std::fs::read(root.join(format!("layer{layer}-expected.bin")))?;
+                    let mask: Vec<u8> = fixture["text_mask"].as_array().context("mask")?.iter()
+                        .map(|v| v.as_u64().unwrap() as u8).collect();
+                    // Reuse the owner at smaller and larger live sizes; FP4 scale
+                    // placement depends on live rows, not allocation capacity.
+                    for rows in [1, mask.len(), 3, mask.len()] {
+                        let gathered = EngramGatherView {
+                            weights: &weights[..rows*24*128], scales: &scales[..rows*24*16],
+                            text_mask: &mask[..rows], rows, layer_index: index,
+                            encoding: ds41rt_loader::EngramEncoding::Nvfp4,
+                            global_scale: fixture["global_scale"].as_f64().context("global scale")? as f32,
+                        };
+                        for cooperative in [false, true] {
+                            let view = if cooperative { runtime.block_on(owner.upload_cooperative(&gathered))? }
+                                else { owner.upload(&gathered)? };
+                            let mut actual = vec![0; view.embeddings.bytes];
+                            library.copy_d2h(&mut actual, view.embeddings)?;
+                            assert_eq!(actual, expected[..rows*24*512], "GPU {device}, layer {layer}, rows {rows}");
+                            let mut actual_mask = vec![0; rows];
+                            library.copy_d2h(&mut actual_mask, view.text_mask)?;
+                            assert_eq!(actual_mask, mask[..rows]);
+                        }
+                        runtime.block_on(owner.check_cooperative(&gathered))?;
+                        assert_eq!(pointers, (owner.weights.buffer.ptr, owner.scales.buffer.ptr, owner.embeddings.buffer.ptr));
+                    }
+                    // Reuse the same allocation with the original FP8 format.
+                    let weights = vec![0x38; 24*256];
+                    let scales = vec![127; 24*8];
+                    let gathered = EngramGatherView {
+                        weights: &weights, scales: &scales, text_mask: &[1], rows: 1,
+                        layer_index: index, encoding: ds41rt_loader::EngramEncoding::Fp8,
+                        global_scale: 1.0,
+                    };
+                    let view = runtime.block_on(owner.upload_cooperative(&gathered))?;
+                    let mut actual = vec![0; view.embeddings.bytes];
+                    library.copy_d2h(&mut actual, view.embeddings)?;
+                    assert!(actual.chunks_exact(2).all(|v| v == [0x80, 0x3f]));
+                }
+            }
+        }
+        Ok(())
     }
 }
