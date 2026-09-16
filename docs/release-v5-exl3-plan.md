@@ -197,3 +197,19 @@ binary hashes. Unique execution buffers for this small probe are 7,417,600 bytes
 on RTX and 6,628,928 bytes on Spark; these are not deployment memory budgets.
 Full expert inventories, TP reduction, packed prefill routing, Spark FP8 wire
 input, compressed residency and serving integration still require verification.
+
+`export_b12x_v41_exl3_routes_aot.py` now exports the pinned B12x small-prefix
+and parallel histogram/prefix/scatter route helpers into a native CUDA driver
+bridge. It uses preallocated caller buffers, validates their sizes/alignment
+and non-overlap, and launches on the caller stream without allocation or
+synchronization. Module creation is bound to the owning CUDA context.
+
+The standalone CPU oracle passed on both SM120 and SM121 at planned capacities
+16 and 1,024 with 384 experts/top-6. Checks include live rows 1, 3, capacity-1
+and capacity; randomized mappings, invalid IDs and empty routes; exact route
+coverage and block ownership; padding sentinels and untouched buffer guards;
+and CUDA graph replay after changing route IDs and mappings. Invalid host-side
+row/byte bounds are rejected. [Results and artifacts](release-v5-exl3-routes.json)
+also document the initial missing Triton scratch arguments and corrected ABI.
+This qualifies standalone route metadata preparation; connecting it to the
+mixed compute bridge and native serving remains outstanding.

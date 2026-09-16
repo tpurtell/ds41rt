@@ -1,0 +1,161 @@
+{
+  "scope": "Native route preparation only. CPU oracle checks route coverage, expert ownership, padding, empty/masked routes and untouched allocation guards. Does not establish end-to-end mixed EXL3 compute, serving correctness or performance.",
+  "initial_failure": "The first native launch omitted two trailing Triton scratch-pointer parameters, causing a host segmentation fault in the driver launch. Export now verifies the PTX parameter types and includes both null pointers after requiring zero scratch sizes. Original failure logs are archived.",
+  "source_revision": "c024d14ce936ddfc2c863377d033d85e1787924b",
+  "artifact": "evidence/v5-exl3-routes-aot.tar.gz",
+  "artifact_sha256": "7a739c6b45cbd163652035489b4fb76f60fe2214e6db2192159edb03954dc7dd",
+  "results": [
+    {
+      "passed": true,
+      "scope": "Native metadata route packing; CPU coverage, ownership, padding and guard oracle. Not expert compute or serving qualification.",
+      "manifest_sha256": "1f1f1ad208f984a935310b07d29cd4c36cce3affe27d11f5b6af8c21a1187f36",
+      "library_sha256": "b15d75e953645a52ff4c571c284c098c26444a1edfeb74a839f68c3d8231d106",
+      "compute": [
+        12,
+        0
+      ],
+      "capacity": 16,
+      "experts": 384,
+      "topk": 6,
+      "small_prefix": true,
+      "checks": [
+        {
+          "rows": 1,
+          "random_and_empty_routes": true,
+          "guard_regions": true
+        },
+        {
+          "rows": 3,
+          "random_and_empty_routes": true,
+          "guard_regions": true
+        },
+        {
+          "rows": 15,
+          "random_and_empty_routes": true,
+          "guard_regions": true
+        },
+        {
+          "rows": 16,
+          "random_and_empty_routes": true,
+          "guard_regions": true
+        }
+      ],
+      "changed_graph_inputs_and_mapping": true,
+      "invalid_host_bounds_rejected": true
+    },
+    {
+      "passed": true,
+      "scope": "Native metadata route packing; CPU coverage, ownership, padding and guard oracle. Not expert compute or serving qualification.",
+      "manifest_sha256": "8e61ca6a949c6b3f1daa1d63ec42725992b017d4ebae4a533cdd495a1a5456aa",
+      "library_sha256": "2de0a7aa47a460fee7f3794e930e153891bcde66db8c0cf100c9773690c6d1ac",
+      "compute": [
+        12,
+        0
+      ],
+      "capacity": 1024,
+      "experts": 384,
+      "topk": 6,
+      "small_prefix": false,
+      "checks": [
+        {
+          "rows": 1,
+          "random_and_empty_routes": true,
+          "guard_regions": true
+        },
+        {
+          "rows": 3,
+          "random_and_empty_routes": true,
+          "guard_regions": true
+        },
+        {
+          "rows": 1023,
+          "random_and_empty_routes": true,
+          "guard_regions": true
+        },
+        {
+          "rows": 1024,
+          "random_and_empty_routes": true,
+          "guard_regions": true
+        }
+      ],
+      "changed_graph_inputs_and_mapping": true,
+      "invalid_host_bounds_rejected": true
+    },
+    {
+      "passed": true,
+      "scope": "Native metadata route packing; CPU coverage, ownership, padding and guard oracle. Not expert compute or serving qualification.",
+      "manifest_sha256": "7239010e8ffd361d86fb114a7d50cb5c983dd3d3dae7a05fc6d7c62e3cf63d89",
+      "library_sha256": "d623032afc4887ed300f481e05801eca74a620faae833e25ac6dec1bd5624bc9",
+      "compute": [
+        12,
+        1
+      ],
+      "capacity": 16,
+      "experts": 384,
+      "topk": 6,
+      "small_prefix": true,
+      "checks": [
+        {
+          "rows": 1,
+          "random_and_empty_routes": true,
+          "guard_regions": true
+        },
+        {
+          "rows": 3,
+          "random_and_empty_routes": true,
+          "guard_regions": true
+        },
+        {
+          "rows": 15,
+          "random_and_empty_routes": true,
+          "guard_regions": true
+        },
+        {
+          "rows": 16,
+          "random_and_empty_routes": true,
+          "guard_regions": true
+        }
+      ],
+      "changed_graph_inputs_and_mapping": true,
+      "invalid_host_bounds_rejected": true
+    },
+    {
+      "passed": true,
+      "scope": "Native metadata route packing; CPU coverage, ownership, padding and guard oracle. Not expert compute or serving qualification.",
+      "manifest_sha256": "6ce0a8b032a976497f88880df344fc6eeb0492cedf67c54cb9d19991c3237443",
+      "library_sha256": "95bd370324c62c1998947bb071d0ac5ddb0e51450efa114650a31578defc623c",
+      "compute": [
+        12,
+        1
+      ],
+      "capacity": 1024,
+      "experts": 384,
+      "topk": 6,
+      "small_prefix": false,
+      "checks": [
+        {
+          "rows": 1,
+          "random_and_empty_routes": true,
+          "guard_regions": true
+        },
+        {
+          "rows": 3,
+          "random_and_empty_routes": true,
+          "guard_regions": true
+        },
+        {
+          "rows": 1023,
+          "random_and_empty_routes": true,
+          "guard_regions": true
+        },
+        {
+          "rows": 1024,
+          "random_and_empty_routes": true,
+          "guard_regions": true
+        }
+      ],
+      "changed_graph_inputs_and_mapping": true,
+      "invalid_host_bounds_rejected": true
+    }
+  ]
+}
