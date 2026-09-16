@@ -18,6 +18,16 @@ flowchart LR
 
 ## Corrected clean v4 decode results
 
+**Release blocker:** single-RTX qualification reproduced CUDA out-of-memory
+after the second mixed C16 sweep. The original run reached 97,248 MiB used;
+the captured reproduction had 27 MiB free and reported compact reduction
+CUDA status 2. The 512-entry-per-wave index graph retention exceeds the
+single-card runtime reserve after accumulated request layouts. A 128-entry
+bound is being evaluated while preserving KV capacity; it is not yet qualified.
+The [failure evidence](sparkinfer-upstream-single-memory-20260916.json)
+preserves the failed streams and reproduction logs. The dual measurements
+below describe the earlier 512-entry candidate, not a completed release.
+
 The completed [dual-RTX decode measurements](sparkinfer-upstream-v4-dual-decode-20260916.json)
 use the standard clean images built from `6f118818`, matched published prompts,
 three samples, 400 W per RTX and stock memory clocks. Weighted eight-type

@@ -1,0 +1,32 @@
+{
+  "scope": "Release-blocking single-RTX memory exhaustion after accumulated mixed serving history",
+  "engine_revision": "6f118818c18317b961789f5afc34bec21959c41c",
+  "sequence": [
+    "direct decode",
+    "code concurrency",
+    "topic concurrency",
+    "counting concurrency",
+    "mixed sweep 1",
+    "mixed sweep 2 C16 failure"
+  ],
+  "reproduced": true,
+  "server_errors": [
+    "2026-09-16T07:08:58.319128Z ERROR ds41rt::v41_native_serve::scheduler: native decode round failed error=V4.1 compact reduction failed with CUDA status 2"
+  ],
+  "original_peak_used_mib": 97248,
+  "reproduction_last_free_mib": 27,
+  "kv_global_bytes": 16681077760,
+  "logical_pool_tokens": 18710016,
+  "private_tail_tokens": 32768,
+  "startup_runtime_headroom_bytes": 2147483648,
+  "candidate_fix": {
+    "status": "being built; not yet qualified",
+    "retained_index_graphs_per_wave_before": 512,
+    "retained_index_graphs_per_wave_candidate": 128,
+    "kv_pool_change": false
+  },
+  "archive": {
+    "path": "docs/evidence/upstream-single-memory-failure-20260916.tar.gz",
+    "sha256": "cc412c3d07ce10a68406753875776b3a70cd615034becb3581b7bd8179695134"
+  }
+}
