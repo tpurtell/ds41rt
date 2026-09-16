@@ -12,7 +12,7 @@ use std::rc::Rc;
 
 pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Receiver<NativeRequest>,
     ready: &mut Option<oneshot::Sender<std::result::Result<(), String>>>) -> Result<()> {
-    let expert_layers = match args.rtx_expert_layers {
+    let minimum_expert_layers = match args.rtx_expert_layers {
         memory::LocalLayers::Auto => 20,
         memory::LocalLayers::Count(count) => {
             ensure!((20..=40).contains(&count), "dual RTX expert layers must be 20..=40");
@@ -43,18 +43,18 @@ pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Recei
         let per_lane = crate::v41_experts::tp2::ExpertWave::exl3_device_bytes(&exl3_directory, capacity)?;
         tracing::info!(per_gpu_per_lane_bytes=per_lane, capacity, "EXL3 TP2 expert workspace plan");
     }
-    let rank_budgets = [0usize, 1].map(|rank| -> Result<usize> {
-        let budgets = (0..expert_layers).map(|layer| {
+    let rank_prefix_peaks = [0usize, 1].map(|rank| -> Result<Vec<usize>> {
+        let (mut resident, mut transient) = (0usize, 0usize);
+        (0..40).map(|layer| {
             let selection = ExpertLayer::BackboneTp2 { layer, rank };
-            if compressed { crate::v41_experts::exl3::Exl3Weights::plan(&catalog, selection) }
-            else { ExpertWeights::plan(&lib, &catalog, selection) }
-        }).collect::<Result<Vec<_>>>()?;
-        let resident = budgets.iter().try_fold(0usize, |sum, b| sum.checked_add(b.resident_bytes)
-            .context("encoder resident budget overflow"))?;
-        let transient = budgets.iter().map(|b| Ok(b.peak_device_bytes()? - b.resident_bytes))
-            .collect::<Result<Vec<_>>>()?.into_iter().max().unwrap_or(0);
-        resident.checked_add(transient).context("encoder load budget overflow")
+            let budget = if compressed { crate::v41_experts::exl3::Exl3Weights::plan(&catalog, selection)? }
+                else { ExpertWeights::plan(&lib, &catalog, selection)? };
+            resident = resident.checked_add(budget.resident_bytes).context("TP2 resident budget overflow")?;
+            transient = transient.max(budget.peak_device_bytes()? - budget.resident_bytes);
+            resident.checked_add(transient).context("TP2 load budget overflow")
+        }).collect()
     }).into_iter().collect::<Result<Vec<_>>>()?;
+    let prefix_peak: Vec<_> = (0..40).map(|layer| [rank_prefix_peaks[0][layer], rank_prefix_peaks[1][layer]]).collect();
     let weights = BackboneLaneWeights::load_distributed(
         &lib,
         &catalog,
@@ -112,14 +112,6 @@ pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Recei
         )
     })?;
     memory_checkpoint("head normalization weights")?;
-    eprintln!("loading bottom {expert_layers} expert layers as TP2");
-    let load_rank = |rank: usize| -> Result<_> {
-        let weights = if compressed {
-            RankWeights::load_exl3(devices[rank], &catalog, expert_layers, rank_budgets[rank], &exl3_directory)?
-        } else { RankWeights::load(devices[rank], &catalog, expert_layers, rank_budgets[rank])? };
-        Ok(Rc::new(weights))
-    };
-    let routed = [load_rank(0)?, load_rank(1)?];
     let shared: [Rc<Vec<SharedWeights<'_>>>; 2] = [0, 1]
         .map(|r| {
             (0..40)
@@ -214,17 +206,6 @@ pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Recei
     let mut second = make_pass(80).context("constructing second distributed target lane")?;
     if args.dspark && args.dspark_draft_limit > 5 { second.reserve_sparse_decode_rows(64)?; }
     memory_checkpoint("second target lane")?;
-    let make_transport = || {
-        let mut transport = devices[1].own(|| NativeTp4Wave::new(&lib,
-            V41Tp4Roce::new(args.peers.clone().try_into().map_err(|_| anyhow::anyhow!("four Spark peers required"))?,
-                [1, 2, 3, 4], capacity, TcpTransportConfig { timeout: Duration::from_secs(120),
-                    max_frame_bytes: 64 << 20 })?, NativeTp4Wave::device_bytes(capacity)?))?;
-        transport.install_tp2(tp2_ffn::Wave::new(routed.clone(), shared.clone(), expert_layers, capacity)?)?;
-        Ok::<_, anyhow::Error>(transport)
-    };
-    let mut transport = make_transport()?;
-    let mut second_transport = make_transport()?;
-    memory_checkpoint("TP2 transports")?;
     let draft_weights = if args.dspark {
         Some(devices[1].own(|| crate::v41_experts::dspark::DsparkWeights::load_serving_with_width(&lib, &catalog,
             capacity, args.concurrency, 32 << 30, 16 << 20, if args.dspark_draft_limit > 5 { 7 } else { 5 },
@@ -238,7 +219,6 @@ pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Recei
         draft.set_adaptive(args.adaptive_dspark());
         draft.set_confidence_cutoff(args.dspark_confidence_cutoff);
         draft.set_reuse_floor(args.dspark_reuse_floor)?;
-        draft.configure_cost_model(&transport)?;
     }
     memory_checkpoint("draft runtime")?;
     // Vision and target snapshot copies use GPU0. These allocations precede KV sizing.
@@ -252,10 +232,56 @@ pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Recei
     let draft_snapshot_bytes = draft.as_mut().map(|d| d.reserve_prefixes(snapshot_slots)).transpose()?.unwrap_or(0);
     let snapshot_bytes = target_prefix_pool.as_ref().map_or(0, crate::v41_memory::SnapshotPool::device_bytes) + draft_snapshot_bytes;
     memory_checkpoint("snapshot arenas")?;
+    // Every other persistent owner is now live. Reserve both transport lanes,
+    // minimum routed weights, KV and setup headroom before filling extra layers.
+    let per_lane = if compressed { tp2_ffn::Wave::exl3_device_bytes(&exl3_directory, &lib, capacity)? }
+        else { tp2_ffn::Wave::device_bytes(&lib, capacity)? };
+    let transport_bytes = [2 * per_lane, 2 * per_lane + 2 * NativeTp4Wave::device_bytes(capacity)?];
+    let before_experts = [devices[0].run(|| lib.cuda_memory_info())?, devices[1].run(|| lib.cuda_memory_info())?];
+    let mut reserved_memory = before_experts;
+    for gpu in 0..2 {
+        let deferred = transport_bytes[gpu].checked_add(prefix_peak[minimum_expert_layers-1][gpu])
+            .and_then(|v| v.checked_add(memory::distributed::EXPERT_SETUP_HEADROOM))
+            .context("deferred TP2 budget overflow")?;
+        reserved_memory[gpu].0 = reserved_memory[gpu].0.checked_sub(deferred)
+            .context("minimum TP2 placement leaves no cache memory")?;
+    }
+    let reserved_pool = memory::distributed::PoolPlan::new(map, args.concurrency as usize,
+        args.max_context_tokens as usize, args.prefix_cache_entries as usize, snapshot_bytes,
+        args.kv_pool_size, args.memory_reservation, reserved_memory)?;
+    let expert_budget = std::array::from_fn(|gpu|
+        prefix_peak[minimum_expert_layers-1][gpu] + reserved_pool.unused_bytes[gpu]);
+    let expert_layers = memory::distributed::expert_layers(args.rtx_expert_layers, &prefix_peak, expert_budget)?;
+    let rank_budgets = prefix_peak[expert_layers-1];
+    tracing::info!(expert_layers, expert_budget=?expert_budget, rank_peak_bytes=?rank_budgets,
+        reserved_cache_bytes=?reserved_pool.cache_bytes, transport_bytes=?transport_bytes,
+        setup_headroom_bytes=memory::distributed::EXPERT_SETUP_HEADROOM, "dual RTX bottom-up expert placement");
+    eprintln!("loading bottom {expert_layers} expert layers as TP2");
+    let load_rank = |rank: usize| -> Result<_> {
+        let weights = if compressed {
+            RankWeights::load_exl3(devices[rank], &catalog, expert_layers, rank_budgets[rank], &exl3_directory)?
+        } else { RankWeights::load(devices[rank], &catalog, expert_layers, rank_budgets[rank])? };
+        Ok(Rc::new(weights))
+    };
+    let routed = [load_rank(0)?, load_rank(1)?];
+    let make_transport = || {
+        let mut transport = devices[1].own(|| NativeTp4Wave::new(&lib,
+            V41Tp4Roce::new(args.peers.clone().try_into().map_err(|_| anyhow::anyhow!("four Spark peers required"))?,
+                [1, 2, 3, 4], capacity, TcpTransportConfig { timeout: Duration::from_secs(120),
+                    max_frame_bytes: 64 << 20 })?, NativeTp4Wave::device_bytes(capacity)?))?;
+        transport.install_tp2(tp2_ffn::Wave::new(routed.clone(), shared.clone(), expert_layers, capacity)?)?;
+        Ok::<_, anyhow::Error>(transport)
+    };
+    let mut transport = make_transport()?;
+    let mut second_transport = make_transport()?;
+    memory_checkpoint("TP2 transports")?;
+    if let Some(draft) = &mut draft { draft.configure_cost_model(&transport)?; }
     let memory = [devices[0].run(|| lib.cuda_memory_info())?, devices[1].run(|| lib.cuda_memory_info())?];
     let pool = memory::distributed::PoolPlan::new(map, args.concurrency as usize,
         args.max_context_tokens as usize, args.prefix_cache_entries as usize, snapshot_bytes,
         args.kv_pool_size, args.memory_reservation, memory)?;
+    ensure!(pool.pages.iter().zip(reserved_pool.pages).all(|(&actual, reserved)| actual >= reserved),
+        "TP2 setup exceeded its budget and reduced the reserved KV pool");
     tracing::info!(source_pages=?pool.pages, global_bytes=pool.global_bytes, cache_bytes=?pool.cache_bytes,
         occupied_before=?pool.occupied_before, reservation_bytes=?pool.reservation_bytes,
         unused_bytes=?pool.unused_bytes, desired_groups=pool.desired_groups, snapshot_slots, snapshot_bytes,

@@ -1,0 +1,98 @@
+{
+  "passed": true,
+  "source_base_commit": "73e120f",
+  "scope": "Memory-budgeted dual-RTX expert placement and aligned EXL3 weight arenas; component references, functional serving and diagnostic code decode. Final performance/loading qualification remains pending.",
+  "automatic_layers": 25,
+  "arena": {
+    "pointer_alignment_bytes": 256,
+    "allocation_alignment_bytes": 2097152,
+    "allocation_policy": "One owned allocation per layer, with disjoint projection/rotation/metadata views; padded allocation size is charged to the budget.",
+    "tp2_resident_bytes_per_layer_per_gpu": 2791309312,
+    "tp2_resident_bytes_25_layers_per_gpu": 69782732800
+  },
+  "placement": {
+    "runtime_headroom_bytes": 838860800,
+    "expert_setup_headroom_bytes": 67108864,
+    "expert_budget": [
+      72564141144,
+      73750343000
+    ],
+    "transport_bytes": [
+      2620852264,
+      2872510504
+    ],
+    "occupied_before_kv": [
+      90430504960,
+      91862859776
+    ],
+    "cache_device_bytes": [
+      7879265152,
+      5259659904
+    ],
+    "unused_bytes": [
+      2824860800,
+      4008965504
+    ],
+    "kv_global_bytes": 13094420480,
+    "kv_token_target": 14680064,
+    "private_tail_tokens": 32768,
+    "attention_split": "0-19 / 20-39 unchanged",
+    "spark_active_layers": "25-39; workers retain 20-39"
+  },
+  "rejected_initial_attempt": "Payload-only planning chose 26 layers; CUDA allocation overhead would have reduced KV, and the final guard rejected startup. No request served from that attempt. One padded arena per layer now exposes the allocation budget and auto selects 25.",
+  "tests": [
+    "eight distributed memory tests, including tighter-rank and exact-KV preservation",
+    "TP1 references and all-capacity changed-input graph replay on both RTX GPUs",
+    "TP2 FP32 rank and BF16 peer sums match B12x",
+    "all three dSpark stage references on both GPUs",
+    "complete K5/K7 draft chains, cancellation/reuse and prefix restoration",
+    "native ARM worker all capacity boundaries and mapped/chunked response references",
+    "C1/C16 code decode objective checks",
+    "arithmetic, concurrent code/topic, schema, high-thinking tool call",
+    "cached tool continuation, 4822-token needle and 4828-token cached follow-up",
+    "stream cancellation and recovery"
+  ],
+  "code_summaries": [
+    {
+      "concurrency": 1,
+      "samples": 3,
+      "median_aggregate_tps": 193.41252685574636,
+      "min_aggregate_tps": 193.39600646156606,
+      "max_aggregate_tps": 194.58214440699618
+    },
+    {
+      "concurrency": 16,
+      "samples": 3,
+      "median_aggregate_tps": 1320.1166617952802,
+      "min_aggregate_tps": 1057.8962544964475,
+      "max_aggregate_tps": 1327.3182174863239
+    }
+  ],
+  "decode_controls": {
+    "repeats": 3,
+    "power_limit_watts": 400,
+    "memory_clock_settings_changed": false,
+    "thinking": "disabled",
+    "draft_limit": 7,
+    "prefill_batch_tokens": 2048,
+    "concurrency_limit": 16,
+    "retained_entries": 24
+  },
+  "startup_observation_ms": 30464,
+  "loading_scope": "Owner startup only, different cache/launch history than earlier runs; not a matched regression test. Startup-order and arena changes still require comparative loading qualification.",
+  "worker_scope": "Full serving uses optimized b969f48 ARM workers; current aligned-arena ARM code is separately verified by its native worker reference test.",
+  "remaining": [
+    "full-weight startup after reordered allocations",
+    "matched loading checks",
+    "generic four-tier kernel support and kernel tuning",
+    "adaptive recalibration and content acceptance",
+    "all requested release performance/quality/quant tables and clean images",
+    "v5 publication"
+  ],
+  "verified_at": "2026-09-16T18:42:13.855703+00:00",
+  "archive": "docs/evidence/v5-exl3-auto-placement.tar.gz",
+  "archive_sha256": "f2c03b6a97fbb9bbd02dd2b284952bec935e628452b31befa59b082f234af7af",
+  "temporary_workers_removed": true,
+  "original_worker_ports_restored": true,
+  "production_restored_health_http_status": 200
+}

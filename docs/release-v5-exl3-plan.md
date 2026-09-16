@@ -921,3 +921,41 @@ and follow-up, and cancellation/recovery. It leaves 5,465,175,168 and
 6,626,211,200 unused bytes within the configured GPU reservations, after the
 existing runtime headroom. Final automatic residency, kernel tuning, adaptive
 calibration, broader quality/acceptance and all release gates remain ahead.
+
+## Automatic dual-RTX placement and aligned weight arenas
+
+[Automatic-placement evidence](release-v5-exl3-auto-placement.json) now selects
+25 bottom-up EXL3 expert layers with the default 14M-token pool intact. Startup
+allocates attention, dSpark, vision and snapshot owners first, reserves both
+transport lanes and KV, then fits complete expert-layer prefixes against each
+GPU independently. Explicit layer and KV overrides retain their meaning. A
+post-allocation guard rejects any setup that reduces the reserved KV pool.
+
+The first payload-only plan selected 26 layers, but CUDA allocation overhead
+would have shrunk KV; the guard rejected that startup before serving requests.
+EXL3 weights now use one allocation per layer, with 256-byte-aligned views and
+an explicitly charged 2-MiB-rounded allocation size. This avoids per-table
+allocation overhead and reduces allocation calls without changing packed data.
+Each TP2 layer now budgets 2,791,309,312 bytes per GPU, including padding.
+
+The live 25-layer run reserves 13,094,420,480 global KV/index bytes for
+14 × 1,048,576 tokens plus 32,768 private-tail tokens. After cache and the existing
+800-MiB runtime allowance, unused reservation is 2,824,860,800 bytes on RTX0 and
+4,008,965,504 on RTX1. Planning also reserves 64 MiB for deferred expert module/
+stream setup. Attention/cache placement is unchanged. Spark workers still load
+layers 20–39; serving uses their routed experts only at layers 25–39.
+
+Both RTX GPUs pass TP1/TP2 and dSpark B12x references, changed-input graph replay,
+K5/K7 chains, cancellation and prefix restoration. The current native ARM worker
+passes all capacity boundaries with mapped/chunked response references. Full
+serving passes C16 code, tools, structured output and cached needle continuation.
+Three warm code samples give medians of 193.41 tokens/s at C1 and 1,320.12
+aggregate at C16. The first C16 sample includes substantial settling; these are
+diagnostics, not final release numbers. Full serving still uses the previously
+built optimized ARM workers; the new ARM arena code was tested separately.
+
+Startup-owner time was 30.46 seconds. Earlier launches had different cache and
+load order, so neither a loading speedup nor absence of a loading regression is
+established. Matched loading checks and full-weight startup with the reordered
+allocations remain required, alongside generic-tier support, kernel tuning,
+adaptive/acceptance calibration and the complete v5 release qualification.

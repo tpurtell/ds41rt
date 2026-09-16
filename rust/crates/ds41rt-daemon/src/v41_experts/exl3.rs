@@ -12,9 +12,27 @@ pub(crate) mod execution;
 pub(crate) mod worker;
 
 pub(crate) struct Exl3Weights<'a> {
-    buffers: Vec<DeviceAllocation<'a>>,
+    buffers: Vec<WeightBuffer>,
+    _arena: DeviceAllocation<'a>,
     pub(crate) layout: V41Exl3Residency,
     pub(crate) budget: ExpertLoadBudget,
+}
+
+struct WeightBuffer { buffer: Ds41rtDeviceBuffer }
+
+/// One explicitly sized allocation avoids independent CUDA allocation padding
+/// for every projection/rotation table. All kernel pointers remain 256B aligned.
+fn arena_layout(plan: &V41Exl3Residency) -> Result<(Vec<usize>, usize)> {
+    let mut bytes = 0usize;
+    let mut offsets = Vec::with_capacity(plan.buffers.len());
+    for buffer in &plan.buffers {
+        bytes = bytes.checked_add(255).context("EXL3 arena alignment overflow")? & !255;
+        offsets.push(bytes);
+        bytes = bytes.checked_add(buffer.bytes.max(16)).context("EXL3 arena size overflow")?;
+    }
+    let page = 2 * 1024 * 1024;
+    bytes = bytes.checked_add(page-1).context("EXL3 arena page alignment overflow")? / page * page;
+    Ok((offsets, bytes))
 }
 
 fn layout(catalog: &OfficialV41Catalog, layer: ExpertLayer) -> Result<V41Exl3Residency> {
@@ -53,7 +71,7 @@ fn budget(catalog: &OfficialV41Catalog, plan: &V41Exl3Residency) -> Result<Exper
         .checked_mul(64)
         .context("EXL3 scratch overflow")?;
     Ok(ExpertLoadBudget {
-        resident_bytes: plan.bytes(),
+        resident_bytes: arena_layout(plan)?.1,
         device_staging_bytes: 0,
         pinned_host_bytes: staging.max(init_bytes) * EXPERT_READ_LANES * BANKS,
         read_scratch_bytes: scratch * EXPERT_READ_LANES * BANKS,
@@ -91,11 +109,14 @@ impl<'a> Exl3Weights<'a> {
             "EXL3 layer needs {} device bytes, budget is {available_device_bytes}",
             budget.resident_bytes
         );
-        let buffers = layout
-            .buffers
-            .iter()
-            .map(|b| DeviceAllocation::new(library, b.bytes.max(16)))
-            .collect::<Result<Vec<_>>>()?;
+        let (offsets, bytes) = arena_layout(&layout)?;
+        let arena = DeviceAllocation::new(library, bytes)?;
+        let buffers: Vec<_> = layout.buffers.iter().zip(offsets).map(|(spec, offset)| {
+            let mut buffer = arena.buffer;
+            buffer.ptr = unsafe { buffer.ptr.cast::<u8>().add(offset).cast() };
+            buffer.bytes = spec.bytes.max(16);
+            WeightBuffer { buffer }
+        }).collect();
         let per_host = budget.pinned_host_bytes / (EXPERT_READ_LANES * BANKS);
         let per_scratch = budget.read_scratch_bytes / (EXPERT_READ_LANES * BANKS);
         let mut hosts = (0..BANKS)
@@ -222,6 +243,7 @@ impl<'a> Exl3Weights<'a> {
         }
         Ok(Self {
             buffers,
+            _arena: arena,
             layout,
             budget,
         })

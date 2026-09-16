@@ -7,6 +7,30 @@
 pub(crate) const RUNTIME_HEADROOM: usize = 800 * 1024 * 1024;
 const DEFAULT_POOL_TOKENS: usize = 14 * 1_048_576;
 
+/// CUDA module/stream setup follows the deferred expert loading phase. Keep
+/// this separate from the existing request-time graph/admission headroom.
+pub(crate) const EXPERT_SETUP_HEADROOM: usize = 64 * 1024 * 1024;
+
+/// Prefix budgets include resident weights and peak transient loading storage.
+/// Both ranks must fit independently; spare bytes cannot cross the PCIe link.
+pub(crate) fn expert_layers(requested: super::LocalLayers, prefix_peak: &[[usize; 2]],
+    available: [usize; 2]) -> anyhow::Result<usize> {
+    use anyhow::ensure;
+    ensure!(prefix_peak.len() == 40 && prefix_peak.windows(2).all(|w|
+        w[0].iter().zip(w[1]).all(|(&a, b)| a <= b)), "invalid TP2 prefix budgets");
+    let fits = |count: usize| prefix_peak[count-1].iter().zip(available).all(|(&used, free)| used <= free);
+    let layers = match requested {
+        super::LocalLayers::Count(count) => {
+            ensure!((20..=40).contains(&count), "dual RTX expert layers must be 20..=40");
+            count
+        }
+        super::LocalLayers::Auto => (20..=40).rev().find(|&count| fits(count))
+            .ok_or_else(|| anyhow::anyhow!("minimum TP2 expert placement does not fit reserved memory"))?,
+    };
+    ensure!(fits(layers), "requested TP2 expert layers exceed the per-GPU memory budget");
+    Ok(layers)
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct SourcePoolPlan {
     pub groups: usize,
@@ -132,6 +156,31 @@ impl PoolPlan {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn automatic_expert_placement_preserves_pool_and_obeys_tighter_rank() -> anyhow::Result<()> {
+        let totals = [101_973_491_712usize, 101_970_345_984];
+        // Measured 20-layer EXL3 fixed occupancy, before its KV allocation.
+        let occupied = [76_599_787_520usize, 78_055_211_008];
+        let memory = std::array::from_fn(|gpu| (totals[gpu] - occupied[gpu], totals[gpu]));
+        let placement = crate::v41_backbone_cache::CachePlacement::encoder_decoder();
+        let pool = PoolPlan::new(placement, 16, 1_048_576, 24, 146_150_400, None, None, memory)?;
+        let layer_bytes = 2_789_290_000usize;
+        let prefix: Vec<_> = (1..=40).map(|n| [n*layer_bytes; 2]).collect();
+        let available = std::array::from_fn(|gpu| prefix[19][gpu] + pool.unused_bytes[gpu] - EXPERT_SETUP_HEADROOM);
+        assert_eq!(expert_layers(super::super::LocalLayers::Auto, &prefix, available)?, 25);
+        assert!(expert_layers(super::super::LocalLayers::Count(26), &prefix, available).is_err());
+        let mut after = memory;
+        for gpu in 0..2 { after[gpu].0 -= 5*layer_bytes + EXPERT_SETUP_HEADROOM; }
+        let retained = PoolPlan::new(placement, 16, 1_048_576, 24, 146_150_400,
+            Some(super::super::ByteSize(pool.global_bytes)), None, after)?;
+        assert_eq!(retained.pages, pool.pages);
+        assert_eq!(expert_layers(super::super::LocalLayers::Auto, &prefix,
+            [available[0], 24*layer_bytes])?, 24);
+        assert!(expert_layers(super::super::LocalLayers::Auto, &prefix,
+            [available[0], 20*layer_bytes-1]).is_err());
+        Ok(())
+    }
 
     #[test]
     fn measured_dual_budget_reserves_fourteen_full_contexts_and_graph_headroom() -> anyhow::Result<()> {
