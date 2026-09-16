@@ -21,6 +21,52 @@ pub struct V41Exl3Info {
     pub sum_scalars: usize,
 }
 
+impl V41Exl3Info {
+    fn from_words(words: [u32; 16]) -> Result<Self> {
+        ensure!(
+            words[0] == 2
+                && matches!(words[15], 2 | 4)
+                && words[1] == 5120
+                && matches!(words[2], 512 | 640 | 1152 | 2304)
+                && words[3] <= 384
+                && words[3] >= words[5]
+                && words[4] > 0
+                && matches!(words[5], 3 | 6)
+                && matches!(words[6], 2..=4),
+            "invalid EXL3 native geometry: {words:?}"
+        );
+        let tier_count = words[6] as usize;
+        let bits: [u32; 4] = words[11..15].try_into().unwrap();
+        ensure!(
+            bits[..tier_count].iter().all(|bit| (2..=5).contains(bit))
+                && bits[tier_count..].iter().all(|bit| *bit == 0)
+                && bits[..tier_count]
+                    .iter()
+                    .enumerate()
+                    .all(|(i, bit)| !bits[..i].contains(bit)),
+            "invalid EXL3 native tier bits"
+        );
+        ensure!(
+            words[7..11].iter().all(|count| *count > 0 && *count <= 64),
+            "invalid EXL3 pointer/scalar ABI"
+        );
+        Ok(Self {
+            output_element_bytes: words[15] as usize,
+            hidden: words[1] as usize,
+            intermediate: words[2] as usize,
+            experts: words[3] as usize,
+            capacity: words[4] as usize,
+            topk: words[5] as usize,
+            tier_count,
+            bits,
+            core_pointers: words[7] as usize,
+            core_scalars: words[8] as usize,
+            sum_pointers: words[9] as usize,
+            sum_scalars: words[10] as usize,
+        })
+    }
+}
+
 type Launch = unsafe extern "C" fn(*mut c_void, *const *mut c_void, *const i32, *mut c_void) -> i32;
 type Destroy = unsafe extern "C" fn(*mut c_void);
 
@@ -54,43 +100,7 @@ impl V41Exl3Kernel {
             query(words.as_mut_ptr(), 16) == 0,
             "EXL3 native info query failed"
         );
-        ensure!(
-            words[0] == 2
-                && matches!(words[15], 2 | 4)
-                && words[1] == 5120
-                && matches!(words[2], 512 | 640 | 1152 | 2304)
-                && words[3] <= 384
-                && words[3] >= words[5]
-                && words[4] > 0
-                && matches!(words[5], 3 | 6)
-                && matches!(words[6], 2 | 3),
-            "invalid EXL3 native geometry: {words:?}"
-        );
-        let tier_count = words[6] as usize;
-        let bits: [u32; 4] = words[11..15].try_into().unwrap();
-        ensure!(
-            bits[..tier_count].iter().all(|bit| (2..=5).contains(bit))
-                && bits[tier_count..].iter().all(|bit| *bit == 0),
-            "invalid EXL3 native tier bits"
-        );
-        ensure!(
-            words[7..11].iter().all(|count| *count > 0 && *count <= 64),
-            "invalid EXL3 pointer/scalar ABI"
-        );
-        let info = V41Exl3Info {
-            output_element_bytes: words[15] as usize,
-            hidden: words[1] as usize,
-            intermediate: words[2] as usize,
-            experts: words[3] as usize,
-            capacity: words[4] as usize,
-            topk: words[5] as usize,
-            tier_count,
-            bits,
-            core_pointers: words[7] as usize,
-            core_scalars: words[8] as usize,
-            sum_pointers: words[9] as usize,
-            sum_scalars: words[10] as usize,
-        };
+        let info = V41Exl3Info::from_words(words)?;
         let mut context = std::ptr::null_mut();
         let status = create(&mut context);
         ensure!(
@@ -225,5 +235,75 @@ impl Drop for V41Exl3Routes {
         unsafe {
             (self.destroy)(self.context.as_ptr());
         }
+    }
+}
+
+#[cfg(test)]
+mod info_tests {
+    use super::*;
+
+    #[test]
+    #[ignore = "requires a CUDA GPU, DS41RT_NATIVE_LIB and four-tier DS41RT_EXL3_AOT"]
+    fn native_four_tier_library_loads_through_rust_owner() -> Result<()> {
+        let native = unsafe { crate::NativeLibrary::load(std::env::var("DS41RT_NATIVE_LIB")?)? };
+        native.cuda_set_device(0)?;
+        let path =
+            std::path::PathBuf::from(std::env::var("DS41RT_EXL3_AOT")?).join("libds41rt_exl3.so");
+        let first = unsafe { V41Exl3Kernel::load(&path)? };
+        let second = unsafe { V41Exl3Kernel::load(&path)? };
+        assert_eq!(first.info().tier_count, 4);
+        assert_eq!(first.info().bits, [2, 3, 4, 5]);
+        assert_eq!(first.info(), second.info());
+        drop(first);
+        drop(second);
+        let reloaded = unsafe { V41Exl3Kernel::load(&path)? };
+        assert_eq!(reloaded.info().tier_count, 4);
+        Ok(())
+    }
+
+    #[test]
+    fn native_info_accepts_two_through_four_distinct_tiers() {
+        for bits in [&[2, 5][..], &[2, 3, 5], &[2, 3, 4, 5]] {
+            let mut words = [
+                2,
+                5120,
+                512,
+                6,
+                16,
+                6,
+                bits.len() as u32,
+                44,
+                18,
+                7,
+                3,
+                0,
+                0,
+                0,
+                0,
+                2,
+            ];
+            words[11..11 + bits.len()].copy_from_slice(bits);
+            let info = V41Exl3Info::from_words(words).unwrap();
+            assert_eq!(info.tier_count, bits.len());
+            assert_eq!(&info.bits[..bits.len()], bits);
+        }
+    }
+
+    #[test]
+    fn native_info_rejects_invalid_tier_headers_before_slicing() {
+        let valid = [2, 5120, 512, 6, 16, 6, 4, 44, 18, 7, 3, 2, 3, 4, 5, 2];
+        for count in [0, 1, 5, u32::MAX] {
+            let mut words = valid;
+            words[6] = count;
+            assert!(V41Exl3Info::from_words(words).is_err());
+        }
+        for (index, value) in [(11, 1), (14, 6), (12, 2), (7, 65)] {
+            let mut words = valid;
+            words[index] = value;
+            assert!(V41Exl3Info::from_words(words).is_err());
+        }
+        let mut nonzero_padding = valid;
+        nonzero_padding[6] = 3;
+        assert!(V41Exl3Info::from_words(nonzero_padding).is_err());
     }
 }

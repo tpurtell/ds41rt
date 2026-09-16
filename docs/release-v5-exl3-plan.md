@@ -1055,3 +1055,25 @@ Wider RTX geometries, larger capacities, uniform bitrates and nonconsecutive
 tier preparation still need coverage. Release AOT packages must be rebuilt for
 the current source pin before final serving and performance qualification.
 The original Spark worker and production coordinator were restored.
+
+## Rust four-tier admission and wider RTX checks
+
+[Wider-geometry evidence](release-v5-exl3-four-tier-wide.json) fixes the Rust
+native-library validator, which still admitted only two or three tiers. It now
+accepts two through four distinct K2–K5 decoders while rejecting invalid counts
+before indexing, duplicate decoders, invalid bitrates and nonzero padding.
+Header tests pass, and a real four-tier library can be loaded by two Rust owners,
+released, and reloaded. This establishes library admission, not end-to-end
+four-tier serving.
+
+Mixed-projection references and changed-input graph replay also pass on SM120
+at intermediate width 1152/capacity 80 and width 2304/capacity 16. Both BF16
+output and the TP2 FP32 rank-output format are checked at width 1152; maximum
+FP32 relative L2 error is 6.71e-8. All graph outputs match fresh eager execution
+bitwise. These tests use six experts and top-k six, not complete resident layers
+or every planned capacity. Production serving was restored afterward.
+
+The Rust loader already represents uniform K2/K3/K4/K5 checkpoints with an
+empty adjacent decoder tier and no expanded compressed payload. Uniform GPU
+execution and remaining generic bitrate combinations still need qualification,
+alongside release package rebuilding and the remaining optimization/release work.

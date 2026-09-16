@@ -194,7 +194,7 @@ def main():
             assert torch.equal(actual, buffers['output'])
             results.append(dict(graph_step=step, relative_l2=relative))
         report = dict(passed=True, scope=__doc__, cases=results, source_revision=_pinned_sparkinfer.REVISION,
-            mixed_projections=args.mixed_projections, projection_tiers=choices, compute=meta['compute'], bits=meta['bits'], capacity=cap, hidden=h, intermediate=w)
+            mixed_projections=args.mixed_projections, projection_tiers=choices, compute=meta['compute'], output_dtype=meta['output_dtype'], bits=meta['bits'], capacity=cap, hidden=h, intermediate=w)
         args.output.write_text(json.dumps(report, indent=2)+'\n')
         print(json.dumps(report), flush=True)
     finally:
