@@ -1,0 +1,276 @@
+{
+  "scope": "Interim clean dual-RTX comparison with published v3; exact matched prompts and three samples. Remaining release tables are pending. Topic outputs differ; the slowdown is retained, not attributed solely to kernel latency.",
+  "coordinator_image": "sha256:3d95c6a7feed2dfc9fc8240815446295949f56ab75da361cd53257bf554b10e3",
+  "workloads": {
+    "decode": {
+      "raw_candidate": "/home/tj/.cache/ds41rt-upstream-20260916/clean-performance/dual-decode.json",
+      "raw_candidate_sha256": "6efaf45e0c66f802c5267227b1085a3b005f79d11d11772149b1ee85484d2696",
+      "baseline_archive": "docs/evidence/phase2-release-performance.tar.gz",
+      "candidate_passed": true,
+      "corpus_sha256": "e14ff2894de9290827a07aef2ff55e2bb5c792abe91dcdc029fa9d6ed97990bc",
+      "baseline_weighted_tps": 79.33223115339362,
+      "candidate_weighted_tps": 85.41811213415916,
+      "percent_change": 7.671385125924579
+    },
+    "code": {
+      "raw_candidate": "/home/tj/.cache/ds41rt-upstream-20260916/clean-performance/dual-code.json",
+      "raw_candidate_sha256": "52d3f354c7ecd54c00b947ea4581adf8471f382339a0f4551aec510bf6281c5d",
+      "baseline_archive": "docs/evidence/phase2-release-performance.tar.gz",
+      "candidate_passed": true,
+      "corpus_sha256": "e14ff2894de9290827a07aef2ff55e2bb5c792abe91dcdc029fa9d6ed97990bc",
+      "prompt_sha256": "e25663bb5c0701eeab911969a6ed06c234d4d243499e3a0edc5f836d6568fa9c",
+      "concurrency": [
+        {
+          "concurrency": 1,
+          "baseline": {
+            "aggregate_tps": [
+              147.66239442175961,
+              149.3163270384451,
+              148.8278332569845
+            ],
+            "median_aggregate_tps": 148.8278332569845,
+            "mean_completion_tokens": 207,
+            "distinct_outputs": 1
+          },
+          "candidate": {
+            "aggregate_tps": [
+              156.21762240621462,
+              156.26028294500543,
+              155.72872766200464
+            ],
+            "median_aggregate_tps": 156.21762240621462,
+            "mean_completion_tokens": 205,
+            "distinct_outputs": 1
+          },
+          "percent_change": 4.965327376949724
+        },
+        {
+          "concurrency": 2,
+          "baseline": {
+            "aggregate_tps": [
+              190.9261270826324,
+              236.19237559091468,
+              231.6324952302119
+            ],
+            "median_aggregate_tps": 231.6324952302119,
+            "mean_completion_tokens": 207,
+            "distinct_outputs": 1
+          },
+          "candidate": {
+            "aggregate_tps": [
+              249.04835376075278,
+              260.30258359073645,
+              259.3511608239109
+            ],
+            "median_aggregate_tps": 259.3511608239109,
+            "mean_completion_tokens": 205,
+            "distinct_outputs": 1
+          },
+          "percent_change": 11.96665673620203
+        },
+        {
+          "concurrency": 4,
+          "baseline": {
+            "aggregate_tps": [
+              412.59910381620125,
+              414.68466897910497,
+              412.5789952204583
+            ],
+            "median_aggregate_tps": 412.59910381620125,
+            "mean_completion_tokens": 207,
+            "distinct_outputs": 1
+          },
+          "candidate": {
+            "aggregate_tps": [
+              407.8630858956806,
+              420.279340991037,
+              423.55081669865837
+            ],
+            "median_aggregate_tps": 420.279340991037,
+            "mean_completion_tokens": 205,
+            "distinct_outputs": 1
+          },
+          "percent_change": 1.861428467439663
+        },
+        {
+          "concurrency": 8,
+          "baseline": {
+            "aggregate_tps": [
+              683.7552331238304,
+              712.0900430142423,
+              721.4819191189625
+            ],
+            "median_aggregate_tps": 712.0900430142423,
+            "mean_completion_tokens": 214,
+            "distinct_outputs": 1
+          },
+          "candidate": {
+            "aggregate_tps": [
+              720.0289867585212,
+              750.8289627709418,
+              752.1258622584782
+            ],
+            "median_aggregate_tps": 750.8289627709418,
+            "mean_completion_tokens": 214,
+            "distinct_outputs": 1
+          },
+          "percent_change": 5.440171525600834
+        },
+        {
+          "concurrency": 16,
+          "baseline": {
+            "aggregate_tps": [
+              1157.1718388734987,
+              1189.4197527948095,
+              1181.488607058986
+            ],
+            "median_aggregate_tps": 1181.488607058986,
+            "mean_completion_tokens": 214,
+            "distinct_outputs": 1
+          },
+          "candidate": {
+            "aggregate_tps": [
+              1207.234882079985,
+              1220.164734116646,
+              1217.344274117306
+            ],
+            "median_aggregate_tps": 1217.344274117306,
+            "mean_completion_tokens": 214,
+            "distinct_outputs": 1
+          },
+          "percent_change": 3.0347873728189034
+        }
+      ]
+    },
+    "topic": {
+      "raw_candidate": "/home/tj/.cache/ds41rt-upstream-20260916/clean-performance/dual-topic.json",
+      "raw_candidate_sha256": "382ec002ae0b333a7a1fd6a99261166f62af6f32ef8ba92e436fdb3c4693a10f",
+      "baseline_archive": "docs/evidence/phase2-release-performance.tar.gz",
+      "candidate_passed": true,
+      "corpus_sha256": "e14ff2894de9290827a07aef2ff55e2bb5c792abe91dcdc029fa9d6ed97990bc",
+      "prompt_sha256": "9fe89bc8d77863cb6421d74db446501c34e95b5cac22dc0676a7cca125b3ed83",
+      "concurrency": [
+        {
+          "concurrency": 1,
+          "baseline": {
+            "aggregate_tps": [
+              79.95422935450291,
+              81.13211827982116,
+              81.49778036567491
+            ],
+            "median_aggregate_tps": 81.13211827982116,
+            "mean_completion_tokens": 269,
+            "distinct_outputs": 1
+          },
+          "candidate": {
+            "aggregate_tps": [
+              80.36145299335678,
+              80.22427781610843,
+              80.28066820866904
+            ],
+            "median_aggregate_tps": 80.28066820866904,
+            "mean_completion_tokens": 362,
+            "distinct_outputs": 1
+          },
+          "percent_change": -1.049461161873655
+        },
+        {
+          "concurrency": 2,
+          "baseline": {
+            "aggregate_tps": [
+              139.56234693782318,
+              131.93964719376262,
+              131.80186075995536
+            ],
+            "median_aggregate_tps": 131.93964719376262,
+            "mean_completion_tokens": 269,
+            "distinct_outputs": 1
+          },
+          "candidate": {
+            "aggregate_tps": [
+              120.91565921852758,
+              122.02701497535432,
+              122.41040103650886
+            ],
+            "median_aggregate_tps": 122.02701497535432,
+            "mean_completion_tokens": 362,
+            "distinct_outputs": 1
+          },
+          "percent_change": -7.513004945246604
+        },
+        {
+          "concurrency": 4,
+          "baseline": {
+            "aggregate_tps": [
+              241.82112401786398,
+              242.5758857018839,
+              243.19320404408023
+            ],
+            "median_aggregate_tps": 242.5758857018839,
+            "mean_completion_tokens": 269,
+            "distinct_outputs": 1
+          },
+          "candidate": {
+            "aggregate_tps": [
+              215.9402371250457,
+              218.86585641049155,
+              219.54921548631447
+            ],
+            "median_aggregate_tps": 218.86585641049155,
+            "mean_completion_tokens": 362,
+            "distinct_outputs": 1
+          },
+          "percent_change": -9.774272996175315
+        },
+        {
+          "concurrency": 8,
+          "baseline": {
+            "aggregate_tps": [
+              415.8616719000186,
+              413.73702175880544,
+              427.53016434781
+            ],
+            "median_aggregate_tps": 415.8616719000186,
+            "mean_completion_tokens": 268.6666666666667,
+            "distinct_outputs": 2
+          },
+          "candidate": {
+            "aggregate_tps": [
+              356.1116069204248,
+              343.681623898273,
+              356.6314545683448
+            ],
+            "median_aggregate_tps": 356.1116069204248,
+            "mean_completion_tokens": 274,
+            "distinct_outputs": 1
+          },
+          "percent_change": -14.367773953921613
+        },
+        {
+          "concurrency": 16,
+          "baseline": {
+            "aggregate_tps": [
+              576.1151050068188,
+              602.4337618155621,
+              596.1449928761241
+            ],
+            "median_aggregate_tps": 596.1449928761241,
+            "mean_completion_tokens": 272.4791666666667,
+            "distinct_outputs": 7
+          },
+          "candidate": {
+            "aggregate_tps": [
+              593.2766923097784,
+              599.6274692530112,
+              526.5576261177723
+            ],
+            "median_aggregate_tps": 593.2766923097784,
+            "mean_completion_tokens": 328.9166666666667,
+            "distinct_outputs": 4
+          },
+          "percent_change": -0.48114143381587926
+        }
+      ]
+    }
+  }
+}

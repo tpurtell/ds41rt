@@ -16,6 +16,23 @@ flowchart LR
     F --> G[Clean image builds, README, reports and release]
 ```
 
+## Interim clean release performance
+
+Matched published prompts and three samples produce weighted dual-RTX decode
+**79.33 → 85.42 TPS (+7.7%)** and C16 code **1181.49 → 1217.34 aggregate TPS
+(+3.0%)**. Topic C16 is approximately flat (596.14 → 593.28), while topic
+C2/C4/C8 falls from 131.94/242.58/415.86 to 122.03/218.87/356.11 TPS. This is
+an outstanding performance concern, not a completed release gate.
+
+The topic prompt is identical, but outputs changed: C1–C4 previously generated
+269 tokens and now generate 362; C8 changes from approximately 269 to 274.
+The differing token paths can change draft acceptance and expert sharing, so
+these are serving outcomes rather than an isolated kernel latency comparison.
+All output checks passed. The [interim comparison](sparkinfer-upstream-clean-decode-20260916.json)
+retains all three samples, output-length summaries, and raw artifact hashes.
+Counting, mixed traffic, retained decode, prefill and single-RTX collection
+remain in progress or pending. Review the complete matrix before acceptance.
+
 ## Selected implementation on dev
 
 The dev submodule and verified lock now select merged fork `4e31d0a1`, which
