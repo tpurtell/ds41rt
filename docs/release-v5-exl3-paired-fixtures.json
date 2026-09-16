@@ -1,0 +1,93 @@
+{
+  "scope": "GPU native/JIT qualification and reference fixture emission; Rust worker comparison pending",
+  "fixtures": {
+    "first": {
+      "layer": "layers.30",
+      "slice_start": 512,
+      "width": 640,
+      "capacity": 80,
+      "topk": 6,
+      "reference_experts": 6,
+      "direct": false,
+      "tile": [
+        64,
+        128,
+        64,
+        128
+      ],
+      "input_format": "fp8_k32",
+      "output_dtype": "bf16",
+      "canonical_routes": true,
+      "paired_boundary": "first",
+      "paired_rank": 1,
+      "input_fixture_manifest_sha256": null,
+      "snapshot_revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+      "artifacts": {
+        "input": {
+          "bytes": 422400,
+          "sha256": "cd87db163e3d408fd26e73240c0d76fb7ee0a445baa15adc642d51c261535cc9"
+        },
+        "ids": {
+          "bytes": 1920,
+          "sha256": "79e47b5ad29b42f90826ffee502cae8ca8d550f58ee34b91d5137276ff494640"
+        },
+        "weights": {
+          "bytes": 1920,
+          "sha256": "29dedde0ba7c1c62af51aa941781007c6e65bc5bcec8a94e29bb93c9ac29f2a2"
+        },
+        "expected": {
+          "bytes": 819200,
+          "sha256": "4db9c15146679fcc7a2404cacac3add4890b476866301d6898508372015d368e"
+        },
+        "owners": {
+          "bytes": 24,
+          "sha256": "dd901e55986d7c904f0fac88e035b039bf63ffcf044c27cb513cfd04564be6de"
+        }
+      }
+    },
+    "last": {
+      "layer": "layers.30",
+      "slice_start": 0,
+      "width": 640,
+      "capacity": 80,
+      "topk": 6,
+      "reference_experts": 6,
+      "direct": false,
+      "tile": [
+        64,
+        128,
+        64,
+        128
+      ],
+      "input_format": "fp8_k32",
+      "output_dtype": "bf16",
+      "canonical_routes": true,
+      "paired_boundary": "last",
+      "paired_rank": 0,
+      "input_fixture_manifest_sha256": null,
+      "snapshot_revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+      "artifacts": {
+        "input": {
+          "bytes": 422400,
+          "sha256": "cd87db163e3d408fd26e73240c0d76fb7ee0a445baa15adc642d51c261535cc9"
+        },
+        "ids": {
+          "bytes": 1920,
+          "sha256": "79e47b5ad29b42f90826ffee502cae8ca8d550f58ee34b91d5137276ff494640"
+        },
+        "weights": {
+          "bytes": 1920,
+          "sha256": "29dedde0ba7c1c62af51aa941781007c6e65bc5bcec8a94e29bb93c9ac29f2a2"
+        },
+        "expected": {
+          "bytes": 819200,
+          "sha256": "b033868d20c87987a680f6d721d909041ff1d994255499a59d95986b6a32026a"
+        },
+        "owners": {
+          "bytes": 24,
+          "sha256": "dd901e55986d7c904f0fac88e035b039bf63ffcf044c27cb513cfd04564be6de"
+        }
+      }
+    }
+  }
+}

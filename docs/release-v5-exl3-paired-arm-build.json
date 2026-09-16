@@ -1,0 +1,10 @@
+{
+  "scope": "ARM release compilation only; not Rust GPU worker qualification",
+  "engine_revision": "9a7b547",
+  "staging_lock_revision": "e685f48c3b941208a8dc5915a742738a3c2de706",
+  "source_tree_sha256": "4b81e9eecfa750c5b78124b4c60c8b6c29572c75f9b76ac9fb832ec8aa5a6ec1",
+  "binary_sha256": "93b658e442af07eac12bf593edbf11bb9ed09c8150ecb1cf5aa43fe03a275929",
+  "binary": "/home/tj/.cache/ds41rt-v5-exl3/ds41rt-arm-release-paired",
+  "passed": true,
+  "root_vendor_pin_changed": false
+}

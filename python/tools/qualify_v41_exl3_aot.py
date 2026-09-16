@@ -36,7 +36,7 @@ def main() -> None:
     assert meta['sparkinfer_revision'] == _pinned_sparkinfer.REVISION
     paired = meta.get('paired_boundary')
     assert paired in (None, 'first', 'last')
-    assert paired is None or (meta.get('descriptor_rows') == 4 and args.fixture is None), 'paired fixture emission is not implemented'
+    assert paired is None or meta.get('descriptor_rows') == 4
     hidden, width, experts, capacity = meta['hidden'], meta['intermediate'], meta['experts'], meta['capacity']
     start=args.slice_start
     assert start >= 0 and start % 128 == 0 and start+width <= 2304
@@ -254,9 +254,26 @@ def main() -> None:
                 values=fixture_input[:,:5120].contiguous().view(torch.float8_e4m3fn).float()
                 scales=fixture_input[:,5120:].int().repeat_interleave(32,dim=1)-127
                 x=torch.ldexp(values,scales).to(torch.bfloat16)
+            fixture_owners = None
+            if ownership is not None:
+                starts = {0: 0, 512: 1, 1152: 2, 1664: 3}
+                assert start in starts, 'paired fixture must use a real TP4 resident slice'
+                rank = starts[start]
+                assert paired == ('last' if rank % 2 == 0 else 'first')
+                fixture_owners = torch.arange(experts, device='cuda', dtype=torch.int32).remainder(4)
+                if args.fixture_input is not None and 'owners' in source_meta['artifacts']:
+                    raw = (args.fixture_input/'owners.bin').read_bytes()
+                    spec = source_meta['artifacts']['owners']
+                    assert len(raw) == spec['bytes'] and hashlib.sha256(raw).hexdigest() == spec['sha256']
+                    fixture_owners = torch.frombuffer(bytearray(raw), dtype=torch.int32).clone().to('cuda')
+                    assert fixture_owners.numel() == experts and ((fixture_owners >= 0) & (fixture_owners < 4)).all()
+                ownership.zero_()
+                ownership[:experts].copy_(((fixture_owners >> (rank // 2)) & 1) == rank % 2)
             expected=run_bound_mixed_trellis(x,weights,ids,binding,buffers).clone()
             artifacts={}
-            for name,value in [('input',fixture_input),('ids',ids),('weights',weights),('expected',expected)]:
+            values = [('input',fixture_input),('ids',ids),('weights',weights),('expected',expected)]
+            if fixture_owners is not None: values.append(('owners', fixture_owners))
+            for name,value in values:
                 raw=value.contiguous().view(torch.uint8).cpu().numpy().tobytes()
                 (args.fixture/(name+'.bin')).write_bytes(raw)
                 artifacts[name]={'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest()}
@@ -265,6 +282,7 @@ def main() -> None:
                 'direct':meta['direct'],'tile':meta['tile'],
                 'input_format':args.fixture_format,'output_dtype':meta['output_dtype'],
                 'canonical_routes':args.fixture_canonical_routes,
+                'paired_boundary':paired,'paired_rank':None if paired is None else rank,
                 'input_fixture_manifest_sha256':None if args.fixture_input is None else
                     hashlib.sha256((args.fixture_input/'fixture.json').read_bytes()).hexdigest(),
                 'snapshot_revision':args.snapshot.name,'artifacts':artifacts},indent=2)+'\n')
