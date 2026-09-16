@@ -1,0 +1,82 @@
+{
+  "scope": "Paired H128 block skipping prototype; not serving or performance qualification",
+  "sparkinfer_commit": "ce9bfcec",
+  "geometry": {
+    "hidden": 128,
+    "resident_intermediate": 640,
+    "tiers": [
+      3,
+      4
+    ],
+    "experts_per_tier": 2,
+    "top_k": 2,
+    "capacity": 8
+  },
+  "gpu": "name, uuid, compute_cap, pstate, clocks.current.sm [MHz]\nNVIDIA GB10, GPU-a7c503f0-bb16-4333-4f44-92e331dbcf2e, 12.1, P0, 2424 MHz\n",
+  "gpu_tests": {
+    "passed": 4,
+    "boundary": [
+      "first",
+      "last"
+    ],
+    "tile_k": [
+      64,
+      128
+    ],
+    "tile_n": 128,
+    "live_rows": [
+      1,
+      3,
+      8
+    ],
+    "ownership_patterns": [
+      [
+        1,
+        1,
+        1,
+        1
+      ],
+      [
+        0,
+        1,
+        0,
+        1
+      ],
+      [
+        1,
+        0,
+        1,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        1,
+        1,
+        1,
+        1
+      ]
+    ],
+    "relative_max_error_limit": 0.004,
+    "control": "Existing full-width mixed kernel with omitted block gate post-rotation scales set to zero",
+    "checks": [
+      "finite nonzero control output",
+      "finite candidate output",
+      "changed ownership and input during graph replay",
+      "poisoned unused FC1 intermediates",
+      "graph/eager equality"
+    ]
+  },
+  "limitations": [
+    "Synthetic weights and hidden size 128, not model hidden size 5120",
+    "No four-rank checkpoint oracle yet",
+    "No memory-traffic counters or timing claims",
+    "Only two-tier paired kernel prototype; existing disjoint mixed 2-5bpw support unchanged",
+    "Transport, native export and serving integration pending",
+    "Engine vendor lock remains on the previously qualified source"
+  ]
+}

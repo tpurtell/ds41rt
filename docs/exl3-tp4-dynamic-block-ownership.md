@@ -123,6 +123,28 @@ not a complete Spark memory total. Exact results are recorded in
 
 ### GPU work still required
 
+A two-tier CuTe prototype is now on the SparkInfer fork (`ce9bfcec`), in an
+isolated checkout; the engine's vendor lock has not advanced to it. It adds a
+fourth int32 descriptor row containing per-expert local ownership. The physical
+first/last boundary is an immutable compile option, while ownership remains
+mutable graph input. On an unowned block, FC1 omits the gate/up output tiles and
+FC2 reduces only the retained 512 channels, keeping the physical 640-channel
+strides. Whole-tile scheduling is required so no split-K participant is removed.
+
+Four GPU tests passed on GB10: first/last boundary crossed with K64/K128 tiles,
+using live row counts 1, 3 and 8 and five successive ownership patterns under
+graph replay. The tests poison unused FC1 intermediates and check graph/eager
+agreement. This initial synthetic test uses hidden size 128 and compares with
+the existing full-width kernel whose omitted block's gate post-rotation scales
+are zeroed. It is not the independent, real-checkpoint four-rank oracle, and
+does not establish reduced measured traffic or a performance gain. Evidence is
+in `release-v5-exl3-paired-kernel.json` and the matching evidence archive.
+
+Next qualification must exercise the real 5120 hidden dimension and checkpoint
+weights, all-rank sums, mixed projection membership, and ownership changes.
+Native export/metadata validation, transport lifetime handling and serving
+integration remain required; the prototype currently covers only two tiers.
+
 The current resident layout and mixed kernel assume one intermediate width
 for every expert in a launch. Supporting this proposal requires a real
 per-expert active extent and boundary-block selection inside the fused path.
