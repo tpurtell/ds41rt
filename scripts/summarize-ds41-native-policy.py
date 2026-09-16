@@ -66,6 +66,11 @@ def summarize(observations, rounds):
                     accepted_fraction=accepted/proposed if proposed else None,
                     mean_accepted_drafts=accepted/len(eligible) if eligible else None,
                     mean_verified_drafts=proposed/len(eligible) if eligible else None,
+                    zero_acceptance_observations=sum(x['matched'] == 0 for x in eligible),
+                    zero_acceptance_fraction=(sum(x['matched'] == 0 for x in eligible)/len(eligible)
+                                              if eligible else None),
+                    mean_emitted_tokens=((accepted+len(eligible))/len(eligible) if eligible else None),
+                    emitted_token_contract='Nonterminal unconstrained greedy verification emits the matched draft prefix plus one target-selected token.',
                     verified_width_counts=dict(sorted(Counter(
                         x['rows']-1 for x in eligible).items())),
                     interpretation='Prefix acceptance among verified drafts, excluding terminal and constrained observations. Adaptive selection censors unverified drafts; this is not unconditional draft accuracy.'),

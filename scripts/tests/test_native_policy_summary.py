@@ -61,3 +61,21 @@ def test_independent_lane_round_keeps_existing_cost_fields():
         'verify_us=73107 total_us=83340')
     assert rounds == [dict(requests=8, proposed=56, accepted=24, draft_us=6270,
                            prepare_us=6325, verify_us=73107, total_us=83340)]
+
+
+def test_zero_acceptance_and_emissions_use_only_nonterminal_observations():
+    observations, _ = MODULE['parse'](trace(matched=0) + '\n' + trace(matched=4)
+        + '\n' + trace(matched=0).replace('length_limit=false', 'length_limit=true'))
+    result = MODULE['summarize'](observations, [])['acceptance']
+    assert result['zero_acceptance_observations'] == 1
+    assert result['zero_acceptance_fraction'] == .5
+    assert result['mean_emitted_tokens'] == 3
+    assert result['mean_accepted_drafts'] == 2
+
+
+def test_no_eligible_observations_reports_null_rates():
+    observations, _ = MODULE['parse'](trace().replace('eos=false', 'eos=true'))
+    result = MODULE['summarize'](observations, [])['acceptance']
+    assert result['zero_acceptance_observations'] == 0
+    assert result['zero_acceptance_fraction'] is None
+    assert result['mean_emitted_tokens'] is None
