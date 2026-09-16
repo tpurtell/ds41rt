@@ -1,0 +1,541 @@
+{
+  "scope": "Diagnostic baseline trace and first experimental producer shape-cache screen; not accepted as final implementation",
+  "baseline_timing": {
+    "before1": {
+      "layer-rtx": {
+        "count": 8220,
+        "mean": {
+          "attention_us": 106.45109489051094,
+          "batch": 345.0,
+          "finish_us": 11.28588807785888,
+          "total_us": 443.1374695863747,
+          "distinct_experts": 16.295255474452556,
+          "layer": 9.5,
+          "produced_us": 67.88807785888078,
+          "expert_groups_16": 16.295255474452556,
+          "rows": 3.781021897810219,
+          "index_us": 0.5581508515815086,
+          "shared_tp": 2.0,
+          "experts_us": 256.95425790754257
+        },
+        "median": {
+          "attention_us": 105.0,
+          "batch": 345.0,
+          "finish_us": 11.0,
+          "total_us": 427.0,
+          "distinct_experts": 15.0,
+          "layer": 9.5,
+          "produced_us": 53.0,
+          "expert_groups_16": 15.0,
+          "rows": 4.0,
+          "index_us": 1.0,
+          "shared_tp": 2.0,
+          "experts_us": 251.0
+        }
+      },
+      "layer-spark": {
+        "count": 8220,
+        "mean": {
+          "attention_us": 102.00766423357665,
+          "batch": 345.0,
+          "finish_us": 11.508637469586375,
+          "total_us": 643.3193430656934,
+          "distinct_experts": 15.275547445255475,
+          "layer": 29.5,
+          "produced_us": 75.73017031630171,
+          "expert_groups_16": 15.275547445255475,
+          "rows": 3.781021897810219,
+          "index_us": 0.6003649635036497,
+          "shared_tp": 2.0,
+          "experts_us": 453.47250608272503
+        },
+        "median": {
+          "attention_us": 100.0,
+          "batch": 345.0,
+          "finish_us": 12.0,
+          "total_us": 622.0,
+          "distinct_experts": 14.0,
+          "layer": 29.5,
+          "produced_us": 53.0,
+          "expert_groups_16": 14.0,
+          "rows": 4.0,
+          "index_us": 1.0,
+          "shared_tp": 2.0,
+          "experts_us": 432.0
+        }
+      },
+      "round": {
+        "count": 411,
+        "mean": {
+          "accepted": 1.6423357664233578,
+          "requests": 1.0,
+          "total_us": 28399.535279805354,
+          "proposed": 2.781021897810219,
+          "draft_us": 2368.895377128954,
+          "prepared_us": 2387.177615571776,
+          "emitted": 2.6350364963503647,
+          "verify_us": 25658.306569343065,
+          "lane": 0.0
+        },
+        "median": {
+          "accepted": 1.0,
+          "requests": 1.0,
+          "total_us": 27851.0,
+          "proposed": 3.0,
+          "draft_us": 2425.0,
+          "prepared_us": 2443.0,
+          "emitted": 2.0,
+          "verify_us": 25085.0,
+          "lane": 0.0
+        }
+      }
+    },
+    "before8": {
+      "sparse_capture": {
+        "count": 400,
+        "mean": {
+          "rows": 16.0,
+          "layer": 19.5
+        },
+        "median": {
+          "rows": 16.0,
+          "layer": 19.5
+        }
+      },
+      "layer-rtx": {
+        "count": 13800,
+        "mean": {
+          "attention_us": 178.1345652173913,
+          "batch": 895.5,
+          "finish_us": 21.07623188405797,
+          "total_us": 668.438115942029,
+          "distinct_experts": 14.513405797101449,
+          "layer": 9.5,
+          "produced_us": 108.5554347826087,
+          "expert_groups_16": 14.604855072463769,
+          "rows": 13.142028985507247,
+          "index_us": 1.4634057971014494,
+          "shared_tp": 2.0,
+          "experts_us": 359.2084782608696
+        },
+        "median": {
+          "attention_us": 163.0,
+          "batch": 895.5,
+          "finish_us": 18.0,
+          "total_us": 620.0,
+          "distinct_experts": 14.0,
+          "layer": 9.5,
+          "produced_us": 79.0,
+          "expert_groups_16": 14.0,
+          "rows": 12.0,
+          "index_us": 1.0,
+          "shared_tp": 2.0,
+          "experts_us": 338.0
+        }
+      },
+      "layer-spark": {
+        "count": 13800,
+        "mean": {
+          "attention_us": 148.8099275362319,
+          "batch": 895.5,
+          "finish_us": 17.698333333333334,
+          "total_us": 972.4771014492753,
+          "distinct_experts": 13.786449275362319,
+          "layer": 29.5,
+          "produced_us": 95.0454347826087,
+          "expert_groups_16": 13.923188405797102,
+          "rows": 13.142028985507247,
+          "index_us": 1.5352898550724638,
+          "shared_tp": 2.0,
+          "experts_us": 709.388115942029
+        },
+        "median": {
+          "attention_us": 129.0,
+          "batch": 895.5,
+          "finish_us": 14.0,
+          "total_us": 856.0,
+          "distinct_experts": 13.0,
+          "layer": 29.5,
+          "produced_us": 64.0,
+          "expert_groups_16": 13.0,
+          "rows": 12.0,
+          "index_us": 2.0,
+          "shared_tp": 2.0,
+          "experts_us": 599.0
+        }
+      },
+      "round": {
+        "count": 690,
+        "mean": {
+          "accepted": 5.530434782608696,
+          "requests": 4.0,
+          "total_us": 44610.239130434784,
+          "proposed": 9.142028985507247,
+          "draft_us": 5231.675362318841,
+          "prepared_us": 5283.566666666667,
+          "emitted": 9.495652173913044,
+          "verify_us": 38675.89420289855,
+          "lane": 0.5
+        },
+        "median": {
+          "accepted": 4.0,
+          "requests": 4.0,
+          "total_us": 42430.5,
+          "proposed": 8.0,
+          "draft_us": 5384.5,
+          "prepared_us": 5439.0,
+          "emitted": 8.0,
+          "verify_us": 36502.0,
+          "lane": 0.5
+        }
+      }
+    },
+    "after1": {
+      "layer-rtx": {
+        "count": 8220,
+        "mean": {
+          "attention_us": 111.73990267639903,
+          "batch": 2410.0,
+          "finish_us": 12.16021897810219,
+          "total_us": 578.3619221411192,
+          "distinct_experts": 16.309610705596107,
+          "layer": 9.5,
+          "produced_us": 188.22177615571775,
+          "expert_groups_16": 16.309610705596107,
+          "rows": 3.7858880778588806,
+          "index_us": 0.7705596107055961,
+          "shared_tp": 2.0,
+          "experts_us": 265.46946472019465
+        },
+        "median": {
+          "attention_us": 110.0,
+          "batch": 2410.0,
+          "finish_us": 12.0,
+          "total_us": 496.0,
+          "distinct_experts": 15.0,
+          "layer": 9.5,
+          "produced_us": 101.0,
+          "expert_groups_16": 15.0,
+          "rows": 4.0,
+          "index_us": 1.0,
+          "shared_tp": 2.0,
+          "experts_us": 259.0
+        }
+      },
+      "layer-spark": {
+        "count": 8220,
+        "mean": {
+          "attention_us": 107.70973236009732,
+          "batch": 2410.0,
+          "finish_us": 13.622992700729927,
+          "total_us": 849.9934306569343,
+          "distinct_experts": 15.2845498783455,
+          "layer": 29.5,
+          "produced_us": 264.50596107055964,
+          "expert_groups_16": 15.2845498783455,
+          "rows": 3.7858880778588806,
+          "index_us": 0.8712895377128954,
+          "shared_tp": 2.0,
+          "experts_us": 463.28345498783455
+        },
+        "median": {
+          "attention_us": 106.0,
+          "batch": 2410.0,
+          "finish_us": 13.0,
+          "total_us": 781.0,
+          "distinct_experts": 14.0,
+          "layer": 29.5,
+          "produced_us": 190.0,
+          "expert_groups_16": 14.0,
+          "rows": 4.0,
+          "index_us": 1.0,
+          "shared_tp": 2.0,
+          "experts_us": 439.0
+        }
+      },
+      "round": {
+        "count": 411,
+        "mean": {
+          "accepted": 1.6423357664233578,
+          "requests": 1.0,
+          "total_us": 35977.4501216545,
+          "proposed": 2.7858880778588806,
+          "draft_us": 2404.7104622871047,
+          "prepared_us": 2449.1508515815085,
+          "emitted": 2.6350364963503647,
+          "verify_us": 32972.38442822384,
+          "lane": 0.0
+        },
+        "median": {
+          "accepted": 1.0,
+          "requests": 1.0,
+          "total_us": 36830.0,
+          "proposed": 3.0,
+          "draft_us": 2461.0,
+          "prepared_us": 2503.0,
+          "emitted": 2.0,
+          "verify_us": 33795.0,
+          "lane": 0.0
+        }
+      }
+    },
+    "after8": {
+      "layer-rtx": {
+        "count": 13800,
+        "mean": {
+          "attention_us": 187.79572463768116,
+          "batch": 2960.5,
+          "finish_us": 23.926666666666666,
+          "total_us": 789.4833333333333,
+          "distinct_experts": 14.530217391304348,
+          "layer": 9.5,
+          "produced_us": 189.86652173913043,
+          "expert_groups_16": 14.622826086956522,
+          "rows": 13.165217391304347,
+          "index_us": 1.5957971014492753,
+          "shared_tp": 2.0,
+          "experts_us": 386.29862318840577
+        },
+        "median": {
+          "attention_us": 163.0,
+          "batch": 2960.5,
+          "finish_us": 18.0,
+          "total_us": 705.0,
+          "distinct_experts": 14.0,
+          "layer": 9.5,
+          "produced_us": 125.0,
+          "expert_groups_16": 14.0,
+          "rows": 12.0,
+          "index_us": 2.0,
+          "shared_tp": 2.0,
+          "experts_us": 353.0
+        }
+      },
+      "layer-spark": {
+        "count": 13800,
+        "mean": {
+          "attention_us": 160.37398550724637,
+          "batch": 2960.5,
+          "finish_us": 20.145652173913042,
+          "total_us": 1034.8221014492754,
+          "distinct_experts": 13.802391304347825,
+          "layer": 29.5,
+          "produced_us": 179.01159420289855,
+          "expert_groups_16": 13.941159420289855,
+          "rows": 13.165217391304347,
+          "index_us": 1.7428260869565217,
+          "shared_tp": 2.0,
+          "experts_us": 673.5480434782609
+        },
+        "median": {
+          "attention_us": 139.0,
+          "batch": 2960.5,
+          "finish_us": 15.0,
+          "total_us": 982.0,
+          "distinct_experts": 13.0,
+          "layer": 29.5,
+          "produced_us": 96.0,
+          "expert_groups_16": 13.0,
+          "rows": 12.0,
+          "index_us": 2.0,
+          "shared_tp": 2.0,
+          "experts_us": 626.0
+        }
+      },
+      "round": {
+        "count": 690,
+        "mean": {
+          "accepted": 5.530434782608696,
+          "requests": 4.0,
+          "total_us": 48861.84637681159,
+          "proposed": 9.165217391304347,
+          "draft_us": 5253.291304347826,
+          "prepared_us": 5326.613043478261,
+          "emitted": 9.495652173913044,
+          "verify_us": 42766.057971014496,
+          "lane": 0.5
+        },
+        "median": {
+          "accepted": 4.0,
+          "requests": 4.0,
+          "total_us": 49387.0,
+          "proposed": 8.0,
+          "draft_us": 5397.0,
+          "prepared_us": 5473.5,
+          "emitted": 8.0,
+          "verify_us": 43145.0,
+          "lane": 0.5
+        }
+      }
+    }
+  },
+  "candidate": {
+    "before": [
+      {
+        "concurrency": 1,
+        "samples": 3,
+        "median_aggregate_tps": 96.99385223639764,
+        "min_aggregate_tps": 95.84348998025581,
+        "max_aggregate_tps": 97.36365573396472
+      },
+      {
+        "concurrency": 8,
+        "samples": 3,
+        "median_aggregate_tps": 446.80209051271686,
+        "min_aggregate_tps": 341.96944572388406,
+        "max_aggregate_tps": 461.4032310878072
+      }
+    ],
+    "after": [
+      {
+        "concurrency": 1,
+        "samples": 3,
+        "median_aggregate_tps": 86.7848467012934,
+        "min_aggregate_tps": 85.73265955544552,
+        "max_aggregate_tps": 87.26225150634474
+      },
+      {
+        "concurrency": 8,
+        "samples": 3,
+        "median_aggregate_tps": 394.3369120018516,
+        "min_aggregate_tps": 392.11572776883344,
+        "max_aggregate_tps": 394.43942345764253
+      }
+    ],
+    "metadata": {
+      "launch": [
+        "docker",
+        "run",
+        "-d",
+        "--name",
+        "ds41rt-producer-shapes",
+        "--gpus",
+        "\"device=GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0,GPU-95f8f212-9131-df99-fd53-7535965197d7\"",
+        "--network",
+        "host",
+        "--ipc",
+        "host",
+        "--ulimit",
+        "memlock=-1:-1",
+        "--device=/dev/infiniband",
+        "-e",
+        "CUDA_VISIBLE_DEVICES=GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0,GPU-95f8f212-9131-df99-fd53-7535965197d7",
+        "-e",
+        "RUST_LOG=info",
+        "-v",
+        "/home/tj/.cache/huggingface:/root/.cache/huggingface:ro",
+        "-v",
+        "/home/tj/.cache/ds41rt-upstream-20260916/ds41rt-producer-shapes:/opt/ds41rt/bin/ds41rt:ro",
+        "sha256:3d95c6a7feed2dfc9fc8240815446295949f56ab75da361cd53257bf554b10e3",
+        "ds41rt",
+        "serve-native",
+        "--snapshot",
+        "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+        "--native-lib",
+        "/opt/ds41rt/lib/libds41rt_native.so",
+        "--peers",
+        "10.55.0.1:19441,10.55.0.2:19441,10.55.0.3:19441,10.55.0.4:19441",
+        "--rtx-gpus",
+        "2",
+        "--listen",
+        "0.0.0.0:8000",
+        "--prefill-batch-tokens",
+        "2048",
+        "--concurrency",
+        "16",
+        "--prefix-cache-entries",
+        "24",
+        "--max-context-tokens",
+        "1048576",
+        "--max-output-tokens",
+        "393216",
+        "--dspark"
+      ],
+      "commands": [
+        {
+          "label": "topic-before",
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-concurrent-api.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--label",
+            "phase2-release-final",
+            "--nonce",
+            "20260914",
+            "--case",
+            "topic",
+            "--concurrency",
+            "1",
+            "8",
+            "--repeats",
+            "3",
+            "--output",
+            "/home/tj/.cache/ds41rt-upstream-20260916/clean-history-producer-shapes/topic-before.json"
+          ],
+          "start_ns": 1789536728263386996,
+          "end_ns": 1789536761476221576,
+          "exit": 0,
+          "gpu_memory": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, 95654 MiB, 97887 MiB\nGPU-95f8f212-9131-df99-fd53-7535965197d7, 95892 MiB, 97887 MiB\n"
+        },
+        {
+          "label": "mixed",
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-adaptive-mixed.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--tokenizer",
+            "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+            "--nonce-seed",
+            "56001",
+            "--concurrency",
+            "1",
+            "2",
+            "4",
+            "8",
+            "16",
+            "--skip-lifecycle",
+            "--output",
+            "/home/tj/.cache/ds41rt-upstream-20260916/clean-history-producer-shapes/mixed.json"
+          ],
+          "start_ns": 1789536761496778480,
+          "end_ns": 1789536788632053866,
+          "exit": 0,
+          "gpu_memory": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, 96126 MiB, 97887 MiB\nGPU-95f8f212-9131-df99-fd53-7535965197d7, 96368 MiB, 97887 MiB\n"
+        },
+        {
+          "label": "topic-after",
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-concurrent-api.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--label",
+            "phase2-release-final",
+            "--nonce",
+            "20260914",
+            "--case",
+            "topic",
+            "--concurrency",
+            "1",
+            "8",
+            "--repeats",
+            "3",
+            "--output",
+            "/home/tj/.cache/ds41rt-upstream-20260916/clean-history-producer-shapes/topic-after.json"
+          ],
+          "start_ns": 1789536788652214684,
+          "end_ns": 1789536822172382605,
+          "exit": 0,
+          "gpu_memory": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, 96126 MiB, 97887 MiB\nGPU-95f8f212-9131-df99-fd53-7535965197d7, 96368 MiB, 97887 MiB\n"
+        }
+      ],
+      "binary_sha256": "daed3b7feeb15eda4a5262e790d41b8903f6d26303c9ac54013427eb9d7b9b9b"
+    }
+  },
+  "evidence_archive": {
+    "path": "docs/evidence/upstream-history-diagnostic-20260916.tar.gz",
+    "sha256": "06a9e78f2717a4adcf21f6bc7126e1c6f308d3829ac36b180efeb48d067d09bd"
+  }
+}

@@ -71,6 +71,22 @@ the persistent serving state; root cause and fix remain pending. Do not
 replace the initial matrix with the faster results without resolving this concern.
 Single-RTX and target-only measurements remain pending.
 
+### Mixed-traffic slowdown diagnosis
+
+The [diagnostic trace](sparkinfer-upstream-history-diagnostic-20260916.json)
+reproduces the loss with nearly unchanged draft time, proposed rows and accepted
+tokens. At C1, mean cache-production time rises from 67.9 to 188.2 microseconds
+on RTX expert layers and from 75.7 to 264.5 on Spark expert layers. Attention and
+expert time change much less. These are instrumented timings, not release TPS.
+
+SWA and compressed-source producer waves retain only one CUDA graph shape in
+the clean image, rebuilding it when adaptive verification changes row count.
+An experimental bounded cache of small producer shapes passes compilation and
+the serving reproducer, but **only partly recovers the loss**: uninstrumented C1
+is 96.99 before mixed traffic and 86.78 afterward, versus 80.58 after mixed
+traffic in the original uninstrumented control. It is not accepted yet. A
+second diagnostic trace is checking the residual slowdown and memory cost.
+
 ## Selected implementation on dev
 
 The dev submodule and verified lock now select merged fork `4e31d0a1`, which
