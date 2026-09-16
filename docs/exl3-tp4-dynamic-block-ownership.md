@@ -530,7 +530,10 @@ in these medians; the original attempt remains in the evidence archive.
 | Mixed traffic | 16 | 308.40 | 312.78 | +1.42% |
 
 Code C1 produces the identical 231-token answer in every arm, so output variation
-does not explain its loss. Reasoning C1 changes from 978 to 1,529 completion
+does not explain its loss. Median whole-response latency also rises from
+1.23337 to 1.25903 seconds (+2.08%), while first-output latency moves only from
+1.226 to 1.369 milliseconds. Excluding first-output time from the decode metric
+therefore does not explain the regression. Reasoning C1 changes from 978 to 1,529 completion
 tokens, and concurrent reasoning outputs also vary; those throughput changes
 are serving observations, not isolated kernel speedups. No workload-specific
 or concurrency-specific switching is adopted from this small comparison.

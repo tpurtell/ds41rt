@@ -545,5 +545,60 @@
     "reason": "Reasoning-code C8 exhausted 4096 tokens with no answer; old collector did not retain failed response. Completed code/topic and C1 records remain in original evidence but are not included in complete-arm medians. Replacement is the first complete fresh repetition, not selected by throughput."
   },
   "decision": "Do not promote this affine calibrated profile: matched-output code C1 loses 2.03%; improvements are not uniform. Keep it experimental pending forecast and prefix-selection analysis.",
-  "archive_note": "Includes all four complete arms, the original aborted attempt, controller logs/scripts, runtime profile, and a relocatable summarizer. The same-output diagnostic selects only common uniform batch outputs separately at each concurrency, by frequency, never speed. Failed attempt is retained separately and excluded from complete-arm medians."
+  "archive_note": "Includes all four complete arms, the original aborted attempt, controller logs/scripts, runtime profile, and a relocatable summarizer. The same-output diagnostic selects only common uniform batch outputs separately at each concurrency, by frequency, never speed. Failed attempt is retained separately and excluded from complete-arm medians.",
+  "code_c1_latency_diagnostic": {
+    "scope": "All six C1 samples per mode, identical 231-token answer. Whole-response latency includes first-output time; this checks whether excluding first-output time explains the decode TPS regression.",
+    "arms": {
+      "legacy": {
+        "finish_seconds": {
+          "samples": [
+            1.237902762950398,
+            1.230362275033258,
+            1.234563605976291,
+            1.2430033570853993,
+            1.2321770009584725,
+            1.2296083810506389
+          ],
+          "median": 1.2333703034673817
+        },
+        "first_output_seconds": {
+          "samples": [
+            0.0018843809375539422,
+            0.0012286161072552204,
+            0.0011691569816321135,
+            0.0013671040069311857,
+            0.0012025360483676195,
+            0.0012239380739629269
+          ],
+          "median": 0.0012262770906090736
+        }
+      },
+      "calibrated": {
+        "finish_seconds": {
+          "samples": [
+            1.2663055460434407,
+            1.2580127459950745,
+            1.2529656130354851,
+            1.2600565669126809,
+            1.2708067980129272,
+            1.2579846640583128
+          ],
+          "median": 1.2590346564538777
+        },
+        "first_output_seconds": {
+          "samples": [
+            0.0015616660239174962,
+            0.0011290860129520297,
+            0.0013691670028492808,
+            0.0015657729236409068,
+            0.001368786906823516,
+            0.0010989709990099072
+          ],
+          "median": 0.0013689769548363984
+        }
+      }
+    },
+    "median_whole_response_latency_change_percent": 2.0808311108468924,
+    "conclusion": "Whole-response latency rises about 2.08%; first-output timing does not explain the regression. Raw samples are already retained in the comparison archive."
+  }
 }
