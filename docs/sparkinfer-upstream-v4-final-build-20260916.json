@@ -1,0 +1,441 @@
+{
+  "scope": "Standard clean build and launch after query-buffer memory qualification",
+  "source": {
+    "engine_revision": "39242276302b24e6e07313152cc532e43d8ed6ca",
+    "source": "/home/tj/.cache/ds41rt-upstream-20260916/v4-final-source",
+    "manifest": "/home/tj/.cache/ds41rt-upstream-20260916/v4-final-source.sha256",
+    "manifest_sha256": "bf22e0f27f0368db99fbe43c966b3be771a14ead09f2d1428d872521d98b0394"
+  },
+  "started_ns": 1789549515743974118,
+  "build_exit_code": 0,
+  "launch_exit_code": 0,
+  "first_restart_after_build_seconds": 52.70677486201748,
+  "coordinator": {
+    "host": null,
+    "container_id": "1bb5c5acf5f285f1b3c69db439d502f77d1a78b679d5564e9a380e54c4ef4166",
+    "image_id": "sha256:2ccc04760e7cb0b761cac5dad06c5e5e41a24365ad55e111a1247e52915740cf",
+    "arguments": [
+      "ds41rt",
+      "serve-native",
+      "--snapshot",
+      "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+      "--native-lib",
+      "/opt/ds41rt/lib/libds41rt_native.so",
+      "--peers",
+      "10.55.0.1:19441,10.55.0.2:19441,10.55.0.3:19441,10.55.0.4:19441",
+      "--rtx-gpus",
+      "2",
+      "--listen",
+      "0.0.0.0:8000",
+      "--prefill-batch-tokens",
+      "2048",
+      "--concurrency",
+      "16",
+      "--prefix-cache-entries",
+      "24",
+      "--max-context-tokens",
+      "1048576",
+      "--max-output-tokens",
+      "393216",
+      "--dspark"
+    ],
+    "labels": {
+      "com.nvidia.build.id": "313520559",
+      "com.nvidia.build.ref": "30a5fc6cbfce157e75fae3d0cf1fd8e273a3dc25",
+      "com.nvidia.cublas.version": "13.4.1.1",
+      "com.nvidia.cublasmp.version": "0.8.1.2360",
+      "com.nvidia.cuda.version": "9.0",
+      "com.nvidia.cudla.version": "13.2.75",
+      "com.nvidia.cudnn.version": "9.22.0.52",
+      "com.nvidia.cufft.version": "12.2.0.46",
+      "com.nvidia.curand.version": "10.4.2.55",
+      "com.nvidia.cusolver.version": "12.2.0.1",
+      "com.nvidia.cusolvermp.version": "0.8.0.3126",
+      "com.nvidia.cusparse.version": "12.7.10.1",
+      "com.nvidia.cusparselt.version": "0.9.1.1",
+      "com.nvidia.nccl.version": "2.30.4",
+      "com.nvidia.npp.version": "13.1.0.48",
+      "com.nvidia.nsightcompute.version": "2026.1.1.2",
+      "com.nvidia.nsightsystems.version": "2026.2.1.210",
+      "com.nvidia.nvjpeg.version": "13.1.0.48",
+      "com.nvidia.nvvm.version": "13.2.78",
+      "com.nvidia.pytorch.version": "2.12.0a0+5aff392",
+      "com.nvidia.tensorrt.version": "10.16.1.11",
+      "com.nvidia.tensorrtoss.version": "",
+      "com.nvidia.volumes.needed": "nvidia_driver",
+      "io.ds41rt.cuda_arch": "120",
+      "io.ds41rt.role": "coordinator",
+      "io.ds41rt.source-manifest.sha256": "bf22e0f27f0368db99fbe43c966b3be771a14ead09f2d1428d872521d98b0394",
+      "io.ds41rt.sparkinfer.revision": "4e31d0a10ea7ca24ac48d522fb65eaafbc27ad30",
+      "org.opencontainers.image.description": "DeepSeek V4.1 Flash inference for one or two RTX PRO 6000 GPUs and four DGX Spark expert workers",
+      "org.opencontainers.image.licenses": "MIT",
+      "org.opencontainers.image.revision": "39242276302b24e6e07313152cc532e43d8ed6ca",
+      "org.opencontainers.image.source": "https://github.com/tpurtell/ds41rt",
+      "org.opencontainers.image.title": "DS41RT inference",
+      "org.opencontainers.image.version": "v4"
+    }
+  },
+  "workers": [
+    {
+      "host": "ostrich",
+      "container_id": "cbbe56a221668f07e87c1c3646b759dbd536a1915c5fb14269885db1a8b9d196",
+      "image_id": "sha256:08c121661e14d681b18c84c04726dc609e18e4e3c3c522379f3274ff56168be9",
+      "arguments": [
+        "ds41rt",
+        "expertd-native",
+        "--snapshot",
+        "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+        "--native-lib",
+        "/opt/ds41rt/lib/libds41rt_native.so",
+        "--rank",
+        "0",
+        "--capacity",
+        "4096",
+        "--device-budget-bytes",
+        "107374182400",
+        "--first-layer",
+        "20",
+        "--listen",
+        "0.0.0.0:19441"
+      ],
+      "labels": {
+        "com.nvidia.build.id": "313520560",
+        "com.nvidia.build.ref": "30a5fc6cbfce157e75fae3d0cf1fd8e273a3dc25",
+        "com.nvidia.cublas.version": "13.4.1.1",
+        "com.nvidia.cublasmp.version": "0.8.1.2360",
+        "com.nvidia.cuda.version": "9.0",
+        "com.nvidia.cudla.version": "13.2.75",
+        "com.nvidia.cudnn.version": "9.22.0.52",
+        "com.nvidia.cufft.version": "12.2.0.46",
+        "com.nvidia.curand.version": "10.4.2.55",
+        "com.nvidia.cusolver.version": "12.2.0.1",
+        "com.nvidia.cusolvermp.version": "0.8.0.3126",
+        "com.nvidia.cusparse.version": "12.7.10.1",
+        "com.nvidia.cusparselt.version": "0.9.1.1",
+        "com.nvidia.nccl.version": "2.30.4",
+        "com.nvidia.npp.version": "13.1.0.48",
+        "com.nvidia.nsightcompute.version": "2026.1.1.2",
+        "com.nvidia.nsightsystems.version": "2026.2.1.210",
+        "com.nvidia.nvjpeg.version": "13.1.0.48",
+        "com.nvidia.nvvm.version": "13.2.78",
+        "com.nvidia.pytorch.version": "2.12.0a0+5aff392",
+        "com.nvidia.tensorrt.version": "10.16.1.11",
+        "com.nvidia.tensorrtoss.version": "",
+        "com.nvidia.volumes.needed": "nvidia_driver",
+        "io.ds41rt.cuda_arch": "121",
+        "io.ds41rt.role": "expert",
+        "io.ds41rt.source-manifest.sha256": "bf22e0f27f0368db99fbe43c966b3be771a14ead09f2d1428d872521d98b0394",
+        "io.ds41rt.sparkinfer.revision": "4e31d0a10ea7ca24ac48d522fb65eaafbc27ad30",
+        "org.opencontainers.image.description": "DeepSeek V4.1 Flash inference for one or two RTX PRO 6000 GPUs and four DGX Spark expert workers",
+        "org.opencontainers.image.licenses": "MIT",
+        "org.opencontainers.image.revision": "39242276302b24e6e07313152cc532e43d8ed6ca",
+        "org.opencontainers.image.source": "https://github.com/tpurtell/ds41rt",
+        "org.opencontainers.image.title": "DS41RT inference",
+        "org.opencontainers.image.version": "v4"
+      }
+    },
+    {
+      "host": "dodo",
+      "container_id": "eaefa78f56f064ebc2470532488d84270556005ac188dec033b15c667e4218cf",
+      "image_id": "sha256:08c121661e14d681b18c84c04726dc609e18e4e3c3c522379f3274ff56168be9",
+      "arguments": [
+        "ds41rt",
+        "expertd-native",
+        "--snapshot",
+        "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+        "--native-lib",
+        "/opt/ds41rt/lib/libds41rt_native.so",
+        "--rank",
+        "1",
+        "--capacity",
+        "4096",
+        "--device-budget-bytes",
+        "107374182400",
+        "--first-layer",
+        "20",
+        "--listen",
+        "0.0.0.0:19441"
+      ],
+      "labels": {
+        "com.nvidia.build.id": "313520560",
+        "com.nvidia.build.ref": "30a5fc6cbfce157e75fae3d0cf1fd8e273a3dc25",
+        "com.nvidia.cublas.version": "13.4.1.1",
+        "com.nvidia.cublasmp.version": "0.8.1.2360",
+        "com.nvidia.cuda.version": "9.0",
+        "com.nvidia.cudla.version": "13.2.75",
+        "com.nvidia.cudnn.version": "9.22.0.52",
+        "com.nvidia.cufft.version": "12.2.0.46",
+        "com.nvidia.curand.version": "10.4.2.55",
+        "com.nvidia.cusolver.version": "12.2.0.1",
+        "com.nvidia.cusolvermp.version": "0.8.0.3126",
+        "com.nvidia.cusparse.version": "12.7.10.1",
+        "com.nvidia.cusparselt.version": "0.9.1.1",
+        "com.nvidia.nccl.version": "2.30.4",
+        "com.nvidia.npp.version": "13.1.0.48",
+        "com.nvidia.nsightcompute.version": "2026.1.1.2",
+        "com.nvidia.nsightsystems.version": "2026.2.1.210",
+        "com.nvidia.nvjpeg.version": "13.1.0.48",
+        "com.nvidia.nvvm.version": "13.2.78",
+        "com.nvidia.pytorch.version": "2.12.0a0+5aff392",
+        "com.nvidia.tensorrt.version": "10.16.1.11",
+        "com.nvidia.tensorrtoss.version": "",
+        "com.nvidia.volumes.needed": "nvidia_driver",
+        "io.ds41rt.cuda_arch": "121",
+        "io.ds41rt.role": "expert",
+        "io.ds41rt.source-manifest.sha256": "bf22e0f27f0368db99fbe43c966b3be771a14ead09f2d1428d872521d98b0394",
+        "io.ds41rt.sparkinfer.revision": "4e31d0a10ea7ca24ac48d522fb65eaafbc27ad30",
+        "org.opencontainers.image.description": "DeepSeek V4.1 Flash inference for one or two RTX PRO 6000 GPUs and four DGX Spark expert workers",
+        "org.opencontainers.image.licenses": "MIT",
+        "org.opencontainers.image.revision": "39242276302b24e6e07313152cc532e43d8ed6ca",
+        "org.opencontainers.image.source": "https://github.com/tpurtell/ds41rt",
+        "org.opencontainers.image.title": "DS41RT inference",
+        "org.opencontainers.image.version": "v4"
+      }
+    },
+    {
+      "host": "emu",
+      "container_id": "e98919c5f38ed8f919f4f6bc444b55647bc7692e8467952c444fea4c78af227f",
+      "image_id": "sha256:08c121661e14d681b18c84c04726dc609e18e4e3c3c522379f3274ff56168be9",
+      "arguments": [
+        "ds41rt",
+        "expertd-native",
+        "--snapshot",
+        "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+        "--native-lib",
+        "/opt/ds41rt/lib/libds41rt_native.so",
+        "--rank",
+        "2",
+        "--capacity",
+        "4096",
+        "--device-budget-bytes",
+        "107374182400",
+        "--first-layer",
+        "20",
+        "--listen",
+        "0.0.0.0:19441"
+      ],
+      "labels": {
+        "com.nvidia.build.id": "313520560",
+        "com.nvidia.build.ref": "30a5fc6cbfce157e75fae3d0cf1fd8e273a3dc25",
+        "com.nvidia.cublas.version": "13.4.1.1",
+        "com.nvidia.cublasmp.version": "0.8.1.2360",
+        "com.nvidia.cuda.version": "9.0",
+        "com.nvidia.cudla.version": "13.2.75",
+        "com.nvidia.cudnn.version": "9.22.0.52",
+        "com.nvidia.cufft.version": "12.2.0.46",
+        "com.nvidia.curand.version": "10.4.2.55",
+        "com.nvidia.cusolver.version": "12.2.0.1",
+        "com.nvidia.cusolvermp.version": "0.8.0.3126",
+        "com.nvidia.cusparse.version": "12.7.10.1",
+        "com.nvidia.cusparselt.version": "0.9.1.1",
+        "com.nvidia.nccl.version": "2.30.4",
+        "com.nvidia.npp.version": "13.1.0.48",
+        "com.nvidia.nsightcompute.version": "2026.1.1.2",
+        "com.nvidia.nsightsystems.version": "2026.2.1.210",
+        "com.nvidia.nvjpeg.version": "13.1.0.48",
+        "com.nvidia.nvvm.version": "13.2.78",
+        "com.nvidia.pytorch.version": "2.12.0a0+5aff392",
+        "com.nvidia.tensorrt.version": "10.16.1.11",
+        "com.nvidia.tensorrtoss.version": "",
+        "com.nvidia.volumes.needed": "nvidia_driver",
+        "io.ds41rt.cuda_arch": "121",
+        "io.ds41rt.role": "expert",
+        "io.ds41rt.source-manifest.sha256": "bf22e0f27f0368db99fbe43c966b3be771a14ead09f2d1428d872521d98b0394",
+        "io.ds41rt.sparkinfer.revision": "4e31d0a10ea7ca24ac48d522fb65eaafbc27ad30",
+        "org.opencontainers.image.description": "DeepSeek V4.1 Flash inference for one or two RTX PRO 6000 GPUs and four DGX Spark expert workers",
+        "org.opencontainers.image.licenses": "MIT",
+        "org.opencontainers.image.revision": "39242276302b24e6e07313152cc532e43d8ed6ca",
+        "org.opencontainers.image.source": "https://github.com/tpurtell/ds41rt",
+        "org.opencontainers.image.title": "DS41RT inference",
+        "org.opencontainers.image.version": "v4"
+      }
+    },
+    {
+      "host": "kiwi",
+      "container_id": "b9729aaed782738ea2bbd6db2f0fe75bb69768783dae047021b64e1903bbe07d",
+      "image_id": "sha256:08c121661e14d681b18c84c04726dc609e18e4e3c3c522379f3274ff56168be9",
+      "arguments": [
+        "ds41rt",
+        "expertd-native",
+        "--snapshot",
+        "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+        "--native-lib",
+        "/opt/ds41rt/lib/libds41rt_native.so",
+        "--rank",
+        "3",
+        "--capacity",
+        "4096",
+        "--device-budget-bytes",
+        "107374182400",
+        "--first-layer",
+        "20",
+        "--listen",
+        "0.0.0.0:19441"
+      ],
+      "labels": {
+        "com.nvidia.build.id": "313520560",
+        "com.nvidia.build.ref": "30a5fc6cbfce157e75fae3d0cf1fd8e273a3dc25",
+        "com.nvidia.cublas.version": "13.4.1.1",
+        "com.nvidia.cublasmp.version": "0.8.1.2360",
+        "com.nvidia.cuda.version": "9.0",
+        "com.nvidia.cudla.version": "13.2.75",
+        "com.nvidia.cudnn.version": "9.22.0.52",
+        "com.nvidia.cufft.version": "12.2.0.46",
+        "com.nvidia.curand.version": "10.4.2.55",
+        "com.nvidia.cusolver.version": "12.2.0.1",
+        "com.nvidia.cusolvermp.version": "0.8.0.3126",
+        "com.nvidia.cusparse.version": "12.7.10.1",
+        "com.nvidia.cusparselt.version": "0.9.1.1",
+        "com.nvidia.nccl.version": "2.30.4",
+        "com.nvidia.npp.version": "13.1.0.48",
+        "com.nvidia.nsightcompute.version": "2026.1.1.2",
+        "com.nvidia.nsightsystems.version": "2026.2.1.210",
+        "com.nvidia.nvjpeg.version": "13.1.0.48",
+        "com.nvidia.nvvm.version": "13.2.78",
+        "com.nvidia.pytorch.version": "2.12.0a0+5aff392",
+        "com.nvidia.tensorrt.version": "10.16.1.11",
+        "com.nvidia.tensorrtoss.version": "",
+        "com.nvidia.volumes.needed": "nvidia_driver",
+        "io.ds41rt.cuda_arch": "121",
+        "io.ds41rt.role": "expert",
+        "io.ds41rt.source-manifest.sha256": "bf22e0f27f0368db99fbe43c966b3be771a14ead09f2d1428d872521d98b0394",
+        "io.ds41rt.sparkinfer.revision": "4e31d0a10ea7ca24ac48d522fb65eaafbc27ad30",
+        "org.opencontainers.image.description": "DeepSeek V4.1 Flash inference for one or two RTX PRO 6000 GPUs and four DGX Spark expert workers",
+        "org.opencontainers.image.licenses": "MIT",
+        "org.opencontainers.image.revision": "39242276302b24e6e07313152cc532e43d8ed6ca",
+        "org.opencontainers.image.source": "https://github.com/tpurtell/ds41rt",
+        "org.opencontainers.image.title": "DS41RT inference",
+        "org.opencontainers.image.version": "v4"
+      }
+    }
+  ],
+  "completed_ns": 1789549899224039312,
+  "publication_status": "Local images only; final performance matrix and remote publication pending",
+  "packaged_artifacts": [
+    {
+      "path": "SHA256SUMS",
+      "bytes": 2245,
+      "sha256": "12dc21b5c16706f0ccde86c5ab543e469ff3935ddd1ef8556af1b4d47a91fc51"
+    },
+    {
+      "path": "SOURCE_SHA256SUMS",
+      "bytes": 385190,
+      "sha256": "bf22e0f27f0368db99fbe43c966b3be771a14ead09f2d1428d872521d98b0394"
+    },
+    {
+      "path": "coordinator/SPARKINFER_LICENSE",
+      "bytes": 11357,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "path": "coordinator/SPARKINFER_PROVENANCE.json",
+      "bytes": 573,
+      "sha256": "3366dad95102aec516b60aa6e6df9b1986ea4c157c41530241c4d61662a2b3d7"
+    },
+    {
+      "path": "coordinator/SPARKINFER_SHA256SUMS",
+      "bytes": 267,
+      "sha256": "4d83cdeac6a3f95a07dda4a8a067717f855fe4bfd47d1285f4e0d6305722d73e"
+    },
+    {
+      "path": "coordinator/THIRD_PARTY_NOTICES.md",
+      "bytes": 25815,
+      "sha256": "462810c69ccbbb2763c4d58bfa90a827446b75405f74df4cc9bff2c6241f3422"
+    },
+    {
+      "path": "coordinator/V41_EXPERT_AOT.json",
+      "bytes": 22146,
+      "sha256": "f05ae868b5632e20c6f3c4a361947284af91e6134f2f778d0c63fdeb917928e8"
+    },
+    {
+      "path": "coordinator/V41_FP8_AOT.json",
+      "bytes": 164692,
+      "sha256": "6afd965051352626ac3addf5a751fe6af8989edd73219f63b880fe39e9e87647"
+    },
+    {
+      "path": "coordinator/XGRAMMAR_LICENSE",
+      "bytes": 11357,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "path": "coordinator/XGRAMMAR_PROVENANCE.json",
+      "bytes": 291,
+      "sha256": "2b537111db432b4d775cde8c2e21705800f2b14966beffe5bf1211ab48417d48"
+    },
+    {
+      "path": "coordinator/XGRAMMAR_SHA256SUMS",
+      "bytes": 263,
+      "sha256": "419cb052539374358da7a28bcc55614c32f32ea9cb236bd8e771894538da3f1a"
+    },
+    {
+      "path": "coordinator/ds41rt",
+      "bytes": 34600080,
+      "sha256": "666fdd1641991e316e85bf9ec41b1f33480b7ea72bd4fea312049809af7e1980"
+    },
+    {
+      "path": "coordinator/libds41rt_native.so",
+      "bytes": 22872880,
+      "sha256": "2254da831b98c72dcfa6dd45385f8a9172e96e291404dcd2b3c6205d5820d40a"
+    },
+    {
+      "path": "spark-expert/SPARKINFER_LICENSE",
+      "bytes": 11357,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "path": "spark-expert/SPARKINFER_PROVENANCE.json",
+      "bytes": 573,
+      "sha256": "3366dad95102aec516b60aa6e6df9b1986ea4c157c41530241c4d61662a2b3d7"
+    },
+    {
+      "path": "spark-expert/SPARKINFER_SHA256SUMS",
+      "bytes": 267,
+      "sha256": "4d83cdeac6a3f95a07dda4a8a067717f855fe4bfd47d1285f4e0d6305722d73e"
+    },
+    {
+      "path": "spark-expert/THIRD_PARTY_NOTICES.md",
+      "bytes": 25815,
+      "sha256": "462810c69ccbbb2763c4d58bfa90a827446b75405f74df4cc9bff2c6241f3422"
+    },
+    {
+      "path": "spark-expert/V41_EXPERT_AOT.json",
+      "bytes": 17977,
+      "sha256": "9dfcf1cb4f8e390619d814d5cf6041df421ac2219d9dd0792f3f6dcb4b8134a5"
+    },
+    {
+      "path": "spark-expert/V41_FP8_AOT.json",
+      "bytes": 45,
+      "sha256": "8f2042f0bfb27e9c2ce199b36b47af324eb4330ba3862f2eaeca9cd6b955969f"
+    },
+    {
+      "path": "spark-expert/XGRAMMAR_LICENSE",
+      "bytes": 11357,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "path": "spark-expert/XGRAMMAR_PROVENANCE.json",
+      "bytes": 291,
+      "sha256": "2b537111db432b4d775cde8c2e21705800f2b14966beffe5bf1211ab48417d48"
+    },
+    {
+      "path": "spark-expert/XGRAMMAR_SHA256SUMS",
+      "bytes": 263,
+      "sha256": "419cb052539374358da7a28bcc55614c32f32ea9cb236bd8e771894538da3f1a"
+    },
+    {
+      "path": "spark-expert/ds41rt",
+      "bytes": 32498544,
+      "sha256": "f21516d91cc68821fc85c368497fa5c37e33f50659308316d59435fad2ed2d36"
+    },
+    {
+      "path": "spark-expert/libds41rt_native.so",
+      "bytes": 14368792,
+      "sha256": "c0051b156be8b894fdce5006f590ef9637b12eff02bb59f07751c9d8675c36ef"
+    }
+  ],
+  "evidence": {
+    "path": "docs/evidence/upstream-v4-final-build-20260916.tar.gz",
+    "sha256": "b8bef462334aa790a1bee54c4f8ccf82140decd762be64a7356eb5607712a9f8",
+    "bytes": 439458
+  }
+}

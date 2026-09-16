@@ -37,8 +37,12 @@ upstream integration; the published September 14 v3 is unchanged.
   actual RTX/Spark placement budgets.
 - [x] Promote the accepted merged fork to its master branch and verify the
   dependency remains reachable at the locked revision.
-- [ ] Finalize release version/configuration and build the final source; verify
+- [x] Finalize release version/configuration and build the final source; verify
   the final image identities and standard launch before publication.
+  [Final clean-build evidence](sparkinfer-upstream-v4-final-build-20260916.json)
+  records revision `3924227`, all five source labels, packaged checksums, and
+  the 52.71-second dual-RTX standard launch. Performance qualification and
+  remote publication remain separate gates below.
 - [ ] Publish coordinator and Spark images, release notes, binaries, evidence,
   and checksums; verify remote digests/assets and release branch/tag identities.
 - [ ] Leave the standard service healthy, clean disposable intermediates while
