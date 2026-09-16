@@ -31,13 +31,15 @@ The [three-run high-thinking tool evaluation](sparkinfer-upstream-tool-eval-2026
 completed all 264 scenarios with a mean of 157/176 points. The report states
 the benchmark output cap and preserves every partial and failed result.
 
-The earlier clean dual-RTX candidate increased weighted eight-type throughput
-from 79.33 to 97.55 tokens/s against v3 (+23.0%). C16 code increases
-from 1,181 to 1,296 aggregate tokens/s and topic from 596 to 749. C16 mixed
-traffic is approximately flat (309 to 305). These are three-sample,
+The final clean dual-RTX image increased weighted eight-type throughput
+from 79.33 to 97.79 tokens/s against v3 (+23.3%). C16 code increases
+from 1,181 to 1,299 aggregate tokens/s and topic from 596 to 734. C16 mixed
+traffic is approximately flat (309 to 308), while C8 mixed improves from
+203 to 226 (+11.5%). These are three-sample,
 prompt-matched results at 400 W per RTX with stock memory clocks; the
-[raw evidence and comparisons](sparkinfer-upstream-v4-dual-decode-20260916.json)
-preserve ranges and individual cases. Final-image measurements remain pending.
+[raw evidence and comparisons](sparkinfer-upstream-v4-final-dual-decode-20260916.json)
+preserve ranges and individual cases. The remaining final-image performance
+measurements are still in progress.
 
 The three tool campaigns and vision checks used the clean candidate before the final
 graph-reuse correction. That correction changes graph lifetime, not kernel
