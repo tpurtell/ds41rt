@@ -758,3 +758,36 @@ coordinator is restored with HTTP health 200. Next work is one-RTX serving and
 FP4 PLE gathering, followed by kernel/workspace/residency optimization and the
 required adaptive, quality, performance and release checks. Top-1 comparison
 remains deferred until the engine is ready for publication.
+
+## Full-model one-RTX EXL3 serving
+
+[Single serving evidence](release-v5-exl3-single-serving.json) passes with RTX0
+alone visible, automatic bottom-up TP1 placement, four Sparks and K5 dSpark.
+Defaults select six local expert layers (0–5), compared with five in the published
+full-weight layout. Those six compressed layers occupy 33,329,848,416 bytes;
+the two local expert execution workspaces total 2,223,229,840 bytes. The cache
+remains 16,681,077,760 global bytes for 18,710,016 logical tokens plus 32,768
+private-tail tokens. All 40 layers remain resident on each Spark; requests use
+the Spark path only from layer 6 upward. This is a placement observation, not a
+throughput comparison or the final optimized layout.
+
+The candidate passes arithmetic, concurrent code/topic generation, exact prompt
+reuse, JSON schema output and a high-thinking tool call. Tool-result continuation
+reuses 359 tokens; the 4822-token embedded-code prompt and follow-up pass with
+4828 tokens reused. Stream cancellation is followed by a correct recovery answer.
+C16 is the configured admission limit; this smoke test exercises two concurrent
+requests. The code response hits its explicit 128-token cap, not a quality score.
+
+Single mode currently rounds the requested 2048-token prefill step to a 4096-row
+workspace, as the published full model does. This is an optimization candidate
+to inspect alongside reusable EXL3 capacity storage. It has not been changed or
+benchmarked here. The run uses the optimized host coordinator, debug ARM workers,
+v4 native libraries plus wire addons and the new EXL3 modules. Clean-image and
+full quality/performance qualification remain pending. Temporary workers were
+removed and the original four worker ports and coordinator health restored.
+
+Both RTX configurations now have full-model FP8-PLE EXL3 functional evidence.
+Next implementation is FP4 PLE gathering, followed by remaining generic-tier
+coverage and kernel/workspace/residency optimization. Adaptive profile updates,
+content-type acceptance, all requested tables/tool tests and the deferred quant
+agreement measurement still precede the v5 release.
