@@ -1,0 +1,469 @@
+{
+  "scope": "Synthetic E384/K5120/N1152/top6, RTX0, native TP2 local half versus direct compact. Includes quantization and local reduction. Excludes cross-device communication and final TP2 reduction. Arithmetic differs. Component diagnostic only; no serving speedup claim.",
+  "limitation": "16-row before/after SM clocks differ by 300 MHz; roughly equal timing is provisional, not a release acceptance measurement.",
+  "runs": [
+    {
+      "raw_path": "/home/tj/.cache/ds41rt-upstream-20260916/expert-compact-native-timing-n1152.json",
+      "sha256": "2b5927607454bed9b29aca5eadfed8512c9215b4393781a95fe4c57dfa8fac9d",
+      "report": {
+        "scope": "Screen upstream expert numerics at DS41RT geometry before native adaptation.\n\nUses prepared GPU paths, not the serving native ABI. No serving speedup claim.\n",
+        "command": [
+          "python/tools/compare_v41_expert_upstream.py",
+          "--b12x-root",
+          "/home/tj/.cache/ds41rt-upstream-20260916/sparkinfer",
+          "--intermediate",
+          "1152",
+          "--rows",
+          "1",
+          "16",
+          "--compare-timing",
+          "--native-lib",
+          "/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-index-sort.so",
+          "--output",
+          "/home/tj/.cache/ds41rt-upstream-20260916/expert-compact-native-timing-n1152.json"
+        ],
+        "fork_revision": "fadedecb841091a0c8678f3513409f4efdf54bf7",
+        "script_sha256": "0d5994266f7121a09cd9cad4223530b4869a1292266f7d6e950f925a47f2c425",
+        "device": "_CudaDeviceProperties(name='NVIDIA RTX PRO 6000 Blackwell Workstation Edition', major=12, minor=0, total_memory=97249MB, multi_processor_count=188, uuid=fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, pci_bus_id=17, pci_device_id=0, pci_domain_id=0, L2_cache_size=128MB)",
+        "geometry": {
+          "experts": 384,
+          "hidden": 5120,
+          "intermediate": 1152,
+          "topk": 6
+        },
+        "cases": [
+          {
+            "rows": 1,
+            "activation": "silu_v41",
+            "implementation": "native_tp2",
+            "checks": [
+              {
+                "identical_input_replay_exact": null,
+                "cycle": 0,
+                "relative_l2": 0.0023333507124334574,
+                "cosine": 0.9999972581863403,
+                "native_reference_gate": true,
+                "own_reference_relative_l2": 0.0023333507124334574,
+                "own_reference_cosine": 0.9999972581863403
+              },
+              {
+                "identical_input_replay_exact": null,
+                "cycle": 1,
+                "relative_l2": 0.002366494620218873,
+                "cosine": 0.9999972581863403,
+                "native_reference_gate": true,
+                "own_reference_relative_l2": 0.002366494620218873,
+                "own_reference_cosine": 0.9999972581863403
+              },
+              {
+                "identical_input_replay_exact": true,
+                "cycle": 2,
+                "relative_l2": 0.002366494620218873,
+                "cosine": 0.9999972581863403,
+                "native_reference_gate": true,
+                "own_reference_relative_l2": 0.002366494620218873,
+                "own_reference_cosine": 0.9999972581863403
+              }
+            ],
+            "prepared_graph_timing": {
+              "scope": "Includes BF16 input quantization and route reduction; prepared graph, not native serving ABI",
+              "samples_us": [
+                92.33152389526367,
+                92.31264114379883,
+                92.14847564697266,
+                92.25055694580078,
+                92.19840049743652,
+                92.30112075805664,
+                92.18912124633789,
+                92.28320121765137
+              ],
+              "median_us": 92.26687908172607,
+              "order": "AB/BA, eight samples of 100 replays",
+              "gpu_before": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, P1, 2677 MHz, 13365 MHz, 400.00 W, 0x0000000000000000\nGPU-95f8f212-9131-df99-fd53-7535965197d7, P8, 180 MHz, 405 MHz, 400.00 W, 0x0000000000000000",
+              "gpu_after": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, P1, 2715 MHz, 13365 MHz, 400.00 W, 0x0000000000000000\nGPU-95f8f212-9131-df99-fd53-7535965197d7, P8, 180 MHz, 405 MHz, 400.00 W, 0x0000000000000000"
+            }
+          },
+          {
+            "rows": 1,
+            "activation": "silu",
+            "implementation": "direct_compact",
+            "checks": [
+              {
+                "identical_input_replay_exact": null,
+                "cycle": 0,
+                "relative_l2": 0.040142722427845,
+                "cosine": 0.9991940259933472,
+                "native_reference_gate": false,
+                "own_reference_relative_l2": 0.012634210288524628,
+                "own_reference_cosine": 0.9999202489852905,
+                "compact_reference_relative_l2": 0.0,
+                "compact_reference_cosine": 1.0000001192092896,
+                "compact_reference_gate": true
+              },
+              {
+                "identical_input_replay_exact": null,
+                "cycle": 1,
+                "relative_l2": 0.03499848023056984,
+                "cosine": 0.9993993043899536,
+                "native_reference_gate": false,
+                "own_reference_relative_l2": 0.015914546325802803,
+                "own_reference_cosine": 0.9998741745948792,
+                "compact_reference_relative_l2": 0.0,
+                "compact_reference_cosine": 1.0000001192092896,
+                "compact_reference_gate": true
+              },
+              {
+                "identical_input_replay_exact": true,
+                "cycle": 2,
+                "relative_l2": 0.03499848023056984,
+                "cosine": 0.9993993043899536,
+                "native_reference_gate": false,
+                "own_reference_relative_l2": 0.015914546325802803,
+                "own_reference_cosine": 0.9998741745948792,
+                "compact_reference_relative_l2": 0.0,
+                "compact_reference_cosine": 1.0000001192092896,
+                "compact_reference_gate": true
+              }
+            ],
+            "prepared_graph_timing": {
+              "scope": "Includes BF16 input quantization and route reduction; prepared graph, not native serving ABI",
+              "samples_us": [
+                26.666879653930664,
+                26.656959056854248,
+                26.66815996170044,
+                26.65152072906494,
+                26.65343999862671,
+                26.638081073760986,
+                26.661438941955566,
+                26.674559116363525
+              ],
+              "median_us": 26.659198999404907,
+              "order": "AB/BA, eight samples of 100 replays",
+              "gpu_before": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, P1, 2677 MHz, 13365 MHz, 400.00 W, 0x0000000000000000\nGPU-95f8f212-9131-df99-fd53-7535965197d7, P8, 180 MHz, 405 MHz, 400.00 W, 0x0000000000000000",
+              "gpu_after": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, P1, 2715 MHz, 13365 MHz, 400.00 W, 0x0000000000000000\nGPU-95f8f212-9131-df99-fd53-7535965197d7, P8, 180 MHz, 405 MHz, 400.00 W, 0x0000000000000000"
+            }
+          },
+          {
+            "rows": 16,
+            "activation": "silu_v41",
+            "implementation": "native_tp2",
+            "checks": [
+              {
+                "identical_input_replay_exact": null,
+                "cycle": 0,
+                "relative_l2": 0.0023669302463531494,
+                "cosine": 0.9999972581863403,
+                "native_reference_gate": true,
+                "own_reference_relative_l2": 0.0023669302463531494,
+                "own_reference_cosine": 0.9999972581863403
+              },
+              {
+                "identical_input_replay_exact": null,
+                "cycle": 1,
+                "relative_l2": 0.0023459820076823235,
+                "cosine": 0.9999971389770508,
+                "native_reference_gate": true,
+                "own_reference_relative_l2": 0.0023459820076823235,
+                "own_reference_cosine": 0.9999971389770508
+              },
+              {
+                "identical_input_replay_exact": true,
+                "cycle": 2,
+                "relative_l2": 0.0023459820076823235,
+                "cosine": 0.9999971389770508,
+                "native_reference_gate": true,
+                "own_reference_relative_l2": 0.0023459820076823235,
+                "own_reference_cosine": 0.9999971389770508
+              }
+            ],
+            "prepared_graph_timing": {
+              "scope": "Includes BF16 input quantization and route reduction; prepared graph, not native serving ABI",
+              "samples_us": [
+                560.0342559814453,
+                559.7641754150391,
+                559.8854446411133,
+                562.2927856445312,
+                561.6867065429688,
+                562.1462249755859,
+                562.2652816772461,
+                562.5680160522461
+              ],
+              "median_us": 561.9164657592773,
+              "order": "AB/BA, eight samples of 100 replays",
+              "gpu_before": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, P1, 2775 MHz, 13365 MHz, 400.00 W, 0x0000000000000000\nGPU-95f8f212-9131-df99-fd53-7535965197d7, P8, 180 MHz, 405 MHz, 400.00 W, 0x0000000000000000",
+              "gpu_after": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, P1, 2475 MHz, 13365 MHz, 400.00 W, 0x0000000000000000\nGPU-95f8f212-9131-df99-fd53-7535965197d7, P8, 180 MHz, 405 MHz, 400.00 W, 0x0000000000000000"
+            }
+          },
+          {
+            "rows": 16,
+            "activation": "silu",
+            "implementation": "direct_compact",
+            "checks": [
+              {
+                "identical_input_replay_exact": null,
+                "cycle": 0,
+                "relative_l2": 0.03848721832036972,
+                "cosine": 0.9992592334747314,
+                "native_reference_gate": false,
+                "own_reference_relative_l2": 0.016799354925751686,
+                "own_reference_cosine": 0.9998588562011719,
+                "compact_reference_relative_l2": 4.265923780621961e-05,
+                "compact_reference_cosine": 0.9999998807907104,
+                "compact_reference_gate": true
+              },
+              {
+                "identical_input_replay_exact": null,
+                "cycle": 1,
+                "relative_l2": 0.03913664072751999,
+                "cosine": 0.9992355704307556,
+                "native_reference_gate": false,
+                "own_reference_relative_l2": 0.01739584282040596,
+                "own_reference_cosine": 0.9998487234115601,
+                "compact_reference_relative_l2": 6.0205755289644e-05,
+                "compact_reference_cosine": 1.0,
+                "compact_reference_gate": true
+              },
+              {
+                "identical_input_replay_exact": true,
+                "cycle": 2,
+                "relative_l2": 0.03913664072751999,
+                "cosine": 0.9992355704307556,
+                "native_reference_gate": false,
+                "own_reference_relative_l2": 0.01739584282040596,
+                "own_reference_cosine": 0.9998487234115601,
+                "compact_reference_relative_l2": 6.0205755289644e-05,
+                "compact_reference_cosine": 1.0,
+                "compact_reference_gate": true
+              }
+            ],
+            "prepared_graph_timing": {
+              "scope": "Includes BF16 input quantization and route reduction; prepared graph, not native serving ABI",
+              "samples_us": [
+                557.9465484619141,
+                557.5545501708984,
+                558.0790328979492,
+                561.3139343261719,
+                562.2233581542969,
+                562.4563217163086,
+                563.3225631713867,
+                562.4985504150391
+              ],
+              "median_us": 561.7686462402344,
+              "order": "AB/BA, eight samples of 100 replays",
+              "gpu_before": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, P1, 2775 MHz, 13365 MHz, 400.00 W, 0x0000000000000000\nGPU-95f8f212-9131-df99-fd53-7535965197d7, P8, 180 MHz, 405 MHz, 400.00 W, 0x0000000000000000",
+              "gpu_after": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, P1, 2475 MHz, 13365 MHz, 400.00 W, 0x0000000000000000\nGPU-95f8f212-9131-df99-fd53-7535965197d7, P8, 180 MHz, 405 MHz, 400.00 W, 0x0000000000000000"
+            }
+          }
+        ],
+        "native_library": {
+          "path": "/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-index-sort.so",
+          "sha256": "8c6cccb1c3372567a1c49cc480a9cdf2b44d776a0a69cfa7c9d823caebaf0a4c",
+          "output": "Native local FP32 routes summed and rounded once to BF16; excludes cross-device TP2 reduction"
+        },
+        "fork_dirty": "",
+        "fork_source_sha256": {
+          "b12x/moe/_shared/kernels/tiny_decode.py": "bbf0b9dbd5d80229678f397098cc987f3b048dc7c7a11f9bbada7895e0b4fc53",
+          "b12x/moe/fused_moe/_impl.py": "a4c362f874ace2925e1ba127989874d443c64dfe931aff05ad856ba14d784594",
+          "b12x/moe/fused_moe/_preparation.py": "d23c61b2e27094a772bc3b1bee7c1ba2ea1e973750dc84250b1d05d0c360eab8",
+          "b12x/moe/_shared/kernels/reference.py": "d3e6e44ebba3e7c9566a6e6f76b982324713528f95cf96303aa3d2c73af866c1",
+          "b12x/moe/_shared/kernels/w4a8_compact_micro.py": "ec5a7e25a8ea73efa90d55e515957a322591e371dc9dbae789366620d15dcd0e",
+          "b12x/moe/_shared/kernels/w4a8_compact_projection.py": "d07bd4fbc6f7146cb7193c2d205c1473f2863fd6a9d1453ea12cd31d979ce4fc",
+          "b12x/moe/_shared/kernels/w4a8_compact_activation.py": "4e41b0c84db9d92be028fa26dc0a18b0df126fd715dfb7ebd2d73669d2d3116b",
+          "b12x/moe/_shared/kernels/w4a8_phase2.py": "44e5a9d132c029f5b041ed03f78fb5e791cfe8e838d61d89c97bc0fb96449ff6"
+        },
+        "reference_semantics": {
+          "native": "V4.1 BF16 projection boundaries and routing before intermediate FP8 quantization",
+          "generic": "Declared W4A8-MX FP8 activation reference; tiny-decode actually consumes BF16 and accumulates BF16 atomically, so this is not its exact arithmetic oracle",
+          "compact": "FP8 input, BF16 FC1 and activation boundaries, FP8 intermediate, routing after FC2 before BF16 route output; FP32 top-k sum rounded to BF16"
+        }
+      }
+    },
+    {
+      "raw_path": "/home/tj/.cache/ds41rt-upstream-20260916/expert-compact-native-cold-n1152.json",
+      "sha256": "c99fc3ac7496d8b49e4f1d1d64d332a3c911fc9a5c9c81e0bf393dd6c55d8f26",
+      "report": {
+        "scope": "Screen upstream expert numerics at DS41RT geometry before native adaptation.\n\nUses prepared GPU paths, not the serving native ABI. No serving speedup claim.\n",
+        "command": [
+          "python/tools/compare_v41_expert_upstream.py",
+          "--b12x-root",
+          "/home/tj/.cache/ds41rt-upstream-20260916/sparkinfer",
+          "--intermediate",
+          "1152",
+          "--rows",
+          "1",
+          "--compare-timing",
+          "--cold-timing",
+          "--native-lib",
+          "/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-index-sort.so",
+          "--output",
+          "/home/tj/.cache/ds41rt-upstream-20260916/expert-compact-native-cold-n1152.json"
+        ],
+        "fork_revision": "fadedecb841091a0c8678f3513409f4efdf54bf7",
+        "script_sha256": "cc95fd3bb4312ac863a7240fe2aeb7c64bfbea98bc11d5a4a4390b9beba8178a",
+        "device": "_CudaDeviceProperties(name='NVIDIA RTX PRO 6000 Blackwell Workstation Edition', major=12, minor=0, total_memory=97249MB, multi_processor_count=188, uuid=fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, pci_bus_id=17, pci_device_id=0, pci_domain_id=0, L2_cache_size=128MB)",
+        "geometry": {
+          "experts": 384,
+          "hidden": 5120,
+          "intermediate": 1152,
+          "topk": 6
+        },
+        "cases": [
+          {
+            "rows": 1,
+            "activation": "silu_v41",
+            "implementation": "native_tp2",
+            "checks": [
+              {
+                "identical_input_replay_exact": null,
+                "cycle": 0,
+                "relative_l2": 0.0023333507124334574,
+                "cosine": 0.9999972581863403,
+                "native_reference_gate": true,
+                "own_reference_relative_l2": 0.0023333507124334574,
+                "own_reference_cosine": 0.9999972581863403
+              },
+              {
+                "identical_input_replay_exact": null,
+                "cycle": 1,
+                "relative_l2": 0.002366494620218873,
+                "cosine": 0.9999972581863403,
+                "native_reference_gate": true,
+                "own_reference_relative_l2": 0.002366494620218873,
+                "own_reference_cosine": 0.9999972581863403
+              },
+              {
+                "identical_input_replay_exact": true,
+                "cycle": 2,
+                "relative_l2": 0.002366494620218873,
+                "cosine": 0.9999972581863403,
+                "native_reference_gate": true,
+                "own_reference_relative_l2": 0.002366494620218873,
+                "own_reference_cosine": 0.9999972581863403
+              }
+            ],
+            "prepared_graph_timing": {
+              "scope": "Includes BF16 input quantization and route reduction; prepared graph, not native serving ABI",
+              "samples_us": [
+                92.35648155212402,
+                92.29215621948242,
+                92.1878433227539,
+                92.28799819946289,
+                92.19584465026855,
+                92.32128143310547,
+                92.32959747314453,
+                92.2486400604248
+              ],
+              "median_us": 92.29007720947266,
+              "order": "AB/BA, eight samples of 100 replays",
+              "gpu_before": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, P1, 2662 MHz, 13365 MHz, 400.00 W, 0x0000000000000000\nGPU-95f8f212-9131-df99-fd53-7535965197d7, P8, 180 MHz, 405 MHz, 400.00 W, 0x0000000000000000",
+              "gpu_after": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, P1, 2707 MHz, 13365 MHz, 400.00 W, 0x0000000000000000\nGPU-95f8f212-9131-df99-fd53-7535965197d7, P8, 180 MHz, 405 MHz, 400.00 W, 0x0000000000000000",
+              "cold_samples_us": [
+                126.97599828243256,
+                127.00800597667694,
+                127.00800597667694,
+                127.03999876976013,
+                126.99200212955475,
+                127.00800597667694,
+                126.97599828243256,
+                126.97599828243256
+              ],
+              "cold_protocol": "Eight balanced samples; median of 32 individual graph replays each following a 256 MiB write, write excluded"
+            }
+          },
+          {
+            "rows": 1,
+            "activation": "silu",
+            "implementation": "direct_compact",
+            "checks": [
+              {
+                "identical_input_replay_exact": null,
+                "cycle": 0,
+                "relative_l2": 0.040142722427845,
+                "cosine": 0.9991940259933472,
+                "native_reference_gate": false,
+                "own_reference_relative_l2": 0.012634210288524628,
+                "own_reference_cosine": 0.9999202489852905,
+                "compact_reference_relative_l2": 0.0,
+                "compact_reference_cosine": 1.0000001192092896,
+                "compact_reference_gate": true
+              },
+              {
+                "identical_input_replay_exact": null,
+                "cycle": 1,
+                "relative_l2": 0.03499848023056984,
+                "cosine": 0.9993993043899536,
+                "native_reference_gate": false,
+                "own_reference_relative_l2": 0.015914546325802803,
+                "own_reference_cosine": 0.9998741745948792,
+                "compact_reference_relative_l2": 0.0,
+                "compact_reference_cosine": 1.0000001192092896,
+                "compact_reference_gate": true
+              },
+              {
+                "identical_input_replay_exact": true,
+                "cycle": 2,
+                "relative_l2": 0.03499848023056984,
+                "cosine": 0.9993993043899536,
+                "native_reference_gate": false,
+                "own_reference_relative_l2": 0.015914546325802803,
+                "own_reference_cosine": 0.9998741745948792,
+                "compact_reference_relative_l2": 0.0,
+                "compact_reference_cosine": 1.0000001192092896,
+                "compact_reference_gate": true
+              }
+            ],
+            "prepared_graph_timing": {
+              "scope": "Includes BF16 input quantization and route reduction; prepared graph, not native serving ABI",
+              "samples_us": [
+                26.687679290771484,
+                26.659839153289795,
+                26.665279865264893,
+                26.63327932357788,
+                26.656959056854248,
+                26.677439212799072,
+                26.71135902404785,
+                26.63872003555298
+              ],
+              "median_us": 26.662559509277344,
+              "order": "AB/BA, eight samples of 100 replays",
+              "gpu_before": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, P1, 2662 MHz, 13365 MHz, 400.00 W, 0x0000000000000000\nGPU-95f8f212-9131-df99-fd53-7535965197d7, P8, 180 MHz, 405 MHz, 400.00 W, 0x0000000000000000",
+              "gpu_after": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, P1, 2707 MHz, 13365 MHz, 400.00 W, 0x0000000000000000\nGPU-95f8f212-9131-df99-fd53-7535965197d7, P8, 180 MHz, 405 MHz, 400.00 W, 0x0000000000000000",
+              "cold_samples_us": [
+                53.247999399900436,
+                53.21599915623665,
+                53.247999399900436,
+                53.247999399900436,
+                52.84800007939339,
+                53.23199927806854,
+                53.21599915623665,
+                53.21599915623665
+              ],
+              "cold_protocol": "Eight balanced samples; median of 32 individual graph replays each following a 256 MiB write, write excluded"
+            }
+          }
+        ],
+        "native_library": {
+          "path": "/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-index-sort.so",
+          "sha256": "8c6cccb1c3372567a1c49cc480a9cdf2b44d776a0a69cfa7c9d823caebaf0a4c",
+          "output": "Native local FP32 routes summed and rounded once to BF16; excludes cross-device TP2 reduction"
+        },
+        "fork_dirty": "",
+        "fork_source_sha256": {
+          "b12x/moe/_shared/kernels/tiny_decode.py": "bbf0b9dbd5d80229678f397098cc987f3b048dc7c7a11f9bbada7895e0b4fc53",
+          "b12x/moe/fused_moe/_impl.py": "a4c362f874ace2925e1ba127989874d443c64dfe931aff05ad856ba14d784594",
+          "b12x/moe/fused_moe/_preparation.py": "d23c61b2e27094a772bc3b1bee7c1ba2ea1e973750dc84250b1d05d0c360eab8",
+          "b12x/moe/_shared/kernels/reference.py": "d3e6e44ebba3e7c9566a6e6f76b982324713528f95cf96303aa3d2c73af866c1",
+          "b12x/moe/_shared/kernels/w4a8_compact_micro.py": "ec5a7e25a8ea73efa90d55e515957a322591e371dc9dbae789366620d15dcd0e",
+          "b12x/moe/_shared/kernels/w4a8_compact_projection.py": "d07bd4fbc6f7146cb7193c2d205c1473f2863fd6a9d1453ea12cd31d979ce4fc",
+          "b12x/moe/_shared/kernels/w4a8_compact_activation.py": "4e41b0c84db9d92be028fa26dc0a18b0df126fd715dfb7ebd2d73669d2d3116b",
+          "b12x/moe/_shared/kernels/w4a8_phase2.py": "44e5a9d132c029f5b041ed03f78fb5e791cfe8e838d61d89c97bc0fb96449ff6"
+        },
+        "reference_semantics": {
+          "native": "V4.1 BF16 projection boundaries and routing before intermediate FP8 quantization",
+          "generic": "Declared W4A8-MX FP8 activation reference; tiny-decode actually consumes BF16 and accumulates BF16 atomically, so this is not its exact arithmetic oracle",
+          "compact": "FP8 input, BF16 FC1 and activation boundaries, FP8 intermediate, routing after FC2 before BF16 route output; FP32 top-k sum rounded to BF16"
+        }
+      }
+    }
+  ]
+}

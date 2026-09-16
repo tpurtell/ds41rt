@@ -78,6 +78,33 @@ They may still require mechanical merge/import/test fixes when shared library
 surfaces change. Attention/projection parallelization across GPUs is deferred;
 retain the current ownership and expert parallelism in comparisons.
 
+## Compact expert cost screen against native TP2 (September 16)
+
+[Timing evidence](sparkinfer-upstream-expert-compact-timing-20260916.json)
+compares the actual native TP2 expert library with upstream's direct compact
+path on RTX0, E384/K5120/N1152/top6. Both arms include BF16 input quantization
+and local output reduction. Native FP32 local routes are summed and rounded
+once to BF16; compact applies routing after FC2 and rounds each route to BF16
+before summing. Cross-device traffic and final two-rank reduction are excluded.
+Each arm passes its applicable arithmetic reference and graph checks before timing.
+
+| Rows | Native local path | Direct compact | Protocol |
+| --- | ---: | ---: | --- |
+| 1 | 92.3 µs | 26.7 µs | Warm, eight balanced AB/BA samples of 100 graph replays |
+| 1 | 127.0 µs | 53.2 µs | Each replay follows a 256 MiB write; write time excluded |
+| 16 | 561.9 µs | 561.8 µs | Warm, same balanced protocol; provisional clock caveat |
+
+The one-row gain survives cache eviction. Its run retained P1, standard
+13365 MHz memory, a 400 W cap, and no active throttle bits; SM clocks changed
+2662→2707 MHz. The 16-row run changed 2775→2475 MHz and therefore supports
+only a provisional observation of similar cost, not release acceptance.
+The earlier prepared-Python `silu_v41` baseline was substantially slower than
+our native library and is not used to claim a production improvement.
+
+The next step is to adapt the compact path to native routing/FP32 TP2 output
+semantics, compare the full native path, and check other row counts and Spark
+hardware. No backend/default switch or end-to-end speedup is established here.
+
 ## Direct compact expert arithmetic at DS4.1 shapes (September 16)
 
 [Compact expert evidence](sparkinfer-upstream-expert-compact-20260916.json)
