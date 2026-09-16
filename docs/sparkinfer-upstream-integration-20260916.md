@@ -78,6 +78,52 @@ They may still require mechanical merge/import/test fixes when shared library
 surfaces change. Attention/projection parallelization across GPUs is deferred;
 retain the current ownership and expert parallelism in comparisons.
 
+## Narrow projection and rounding investigation (September 16)
+
+[Evidence](sparkinfer-upstream-narrow-and-rounding-20260916.json) extends the
+native quantized-oracle qualification to Q-B, index-Q, TP2 shared up/down and
+draft main projection at capacities 16/80/256: **15 variants pass**, with
+live counts 1/7/full and changed-input graph replay.
+
+The [narrow projection probe](../python/tools/compare_v41_narrow_projection.py)
+compares native FP8 against upstream's prepared BF16 projection on checkpoint
+weights for KV, Q-A and index-Q. BF16 weights are expanded before timing; each
+path is checked against its own numerical oracle because BF16 omits activation
+quantization. All fifteen shape/live-count cases pass their oracle and output
+tail checks. BF16 is slower at full 16/256-row counts for all three projections.
+It is competitive for single-row KV, but would add approximately 2.5 MiB of
+resident weights per layer. These are warm component measurements, not native
+BF16 serving or full-chain acceptance.
+
+An alternating same-input comparison additionally races capacity-1 and
+capacity-16 native FP8 plans for one live row:
+
+| Projection | Capacity 1 FP8, µs | Capacity 16 FP8, µs | BF16, µs |
+| --- | ---: | ---: | ---: |
+| KV (5120→512) | 6.23 | 4.51 | 3.31 |
+| Q-A (5120→1280) | 6.56 | 4.81 | 6.04 |
+| Index-Q (1280→4096) | 4.61 | 5.33 | 5.84 |
+
+The two FP8 outputs match exactly after graph replay with changed inputs.
+Rust currently chooses the smallest available capacity. Both Q-A/KV plans use
+four FP32 split-K partials, but their one-row scheduler, non-TMA input path and
+quantizer subgroup selection differ. Investigate a shape-specific b12x policy
+rather than changing every one-row projection or expanding weights blindly.
+No projection dispatch change has been made from these measurements yet.
+
+The mHC diagnostic now records FP64 collapse/normalization comparisons without
+relaxing the existing gate. In the 512-row unit-scale case, old native collapse
+matches the FP32 Torch reference **exactly** across 2,621,440 elements; the
+flagged old-native discrepancy arises at normalization (2.203125 versus
+2.21875). Upstream's relative L2 output error against the FP64 pipeline is
+1.63e-5, compared with 2.68e-5 for the FP32 reference itself. Three of its four
+flagged elements match the FP64 pipeline's rounded output. At input scale 0.01,
+upstream's relative L2 error is 2.62e-5 versus 2.84e-5 for the reference.
+These observations support a finite-precision explanation, not a corrupt
+projection. They do not establish an error bound for all inputs or close the
+larger-row acceptance gate; retain the reproducer and use meaningful rounding
+and model-quality checks before adopting the larger-row path.
+
 ## Serving integration of lagged mHC (September 16)
 
 The candidate build option `DS41RT_ENABLE_V41_HC_LAGGED_AOT` exports and hashes

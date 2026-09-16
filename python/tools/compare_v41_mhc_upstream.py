@@ -15,6 +15,7 @@ def main():
     p.add_argument('--b12x-root', type=Path, required=True)
     p.add_argument('--native', type=Path, required=True)
     p.add_argument('--output', type=Path, required=True)
+    p.add_argument('--rounding-diagnostics', action='store_true')
     p.add_argument('--snapshot', type=Path, help='Also compare every real mHC weight set against upstream')
     p.add_argument('--device', type=int, default=0)
     p.add_argument('--native-bridge', action='store_true', help='Use serving begin ABI from --aot library')
@@ -133,7 +134,41 @@ def main():
                         try:
                             torch.testing.assert_close(output,reference,rtol=2e-5,atol=.008 if output.dtype == torch.bfloat16 else 4e-5)
                         except AssertionError as error:
-                            failures.append({'component':component,'error':str(error)})
+                            failure = {'component':component,'error':str(error)}
+                            if args.rounding_diagnostics and component == 2:
+                                products = incoming.unsqueeze(-1) * residual.float()
+                                reference_collapse = products.sum(1).bfloat16()
+                                sequential = products[:,0]
+                                for index in range(1,4):
+                                    sequential = sequential + products[:,index]
+                                sequential = sequential.bfloat16()
+                                exact_collapse = (incoming.double().unsqueeze(-1)*residual.double()).sum(1).bfloat16()
+                                exact = exact_collapse.double()
+                                gold = (exact * torch.rsqrt(exact.square().mean(-1,keepdim=True)+1e-20) * weight.double()).bfloat16()
+                                def stats(value, target):
+                                    delta = value.float()-target.float()
+                                    return {'differing_elements':int(torch.count_nonzero(delta)),
+                                            'elements':delta.numel(),
+                                            'max_abs':float(delta.abs().max()),
+                                            'relative_l2':float(torch.linalg.vector_norm(delta)/torch.linalg.vector_norm(target.float()).clamp_min(1e-30))}
+                                failure['rounding'] = {
+                                    'native_collapse_vs_torch_sum':stats(collapsed,reference_collapse),
+                                    'native_collapse_vs_sequential':stats(collapsed,sequential),
+                                    'native_collapse_vs_fp64':stats(collapsed,exact_collapse),
+                                    'torch_sum_collapse_vs_fp64':stats(reference_collapse,exact_collapse),
+                                    'output_vs_fp64_pipeline':stats(output,gold),
+                                    'reference_vs_fp64_pipeline':stats(reference,gold),
+                                }
+                                mask = (output.float()-reference.float()).abs() > (.008+2e-5*reference.float().abs())
+                                examples = []
+                                for row,col in mask.nonzero()[:8].tolist():
+                                    examples.append({'row':row,'column':col,'output':float(output[row,col]),
+                                        'reference':float(reference[row,col]),'fp64_pipeline':float(gold[row,col]),
+                                        'native_collapse':float(collapsed[row,col]),
+                                        'torch_sum_collapse':float(reference_collapse[row,col]),
+                                        'fp64_collapse':float(exact_collapse[row,col])})
+                                failure['examples'] = examples
+                            failures.append(failure)
                     errors.append({'amplitude':amplitude,'path':name,'oracle_pass':not failures,'failures':failures})
             real_checks = []
             if args.snapshot:

@@ -1,0 +1,1654 @@
+{
+  "mhc-rounding-diagnostic": {
+    "sha256": "aab3cf3170f260328fd2f5356f2a70388c6954824bd62f7e04c98849eaf98591",
+    "evidence": {
+      "scope": "Native begin versus upstream prepared lagged pre; warm component diagnostic, not serving",
+      "command": [
+        "python/tools/compare_v41_mhc_upstream.py",
+        "--b12x-root",
+        "/home/tj/.cache/ds41rt-upstream-20260916/sparkinfer",
+        "--native",
+        "/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-attention.so",
+        "--rounding-diagnostics",
+        "--rows",
+        "1",
+        "8",
+        "16",
+        "80",
+        "512",
+        "--output",
+        "/home/tj/.cache/ds41rt-upstream-20260916/mhc-rounding-diagnostic.json"
+      ],
+      "native_sha256": "c2332ac7582c189bc618b2245f09b626a020f3397153a7e73f53d5afb0084aef",
+      "revision": "5bda5b2f81c1da620f9024590e7eeea6b50b5fcf",
+      "gpu": "uuid, name, power.limit [W], clocks.current.memory [MHz]\nGPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, NVIDIA RTX PRO 6000 Blackwell Workstation Edition, 400.00 W, 13365 MHz\nGPU-95f8f212-9131-df99-fd53-7535965197d7, NVIDIA RTX PRO 6000 Blackwell Workstation Edition, 400.00 W, 405 MHz\n",
+      "cases": [
+        {
+          "rows": 1,
+          "aot_exact_replay_and_scratch_guard": false,
+          "real_weight_exact_checks": [],
+          "checks": [
+            {
+              "amplitude": 1.0,
+              "path": "native",
+              "oracle_pass": true,
+              "failures": []
+            },
+            {
+              "amplitude": 1.0,
+              "path": "upstream",
+              "oracle_pass": true,
+              "failures": []
+            },
+            {
+              "amplitude": 0.0,
+              "path": "native",
+              "oracle_pass": true,
+              "failures": []
+            },
+            {
+              "amplitude": 0.0,
+              "path": "upstream",
+              "oracle_pass": true,
+              "failures": []
+            },
+            {
+              "amplitude": 0.01,
+              "path": "native",
+              "oracle_pass": true,
+              "failures": []
+            },
+            {
+              "amplitude": 0.01,
+              "path": "upstream",
+              "oracle_pass": true,
+              "failures": []
+            }
+          ],
+          "warm_us": {
+            "native": [
+              10.226688385009766,
+              10.209407806396484,
+              10.224767684936523,
+              10.214431762695312,
+              10.220479965209961,
+              10.212960243225098
+            ],
+            "upstream": [
+              5.232287883758545,
+              5.223487854003906,
+              5.225503921508789,
+              5.225503921508789,
+              5.224832057952881,
+              5.2251200675964355
+            ]
+          },
+          "median_us": {
+            "native": 10.217455863952637,
+            "upstream": 5.225311994552612
+          }
+        },
+        {
+          "rows": 8,
+          "aot_exact_replay_and_scratch_guard": false,
+          "real_weight_exact_checks": [],
+          "checks": [
+            {
+              "amplitude": 1.0,
+              "path": "native",
+              "oracle_pass": true,
+              "failures": []
+            },
+            {
+              "amplitude": 1.0,
+              "path": "upstream",
+              "oracle_pass": true,
+              "failures": []
+            },
+            {
+              "amplitude": 0.0,
+              "path": "native",
+              "oracle_pass": true,
+              "failures": []
+            },
+            {
+              "amplitude": 0.0,
+              "path": "upstream",
+              "oracle_pass": true,
+              "failures": []
+            },
+            {
+              "amplitude": 0.01,
+              "path": "native",
+              "oracle_pass": true,
+              "failures": []
+            },
+            {
+              "amplitude": 0.01,
+              "path": "upstream",
+              "oracle_pass": true,
+              "failures": []
+            }
+          ],
+          "warm_us": {
+            "native": [
+              12.437503814697266,
+              12.428799629211426,
+              12.445247650146484,
+              12.46947193145752,
+              12.478400230407715,
+              12.480031967163086
+            ],
+            "upstream": [
+              7.359295845031738,
+              7.340256214141846,
+              7.34284782409668,
+              7.369823932647705,
+              7.372064113616943,
+              7.3766398429870605
+            ]
+          },
+          "median_us": {
+            "native": 12.457359790802002,
+            "upstream": 7.364559888839722
+          }
+        },
+        {
+          "rows": 16,
+          "aot_exact_replay_and_scratch_guard": false,
+          "real_weight_exact_checks": [],
+          "checks": [
+            {
+              "amplitude": 1.0,
+              "path": "native",
+              "oracle_pass": true,
+              "failures": []
+            },
+            {
+              "amplitude": 1.0,
+              "path": "upstream",
+              "oracle_pass": true,
+              "failures": []
+            },
+            {
+              "amplitude": 0.0,
+              "path": "native",
+              "oracle_pass": true,
+              "failures": []
+            },
+            {
+              "amplitude": 0.0,
+              "path": "upstream",
+              "oracle_pass": true,
+              "failures": []
+            },
+            {
+              "amplitude": 0.01,
+              "path": "native",
+              "oracle_pass": true,
+              "failures": []
+            },
+            {
+              "amplitude": 0.01,
+              "path": "upstream",
+              "oracle_pass": true,
+              "failures": []
+            }
+          ],
+          "warm_us": {
+            "native": [
+              15.292192459106445,
+              15.28377628326416,
+              15.267744064331055,
+              15.276639938354492,
+              15.287008285522461,
+              15.307231903076172
+            ],
+            "upstream": [
+              9.43881607055664,
+              9.420736312866211,
+              9.419648170471191,
+              9.433504104614258,
+              9.420512199401855,
+              9.429759979248047
+            ]
+          },
+          "median_us": {
+            "native": 15.28539228439331,
+            "upstream": 9.425248146057129
+          }
+        },
+        {
+          "rows": 80,
+          "aot_exact_replay_and_scratch_guard": false,
+          "real_weight_exact_checks": [],
+          "checks": [
+            {
+              "amplitude": 1.0,
+              "path": "native",
+              "oracle_pass": true,
+              "failures": []
+            },
+            {
+              "amplitude": 1.0,
+              "path": "upstream",
+              "oracle_pass": true,
+              "failures": []
+            },
+            {
+              "amplitude": 0.0,
+              "path": "native",
+              "oracle_pass": true,
+              "failures": []
+            },
+            {
+              "amplitude": 0.0,
+              "path": "upstream",
+              "oracle_pass": true,
+              "failures": []
+            },
+            {
+              "amplitude": 0.01,
+              "path": "native",
+              "oracle_pass": true,
+              "failures": []
+            },
+            {
+              "amplitude": 0.01,
+              "path": "upstream",
+              "oracle_pass": true,
+              "failures": []
+            }
+          ],
+          "warm_us": {
+            "native": [
+              48.34688186645508,
+              48.3007698059082,
+              48.343326568603516,
+              48.31417465209961,
+              48.31843185424805,
+              48.3287353515625
+            ],
+            "upstream": [
+              29.080991744995117,
+              29.082176208496094,
+              30.00022315979004,
+              31.050880432128906,
+              32.61974334716797,
+              31.974592208862305
+            ]
+          },
+          "median_us": {
+            "native": 48.32358360290527,
+            "upstream": 30.525551795959473
+          }
+        },
+        {
+          "rows": 512,
+          "aot_exact_replay_and_scratch_guard": false,
+          "real_weight_exact_checks": [],
+          "checks": [
+            {
+              "amplitude": 1.0,
+              "path": "native",
+              "oracle_pass": false,
+              "failures": [
+                {
+                  "component": 2,
+                  "error": "Tensor-likes are not close!\n\nMismatched elements: 1 / 2621440 (0.0%)\nGreatest absolute difference: 0.015625 at index (433, 4904) (up to 0.008 allowed)\nGreatest relative difference: 0.007049560546875 at index (433, 4904) (up to 2e-05 allowed)",
+                  "rounding": {
+                    "native_collapse_vs_torch_sum": {
+                      "differing_elements": 0,
+                      "elements": 2621440,
+                      "max_abs": 0.0,
+                      "relative_l2": 0.0
+                    },
+                    "native_collapse_vs_sequential": {
+                      "differing_elements": 0,
+                      "elements": 2621440,
+                      "max_abs": 0.0,
+                      "relative_l2": 0.0
+                    },
+                    "native_collapse_vs_fp64": {
+                      "differing_elements": 94,
+                      "elements": 2621440,
+                      "max_abs": 0.015625,
+                      "relative_l2": 1.2299037734919693e-05
+                    },
+                    "torch_sum_collapse_vs_fp64": {
+                      "differing_elements": 94,
+                      "elements": 2621440,
+                      "max_abs": 0.015625,
+                      "relative_l2": 1.2299037734919693e-05
+                    },
+                    "output_vs_fp64_pipeline": {
+                      "differing_elements": 113,
+                      "elements": 2621440,
+                      "max_abs": 0.03125,
+                      "relative_l2": 2.867253169824835e-05
+                    },
+                    "reference_vs_fp64_pipeline": {
+                      "differing_elements": 110,
+                      "elements": 2621440,
+                      "max_abs": 0.03125,
+                      "relative_l2": 2.6794563382281922e-05
+                    }
+                  },
+                  "examples": [
+                    {
+                      "row": 433,
+                      "column": 4904,
+                      "output": 2.203125,
+                      "reference": 2.21875,
+                      "fp64_pipeline": 2.21875,
+                      "native_collapse": 1.796875,
+                      "torch_sum_collapse": 1.796875,
+                      "fp64_collapse": 1.796875
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "amplitude": 1.0,
+              "path": "upstream",
+              "oracle_pass": false,
+              "failures": [
+                {
+                  "component": 2,
+                  "error": "Tensor-likes are not close!\n\nMismatched elements: 4 / 2621440 (0.0%)\nGreatest absolute difference: 0.03125 at index (250, 4851) (up to 0.008 allowed)\nGreatest relative difference: 0.00775146484375 at index (435, 4443) (up to 2e-05 allowed)",
+                  "rounding": {
+                    "native_collapse_vs_torch_sum": {
+                      "differing_elements": 0,
+                      "elements": 2621440,
+                      "max_abs": 0.0,
+                      "relative_l2": 0.0
+                    },
+                    "native_collapse_vs_sequential": {
+                      "differing_elements": 0,
+                      "elements": 2621440,
+                      "max_abs": 0.0,
+                      "relative_l2": 0.0
+                    },
+                    "native_collapse_vs_fp64": {
+                      "differing_elements": 94,
+                      "elements": 2621440,
+                      "max_abs": 0.015625,
+                      "relative_l2": 1.2299037734919693e-05
+                    },
+                    "torch_sum_collapse_vs_fp64": {
+                      "differing_elements": 94,
+                      "elements": 2621440,
+                      "max_abs": 0.015625,
+                      "relative_l2": 1.2299037734919693e-05
+                    },
+                    "output_vs_fp64_pipeline": {
+                      "differing_elements": 78,
+                      "elements": 2621440,
+                      "max_abs": 0.015625,
+                      "relative_l2": 1.6266012607957236e-05
+                    },
+                    "reference_vs_fp64_pipeline": {
+                      "differing_elements": 110,
+                      "elements": 2621440,
+                      "max_abs": 0.03125,
+                      "relative_l2": 2.6794563382281922e-05
+                    }
+                  },
+                  "examples": [
+                    {
+                      "row": 250,
+                      "column": 3367,
+                      "output": -2.0625,
+                      "reference": -2.046875,
+                      "fp64_pipeline": -2.0625,
+                      "native_collapse": -2.5,
+                      "torch_sum_collapse": -2.5,
+                      "fp64_collapse": -2.5
+                    },
+                    {
+                      "row": 250,
+                      "column": 4851,
+                      "output": 4.125,
+                      "reference": 4.09375,
+                      "fp64_pipeline": 4.125,
+                      "native_collapse": 4.0,
+                      "torch_sum_collapse": 4.0,
+                      "fp64_collapse": 4.0
+                    },
+                    {
+                      "row": 280,
+                      "column": 3673,
+                      "output": 2.15625,
+                      "reference": 2.171875,
+                      "fp64_pipeline": 2.15625,
+                      "native_collapse": 1.5,
+                      "torch_sum_collapse": 1.5,
+                      "fp64_collapse": 1.4921875
+                    },
+                    {
+                      "row": 435,
+                      "column": 4443,
+                      "output": 2.0,
+                      "reference": 2.015625,
+                      "fp64_pipeline": 2.015625,
+                      "native_collapse": 1.984375,
+                      "torch_sum_collapse": 1.984375,
+                      "fp64_collapse": 1.984375
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "amplitude": 0.0,
+              "path": "native",
+              "oracle_pass": true,
+              "failures": []
+            },
+            {
+              "amplitude": 0.0,
+              "path": "upstream",
+              "oracle_pass": true,
+              "failures": []
+            },
+            {
+              "amplitude": 0.01,
+              "path": "native",
+              "oracle_pass": true,
+              "failures": []
+            },
+            {
+              "amplitude": 0.01,
+              "path": "upstream",
+              "oracle_pass": false,
+              "failures": [
+                {
+                  "component": 2,
+                  "error": "Tensor-likes are not close!\n\nMismatched elements: 2 / 2621440 (0.0%)\nGreatest absolute difference: 0.015625 at index (37, 2962) (up to 0.008 allowed)\nGreatest relative difference: 0.01025390625 at index (37, 2962) (up to 2e-05 allowed)",
+                  "rounding": {
+                    "native_collapse_vs_torch_sum": {
+                      "differing_elements": 0,
+                      "elements": 2621440,
+                      "max_abs": 0.0,
+                      "relative_l2": 0.0
+                    },
+                    "native_collapse_vs_sequential": {
+                      "differing_elements": 0,
+                      "elements": 2621440,
+                      "max_abs": 0.0,
+                      "relative_l2": 0.0
+                    },
+                    "native_collapse_vs_fp64": {
+                      "differing_elements": 94,
+                      "elements": 2621440,
+                      "max_abs": 0.0001220703125,
+                      "relative_l2": 1.5083282960404176e-05
+                    },
+                    "torch_sum_collapse_vs_fp64": {
+                      "differing_elements": 94,
+                      "elements": 2621440,
+                      "max_abs": 0.0001220703125,
+                      "relative_l2": 1.5083282960404176e-05
+                    },
+                    "output_vs_fp64_pipeline": {
+                      "differing_elements": 93,
+                      "elements": 2621440,
+                      "max_abs": 0.015625,
+                      "relative_l2": 2.621815110614989e-05
+                    },
+                    "reference_vs_fp64_pipeline": {
+                      "differing_elements": 138,
+                      "elements": 2621440,
+                      "max_abs": 0.015625,
+                      "relative_l2": 2.842747744580265e-05
+                    }
+                  },
+                  "examples": [
+                    {
+                      "row": 37,
+                      "column": 2962,
+                      "output": 1.5078125,
+                      "reference": 1.5234375,
+                      "fp64_pipeline": 1.5234375,
+                      "native_collapse": 0.016357421875,
+                      "torch_sum_collapse": 0.016357421875,
+                      "fp64_collapse": 0.016357421875
+                    },
+                    {
+                      "row": 125,
+                      "column": 5084,
+                      "output": 3.015625,
+                      "reference": 3.03125,
+                      "fp64_pipeline": 3.015625,
+                      "native_collapse": 0.0283203125,
+                      "torch_sum_collapse": 0.0283203125,
+                      "fp64_collapse": 0.0283203125
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "timing_skipped": "Numerical gate failed"
+        }
+      ]
+    }
+  },
+  "candidate-more-projections": {
+    "sha256": "10057b32801c0d597aeae08cc50412de5f8d30e340328d86b0cf4092f6756bea",
+    "evidence": {
+      "revision": "5bda5b2f81c1da620f9024590e7eeea6b50b5fcf",
+      "cases": [
+        {
+          "label": "v41_main_fp8_m16",
+          "live_rows": [
+            1,
+            7,
+            16
+          ]
+        },
+        {
+          "label": "v41_main_fp8_m80",
+          "live_rows": [
+            1,
+            7,
+            80
+          ]
+        },
+        {
+          "label": "v41_main_fp8_m256",
+          "live_rows": [
+            1,
+            7,
+            256
+          ]
+        },
+        {
+          "label": "v41_q_b_fp8_m16",
+          "live_rows": [
+            1,
+            7,
+            16
+          ]
+        },
+        {
+          "label": "v41_q_b_fp8_m80",
+          "live_rows": [
+            1,
+            7,
+            80
+          ]
+        },
+        {
+          "label": "v41_q_b_fp8_m256",
+          "live_rows": [
+            1,
+            7,
+            256
+          ]
+        },
+        {
+          "label": "v41_index_q_fp8_m16",
+          "live_rows": [
+            1,
+            7,
+            16
+          ]
+        },
+        {
+          "label": "v41_index_q_fp8_m80",
+          "live_rows": [
+            1,
+            7,
+            80
+          ]
+        },
+        {
+          "label": "v41_index_q_fp8_m256",
+          "live_rows": [
+            1,
+            7,
+            256
+          ]
+        },
+        {
+          "label": "v41_ffn_tp2_up_fp8_m16",
+          "live_rows": [
+            1,
+            7,
+            16
+          ]
+        },
+        {
+          "label": "v41_ffn_tp2_up_fp8_m80",
+          "live_rows": [
+            1,
+            7,
+            80
+          ]
+        },
+        {
+          "label": "v41_ffn_tp2_up_fp8_m256",
+          "live_rows": [
+            1,
+            7,
+            256
+          ]
+        },
+        {
+          "label": "v41_ffn_tp2_down_fp8_m16",
+          "live_rows": [
+            1,
+            7,
+            16
+          ]
+        },
+        {
+          "label": "v41_ffn_tp2_down_fp8_m80",
+          "live_rows": [
+            1,
+            7,
+            80
+          ]
+        },
+        {
+          "label": "v41_ffn_tp2_down_fp8_m256",
+          "live_rows": [
+            1,
+            7,
+            256
+          ]
+        }
+      ],
+      "manifest_sha256": "1e5cbbcb75613318a974a27048557f111df8b5bb78679c67757c7f2df9065b70",
+      "library_sha256": "c6817382e7b6fb0d630e396a23e125ef62fb8a3e3c1af6c1077d0ed01678d3ea",
+      "gpu": "fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0",
+      "torch_version": "2.13.0+cu130"
+    }
+  },
+  "narrow-bf16-probe": {
+    "sha256": "918e06296b674e2ea047903adc93760e6eff09f60dc95e07f206540fd1176eb3",
+    "evidence": {
+      "scope": "Compare native FP8 with upstream BF16 narrow projections on checkpoint weights.\n\nThis is a warm component probe. BF16 requires expanded resident weights and\nchanges activation quantization; neither performance nor numerical acceptance\nof this probe constitutes serving acceptance.\n",
+      "command": [
+        "python/tools/compare_v41_narrow_projection.py",
+        "--b12x-root",
+        "/home/tj/.cache/ds41rt-upstream-20260916/sparkinfer",
+        "--native",
+        "/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-mhc.so",
+        "--snapshot",
+        "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+        "--output",
+        "/home/tj/.cache/ds41rt-upstream-20260916/narrow-bf16-probe.json"
+      ],
+      "revision": "5bda5b2f81c1da620f9024590e7eeea6b50b5fcf",
+      "native_sha256": "c6817382e7b6fb0d630e396a23e125ef62fb8a3e3c1af6c1077d0ed01678d3ea",
+      "cases": [
+        {
+          "prefix": "layers.0.attn.wkv",
+          "capacity": 1,
+          "rows": 1,
+          "separate_oracles_pass": true,
+          "graph_mutation_and_tail_pass": true,
+          "extra_resident_weight_bytes": 2618880,
+          "warm_us": {
+            "fp8": [
+              6.237279891967773,
+              6.228320121765137,
+              6.2336320877075195,
+              6.227776050567627,
+              6.235072135925293,
+              6.228928089141846
+            ],
+            "bf16": [
+              3.323199987411499,
+              3.3007678985595703,
+              3.301919937133789,
+              3.3171839714050293,
+              3.312704086303711,
+              3.325536012649536
+            ]
+          },
+          "median_us": {
+            "fp8": 6.231280088424683,
+            "bf16": 3.31494402885437
+          }
+        },
+        {
+          "prefix": "layers.0.attn.wkv",
+          "capacity": 16,
+          "rows": 1,
+          "separate_oracles_pass": true,
+          "graph_mutation_and_tail_pass": true,
+          "extra_resident_weight_bytes": 2618880,
+          "warm_us": {
+            "fp8": [
+              4.50867223739624,
+              4.508063793182373,
+              4.506591796875,
+              4.505536079406738,
+              4.506783962249756,
+              4.5076799392700195
+            ],
+            "bf16": [
+              4.102816104888916,
+              4.079584121704102,
+              4.063263893127441,
+              4.08076810836792,
+              4.074368000030518,
+              4.070015907287598
+            ]
+          },
+          "median_us": {
+            "fp8": 4.507231950759888,
+            "bf16": 4.07697606086731
+          }
+        },
+        {
+          "prefix": "layers.0.attn.wkv",
+          "capacity": 16,
+          "rows": 16,
+          "separate_oracles_pass": true,
+          "graph_mutation_and_tail_pass": true,
+          "extra_resident_weight_bytes": 2618880,
+          "warm_us": {
+            "fp8": [
+              4.699584007263184,
+              4.705088138580322,
+              4.710336208343506,
+              4.711040019989014,
+              4.710464000701904,
+              4.710015773773193
+            ],
+            "bf16": [
+              12.50057601928711,
+              12.50057601928711,
+              12.495967864990234,
+              12.502976417541504,
+              12.498815536499023,
+              12.50271987915039
+            ]
+          },
+          "median_us": {
+            "fp8": 4.71017599105835,
+            "bf16": 12.50057601928711
+          }
+        },
+        {
+          "prefix": "layers.0.attn.wkv",
+          "capacity": 256,
+          "rows": 1,
+          "separate_oracles_pass": true,
+          "graph_mutation_and_tail_pass": true,
+          "extra_resident_weight_bytes": 2618880,
+          "warm_us": {
+            "fp8": [
+              20.437376022338867,
+              20.43062400817871,
+              20.423904418945312,
+              20.45916748046875,
+              20.45404815673828,
+              20.428255081176758
+            ],
+            "bf16": [
+              30.299840927124023,
+              30.286304473876953,
+              30.280128479003906,
+              30.294496536254883,
+              30.2923526763916,
+              30.28438377380371
+            ]
+          },
+          "median_us": {
+            "fp8": 20.43400001525879,
+            "bf16": 30.289328575134277
+          }
+        },
+        {
+          "prefix": "layers.0.attn.wkv",
+          "capacity": 256,
+          "rows": 256,
+          "separate_oracles_pass": true,
+          "graph_mutation_and_tail_pass": true,
+          "extra_resident_weight_bytes": 2618880,
+          "warm_us": {
+            "fp8": [
+              21.927200317382812,
+              21.94879913330078,
+              22.24847984313965,
+              22.149311065673828,
+              22.244319915771484,
+              22.25484848022461
+            ],
+            "bf16": [
+              31.007648468017578,
+              30.994848251342773,
+              31.384479522705078,
+              31.171104431152344,
+              31.44118309020996,
+              31.453920364379883
+            ]
+          },
+          "median_us": {
+            "fp8": 22.196815490722656,
+            "bf16": 31.27779197692871
+          }
+        },
+        {
+          "prefix": "layers.0.attn.wq_a",
+          "capacity": 1,
+          "rows": 1,
+          "separate_oracles_pass": true,
+          "graph_mutation_and_tail_pass": true,
+          "extra_resident_weight_bytes": 6547200,
+          "warm_us": {
+            "fp8": [
+              6.459167957305908,
+              6.463935852050781,
+              6.4580159187316895,
+              6.467520236968994,
+              6.465439796447754,
+              6.458911895751953
+            ],
+            "bf16": [
+              6.055488109588623,
+              6.078368186950684,
+              6.043615818023682,
+              6.093311786651611,
+              6.095935821533203,
+              6.102880001068115
+            ]
+          },
+          "median_us": {
+            "fp8": 6.461551904678345,
+            "bf16": 6.0858399868011475
+          }
+        },
+        {
+          "prefix": "layers.0.attn.wq_a",
+          "capacity": 16,
+          "rows": 1,
+          "separate_oracles_pass": true,
+          "graph_mutation_and_tail_pass": true,
+          "extra_resident_weight_bytes": 6547200,
+          "warm_us": {
+            "fp8": [
+              4.816224098205566,
+              4.809887886047363,
+              4.806848049163818,
+              4.813439846038818,
+              4.813439846038818,
+              4.810751914978027
+            ],
+            "bf16": [
+              6.052608013153076,
+              6.045536041259766,
+              6.0464959144592285,
+              6.045567989349365,
+              6.043839931488037,
+              6.047776222229004
+            ]
+          },
+          "median_us": {
+            "fp8": 4.812095880508423,
+            "bf16": 6.046031951904297
+          }
+        },
+        {
+          "prefix": "layers.0.attn.wq_a",
+          "capacity": 16,
+          "rows": 16,
+          "separate_oracles_pass": true,
+          "graph_mutation_and_tail_pass": true,
+          "extra_resident_weight_bytes": 6547200,
+          "warm_us": {
+            "fp8": [
+              4.816224098205566,
+              4.814015865325928,
+              4.812831878662109,
+              4.811520099639893,
+              4.815008163452148,
+              4.815199851989746
+            ],
+            "bf16": [
+              20.475616455078125,
+              20.489824295043945,
+              20.459264755249023,
+              20.517759323120117,
+              20.847936630249023,
+              21.715744018554688
+            ]
+          },
+          "median_us": {
+            "fp8": 4.814512014389038,
+            "bf16": 20.50379180908203
+          }
+        },
+        {
+          "prefix": "layers.0.attn.wq_a",
+          "capacity": 256,
+          "rows": 1,
+          "separate_oracles_pass": true,
+          "graph_mutation_and_tail_pass": true,
+          "extra_resident_weight_bytes": 6547200,
+          "warm_us": {
+            "fp8": [
+              20.66851234436035,
+              20.670400619506836,
+              20.671680450439453,
+              20.661216735839844,
+              20.650880813598633,
+              20.65510368347168
+            ],
+            "bf16": [
+              49.31865692138672,
+              49.292606353759766,
+              49.28819274902344,
+              49.28838348388672,
+              49.29199981689453,
+              49.29216003417969
+            ]
+          },
+          "median_us": {
+            "fp8": 20.664864540100098,
+            "bf16": 49.29207992553711
+          }
+        },
+        {
+          "prefix": "layers.0.attn.wq_a",
+          "capacity": 256,
+          "rows": 256,
+          "separate_oracles_pass": true,
+          "graph_mutation_and_tail_pass": true,
+          "extra_resident_weight_bytes": 6547200,
+          "warm_us": {
+            "fp8": [
+              22.302528381347656,
+              22.386688232421875,
+              22.30019187927246,
+              22.32748794555664,
+              22.312192916870117,
+              22.328479766845703
+            ],
+            "bf16": [
+              55.28460693359375,
+              55.447391510009766,
+              55.29363250732422,
+              55.45955276489258,
+              55.28092956542969,
+              55.467041015625
+            ]
+          },
+          "median_us": {
+            "fp8": 22.31984043121338,
+            "bf16": 55.37051200866699
+          }
+        },
+        {
+          "prefix": "layers.8.attn.indexer.wq_b",
+          "capacity": 1,
+          "rows": 1,
+          "separate_oracles_pass": true,
+          "graph_mutation_and_tail_pass": true,
+          "extra_resident_weight_bytes": 5237760,
+          "warm_us": {
+            "fp8": [
+              4.509215831756592,
+              4.5049920082092285,
+              4.506783962249756,
+              4.505216121673584,
+              4.504928112030029,
+              4.504735946655273
+            ],
+            "bf16": [
+              5.845151901245117,
+              5.837344169616699,
+              5.836383819580078,
+              5.835936069488525,
+              5.83571195602417,
+              5.835904121398926
+            ]
+          },
+          "median_us": {
+            "fp8": 4.505104064941406,
+            "bf16": 5.836159944534302
+          }
+        },
+        {
+          "prefix": "layers.8.attn.indexer.wq_b",
+          "capacity": 16,
+          "rows": 1,
+          "separate_oracles_pass": true,
+          "graph_mutation_and_tail_pass": true,
+          "extra_resident_weight_bytes": 5237760,
+          "warm_us": {
+            "fp8": [
+              5.328256130218506,
+              5.32422399520874,
+              5.324831962585449,
+              5.324448108673096,
+              5.32371187210083,
+              5.3245439529418945
+            ],
+            "bf16": [
+              5.843552112579346,
+              5.833888053894043,
+              5.836671829223633,
+              5.829567909240723,
+              5.832032203674316,
+              5.83462381362915
+            ]
+          },
+          "median_us": {
+            "fp8": 5.324496030807495,
+            "bf16": 5.834255933761597
+          }
+        },
+        {
+          "prefix": "layers.8.attn.indexer.wq_b",
+          "capacity": 16,
+          "rows": 16,
+          "separate_oracles_pass": true,
+          "graph_mutation_and_tail_pass": true,
+          "extra_resident_weight_bytes": 5237760,
+          "warm_us": {
+            "fp8": [
+              5.4324798583984375,
+              5.429952144622803,
+              5.514656066894531,
+              5.515007972717285,
+              5.528768062591553,
+              5.514143943786621
+            ],
+            "bf16": [
+              22.647615432739258,
+              22.654592514038086,
+              22.91644859313965,
+              24.193023681640625,
+              25.845792770385742,
+              26.7608642578125
+            ]
+          },
+          "median_us": {
+            "fp8": 5.514400005340576,
+            "bf16": 23.554736137390137
+          }
+        },
+        {
+          "prefix": "layers.8.attn.indexer.wq_b",
+          "capacity": 256,
+          "rows": 1,
+          "separate_oracles_pass": true,
+          "graph_mutation_and_tail_pass": true,
+          "extra_resident_weight_bytes": 5237760,
+          "warm_us": {
+            "fp8": [
+              7.523615837097168,
+              7.5316481590271,
+              7.536479949951172,
+              7.528895854949951,
+              7.527359962463379,
+              7.522848129272461
+            ],
+            "bf16": [
+              12.770879745483398,
+              12.75494384765625,
+              12.758527755737305,
+              12.744704246520996,
+              12.764320373535156,
+              12.797727584838867
+            ]
+          },
+          "median_us": {
+            "fp8": 7.528127908706665,
+            "bf16": 12.76142406463623
+          }
+        },
+        {
+          "prefix": "layers.8.attn.indexer.wq_b",
+          "capacity": 256,
+          "rows": 256,
+          "separate_oracles_pass": true,
+          "graph_mutation_and_tail_pass": true,
+          "extra_resident_weight_bytes": 5237760,
+          "warm_us": {
+            "fp8": [
+              8.580448150634766,
+              8.568927764892578,
+              8.627519607543945,
+              8.723775863647461,
+              9.00438404083252,
+              9.076448440551758
+            ],
+            "bf16": [
+              34.787071228027344,
+              34.748863220214844,
+              34.754432678222656,
+              34.79545593261719,
+              34.773311614990234,
+              34.756256103515625
+            ]
+          },
+          "median_us": {
+            "fp8": 8.675647735595703,
+            "bf16": 34.76478385925293
+          }
+        }
+      ]
+    }
+  },
+  "narrow-capacity-paired-probe": {
+    "sha256": "59a6ab78a32b4b67cc6c10f208ef7f44e4da43e2efa87b29d312e007c0aa53b7",
+    "evidence": {
+      "scope": "Compare native FP8 with upstream BF16 narrow projections on checkpoint weights.\n\nThis is a warm component probe. BF16 requires expanded resident weights and\nchanges activation quantization; neither performance nor numerical acceptance\nof this probe constitutes serving acceptance.\n",
+      "command": [
+        "python/tools/compare_v41_narrow_projection.py",
+        "--b12x-root",
+        "/home/tj/.cache/ds41rt-upstream-20260916/sparkinfer",
+        "--native",
+        "/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-mhc.so",
+        "--snapshot",
+        "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+        "--output",
+        "/home/tj/.cache/ds41rt-upstream-20260916/narrow-capacity-paired-probe.json"
+      ],
+      "revision": "5bda5b2f81c1da620f9024590e7eeea6b50b5fcf",
+      "native_sha256": "c6817382e7b6fb0d630e396a23e125ef62fb8a3e3c1af6c1077d0ed01678d3ea",
+      "cases": [
+        {
+          "prefix": "layers.0.attn.wkv",
+          "capacity": 1,
+          "rows": 1,
+          "separate_oracles_pass": true,
+          "graph_mutation_and_tail_pass": true,
+          "extra_resident_weight_bytes": 2618880,
+          "alternate_capacity_exact": true,
+          "warm_us": {
+            "fp8": [
+              6.2348480224609375,
+              6.226272106170654,
+              6.235936164855957,
+              6.2303361892700195,
+              6.23199987411499,
+              6.227744102478027
+            ],
+            "bf16": [
+              3.29967999458313,
+              3.3030080795288086,
+              3.308351993560791,
+              3.312351942062378,
+              3.3256640434265137,
+              3.3259201049804688
+            ],
+            "fp8_capacity16": [
+              4.529376029968262,
+              4.505375862121582,
+              4.505983829498291,
+              4.505504131317139,
+              4.506015777587891,
+              4.508607864379883
+            ]
+          },
+          "median_us": {
+            "fp8": 6.231168031692505,
+            "bf16": 3.3103519678115845,
+            "fp8_capacity16": 4.505999803543091
+          }
+        },
+        {
+          "prefix": "layers.0.attn.wkv",
+          "capacity": 16,
+          "rows": 1,
+          "separate_oracles_pass": true,
+          "graph_mutation_and_tail_pass": true,
+          "extra_resident_weight_bytes": 2618880,
+          "alternate_capacity_exact": false,
+          "warm_us": {
+            "fp8": [
+              4.506976127624512,
+              4.505887985229492,
+              4.506464004516602,
+              4.508480072021484,
+              4.505248069763184,
+              4.504288196563721
+            ],
+            "bf16": [
+              4.006303787231445,
+              3.9954240322113037,
+              3.9944639205932617,
+              3.9997119903564453,
+              3.9975359439849854,
+              4.0009918212890625
+            ]
+          },
+          "median_us": {
+            "fp8": 4.506175994873047,
+            "bf16": 3.9986239671707153
+          }
+        },
+        {
+          "prefix": "layers.0.attn.wkv",
+          "capacity": 16,
+          "rows": 16,
+          "separate_oracles_pass": true,
+          "graph_mutation_and_tail_pass": true,
+          "extra_resident_weight_bytes": 2618880,
+          "alternate_capacity_exact": false,
+          "warm_us": {
+            "fp8": [
+              4.6684160232543945,
+              4.658783912658691,
+              4.645343780517578,
+              4.695519924163818,
+              4.6887359619140625,
+              4.7018561363220215
+            ],
+            "bf16": [
+              11.581567764282227,
+              11.576959609985352,
+              11.568096160888672,
+              11.619711875915527,
+              11.58672046661377,
+              11.592639923095703
+            ]
+          },
+          "median_us": {
+            "fp8": 4.6785759925842285,
+            "bf16": 11.584144115447998
+          }
+        },
+        {
+          "prefix": "layers.0.attn.wkv",
+          "capacity": 256,
+          "rows": 1,
+          "separate_oracles_pass": true,
+          "graph_mutation_and_tail_pass": true,
+          "extra_resident_weight_bytes": 2618880,
+          "alternate_capacity_exact": false,
+          "warm_us": {
+            "fp8": [
+              20.54096031188965,
+              20.506656646728516,
+              20.434528350830078,
+              20.446847915649414,
+              20.442527770996094,
+              20.45484733581543
+            ],
+            "bf16": [
+              30.463104248046875,
+              30.266271591186523,
+              30.260223388671875,
+              30.26406478881836,
+              30.270143508911133,
+              30.274240493774414
+            ]
+          },
+          "median_us": {
+            "fp8": 20.450847625732422,
+            "bf16": 30.268207550048828
+          }
+        },
+        {
+          "prefix": "layers.0.attn.wkv",
+          "capacity": 256,
+          "rows": 256,
+          "separate_oracles_pass": true,
+          "graph_mutation_and_tail_pass": true,
+          "extra_resident_weight_bytes": 2618880,
+          "alternate_capacity_exact": false,
+          "warm_us": {
+            "fp8": [
+              21.920703887939453,
+              21.93289566040039,
+              22.245792388916016,
+              22.16441535949707,
+              22.251007080078125,
+              22.256032943725586
+            ],
+            "bf16": [
+              31.00806427001953,
+              30.99545669555664,
+              31.28563117980957,
+              31.16431999206543,
+              31.45404815673828,
+              31.45952033996582
+            ]
+          },
+          "median_us": {
+            "fp8": 22.205103874206543,
+            "bf16": 31.2249755859375
+          }
+        },
+        {
+          "prefix": "layers.0.attn.wq_a",
+          "capacity": 1,
+          "rows": 1,
+          "separate_oracles_pass": true,
+          "graph_mutation_and_tail_pass": true,
+          "extra_resident_weight_bytes": 6547200,
+          "alternate_capacity_exact": true,
+          "warm_us": {
+            "fp8": [
+              6.557151794433594,
+              6.557216167449951,
+              6.557600021362305,
+              6.554592132568359,
+              6.5575361251831055,
+              6.5581440925598145
+            ],
+            "bf16": [
+              6.044544219970703,
+              6.043263912200928,
+              6.043488025665283,
+              6.0438079833984375,
+              6.0444159507751465,
+              6.041600227355957
+            ],
+            "fp8_capacity16": [
+              4.820896148681641,
+              4.813632011413574,
+              4.81171178817749,
+              4.813055992126465,
+              4.813471794128418,
+              4.8127360343933105
+            ]
+          },
+          "median_us": {
+            "fp8": 6.557376146316528,
+            "bf16": 6.04364800453186,
+            "fp8_capacity16": 4.813263893127441
+          }
+        },
+        {
+          "prefix": "layers.0.attn.wq_a",
+          "capacity": 16,
+          "rows": 1,
+          "separate_oracles_pass": true,
+          "graph_mutation_and_tail_pass": true,
+          "extra_resident_weight_bytes": 6547200,
+          "alternate_capacity_exact": false,
+          "warm_us": {
+            "fp8": [
+              4.820608139038086,
+              4.816224098205566,
+              4.814752101898193,
+              4.8145599365234375,
+              4.816703796386719,
+              4.815392017364502
+            ],
+            "bf16": [
+              6.084928035736084,
+              6.086431980133057,
+              6.0808000564575195,
+              6.075808048248291,
+              6.047232151031494,
+              6.074463844299316
+            ]
+          },
+          "median_us": {
+            "fp8": 4.815808057785034,
+            "bf16": 6.078304052352905
+          }
+        },
+        {
+          "prefix": "layers.0.attn.wq_a",
+          "capacity": 16,
+          "rows": 16,
+          "separate_oracles_pass": true,
+          "graph_mutation_and_tail_pass": true,
+          "extra_resident_weight_bytes": 6547200,
+          "alternate_capacity_exact": false,
+          "warm_us": {
+            "fp8": [
+              4.823455810546875,
+              4.815743923187256,
+              4.813727855682373,
+              4.814176082611084,
+              4.819136142730713,
+              4.815199851989746
+            ],
+            "bf16": [
+              20.150239944458008,
+              20.10633659362793,
+              20.072736740112305,
+              20.19001579284668,
+              20.651840209960938,
+              21.921728134155273
+            ]
+          },
+          "median_us": {
+            "fp8": 4.815471887588501,
+            "bf16": 20.170127868652344
+          }
+        },
+        {
+          "prefix": "layers.0.attn.wq_a",
+          "capacity": 256,
+          "rows": 1,
+          "separate_oracles_pass": true,
+          "graph_mutation_and_tail_pass": true,
+          "extra_resident_weight_bytes": 6547200,
+          "alternate_capacity_exact": false,
+          "warm_us": {
+            "fp8": [
+              20.76361656188965,
+              20.759872436523438,
+              20.75712013244629,
+              20.751903533935547,
+              20.648000717163086,
+              20.628768920898438
+            ],
+            "bf16": [
+              49.541534423828125,
+              49.47932815551758,
+              49.457664489746094,
+              49.46406555175781,
+              49.3355827331543,
+              49.28201675415039
+            ]
+          },
+          "median_us": {
+            "fp8": 20.754511833190918,
+            "bf16": 49.46086502075195
+          }
+        },
+        {
+          "prefix": "layers.0.attn.wq_a",
+          "capacity": 256,
+          "rows": 256,
+          "separate_oracles_pass": true,
+          "graph_mutation_and_tail_pass": true,
+          "extra_resident_weight_bytes": 6547200,
+          "alternate_capacity_exact": false,
+          "warm_us": {
+            "fp8": [
+              22.28950309753418,
+              22.320032119750977,
+              22.291296005249023,
+              22.400896072387695,
+              22.291711807250977,
+              22.358015060424805
+            ],
+            "bf16": [
+              55.26073455810547,
+              55.48662567138672,
+              55.30204772949219,
+              55.395870208740234,
+              55.28556823730469,
+              55.42937469482422
+            ]
+          },
+          "median_us": {
+            "fp8": 22.305871963500977,
+            "bf16": 55.34895896911621
+          }
+        },
+        {
+          "prefix": "layers.8.attn.indexer.wq_b",
+          "capacity": 1,
+          "rows": 1,
+          "separate_oracles_pass": true,
+          "graph_mutation_and_tail_pass": true,
+          "extra_resident_weight_bytes": 5237760,
+          "alternate_capacity_exact": true,
+          "warm_us": {
+            "fp8": [
+              4.612736225128174,
+              4.615263938903809,
+              4.616127967834473,
+              4.613952159881592,
+              4.611040115356445,
+              4.62278413772583
+            ],
+            "bf16": [
+              5.838399887084961,
+              5.8397440910339355,
+              5.837920188903809,
+              5.836703777313232,
+              5.8373122215271,
+              5.83676815032959
+            ],
+            "fp8_capacity16": [
+              5.3364481925964355,
+              5.324863910675049,
+              5.325119972229004,
+              5.325952053070068,
+              5.3249921798706055,
+              5.32473611831665
+            ]
+          },
+          "median_us": {
+            "fp8": 4.6146080493927,
+            "bf16": 5.837616205215454,
+            "fp8_capacity16": 5.325056076049805
+          }
+        },
+        {
+          "prefix": "layers.8.attn.indexer.wq_b",
+          "capacity": 16,
+          "rows": 1,
+          "separate_oracles_pass": true,
+          "graph_mutation_and_tail_pass": true,
+          "extra_resident_weight_bytes": 5237760,
+          "alternate_capacity_exact": false,
+          "warm_us": {
+            "fp8": [
+              5.323488235473633,
+              5.324416160583496,
+              5.319680213928223,
+              5.323200225830078,
+              5.3205437660217285,
+              5.320511817932129
+            ],
+            "bf16": [
+              5.843455791473389,
+              5.837024211883545,
+              5.835936069488525,
+              5.8369598388671875,
+              5.834335803985596,
+              5.835008144378662
+            ]
+          },
+          "median_us": {
+            "fp8": 5.321871995925903,
+            "bf16": 5.8364479541778564
+          }
+        },
+        {
+          "prefix": "layers.8.attn.indexer.wq_b",
+          "capacity": 16,
+          "rows": 16,
+          "separate_oracles_pass": true,
+          "graph_mutation_and_tail_pass": true,
+          "extra_resident_weight_bytes": 5237760,
+          "alternate_capacity_exact": false,
+          "warm_us": {
+            "fp8": [
+              5.369440078735352,
+              5.364704132080078,
+              5.429855823516846,
+              5.428063869476318,
+              5.427680015563965,
+              5.428671836853027
+            ],
+            "bf16": [
+              23.208032608032227,
+              23.239168167114258,
+              23.401887893676758,
+              24.44963264465332,
+              25.524255752563477,
+              27.010751724243164
+            ]
+          },
+          "median_us": {
+            "fp8": 5.427871942520142,
+            "bf16": 23.92576026916504
+          }
+        },
+        {
+          "prefix": "layers.8.attn.indexer.wq_b",
+          "capacity": 256,
+          "rows": 1,
+          "separate_oracles_pass": true,
+          "graph_mutation_and_tail_pass": true,
+          "extra_resident_weight_bytes": 5237760,
+          "alternate_capacity_exact": false,
+          "warm_us": {
+            "fp8": [
+              7.579455852508545,
+              7.579040050506592,
+              7.576704025268555,
+              7.577184200286865,
+              7.574944019317627,
+              7.574272155761719
+            ],
+            "bf16": [
+              12.878815650939941,
+              12.83033561706543,
+              12.817983627319336,
+              12.82271957397461,
+              12.818816184997559,
+              12.81811237335205
+            ]
+          },
+          "median_us": {
+            "fp8": 7.57694411277771,
+            "bf16": 12.820767879486084
+          }
+        },
+        {
+          "prefix": "layers.8.attn.indexer.wq_b",
+          "capacity": 256,
+          "rows": 256,
+          "separate_oracles_pass": true,
+          "graph_mutation_and_tail_pass": true,
+          "extra_resident_weight_bytes": 5237760,
+          "alternate_capacity_exact": false,
+          "warm_us": {
+            "fp8": [
+              8.566335678100586,
+              8.559103965759277,
+              8.654687881469727,
+              8.708703994750977,
+              9.081055641174316,
+              9.074272155761719
+            ],
+            "bf16": [
+              34.756351470947266,
+              34.76947021484375,
+              34.788543701171875,
+              34.80160140991211,
+              34.744510650634766,
+              34.715614318847656
+            ]
+          },
+          "median_us": {
+            "fp8": 8.681695938110352,
+            "bf16": 34.76291084289551
+          }
+        }
+      ]
+    }
+  }
+}
