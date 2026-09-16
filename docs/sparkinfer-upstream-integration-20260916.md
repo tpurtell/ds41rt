@@ -78,6 +78,38 @@ They may still require mechanical merge/import/test fixes when shared library
 surfaces change. Attention/projection parallelization across GPUs is deferred;
 retain the current ownership and expert parallelism in comparisons.
 
+## Same-library retained-output repeatability (September 16)
+
+[Repeatability evidence](sparkinfer-upstream-index-repeatability-20260916.json)
+restarts the old `libcandidate-narrow.so` with the identical daemon and flags,
+then repeats the same sequence: three short-context corpus runs followed by
+one eight-case run at 2K and 32K retained context. Native/daemon SHA256 metadata
+is preserved. All requests match; both seed requests and `OK` replies match.
+
+All 27 short-context outputs are identical, but median weighted throughput
+moves from **96.38 to 93.99 TPS with no library change**. Retained output hashes
+change for **11 of 16 cases with that same library**, despite passing cache
+accounting throughout. Weighted retained throughput moves 97.47→94.07 TPS at
+2K and 90.66→90.08 at 32K; these figures involve changed continuations.
+Consequently, the earlier cross-library retained-output mismatch cannot by
+itself implicate the bounded position sort, and timing variation is comparable
+to the observed short-context difference. This does not prove performance
+non-regression or establish the source of retained-output variability.
+
+An audit extracted all 33 native CUDA cubins from each library, compared their
+SHA256 hashes, and removed the temporary extraction directories. Exactly one
+cubin differs: module 15, whose symbols are the index top-k kernels. The other
+32 native CUDA cubins match byte-for-byte. This audit covers the embedded native
+CUDA cubins, not an independent requalification of all exported DSL modules.
+
+Adaptive dSpark is enabled by default in these runs. Source inspection confirms
+that `select_prefixes` uses measured draft time in the cost comparison; changes
+in chosen verification length can change batch geometry. That is a hypothesis
+for the variability, not a demonstrated cause. Next compare fixed-K5 runs with
+identical retained requests across fresh servers, then inspect target/index
+outputs if variability remains. Keep release acceptance pending rather than
+interpreting these mixed-output throughput measurements as a kernel verdict.
+
 ## Index-sort serving gate remains unresolved (September 16)
 
 [Serving comparison](sparkinfer-upstream-index-sort-serving-20260916.json)
