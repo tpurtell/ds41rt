@@ -89,7 +89,132 @@
       "native_library": "/opt/ds41rt/lib/libds41rt_native.so",
       "image": "ds41rt-coordinator:upstream-candidate"
     },
-    "one_million_context": "pending separate targeted run"
+    "one_million_context": {
+      "passed": true,
+      "source_tokens": 1040000,
+      "timings": {
+        "cold": 345.6628867550753,
+        "exact": 1.8465604269877076
+      },
+      "post_long_topic": [
+        {
+          "concurrency": 1,
+          "samples": 3,
+          "median_aggregate_tps": 98.4045898815279,
+          "min_aggregate_tps": 98.06852222658081,
+          "max_aggregate_tps": 98.63557410195962
+        },
+        {
+          "concurrency": 8,
+          "samples": 3,
+          "median_aggregate_tps": 462.4909608978251,
+          "min_aggregate_tps": 361.8777485232816,
+          "max_aggregate_tps": 470.1825290710581
+        }
+      ],
+      "metadata": {
+        "launch": [
+          "docker",
+          "run",
+          "-d",
+          "--name",
+          "ds41rt-index-shapes-long-context",
+          "--gpus",
+          "\"device=GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0,GPU-95f8f212-9131-df99-fd53-7535965197d7\"",
+          "--network",
+          "host",
+          "--ipc",
+          "host",
+          "--ulimit",
+          "memlock=-1:-1",
+          "--device=/dev/infiniband",
+          "-e",
+          "CUDA_VISIBLE_DEVICES=GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0,GPU-95f8f212-9131-df99-fd53-7535965197d7",
+          "-e",
+          "RUST_LOG=info",
+          "-v",
+          "/home/tj/.cache/huggingface:/root/.cache/huggingface:ro",
+          "-v",
+          "/home/tj/.cache/ds41rt-upstream-20260916/ds41rt-index-shapes-enabled:/opt/ds41rt/bin/ds41rt:ro",
+          "sha256:3d95c6a7feed2dfc9fc8240815446295949f56ab75da361cd53257bf554b10e3",
+          "ds41rt",
+          "serve-native",
+          "--snapshot",
+          "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+          "--native-lib",
+          "/opt/ds41rt/lib/libds41rt_native.so",
+          "--peers",
+          "10.55.0.1:19441,10.55.0.2:19441,10.55.0.3:19441,10.55.0.4:19441",
+          "--rtx-gpus",
+          "2",
+          "--listen",
+          "0.0.0.0:8000",
+          "--prefill-batch-tokens",
+          "2048",
+          "--concurrency",
+          "16",
+          "--prefix-cache-entries",
+          "24",
+          "--max-context-tokens",
+          "1048576",
+          "--max-output-tokens",
+          "393216",
+          "--dspark"
+        ],
+        "commands": [
+          {
+            "label": "needle",
+            "command": [
+              "/home/tj/Developer/ds41rt/.venv/bin/python",
+              "/home/tj/Developer/ds41rt/scripts/qualify-ds41-native-needle.py",
+              "--base-url",
+              "dspark=http://127.0.0.1:8000",
+              "--tokenizer",
+              "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+              "--source",
+              "/home/tj/.cache/ds41rt-upstream-20260916/retained-context-source.md",
+              "--contexts",
+              "1040000",
+              "--positions",
+              "0.5",
+              "--output",
+              "/home/tj/.cache/ds41rt-upstream-20260916/clean-index-shapes-long-context/needle.json"
+            ],
+            "exit": 0,
+            "gpu_memory": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, 95390 MiB, 97887 MiB\nGPU-95f8f212-9131-df99-fd53-7535965197d7, 95620 MiB, 97887 MiB\n"
+          },
+          {
+            "label": "topic-after-long",
+            "command": [
+              "/home/tj/Developer/ds41rt/.venv/bin/python",
+              "/home/tj/Developer/ds41rt/scripts/bench-ds41-concurrent-api.py",
+              "--base-url",
+              "http://127.0.0.1:8000",
+              "--label",
+              "phase2-release-final",
+              "--nonce",
+              "20260914",
+              "--case",
+              "topic",
+              "--concurrency",
+              "1",
+              "8",
+              "--repeats",
+              "3",
+              "--output",
+              "/home/tj/.cache/ds41rt-upstream-20260916/clean-index-shapes-long-context/topic-after-long.json"
+            ],
+            "exit": 0,
+            "gpu_memory": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, 95696 MiB, 97887 MiB\nGPU-95f8f212-9131-df99-fd53-7535965197d7, 96006 MiB, 97887 MiB\n"
+          }
+        ],
+        "binary_sha256": "932d4190a681eb2c296e5787af93f3a2df3fcd8dd4c85c7556afa860be96cb3b"
+      },
+      "archive": {
+        "path": "docs/evidence/upstream-index-graph-long-context-20260916.tar.gz",
+        "sha256": "1588ecf004fd4c84794588adf3549f796712830a134db5a93417e2cca1d7717d"
+      }
+    }
   },
   "metadata": {
     "launch": [

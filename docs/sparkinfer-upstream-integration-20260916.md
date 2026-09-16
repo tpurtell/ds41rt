@@ -36,9 +36,10 @@ The CUDA kernels and numerical policy are unchanged.
 Retained-prefix equivalence and all 16 divergent branches pass. A real CUDA
 lifetime test verifies current inputs through shape switches, batch restarts and
 a large-prefill transition. Measured post-mixed occupancy is 96,200/96,568 MiB
-out of 97,887 MiB per RTX, preserving the 14M-token pool. A targeted 1.04M
-cold/exact needle and subsequent short-decode check is in progress. Refresh the
-release performance matrix with this correction before publication.
+out of 97,887 MiB per RTX, preserving the 14M-token pool. The targeted 1.04M
+cold/exact needle also passes; subsequent topic decode remains 98.40 TPS at C1
+and 462.49 at C8. The standard build from frozen revision `6f118818` is complete;
+refresh the release performance matrix on those images before publication.
 
 ## Initial clean release performance (before graph-reuse correction)
 
