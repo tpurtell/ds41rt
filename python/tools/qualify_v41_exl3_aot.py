@@ -93,7 +93,8 @@ def main() -> None:
         tier0_num_experts=experts,tier1_num_experts=experts,route_num_experts=experts,
         top_k=topk,max_m_blocks=meta['route_blocks'],sms=props.multi_processor_count,
         max_shared_mem=props.shared_memory_per_block_optin,force_tile_config=tuple(meta['tile']),
-        swiglu_limit=10.0, direct_topk_routes=meta['direct'],full_rotation_output_dtype=meta['output_dtype'])
+        swiglu_limit=10.0, direct_topk_routes=meta['direct'],full_rotation_output_dtype=meta['output_dtype'],
+        force_blocks_per_sm=meta['blocks_per_sm'] if meta['blocks_per_sm'] > 1 else None)
     buffers=make_mixed_trellis_buffers(launch,device=torch.device('cuda',0),sms=props.multi_processor_count)
     # Native route initialization covers the packer's rounded bucket. Use the
     # exported allocation contract for both paths, including non-power-of-two

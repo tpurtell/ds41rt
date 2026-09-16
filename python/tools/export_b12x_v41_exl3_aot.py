@@ -92,7 +92,8 @@ def write_bridge(output: Path, manifest: dict) -> None:
 
 
 def export(output: Path, intermediate: int, experts: int, capacity: int,
-           bits: tuple[int, ...], routing: str, topk: int = 6, output_dtype: str = "bf16") -> dict:
+           bits: tuple[int, ...], routing: str, topk: int = 6, output_dtype: str = "bf16",
+           blocks_per_sm: int | None = None) -> dict:
     if output_dtype not in ("bf16", "fp32"):
         raise ValueError("EXL3 output must be bf16 or fp32")
     # Disk-loaded B12x executors omit the compiler IR required by export_to_c.
@@ -109,6 +110,8 @@ def export(output: Path, intermediate: int, experts: int, capacity: int,
 
     if len(bits) not in (2, 3, 4) or len(set(bits)) != len(bits) or any(b not in range(2, 6) for b in bits):
         raise ValueError("export requires two to four distinct K2..K5 decoder tiers")
+    if blocks_per_sm is not None and len(bits) != 2:
+        raise ValueError("explicit residency is currently supported only for two-tier exports")
     if not 1 <= capacity <= 4096 or topk not in (3, 6) or experts < topk or experts > 384:
         raise ValueError("invalid V4.1 capacity or expert count")
     props = torch.cuda.get_device_properties(0)
@@ -132,7 +135,8 @@ def export(output: Path, intermediate: int, experts: int, capacity: int,
         moe_block_size=block_m, rotation_input_dtype="bf16", full_rotation_output_dtype=output_dtype,
         route_ids_dtype=torch.int32)
     if len(bits) == 2:
-        launch = compile_mixed_trellis(**options, direct_topk_routes=direct)
+        launch = compile_mixed_trellis(**options, direct_topk_routes=direct,
+                                      force_blocks_per_sm=blocks_per_sm)
     elif len(bits) == 3:
         launch = compile_mixed_trellis3(**options, tier2_num_experts=experts, tier2_bits=bits[2])
     else:
@@ -214,8 +218,9 @@ def main() -> None:
     parser.add_argument("--routing", choices=("auto", "direct", "packed"), default="auto")
     parser.add_argument("--topk", type=int, choices=(3, 6), default=6)
     parser.add_argument("--output-dtype", choices=("bf16", "fp32"), default="bf16")
+    parser.add_argument("--blocks-per-sm", type=int, choices=(1, 2), help="Offline residency override; default uses B12x policy")
     args = parser.parse_args()
-    export(args.output, args.intermediate, args.experts, args.capacity, tuple(args.bits), args.routing, args.topk, args.output_dtype)
+    export(args.output, args.intermediate, args.experts, args.capacity, tuple(args.bits), args.routing, args.topk, args.output_dtype, args.blocks_per_sm)
 
 
 if __name__ == "__main__":

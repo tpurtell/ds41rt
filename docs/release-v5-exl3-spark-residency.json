@@ -1,0 +1,1741 @@
+{
+  "scope": "Real-checkpoint Spark mixed-Trellis tile/residency experiments; component diagnostics",
+  "sparkinfer_revision": "eb5c1bcc1f82ec7b23c873e5eac14611e848f1a1",
+  "results": {
+    "spark-tile-640-m16": {
+      "scope": "Offline Spark tile/residency experiment; never changes the serving policy.\n\nUses all 384 experts of a checkpoint layer and compares against the production\ntile. Graph timings include routing, mixed core and reduction, not transport.\nThe explicit constructor override changes a static compile key only in this\nprocess; it is not a proposed production policy or a live-count specialization.\n",
+      "source_revision": "fd8f8a68a3fd674e6c8d7d462692beb687b5939f",
+      "gpu": "NVIDIA GB10",
+      "sm_count": 48,
+      "torch": "2.12.0a0+5aff3928d8.nv26.05",
+      "configuration": {
+        "snapshot": "/models/models--wrldsuksgo2mars--DeepSeek-V4.1-EXL3-K3.25-v1/snapshots/cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+        "intermediate": 640,
+        "slice_start": 0,
+        "layer": 30,
+        "capacity": 16,
+        "output": "/evidence/spark-tile-640-m16.json"
+      },
+      "variants": [
+        {
+          "name": "baseline",
+          "tile": [
+            128,
+            128,
+            128,
+            128
+          ],
+          "blocks_per_sm": 1,
+          "compile_seconds": 1.7582328210119158
+        },
+        {
+          "name": "k64-one-block",
+          "tile": [
+            64,
+            128,
+            64,
+            128
+          ],
+          "blocks_per_sm": 1,
+          "compile_seconds": 1.2773538999026641
+        },
+        {
+          "name": "k64-two-blocks",
+          "tile": [
+            64,
+            128,
+            64,
+            128
+          ],
+          "blocks_per_sm": 2,
+          "compile_seconds": 1.275768327061087
+        }
+      ],
+      "results": [
+        {
+          "rows": 1,
+          "distinct_experts": 6,
+          "checks": [
+            {
+              "variant": "baseline",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-one-block",
+              "mutation": 0,
+              "relative_max_error": 0.002808988792821765,
+              "passed": true,
+              "relative_l2_error": 0.0010270661441609263
+            },
+            {
+              "variant": "k64-two-blocks",
+              "mutation": 0,
+              "relative_max_error": 0.002808988792821765,
+              "passed": true,
+              "relative_l2_error": 0.0010270661441609263
+            },
+            {
+              "variant": "baseline",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-one-block",
+              "mutation": 1,
+              "relative_max_error": 0.0030303029343485832,
+              "passed": true,
+              "relative_l2_error": 0.0008663999615237117
+            },
+            {
+              "variant": "k64-two-blocks",
+              "mutation": 1,
+              "relative_max_error": 0.0030303029343485832,
+              "passed": true,
+              "relative_l2_error": 0.0008663999615237117
+            }
+          ],
+          "timings": [
+            {
+              "variant": "baseline",
+              "samples_us": [
+                99.25408363342285,
+                99.86432075500488,
+                99.88896369934082,
+                103.32223892211914,
+                99.94144439697266,
+                100.04287719726562
+              ],
+              "median_us": 99.91520404815674
+            },
+            {
+              "variant": "k64-one-block",
+              "samples_us": [
+                122.04832077026367,
+                114.45023536682129,
+                122.15071678161621,
+                119.01727676391602,
+                114.63456153869629,
+                114.72672462463379
+              ],
+              "median_us": 116.8720006942749
+            },
+            {
+              "variant": "k64-two-blocks",
+              "samples_us": [
+                88.29792022705078,
+                96.07968330383301,
+                88.42240333557129,
+                95.8028793334961,
+                95.6390380859375,
+                88.4614372253418
+              ],
+              "median_us": 92.05023765563965
+            }
+          ]
+        },
+        {
+          "rows": 8,
+          "distinct_experts": 16,
+          "checks": [
+            {
+              "variant": "baseline",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-one-block",
+              "mutation": 0,
+              "relative_max_error": 0.002415458904579282,
+              "passed": true,
+              "relative_l2_error": 0.0007976426859386265
+            },
+            {
+              "variant": "k64-two-blocks",
+              "mutation": 0,
+              "relative_max_error": 0.002415458904579282,
+              "passed": true,
+              "relative_l2_error": 0.0007976426859386265
+            },
+            {
+              "variant": "baseline",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-one-block",
+              "mutation": 1,
+              "relative_max_error": 0.0027173913549631834,
+              "passed": true,
+              "relative_l2_error": 0.0008226734353229403
+            },
+            {
+              "variant": "k64-two-blocks",
+              "mutation": 1,
+              "relative_max_error": 0.0027173913549631834,
+              "passed": true,
+              "relative_l2_error": 0.0008226734353229403
+            }
+          ],
+          "timings": [
+            {
+              "variant": "baseline",
+              "samples_us": [
+                347.4399948120117,
+                329.9100875854492,
+                336.64608001708984,
+                329.5619201660156,
+                329.2732620239258,
+                329.22401428222656
+              ],
+              "median_us": 329.7360038757324
+            },
+            {
+              "variant": "k64-one-block",
+              "samples_us": [
+                360.5945587158203,
+                358.7241744995117,
+                344.62432861328125,
+                352.2332763671875,
+                343.9664077758789,
+                344.64542388916016
+              ],
+              "median_us": 348.4393501281738
+            },
+            {
+              "variant": "k64-two-blocks",
+              "samples_us": [
+                316.4816093444824,
+                310.75103759765625,
+                317.1615982055664,
+                309.5631980895996,
+                314.71391677856445,
+                309.8601531982422
+              ],
+              "median_us": 312.73247718811035
+            }
+          ]
+        },
+        {
+          "rows": 8,
+          "distinct_experts": 30,
+          "checks": [
+            {
+              "variant": "baseline",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-one-block",
+              "mutation": 0,
+              "relative_max_error": 0.0037878789007663727,
+              "passed": true,
+              "relative_l2_error": 0.0008681821636855602
+            },
+            {
+              "variant": "k64-two-blocks",
+              "mutation": 0,
+              "relative_max_error": 0.0037878789007663727,
+              "passed": true,
+              "relative_l2_error": 0.0008681821636855602
+            },
+            {
+              "variant": "baseline",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-one-block",
+              "mutation": 1,
+              "relative_max_error": 0.003401360474526882,
+              "passed": true,
+              "relative_l2_error": 0.0008754486334510148
+            },
+            {
+              "variant": "k64-two-blocks",
+              "mutation": 1,
+              "relative_max_error": 0.003401360474526882,
+              "passed": true,
+              "relative_l2_error": 0.0008754486334510148
+            }
+          ],
+          "timings": [
+            {
+              "variant": "baseline",
+              "samples_us": [
+                581.6204833984375,
+                576.1718368530273,
+                568.5635375976562,
+                566.3312149047852,
+                574.1500854492188,
+                567.16064453125
+              ],
+              "median_us": 571.3568115234375
+            },
+            {
+              "variant": "k64-one-block",
+              "samples_us": [
+                601.2396621704102,
+                593.6111831665039,
+                593.732795715332,
+                593.8771057128906,
+                593.7027359008789,
+                593.8710403442383
+              ],
+              "median_us": 593.8019180297852
+            },
+            {
+              "variant": "k64-two-blocks",
+              "samples_us": [
+                579.2438507080078,
+                571.6403198242188,
+                579.4476699829102,
+                572.2499084472656,
+                577.6963043212891,
+                572.2195053100586
+              ],
+              "median_us": 574.9731063842773
+            }
+          ]
+        },
+        {
+          "rows": 16,
+          "distinct_experts": 30,
+          "checks": [
+            {
+              "variant": "baseline",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-one-block",
+              "mutation": 0,
+              "relative_max_error": 0.004694835748523474,
+              "passed": false,
+              "relative_l2_error": 0.0008338561747223139,
+              "largest_differences": {
+                "indices": [
+                  49881,
+                  4142,
+                  10006,
+                  14056,
+                  4756,
+                  3582,
+                  13371,
+                  13503
+                ],
+                "reference": [
+                  -2.03125,
+                  1.0,
+                  1.1796875,
+                  -1.1953125,
+                  -1.2578125,
+                  1.0703125,
+                  1.2421875,
+                  -1.1875
+                ],
+                "candidate": [
+                  -2.046875,
+                  1.0078125,
+                  1.171875,
+                  -1.1875,
+                  -1.25,
+                  1.0625,
+                  1.25,
+                  -1.1796875
+                ]
+              },
+              "phases": {
+                "fc1": 0.00390625,
+                "activated": 6.103515625e-05,
+                "fc2": 0.00390625
+              }
+            },
+            {
+              "variant": "k64-two-blocks",
+              "mutation": 0,
+              "relative_max_error": 0.004694835748523474,
+              "passed": false,
+              "relative_l2_error": 0.0008338561747223139,
+              "largest_differences": {
+                "indices": [
+                  49881,
+                  4142,
+                  10006,
+                  14056,
+                  4756,
+                  3582,
+                  13371,
+                  13503
+                ],
+                "reference": [
+                  -2.03125,
+                  1.0,
+                  1.1796875,
+                  -1.1953125,
+                  -1.2578125,
+                  1.0703125,
+                  1.2421875,
+                  -1.1875
+                ],
+                "candidate": [
+                  -2.046875,
+                  1.0078125,
+                  1.171875,
+                  -1.1875,
+                  -1.25,
+                  1.0625,
+                  1.25,
+                  -1.1796875
+                ]
+              },
+              "phases": {
+                "fc1": 0.00390625,
+                "activated": 6.103515625e-05,
+                "fc2": 0.00390625
+              }
+            },
+            {
+              "variant": "baseline",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-one-block",
+              "mutation": 1,
+              "relative_max_error": 0.004219409078359604,
+              "passed": false,
+              "relative_l2_error": 0.0007517772610299289,
+              "largest_differences": {
+                "indices": [
+                  46890,
+                  19724,
+                  378,
+                  1152,
+                  1323,
+                  1749,
+                  2874,
+                  2523
+                ],
+                "reference": [
+                  -1.0078125,
+                  1.53125,
+                  0.50390625,
+                  -0.625,
+                  0.5625,
+                  0.55078125,
+                  0.51171875,
+                  0.51171875
+                ],
+                "candidate": [
+                  -1.0,
+                  1.5390625,
+                  0.5078125,
+                  -0.62109375,
+                  0.55859375,
+                  0.546875,
+                  0.515625,
+                  0.5078125
+                ]
+              },
+              "phases": {
+                "fc1": 0.001953125,
+                "activated": 3.0517578125e-05,
+                "fc2": 0.001953125
+              }
+            },
+            {
+              "variant": "k64-two-blocks",
+              "mutation": 1,
+              "relative_max_error": 0.004219409078359604,
+              "passed": false,
+              "relative_l2_error": 0.0007517772610299289,
+              "largest_differences": {
+                "indices": [
+                  46890,
+                  19724,
+                  378,
+                  1152,
+                  1323,
+                  1749,
+                  2874,
+                  2523
+                ],
+                "reference": [
+                  -1.0078125,
+                  1.53125,
+                  0.50390625,
+                  -0.625,
+                  0.5625,
+                  0.55078125,
+                  0.51171875,
+                  0.51171875
+                ],
+                "candidate": [
+                  -1.0,
+                  1.5390625,
+                  0.5078125,
+                  -0.62109375,
+                  0.55859375,
+                  0.546875,
+                  0.515625,
+                  0.5078125
+                ]
+              },
+              "phases": {
+                "fc1": 0.001953125,
+                "activated": 3.0517578125e-05,
+                "fc2": 0.001953125
+              }
+            }
+          ],
+          "same_tile_residency_bitwise": true,
+          "timings": null
+        }
+      ],
+      "passed": false
+    },
+    "spark-tile-640-m80-api": {
+      "scope": "Offline Spark tile/residency experiment; never changes the serving policy.\n\nUses all 384 experts of a checkpoint layer and compares against the production\ntile. Graph timings include routing, mixed core and reduction, not transport.\nThe explicit residency option changes a static compile key; it is not a\nproposed production policy or a live-count specialization.\n",
+      "source_revision": "eb5c1bcc1f82ec7b23c873e5eac14611e848f1a1",
+      "gpu": "NVIDIA GB10",
+      "sm_count": 48,
+      "torch": "2.12.0a0+5aff3928d8.nv26.05",
+      "configuration": {
+        "snapshot": "/models/models--wrldsuksgo2mars--DeepSeek-V4.1-EXL3-K3.25-v1/snapshots/cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+        "intermediate": 640,
+        "slice_start": 0,
+        "layer": 30,
+        "capacity": 80,
+        "output": "/evidence/spark-tile-640-m80-api.json"
+      },
+      "variants": [
+        {
+          "name": "baseline",
+          "tile": [
+            64,
+            128,
+            64,
+            128
+          ],
+          "blocks_per_sm": 1,
+          "compile_seconds": 1.788580505992286
+        },
+        {
+          "name": "k64-one-block",
+          "tile": [
+            64,
+            128,
+            64,
+            128
+          ],
+          "blocks_per_sm": 1,
+          "compile_seconds": 0.00036973506212234497
+        },
+        {
+          "name": "k64-two-blocks",
+          "tile": [
+            64,
+            128,
+            64,
+            128
+          ],
+          "blocks_per_sm": 2,
+          "compile_seconds": 1.290228852070868
+        }
+      ],
+      "results": [
+        {
+          "rows": 1,
+          "distinct_experts": 6,
+          "checks": [
+            {
+              "variant": "baseline",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-one-block",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-two-blocks",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "baseline",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-one-block",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-two-blocks",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            }
+          ],
+          "timings": [
+            {
+              "variant": "baseline",
+              "samples_us": [
+                120.82015991210938,
+                121.42271995544434,
+                121.35199546813965,
+                121.66048049926758,
+                129.91552352905273,
+                129.70751762390137
+              ],
+              "median_us": 121.54160022735596
+            },
+            {
+              "variant": "k64-one-block",
+              "samples_us": [
+                119.92863655090332,
+                128.3353614807129,
+                119.72031593322754,
+                128.47904205322266,
+                119.89760398864746,
+                119.85695838928223
+              ],
+              "median_us": 119.91312026977539
+            },
+            {
+              "variant": "k64-two-blocks",
+              "samples_us": [
+                104.04543876647949,
+                96.07935905456543,
+                96.82784080505371,
+                101.44000053405762,
+                96.19199752807617,
+                104.00544166564941
+              ],
+              "median_us": 99.13392066955566
+            }
+          ]
+        },
+        {
+          "rows": 8,
+          "distinct_experts": 16,
+          "checks": [
+            {
+              "variant": "baseline",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-one-block",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-two-blocks",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "baseline",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-one-block",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-two-blocks",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            }
+          ],
+          "timings": [
+            {
+              "variant": "baseline",
+              "samples_us": [
+                356.5827178955078,
+                349.32350158691406,
+                341.1433410644531,
+                341.1334228515625,
+                341.46080017089844,
+                346.8387222290039
+              ],
+              "median_us": 344.1497611999512
+            },
+            {
+              "variant": "k64-one-block",
+              "samples_us": [
+                352.90016174316406,
+                341.04286193847656,
+                348.33057403564453,
+                340.9791946411133,
+                340.8873748779297,
+                359.0591812133789
+              ],
+              "median_us": 344.68671798706055
+            },
+            {
+              "variant": "k64-two-blocks",
+              "samples_us": [
+                322.9177474975586,
+                332.0908737182617,
+                320.34942626953125,
+                319.946231842041,
+                312.76416778564453,
+                320.1283264160156
+              ],
+              "median_us": 320.23887634277344
+            }
+          ]
+        },
+        {
+          "rows": 8,
+          "distinct_experts": 30,
+          "checks": [
+            {
+              "variant": "baseline",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-one-block",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-two-blocks",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "baseline",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-one-block",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-two-blocks",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            }
+          ],
+          "timings": [
+            {
+              "variant": "baseline",
+              "samples_us": [
+                610.5782318115234,
+                595.4435348510742,
+                595.6070327758789,
+                595.6399917602539,
+                595.3308868408203,
+                595.7097625732422
+              ],
+              "median_us": 595.6235122680664
+            },
+            {
+              "variant": "k64-one-block",
+              "samples_us": [
+                602.3945617675781,
+                602.8982543945312,
+                599.8467254638672,
+                596.9193649291992,
+                594.562873840332,
+                594.7049713134766
+              ],
+              "median_us": 598.3830451965332
+            },
+            {
+              "variant": "k64-two-blocks",
+              "samples_us": [
+                579.4073486328125,
+                571.6867065429688,
+                579.6739196777344,
+                571.8915176391602,
+                572.0268630981445,
+                578.4729766845703
+              ],
+              "median_us": 575.2499198913574
+            }
+          ]
+        },
+        {
+          "rows": 16,
+          "distinct_experts": 30,
+          "checks": [
+            {
+              "variant": "baseline",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-one-block",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-two-blocks",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "baseline",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-one-block",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-two-blocks",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            }
+          ],
+          "timings": [
+            {
+              "variant": "baseline",
+              "samples_us": [
+                623.7977600097656,
+                607.7107238769531,
+                607.4752044677734,
+                613.6614227294922,
+                607.6902389526367,
+                607.1785736083984
+              ],
+              "median_us": 607.7004814147949
+            },
+            {
+              "variant": "k64-one-block",
+              "samples_us": [
+                623.5113525390625,
+                607.5804901123047,
+                607.413444519043,
+                607.7008056640625,
+                607.6505661010742,
+                607.1113586425781
+              ],
+              "median_us": 607.6155281066895
+            },
+            {
+              "variant": "k64-two-blocks",
+              "samples_us": [
+                592.1462249755859,
+                604.4956970214844,
+                592.7606582641602,
+                585.3878402709961,
+                585.2035140991211,
+                585.382080078125
+              ],
+              "median_us": 588.767032623291
+            }
+          ]
+        },
+        {
+          "rows": 24,
+          "distinct_experts": 30,
+          "checks": [
+            {
+              "variant": "baseline",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-one-block",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-two-blocks",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "baseline",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-one-block",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-two-blocks",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            }
+          ],
+          "timings": [
+            {
+              "variant": "baseline",
+              "samples_us": [
+                640.6425476074219,
+                625.9001541137695,
+                617.9817581176758,
+                617.5814437866211,
+                618.221435546875,
+                619.1670227050781
+              ],
+              "median_us": 618.6942291259766
+            },
+            {
+              "variant": "k64-one-block",
+              "samples_us": [
+                633.0633544921875,
+                617.6639938354492,
+                625.035514831543,
+                618.0134582519531,
+                617.8499221801758,
+                618.4115219116211
+              ],
+              "median_us": 618.2124900817871
+            },
+            {
+              "variant": "k64-two-blocks",
+              "samples_us": [
+                591.5830230712891,
+                591.8803024291992,
+                584.9884796142578,
+                593.1296157836914,
+                584.9462509155273,
+                590.6310272216797
+              ],
+              "median_us": 591.1070251464844
+            }
+          ]
+        },
+        {
+          "rows": 64,
+          "distinct_experts": 30,
+          "checks": [
+            {
+              "variant": "baseline",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-one-block",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-two-blocks",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "baseline",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-one-block",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-two-blocks",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            }
+          ],
+          "timings": [
+            {
+              "variant": "baseline",
+              "samples_us": [
+                861.5526580810547,
+                845.0742340087891,
+                836.8685150146484,
+                837.1791839599609,
+                837.8099060058594,
+                832.9695892333984
+              ],
+              "median_us": 837.4945449829102
+            },
+            {
+              "variant": "k64-one-block",
+              "samples_us": [
+                842.1372985839844,
+                850.7981109619141,
+                835.3116607666016,
+                859.2281341552734,
+                834.8016357421875,
+                848.3750152587891
+              ],
+              "median_us": 845.2561569213867
+            },
+            {
+              "variant": "k64-two-blocks",
+              "samples_us": [
+                698.2876586914062,
+                678.8687896728516,
+                695.1216125488281,
+                675.1209259033203,
+                699.625244140625,
+                689.6310424804688
+              ],
+              "median_us": 692.3763275146484
+            }
+          ]
+        }
+      ],
+      "passed": true
+    },
+    "spark-tile-512-m80-production-baseline": {
+      "scope": "Offline Spark tile/residency experiment; never changes the serving policy.\n\nUses all 384 experts of a checkpoint layer and compares against the production\ntile. Graph timings include routing, mixed core and reduction, not transport.\nThe explicit residency option changes a static compile key; it is not a\nproposed production policy or a live-count specialization.\n",
+      "source_revision": "eb5c1bcc1f82ec7b23c873e5eac14611e848f1a1",
+      "gpu": "NVIDIA GB10",
+      "sm_count": 48,
+      "torch": "2.12.0a0+5aff3928d8.nv26.05",
+      "configuration": {
+        "snapshot": "/models/models--wrldsuksgo2mars--DeepSeek-V4.1-EXL3-K3.25-v1/snapshots/cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+        "intermediate": 512,
+        "slice_start": 1280,
+        "layer": 30,
+        "capacity": 80,
+        "output": "/evidence/spark-tile-512-m80-production-baseline.json"
+      },
+      "variants": [
+        {
+          "name": "baseline",
+          "tile": [
+            64,
+            256,
+            64,
+            256
+          ],
+          "blocks_per_sm": 1,
+          "compile_seconds": 1.7289783359738067
+        },
+        {
+          "name": "k64-one-block",
+          "tile": [
+            64,
+            128,
+            64,
+            128
+          ],
+          "blocks_per_sm": 1,
+          "compile_seconds": 1.2724391329102218
+        },
+        {
+          "name": "k64-two-blocks",
+          "tile": [
+            64,
+            128,
+            64,
+            128
+          ],
+          "blocks_per_sm": 2,
+          "compile_seconds": 1.2777637479593977
+        }
+      ],
+      "results": [
+        {
+          "rows": 1,
+          "distinct_experts": 6,
+          "checks": [
+            {
+              "variant": "baseline",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-one-block",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-two-blocks",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "baseline",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-one-block",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-two-blocks",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            }
+          ],
+          "timings": [
+            {
+              "variant": "baseline",
+              "samples_us": [
+                92.43424415588379,
+                94.0931224822998,
+                100.03232002258301,
+                100.05279541015625,
+                94.14431571960449,
+                93.24352264404297
+              ],
+              "median_us": 94.11871910095215
+            },
+            {
+              "variant": "k64-one-block",
+              "samples_us": [
+                78.0467176437378,
+                77.5551986694336,
+                71.65696144104004,
+                71.64671897888184,
+                78.05280208587646,
+                77.8934383392334
+              ],
+              "median_us": 77.7243185043335
+            },
+            {
+              "variant": "k64-two-blocks",
+              "samples_us": [
+                62.37599849700928,
+                62.62144088745117,
+                69.03776168823242,
+                62.64607906341553,
+                62.645440101623535,
+                62.69696235656738
+              ],
+              "median_us": 62.64575958251953
+            }
+          ]
+        },
+        {
+          "rows": 8,
+          "distinct_experts": 16,
+          "checks": [
+            {
+              "variant": "baseline",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-one-block",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-two-blocks",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "baseline",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-one-block",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-two-blocks",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            }
+          ],
+          "timings": [
+            {
+              "variant": "baseline",
+              "samples_us": [
+                294.66495513916016,
+                291.1084747314453,
+                283.6307144165039,
+                283.7673568725586,
+                292.2470474243164,
+                284.3011283874512
+              ],
+              "median_us": 287.70480155944824
+            },
+            {
+              "variant": "k64-one-block",
+              "samples_us": [
+                300.0934410095215,
+                297.57471084594727,
+                299.1900825500488,
+                291.26047134399414,
+                291.83584213256836,
+                299.4153594970703
+              ],
+              "median_us": 298.38239669799805
+            },
+            {
+              "variant": "k64-two-blocks",
+              "samples_us": [
+                274.03839111328125,
+                270.9062385559082,
+                277.5324821472168,
+                270.19039154052734,
+                269.8524856567383,
+                270.1945686340332
+              ],
+              "median_us": 270.5504035949707
+            }
+          ]
+        },
+        {
+          "rows": 8,
+          "distinct_experts": 30,
+          "checks": [
+            {
+              "variant": "baseline",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-one-block",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-two-blocks",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "baseline",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-one-block",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-two-blocks",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            }
+          ],
+          "timings": [
+            {
+              "variant": "baseline",
+              "samples_us": [
+                477.5948715209961,
+                462.50720977783203,
+                474.81632232666016,
+                470.42335510253906,
+                469.51454162597656,
+                462.46753692626953
+              ],
+              "median_us": 469.9689483642578
+            },
+            {
+              "variant": "k64-one-block",
+              "samples_us": [
+                487.6367950439453,
+                476.03809356689453,
+                475.7993698120117,
+                475.9836959838867,
+                481.0444641113281,
+                482.5584030151367
+              ],
+              "median_us": 478.5412788391113
+            },
+            {
+              "variant": "k64-two-blocks",
+              "samples_us": [
+                462.38494873046875,
+                454.9769592285156,
+                462.63553619384766,
+                455.5548858642578,
+                456.40159606933594,
+                462.0979309082031
+              ],
+              "median_us": 459.24976348876953
+            }
+          ]
+        },
+        {
+          "rows": 16,
+          "distinct_experts": 30,
+          "checks": [
+            {
+              "variant": "baseline",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-one-block",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-two-blocks",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "baseline",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-one-block",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-two-blocks",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            }
+          ],
+          "timings": [
+            {
+              "variant": "baseline",
+              "samples_us": [
+                496.62017822265625,
+                484.53758239746094,
+                483.64383697509766,
+                485.25089263916016,
+                478.8111877441406,
+                487.0460891723633
+              ],
+              "median_us": 484.89423751831055
+            },
+            {
+              "variant": "k64-one-block",
+              "samples_us": [
+                506.1471939086914,
+                493.4630584716797,
+                492.0851135253906,
+                492.32288360595703,
+                492.89791107177734,
+                503.7452697753906
+              ],
+              "median_us": 493.1804847717285
+            },
+            {
+              "variant": "k64-two-blocks",
+              "samples_us": [
+                464.45343017578125,
+                475.52257537841797,
+                471.5977478027344,
+                464.48097229003906,
+                464.3212890625,
+                464.40223693847656
+              ],
+              "median_us": 464.46720123291016
+            }
+          ]
+        },
+        {
+          "rows": 24,
+          "distinct_experts": 30,
+          "checks": [
+            {
+              "variant": "baseline",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-one-block",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-two-blocks",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "baseline",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-one-block",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-two-blocks",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            }
+          ],
+          "timings": [
+            {
+              "variant": "baseline",
+              "samples_us": [
+                500.4150390625,
+                486.3145446777344,
+                498.7984085083008,
+                493.83167266845703,
+                486.71520233154297,
+                493.8582229614258
+              ],
+              "median_us": 493.8449478149414
+            },
+            {
+              "variant": "k64-one-block",
+              "samples_us": [
+                507.68543243408203,
+                499.024658203125,
+                514.8953628540039,
+                499.1360092163086,
+                499.1360092163086,
+                504.97310638427734
+              ],
+              "median_us": 502.05455780029297
+            },
+            {
+              "variant": "k64-two-blocks",
+              "samples_us": [
+                474.2732620239258,
+                479.08607482910156,
+                471.39808654785156,
+                471.5167999267578,
+                479.46720123291016,
+                473.35201263427734
+              ],
+              "median_us": 473.81263732910156
+            }
+          ]
+        },
+        {
+          "rows": 64,
+          "distinct_experts": 30,
+          "checks": [
+            {
+              "variant": "baseline",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-one-block",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-two-blocks",
+              "mutation": 0,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "baseline",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-one-block",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            },
+            {
+              "variant": "k64-two-blocks",
+              "mutation": 1,
+              "relative_max_error": 0.0,
+              "passed": true,
+              "relative_l2_error": 0.0
+            }
+          ],
+          "timings": [
+            {
+              "variant": "baseline",
+              "samples_us": [
+                598.4243011474609,
+                587.2208023071289,
+                591.4860916137695,
+                599.7955322265625,
+                586.3212966918945,
+                586.3372802734375
+              ],
+              "median_us": 589.3534469604492
+            },
+            {
+              "variant": "k64-one-block",
+              "samples_us": [
+                715.7529449462891,
+                721.8611145019531,
+                716.8592071533203,
+                718.2723236083984,
+                724.5375823974609,
+                717.3712158203125
+              ],
+              "median_us": 717.8217697143555
+            },
+            {
+              "variant": "k64-two-blocks",
+              "samples_us": [
+                569.0284729003906,
+                565.3071975708008,
+                567.8569412231445,
+                555.937614440918,
+                562.0304107666016,
+                556.8598556518555
+              ],
+              "median_us": 563.6688041687012
+            }
+          ]
+        }
+      ],
+      "passed": true
+    },
+    "two-block-native-640-reference": {
+      "passed": true,
+      "scope": "native AOT versus B12x, six real checkpoint experts; not full-model qualification",
+      "output_dtype": "bf16",
+      "checkpoint_layer": "layers.0",
+      "topk": 6,
+      "native_info_verified": true,
+      "slice_start": 0,
+      "sparkinfer_revision": "eb5c1bcc1f82ec7b23c873e5eac14611e848f1a1",
+      "compute": [
+        12,
+        1
+      ],
+      "intermediate": 640,
+      "direct": false,
+      "route_bridge_sha256": "948f38a45b70791b12c5a242cb01103f44e6bef2a353d392dcdae7fbde010e59",
+      "snapshot_revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+      "projection_tiers": [
+        [
+          3,
+          4,
+          3
+        ],
+        [
+          3,
+          3,
+          3
+        ],
+        [
+          4,
+          4,
+          4
+        ],
+        [
+          3,
+          3,
+          3
+        ],
+        [
+          4,
+          4,
+          4
+        ],
+        [
+          3,
+          3,
+          3
+        ]
+      ],
+      "aot_manifest_sha256": "3270f1382a1dcfd2de08dc37382a40acbc91ac44c055348c384286d121d89f4c",
+      "bridge_sha256": "047d08115f2a4947c9b19d9c9d404d692ffdd35b71e4081fcecf7c7df7c399ab",
+      "checks": [
+        {
+          "rows": 1,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 3,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 79,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 80,
+          "bitwise_equal": true
+        }
+      ],
+      "graph_changed_inputs_and_routes": true,
+      "packed_metadata_poisoned_before_native": true
+    }
+  },
+  "decisions": [
+    "Serving candidate: two blocks/SM only for SM121 TP4 width640 capacity80. Preserve all other exports and automatic policy defaults pending end-to-end evidence.",
+    "Width640 capacity80 uses the same K64/N128 tile; one versus two blocks is bitwise identical for all tested outputs, input/route mutations, and graph versus eager checks.",
+    "Width640 capacity80: 24 rows/30 experts approximately 619 -> 591 us; 64 rows/30 experts approximately 837 -> 692 us. These are graph-path times, not serving TPS.",
+    "Corrected width512 production baseline is K64/N256. Its 64-row comparison is 589 -> 564 us (about 4%), not the 18\u201319% seen against the initial K64/N128 baseline. Leave it unchanged in the first serving candidate.",
+    "Do not change capacity16 tile: its cross-tile gate exceeded relative-max tolerance 0.004, with relative-L2 error about 0.0008. Same-tile residency remained bitwise identical; larger-batch candidate avoids this arithmetic change.",
+    "Native C export for width640/capacity80/two blocks passed the six-expert checkpoint oracle and changed-input graph checks. Requesting two blocks with the default width512 K64/N256 tile was correctly rejected by the conservative register guard.",
+    "One CPU test passed for explicit residency bounds and compile-key separation. Automatic default configuration is unchanged."
+  ],
+  "limitations": [
+    "Synthetic activations/routes over all 384 real checkpoint experts from layer30; not a complete serving qualification or quant top-1 evaluation.",
+    "Six alternating-order samples per variant; no formal throttle/clock qualification. One GPU-state snapshot is archived. Relative kernel timings are exploratory.",
+    "The early width512 baseline was wrong for production. Corrected results are authoritative; initial raw results remain in the archive for traceability.",
+    "Initial probes used an isolated constructor override. The width640 API and corrected width512 results use the explicit committed residency API.",
+    "Phase deltas in the early failed cross-tile diagnostic include scratch storage and are not an independent oracle."
+  ]
+}
