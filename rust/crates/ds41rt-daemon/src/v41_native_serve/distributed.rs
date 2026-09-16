@@ -1,4 +1,4 @@
-//! Production owners for the 20/20 attention split and TP2 encoder experts.
+//! Production owners for the 20/20 attention split and bottom-up TP2 experts.
 use super::*;
 use crate::v41_backbone_cache::CachePlacement;
 use crate::v41_backbone_execution::DistributedExecution;
@@ -12,8 +12,13 @@ use std::rc::Rc;
 
 pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Receiver<NativeRequest>,
     ready: &mut Option<oneshot::Sender<std::result::Result<(), String>>>) -> Result<()> {
-    ensure!(matches!(args.rtx_expert_layers, memory::LocalLayers::Auto | memory::LocalLayers::Count(20)),
-        "two RTX serving requires all 20 encoder expert layers");
+    let expert_layers = match args.rtx_expert_layers {
+        memory::LocalLayers::Auto => 20,
+        memory::LocalLayers::Count(count) => {
+            ensure!((20..=40).contains(&count), "dual RTX expert layers must be 20..=40");
+            count as usize
+        }
+    };
     prefill_capacity(args.prefill_batch_tokens)?;
     // AOT kernels keep their full scratch; row storage follows live capacity.
     let capacity = args.prefill_batch_tokens.max(256);
@@ -39,7 +44,7 @@ pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Recei
         tracing::info!(per_gpu_per_lane_bytes=per_lane, capacity, "EXL3 TP2 expert workspace plan");
     }
     let rank_budgets = [0usize, 1].map(|rank| -> Result<usize> {
-        let budgets = (0..20).map(|layer| {
+        let budgets = (0..expert_layers).map(|layer| {
             let selection = ExpertLayer::BackboneTp2 { layer, rank };
             if compressed { crate::v41_experts::exl3::Exl3Weights::plan(&catalog, selection) }
             else { ExpertWeights::plan(&lib, &catalog, selection) }
@@ -107,11 +112,11 @@ pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Recei
         )
     })?;
     memory_checkpoint("head normalization weights")?;
-    eprintln!("loading all 20 encoder expert layers as TP2");
+    eprintln!("loading bottom {expert_layers} expert layers as TP2");
     let load_rank = |rank: usize| -> Result<_> {
         let weights = if compressed {
-            RankWeights::load_exl3(devices[rank], &catalog, 20, rank_budgets[rank], &exl3_directory)?
-        } else { RankWeights::load(devices[rank], &catalog, 20, rank_budgets[rank])? };
+            RankWeights::load_exl3(devices[rank], &catalog, expert_layers, rank_budgets[rank], &exl3_directory)?
+        } else { RankWeights::load(devices[rank], &catalog, expert_layers, rank_budgets[rank])? };
         Ok(Rc::new(weights))
     };
     let routed = [load_rank(0)?, load_rank(1)?];
@@ -214,7 +219,7 @@ pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Recei
             V41Tp4Roce::new(args.peers.clone().try_into().map_err(|_| anyhow::anyhow!("four Spark peers required"))?,
                 [1, 2, 3, 4], capacity, TcpTransportConfig { timeout: Duration::from_secs(120),
                     max_frame_bytes: 64 << 20 })?, NativeTp4Wave::device_bytes(capacity)?))?;
-        transport.install_tp2(tp2_ffn::Wave::new(routed.clone(), shared.clone(), 20, capacity)?)?;
+        transport.install_tp2(tp2_ffn::Wave::new(routed.clone(), shared.clone(), expert_layers, capacity)?)?;
         Ok::<_, anyhow::Error>(transport)
     };
     let mut transport = make_transport()?;
@@ -255,7 +260,7 @@ pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Recei
         occupied_before=?pool.occupied_before, reservation_bytes=?pool.reservation_bytes,
         unused_bytes=?pool.unused_bytes, desired_groups=pool.desired_groups, snapshot_slots, snapshot_bytes,
         runtime_headroom_bytes=memory::distributed::RUNTIME_HEADROOM,
-        encoder_layers=20, "dual RTX cache reservation after fixed allocations");
+        rtx_expert_layers=expert_layers, "dual RTX cache reservation after fixed allocations");
     let token_map = ds41rt_loader::EngramTokenMap::from_file(&args.snapshot.join("tokenizer.json"))?;
     let rows = capacity as usize;
     let pipeline = unsafe { ds41rt_loader::EngramPipeline::new(&catalog, token_map, rows,

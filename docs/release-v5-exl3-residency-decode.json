@@ -1,0 +1,209 @@
+{
+  "passed": true,
+  "source_base_commit": "b969f48",
+  "scope": "Diagnostic full-model FP8-PLE EXL3 dual-RTX residency comparison, 20 versus 24 TP2 routed expert layers. Not final release performance qualification.",
+  "comparisons": [
+    {
+      "case": "code",
+      "concurrency": 1,
+      "before": {
+        "concurrency": 1,
+        "samples": 3,
+        "median_aggregate_tps": 163.84661778489877,
+        "min_aggregate_tps": 161.71006931642077,
+        "max_aggregate_tps": 164.09973755115954
+      },
+      "after": {
+        "concurrency": 1,
+        "samples": 3,
+        "median_aggregate_tps": 187.19283588090263,
+        "min_aggregate_tps": 186.81831713399478,
+        "max_aggregate_tps": 187.24259803875023
+      },
+      "change_percent": 14.248825158327815
+    },
+    {
+      "case": "code",
+      "concurrency": 2,
+      "before": {
+        "concurrency": 2,
+        "samples": 3,
+        "median_aggregate_tps": 248.32076666334385,
+        "min_aggregate_tps": 199.3006287395758,
+        "max_aggregate_tps": 248.42405088489815
+      },
+      "after": {
+        "concurrency": 2,
+        "samples": 3,
+        "median_aggregate_tps": 275.52605255495706,
+        "min_aggregate_tps": 209.82933140452715,
+        "max_aggregate_tps": 275.8178299890696
+      },
+      "change_percent": 10.95570308402609
+    },
+    {
+      "case": "code",
+      "concurrency": 8,
+      "before": {
+        "concurrency": 8,
+        "samples": 3,
+        "median_aggregate_tps": 788.4503033305958,
+        "min_aggregate_tps": 748.6825774674406,
+        "max_aggregate_tps": 808.4838290860808
+      },
+      "after": {
+        "concurrency": 8,
+        "samples": 3,
+        "median_aggregate_tps": 864.2172417201406,
+        "min_aggregate_tps": 801.8506947583246,
+        "max_aggregate_tps": 874.9104559501933
+      },
+      "change_percent": 9.609602288119845
+    },
+    {
+      "case": "code",
+      "concurrency": 16,
+      "before": {
+        "concurrency": 16,
+        "samples": 3,
+        "median_aggregate_tps": 1314.8970897885438,
+        "min_aggregate_tps": 1253.9753105173347,
+        "max_aggregate_tps": 1319.6441918563753
+      },
+      "after": {
+        "concurrency": 16,
+        "samples": 3,
+        "median_aggregate_tps": 1318.7048878563426,
+        "min_aggregate_tps": 1262.6318256995899,
+        "max_aggregate_tps": 1324.5365194039891
+      },
+      "change_percent": 0.28958905585616534
+    },
+    {
+      "case": "topic",
+      "concurrency": 1,
+      "before": {
+        "concurrency": 1,
+        "samples": 3,
+        "median_aggregate_tps": 95.5998392757072,
+        "min_aggregate_tps": 95.43989475536506,
+        "max_aggregate_tps": 95.808320122157
+      },
+      "after": {
+        "concurrency": 1,
+        "samples": 3,
+        "median_aggregate_tps": 99.89228170728138,
+        "min_aggregate_tps": 99.8425631798229,
+        "max_aggregate_tps": 101.65733853973846
+      },
+      "change_percent": 4.490010092166474
+    },
+    {
+      "case": "topic",
+      "concurrency": 2,
+      "before": {
+        "concurrency": 2,
+        "samples": 3,
+        "median_aggregate_tps": 148.7997428905594,
+        "min_aggregate_tps": 148.48232737164435,
+        "max_aggregate_tps": 157.46337734943916
+      },
+      "after": {
+        "concurrency": 2,
+        "samples": 3,
+        "median_aggregate_tps": 158.1327378389137,
+        "min_aggregate_tps": 156.72035340398097,
+        "max_aggregate_tps": 162.4462098256825
+      },
+      "change_percent": 6.2721848620522325
+    },
+    {
+      "case": "topic",
+      "concurrency": 8,
+      "before": {
+        "concurrency": 8,
+        "samples": 3,
+        "median_aggregate_tps": 480.83421725119507,
+        "min_aggregate_tps": 461.13675848915614,
+        "max_aggregate_tps": 490.4131612917221
+      },
+      "after": {
+        "concurrency": 8,
+        "samples": 3,
+        "median_aggregate_tps": 494.2130921869751,
+        "min_aggregate_tps": 482.8526765681563,
+        "max_aggregate_tps": 503.30159760927825
+      },
+      "change_percent": 2.7824298803574177
+    }
+  ],
+  "controls": {
+    "repeats": 3,
+    "order": "20-layer run then 24-layer run; not randomized/interleaved",
+    "thinking": "disabled",
+    "temperature": 0,
+    "exact_prompt_reuse": true,
+    "prefill_batch_tokens": 2048,
+    "concurrency_limit": 16,
+    "draft_limit": 7,
+    "adaptive_recalibrated": false,
+    "retained_entries": 24,
+    "kv_global_bytes": 13094420480,
+    "kv_token_target": 14680064,
+    "private_tail_tokens": 32768,
+    "power_limit_watts_per_gpu": 400,
+    "memory_clock_observed_mhz": 13365,
+    "memory_clock_settings_changed": false
+  },
+  "placement": {
+    "attention": "layers 0-19 RTX0, 20-39 RTX1 unchanged",
+    "routed_before": "layers 0-19 TP2 RTX, layers 20-39 Spark TP4",
+    "routed_after": "layers 0-23 TP2 RTX, layers 24-39 Spark TP4",
+    "spark_resident_layers": "20-39 on each worker; layers 20-23 unused by the 24-layer candidate",
+    "auto_default_layers": 20
+  },
+  "candidate_checks": [
+    "all code/topic benchmark objective checks",
+    "C16 code serving",
+    "structured JSON answer 42",
+    "high-thinking tool call Paris",
+    "tool continuation with 364 cached tokens",
+    "4822-token needle and 4828-token cached follow-up",
+    "SSE cancellation and recovery"
+  ],
+  "candidate_memory": {
+    "occupied_before_kv": [
+      87790190592,
+      89245614080
+    ],
+    "cache_device_bytes": [
+      7879265152,
+      5259659904
+    ],
+    "unused_within_reservation": [
+      5465175168,
+      6626211200
+    ],
+    "runtime_headroom_bytes": 838860800
+  },
+  "loading_note": "Serving-owner observations were 21.95 seconds for 20 layers and 17.77 seconds for 24, but differing cache/launch order prevents a comparative loading claim.",
+  "limitations": [
+    "only code/topic measured, not weighted suite or all required release tables",
+    "C16 code essentially flat",
+    "first samples at higher concurrency include warm-state/adaptive settling",
+    "same optimized coordinator and ARM worker binaries, v4 native base plus addons; clean images still pending",
+    "explicit layer selection verified at 24; automatic maximum-memory selection remains pending"
+  ],
+  "verified_at": "2026-09-16T18:26:39.714208+00:00",
+  "archive": "docs/evidence/v5-exl3-residency-decode.tar.gz",
+  "archive_sha256": "31458e376cb1e162224cad0fdbcd460bbd8deb1953cd44e1e297665a73555dad",
+  "production_restored_health_http_status": 200,
+  "temporary_workers_removed": true,
+  "original_four_worker_ports_restored": true,
+  "artifacts_sha256": {
+    "libv41_ple_combined.so": "cd7d9564cddbc61315c83535739ce87c2ef1ea6db480e206053f7409930da773",
+    "libv41_exl3_wire_combined.so": "1664a311d9a8576b3167fb8986cc84e74e5fe981ca482436bbb7cb285ea14174",
+    "package-cmake-120/exl3/manifest.json": "7ee57ed8c0c8c7c49e20ff143558c7a45adc92a7c1f0d49d145b0c91b2d26012",
+    "spark-full-package/manifest.json": "a3df337e42363bb84215e22eaa325caa2c64d137d12fa3e30ad3016684dd8440"
+  }
+}

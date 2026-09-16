@@ -68,7 +68,7 @@ impl<'a> Wave<'a> {
             "invalid TP2 FFN devices"
         );
         ensure!(
-            (1..=20).contains(&layers) && (1..=4096).contains(&capacity),
+            (1..=40).contains(&layers) && (1..=4096).contains(&capacity),
             "invalid TP2 FFN layer count/capacity"
         );
         for rank in 0..2 {

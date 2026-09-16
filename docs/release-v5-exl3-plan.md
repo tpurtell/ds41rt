@@ -880,3 +880,44 @@ Spark worker passes all capacity boundaries through 4096 rows against B12x,
 including mapped/chunked responses, guards and error recovery. Existing services
 are restored. These are memory and correctness results; loading and throughput
 still need measurement with the final placement and optimized kernels.
+
+## First EXL3 residency/decode comparison
+
+[Residency/decode evidence](release-v5-exl3-residency-decode.json) compares the
+FP8-PLE EXL3 model with 20 versus 24 bottom-up routed expert layers on RTX TP2.
+The explicit `--rtx-expert-layers` setting now accepts 20–40 in dual mode; the
+tested expanded placement is 24. Attention remains split 0–19/20–39 and all
+cache producers stay on their existing GPUs. Auto remains at 20 until the
+memory-based placement policy is implemented and qualified.
+
+These are three-sample median aggregate tokens/s on identical warm code/topic
+prompts, temperature zero and thinking disabled. Both arms use K7, C16 capacity,
+2048-token prefill, 24 retained entries, and 13,094,420,480 global KV/index bytes
+for the 14 × 1,048,576 token target plus 32,768 private-tail tokens. Both RTX
+power limits are 400 W; memory-clock settings were unchanged (13,365 MHz observed
+under load). The optimized coordinator and all four optimized ARM workers use
+the same binaries in both arms.
+
+| Workload | Concurrency | 20 RTX layers | 24 RTX layers | Change |
+|---|---:|---:|---:|---:|
+| Code | 1 | 163.85 | 187.19 | +14.3% |
+| Code | 2 | 248.32 | 275.53 | +11.0% |
+| Code | 8 | 788.45 | 864.22 | +9.6% |
+| Code | 16 | 1,314.90 | 1,318.70 | +0.3% |
+| Topic | 1 | 95.60 | 99.89 | +4.5% |
+| Topic | 2 | 148.80 | 158.13 | +6.3% |
+| Topic | 8 | 480.83 | 494.21 | +2.8% |
+
+The expanded layout helps lower-concurrency code; C16 code is essentially flat.
+This diagnostic runs 20 layers before 24, rather than interleaving, and initial
+higher-concurrency samples include warm-state/adaptive settling. It does not
+replace final release qualification or establish a full-versus-EXL3 comparison.
+Startup-owner times were 21.95 and 17.77 seconds, respectively, but cache/order
+differences prevent a loading-speed claim.
+
+The 24-layer candidate preserves the full configured KV pool and passes schema
+output, high-thinking tool use, cached tool continuation, a 4822-token needle
+and follow-up, and cancellation/recovery. It leaves 5,465,175,168 and
+6,626,211,200 unused bytes within the configured GPU reservations, after the
+existing runtime headroom. Final automatic residency, kernel tuning, adaptive
+calibration, broader quality/acceptance and all release gates remain ahead.

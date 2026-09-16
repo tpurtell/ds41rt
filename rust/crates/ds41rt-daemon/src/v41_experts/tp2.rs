@@ -55,7 +55,7 @@ impl<'a> RankWeights<'a> {
         directory: &Path,
     ) -> Result<Self> {
         ensure!(
-            (1..=20).contains(&layers) && matches!(device.id, 0 | 1),
+            (1..=40).contains(&layers) && matches!(device.id, 0 | 1),
             "invalid TP2 EXL3 placement"
         );
         let weights = device.run(|| {
@@ -93,7 +93,7 @@ impl<'a> RankWeights<'a> {
         budget: usize,
     ) -> Result<Self> {
         ensure!(
-            (1..=20).contains(&layers) && matches!(device.id, 0 | 1),
+            (1..=40).contains(&layers) && matches!(device.id, 0 | 1),
             "invalid TP2 encoder placement"
         );
         let weights = device.run(|| {
