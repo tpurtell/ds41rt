@@ -81,7 +81,7 @@ def main() -> None:
     buffers=make_mixed_trellis_buffers(launch,device=torch.device('cuda',0),sms=props.multi_processor_count)
     binding=bind_mixed_trellis(*prepared.tiers,prepared.global_to_combined,prepared.descriptor_map,prepared.rotations,launch,
         gate_experts=prepared.gate_counts,up_experts=prepared.up_counts)
-    lib=ct.CDLL(str(args.aot/'libv41_exl3_probe.so'))
+    lib=ct.CDLL(str(args.aot/'libds41rt_exl3.so'))
     info_verified=False
     if hasattr(lib,'ds41rt_exl3_info'):
         lib.ds41rt_exl3_info.argtypes=[ct.POINTER(ct.c_uint32),ct.c_uint32]
@@ -198,7 +198,7 @@ def main() -> None:
             'snapshot_revision':args.snapshot.name,
             'projection_tiers':[[bitmaps[e,p] for p in ['w1','w3','w2']] for e in range(experts)],
             'aot_manifest_sha256':hashlib.sha256((args.aot/'v41_exl3.json').read_bytes()).hexdigest(),
-            'bridge_sha256':hashlib.sha256((args.aot/'libv41_exl3_probe.so').read_bytes()).hexdigest(),
+            'bridge_sha256':hashlib.sha256((args.aot/'libds41rt_exl3.so').read_bytes()).hexdigest(),
             'checks':results,'graph_changed_inputs_and_routes':True,
             'packed_metadata_poisoned_before_native':route_lib is not None},indent=2)+'\n')
         print(args.output.read_text(),flush=True)

@@ -1,0 +1,307 @@
+{
+  "scope": "CMake packages at capacities 1 and 16 on SM120/SM121, relocatable native ABI loading, integrity checks, and an ARM64 worker using a CMake-built native library. Not the full capacity set, full release images, actual RoCE inference traffic or serving performance qualification.",
+  "package_checks": [
+    {
+      "passed": true,
+      "scope": "Package relocation, integrity and native ABI initialization; not kernel numerics or serving performance.",
+      "role": "coordinator",
+      "compute": [
+        12,
+        0
+      ],
+      "package_manifest_sha256": "0054e73cc6215d480eff7b1a1807fb5b1bfb2c9e7ddcbb1bbf03867bbb8624aa",
+      "runtime_sha256": "035a7e4cb4901cbf22aeba0af9682b23da4d30a46ba564f9affbb01a448d2b50",
+      "variants": [
+        {
+          "directory": "rtx-tp1/m1",
+          "capacity": 1,
+          "intermediate": 2304,
+          "experts": 384,
+          "top_k": 6,
+          "output_dtype": "fp32",
+          "bits": [
+            3,
+            4
+          ]
+        },
+        {
+          "directory": "rtx-tp1/m16",
+          "capacity": 16,
+          "intermediate": 2304,
+          "experts": 384,
+          "top_k": 6,
+          "output_dtype": "fp32",
+          "bits": [
+            3,
+            4
+          ]
+        },
+        {
+          "directory": "rtx-tp2/m1",
+          "capacity": 1,
+          "intermediate": 1152,
+          "experts": 384,
+          "top_k": 6,
+          "output_dtype": "fp32",
+          "bits": [
+            3,
+            4
+          ]
+        },
+        {
+          "directory": "rtx-tp2/m16",
+          "capacity": 16,
+          "intermediate": 1152,
+          "experts": 384,
+          "top_k": 6,
+          "output_dtype": "fp32",
+          "bits": [
+            3,
+            4
+          ]
+        },
+        {
+          "directory": "dspark/m1",
+          "capacity": 1,
+          "intermediate": 2304,
+          "experts": 128,
+          "top_k": 3,
+          "output_dtype": "bf16",
+          "bits": [
+            3,
+            4
+          ]
+        },
+        {
+          "directory": "dspark/m16",
+          "capacity": 16,
+          "intermediate": 2304,
+          "experts": 128,
+          "top_k": 3,
+          "output_dtype": "bf16",
+          "bits": [
+            3,
+            4
+          ]
+        }
+      ],
+      "python_cuda_imported": false,
+      "native_probe_stdout": "/tmp/ds41rt-exl3-relocation-b8vb0o89/lib/exl3/rtx-tp1/m1/libds41rt_exl3.so: V41Exl3Info { output_element_bytes: 4, hidden: 5120, intermediate: 2304, experts: 384, capacity: 1, topk: 6, tier_count: 2, bits: [3, 4, 0, 0], core_pointers: 32, core_scalars: 11, sum_pointers: 6, sum_scalars: 3 }\n/tmp/ds41rt-exl3-relocation-b8vb0o89/lib/exl3/rtx-tp1/m16/libds41rt_exl3.so: V41Exl3Info { output_element_bytes: 4, hidden: 5120, intermediate: 2304, experts: 384, capacity: 16, topk: 6, tier_count: 2, bits: [3, 4, 0, 0], core_pointers: 32, core_scalars: 11, sum_pointers: 6, sum_scalars: 3 }\n/tmp/ds41rt-exl3-relocation-b8vb0o89/lib/exl3/rtx-tp2/m1/libds41rt_exl3.so: V41Exl3Info { output_element_bytes: 4, hidden: 5120, intermediate: 1152, experts: 384, capacity: 1, topk: 6, tier_count: 2, bits: [3, 4, 0, 0], core_pointers: 32, core_scalars: 11, sum_pointers: 6, sum_scalars: 3 }\n/tmp/ds41rt-exl3-relocation-b8vb0o89/lib/exl3/rtx-tp2/m16/libds41rt_exl3.so: V41Exl3Info { output_element_bytes: 4, hidden: 5120, intermediate: 1152, experts: 384, capacity: 16, topk: 6, tier_count: 2, bits: [3, 4, 0, 0], core_pointers: 32, core_scalars: 11, sum_pointers: 6, sum_scalars: 3 }\n/tmp/ds41rt-exl3-relocation-b8vb0o89/lib/exl3/dspark/m1/libds41rt_exl3.so: V41Exl3Info { output_element_bytes: 2, hidden: 5120, intermediate: 2304, experts: 128, capacity: 1, topk: 3, tier_count: 2, bits: [3, 4, 0, 0], core_pointers: 32, core_scalars: 11, sum_pointers: 6, sum_scalars: 3 }\n/tmp/ds41rt-exl3-relocation-b8vb0o89/lib/exl3/dspark/m16/libds41rt_exl3.so: V41Exl3Info { output_element_bytes: 2, hidden: 5120, intermediate: 2304, experts: 128, capacity: 16, topk: 3, tier_count: 2, bits: [3, 4, 0, 0], core_pointers: 32, core_scalars: 11, sum_pointers: 6, sum_scalars: 3 }\n6 modules loaded concurrently; native initialization and argument-count rejection passed\n",
+      "native_probe_stderr": "",
+      "rejected": [
+        "missing native module",
+        "damaged native module",
+        "unlisted file",
+        "wrong source revision",
+        "wrong serving role",
+        "wrong CuTe runtime"
+      ]
+    },
+    {
+      "passed": true,
+      "scope": "Package relocation, integrity and native ABI initialization; not kernel numerics or serving performance.",
+      "role": "spark",
+      "compute": [
+        12,
+        1
+      ],
+      "package_manifest_sha256": "d0d41b877e23484d5fec4be915340c49f80bc3c22dd67eadfcdc078fb4684a0a",
+      "runtime_sha256": "95e2fc4718588ef646f0fa3cb645ec9b42fdbff6d7c362ddce8c44e7ea465479",
+      "variants": [
+        {
+          "directory": "tp4-rank0/m1",
+          "capacity": 1,
+          "intermediate": 640,
+          "experts": 384,
+          "top_k": 6,
+          "output_dtype": "bf16",
+          "bits": [
+            3,
+            4
+          ]
+        },
+        {
+          "directory": "tp4-rank1/m1",
+          "capacity": 1,
+          "intermediate": 640,
+          "experts": 384,
+          "top_k": 6,
+          "output_dtype": "bf16",
+          "bits": [
+            3,
+            4
+          ]
+        },
+        {
+          "directory": "tp4-rank0/m16",
+          "capacity": 16,
+          "intermediate": 640,
+          "experts": 384,
+          "top_k": 6,
+          "output_dtype": "bf16",
+          "bits": [
+            3,
+            4
+          ]
+        },
+        {
+          "directory": "tp4-rank1/m16",
+          "capacity": 16,
+          "intermediate": 640,
+          "experts": 384,
+          "top_k": 6,
+          "output_dtype": "bf16",
+          "bits": [
+            3,
+            4
+          ]
+        },
+        {
+          "directory": "tp4-rank2/m1",
+          "capacity": 1,
+          "intermediate": 512,
+          "experts": 384,
+          "top_k": 6,
+          "output_dtype": "bf16",
+          "bits": [
+            3,
+            4
+          ]
+        },
+        {
+          "directory": "tp4-rank3/m1",
+          "capacity": 1,
+          "intermediate": 512,
+          "experts": 384,
+          "top_k": 6,
+          "output_dtype": "bf16",
+          "bits": [
+            3,
+            4
+          ]
+        },
+        {
+          "directory": "tp4-rank2/m16",
+          "capacity": 16,
+          "intermediate": 512,
+          "experts": 384,
+          "top_k": 6,
+          "output_dtype": "bf16",
+          "bits": [
+            3,
+            4
+          ]
+        },
+        {
+          "directory": "tp4-rank3/m16",
+          "capacity": 16,
+          "intermediate": 512,
+          "experts": 384,
+          "top_k": 6,
+          "output_dtype": "bf16",
+          "bits": [
+            3,
+            4
+          ]
+        }
+      ],
+      "python_cuda_imported": false,
+      "native_probe_stdout": "/tmp/ds41rt-exl3-relocation-srn14gmv/lib/exl3/tp4-rank0/m1/libds41rt_exl3.so: V41Exl3Info { output_element_bytes: 2, hidden: 5120, intermediate: 640, experts: 384, capacity: 1, topk: 6, tier_count: 2, bits: [3, 4, 0, 0], core_pointers: 32, core_scalars: 11, sum_pointers: 6, sum_scalars: 3 }\n/tmp/ds41rt-exl3-relocation-srn14gmv/lib/exl3/tp4-rank1/m1/libds41rt_exl3.so: V41Exl3Info { output_element_bytes: 2, hidden: 5120, intermediate: 640, experts: 384, capacity: 1, topk: 6, tier_count: 2, bits: [3, 4, 0, 0], core_pointers: 32, core_scalars: 11, sum_pointers: 6, sum_scalars: 3 }\n/tmp/ds41rt-exl3-relocation-srn14gmv/lib/exl3/tp4-rank0/m16/libds41rt_exl3.so: V41Exl3Info { output_element_bytes: 2, hidden: 5120, intermediate: 640, experts: 384, capacity: 16, topk: 6, tier_count: 2, bits: [3, 4, 0, 0], core_pointers: 32, core_scalars: 11, sum_pointers: 6, sum_scalars: 3 }\n/tmp/ds41rt-exl3-relocation-srn14gmv/lib/exl3/tp4-rank1/m16/libds41rt_exl3.so: V41Exl3Info { output_element_bytes: 2, hidden: 5120, intermediate: 640, experts: 384, capacity: 16, topk: 6, tier_count: 2, bits: [3, 4, 0, 0], core_pointers: 32, core_scalars: 11, sum_pointers: 6, sum_scalars: 3 }\n/tmp/ds41rt-exl3-relocation-srn14gmv/lib/exl3/tp4-rank2/m1/libds41rt_exl3.so: V41Exl3Info { output_element_bytes: 2, hidden: 5120, intermediate: 512, experts: 384, capacity: 1, topk: 6, tier_count: 2, bits: [3, 4, 0, 0], core_pointers: 32, core_scalars: 11, sum_pointers: 6, sum_scalars: 3 }\n/tmp/ds41rt-exl3-relocation-srn14gmv/lib/exl3/tp4-rank3/m1/libds41rt_exl3.so: V41Exl3Info { output_element_bytes: 2, hidden: 5120, intermediate: 512, experts: 384, capacity: 1, topk: 6, tier_count: 2, bits: [3, 4, 0, 0], core_pointers: 32, core_scalars: 11, sum_pointers: 6, sum_scalars: 3 }\n/tmp/ds41rt-exl3-relocation-srn14gmv/lib/exl3/tp4-rank2/m16/libds41rt_exl3.so: V41Exl3Info { output_element_bytes: 2, hidden: 5120, intermediate: 512, experts: 384, capacity: 16, topk: 6, tier_count: 2, bits: [3, 4, 0, 0], core_pointers: 32, core_scalars: 11, sum_pointers: 6, sum_scalars: 3 }\n/tmp/ds41rt-exl3-relocation-srn14gmv/lib/exl3/tp4-rank3/m16/libds41rt_exl3.so: V41Exl3Info { output_element_bytes: 2, hidden: 5120, intermediate: 512, experts: 384, capacity: 16, topk: 6, tier_count: 2, bits: [3, 4, 0, 0], core_pointers: 32, core_scalars: 11, sum_pointers: 6, sum_scalars: 3 }\n8 modules loaded concurrently; native initialization and argument-count rejection passed\n",
+      "native_probe_stderr": "",
+      "rejected": [
+        "missing native module",
+        "damaged native module",
+        "unlisted file",
+        "wrong source revision",
+        "wrong serving role",
+        "wrong CuTe runtime"
+      ]
+    }
+  ],
+  "cmake_native_build": {
+    "host": "ostrich GB10",
+    "cuda_architecture": "121",
+    "EXL3_AOT": true,
+    "capacities": [
+      1,
+      16
+    ],
+    "traditional_expert_AOT": false,
+    "RDMA": false,
+    "XGrammar": false,
+    "library_sha256": "b491eb1eda97541f9aac80ab31cbc3405394a76b7473d2b5a5d2ba4eb3d2082a"
+  },
+  "packaged_worker_request_test": {
+    "passed": true,
+    "host_architecture": "aarch64",
+    "rows": [
+      1,
+      3,
+      16,
+      1
+    ],
+    "resident_experts": 384,
+    "routed_reference_experts": 6,
+    "rank": 2,
+    "layer": 0,
+    "input": "fp8_k32",
+    "output": "bf16",
+    "workspace_bytes": 8976796,
+    "checks": [
+      "mapped output equals B12x",
+      "prefix and tail guards",
+      "chunked checksum fallback",
+      "layer and executor rejection",
+      "sink failure recovery"
+    ]
+  },
+  "default_path_startup": {
+    "passed": true,
+    "first_layer": 39,
+    "rank": 2,
+    "capacity": 16,
+    "exl3_aot_dir_override": false,
+    "resident_bytes": 1252798480,
+    "layer_load_ms": 832,
+    "timing_scope": "single warm layer smoke, not a startup benchmark",
+    "container_removed": true,
+    "stop_exit_code": 143
+  },
+  "image_verifier_without_gpu_passed": [
+    "coordinator",
+    "expert"
+  ],
+  "shell_syntax_checks_passed": true,
+  "destination_guard_passed": true,
+  "runtime_dependency": "CuTe runtime remains installed by the release image and exposed by its existing entrypoint. Package records its SHA256; the image verifier checks it. Runtime binary is not copied into the EXL3 package.",
+  "release_pipeline_changes": [
+    "enable EXL3 AOT",
+    "copy modules and metadata into image and dist",
+    "verify role/source/runtime and all package files",
+    "cover package manifest in release SHA256SUMS"
+  ],
+  "remaining": [
+    "capacities 80/256/1024/4096",
+    "complete clean release-image builds",
+    "batch-size dispatch tuning",
+    "RoCE traffic across four ranks",
+    "RTX and dSpark serving integration",
+    "generic decoder coverage and FP4 PLE",
+    "full model quality, performance and deferred top-1 analysis"
+  ],
+  "initial_worker_invocation_note": "Initial CMake-library test used a mistyped snapshot directory; corrected invocation passed.",
+  "health_http_status": 200,
+  "verified_at": "2026-09-16T15:55:23.991821+00:00",
+  "archive": "docs/evidence/v5-exl3-packaging.tar.gz",
+  "archive_sha256": "607927ecb6e60be28522186633506f0a0a9ce9984c530bdc5221f39e2baf8878",
+  "cpu_install_checks": {
+    "passed": true,
+    "checks": [
+      "install and verify",
+      "reinstall removes stale module",
+      "overlap rejection",
+      "unknown directory preserved",
+      "no torch import"
+    ]
+  }
+}

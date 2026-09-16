@@ -108,6 +108,7 @@ cmake \
   -DCMAKE_BUILD_TYPE=Release \
   -DDS41RT_ENABLE_CUDA=ON \
   -DDS41RT_ENABLE_V41_EXPERT_AOT=ON \
+  -DDS41RT_ENABLE_V41_EXL3_AOT=ON \
   -DDS41RT_ENABLE_V41_LOCAL_EXPERT_AOT="$coordinator_aot" \
   -DDS41RT_ENABLE_V41_TP2_EXPERT_AOT="$coordinator_aot" \
   -DDS41RT_ENABLE_V41_FP8_AOT="$coordinator_aot" \
@@ -132,6 +133,9 @@ cmake --build "$build_root/native"
 install -d "$output_dir"
 install -m 0755 "$build_root/source/rust/target/release/ds41rt" "$output_dir/ds41rt"
 install -m 0755 "$build_root/native/libds41rt_native.so" "$output_dir/libds41rt_native.so"
+python3 "$build_root/source/python/tools/package_v41_exl3_aot.py" install \
+  --package "$build_root/native/exl3" --output "$output_dir/exl3"
+python3 "$build_root/source/python/tools/package_v41_exl3_aot.py" verify --package "$output_dir/exl3" --role "$role"
 install -m 0644 "$build_root/native/v41_experts/v41_experts.json" "$output_dir/V41_EXPERT_AOT.json"
 if [[ "$coordinator_aot" == ON ]]; then
   # Automatic RTX placement requires the full local-expert ABI in release images.

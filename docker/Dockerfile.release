@@ -91,6 +91,7 @@ RUN python3 /opt/ds41rt/scripts/verify-sparkinfer-source.py \
 
 COPY .ds41rt-release-image/ds41rt /opt/ds41rt/bin/ds41rt
 COPY .ds41rt-release-image/libds41rt_native.so /opt/ds41rt/lib/libds41rt_native.so
+COPY .ds41rt-release-image/exl3 /opt/ds41rt/lib/exl3
 COPY .ds41rt-release-image/V41_EXPERT_AOT.json /opt/ds41rt/share/V41_EXPERT_AOT.json
 COPY .ds41rt-release-image/V41_FP8_AOT.json /opt/ds41rt/share/V41_FP8_AOT.json
 COPY .ds41rt-release-image/THIRD_PARTY_NOTICES.md /opt/ds41rt/share/THIRD_PARTY_NOTICES.md
@@ -105,7 +106,10 @@ COPY scripts/real-full-tcp-serve.sh /opt/ds41rt/scripts/real-full-tcp-serve.sh
 COPY scripts/kernel-cache-identity.py /opt/ds41rt/scripts/kernel-cache-identity.py
 COPY docker/release-entrypoint.sh /usr/local/bin/ds41rt-release-entrypoint
 
-RUN cmp -s \
+RUN python3 /opt/ds41rt/python/tools/package_v41_exl3_aot.py verify \
+      --package /opt/ds41rt/lib/exl3 --sparkinfer-revision "$DS41RT_SPARKINFER_COMMIT" \
+      --role "$DS41RT_ROLE" --runtime "$(python3 -m cutlass.cute.export.aot_config --libdir)/libcute_dsl_runtime.so" && \
+    cmp -s \
       /opt/ds41rt/third_party/sparkinfer/LICENSE \
       /opt/ds41rt/share/SPARKINFER_LICENSE && \
     (cd /opt/ds41rt/share && sha256sum -c SPARKINFER_SHA256SUMS) && \

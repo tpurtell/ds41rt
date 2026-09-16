@@ -232,7 +232,7 @@ impl<'a> Exl3Execution<'a> {
                 };
             ensure!(meta.top_k == expected_topk, "EXL3 expert top-k mismatch");
         }
-        let kernel = V41Exl3Kernel::load(directory.join("libv41_exl3_probe.so"))?;
+        let kernel = V41Exl3Kernel::load(directory.join("libds41rt_exl3.so"))?;
         let info = kernel.info();
         ensure!(
             info.hidden == meta.hidden

@@ -75,6 +75,14 @@ identities. Do not compile while collecting GPU performance measurements.
 - Headlines: one RTX, two RTX, and two-versus-one change for full and EXL3.
   Remove the old v3-change table.
 - Content-type decode: full and EXL3 tables.
+- dSpark acceptance by content type: full versus EXL3 with FP8 PLE, on one
+  and two RTX cards. Collect alongside the planned performance runs, covering
+  counting, code, topic and the other measured content types. Report accepted
+  draft tokens / verified draft tokens (with counts), mean accepted draft tokens
+  and emitted tokens per cycle, mean verification length, configured K/policy,
+  and zero-acceptance rate. Pair these with TPS and draft/verification timings.
+  Match prompts and base contexts; differing K or policies must be explicit so
+  raw acceptance percentages are not mistaken for like-for-like comparisons.
 - Prefill: four matrices (full/EXL3 times one/two RTX). Drop short-prefill controls.
 - Retained-context decode: one table with one/two/change columns for each model;
   omit old-version deltas.
@@ -86,6 +94,16 @@ identities. Do not compile while collecting GPU performance measurements.
 - Tool calls: retain full-model results, add three high-thinking EXL3 FP8-PLE
   runs and three EXL3 NVFP4-PLE runs, with scores and failures preserved.
 - Replicate all release tables in README and the linked performance report.
+
+After kernel optimization and RTX layer placement are settled, recalibrate and
+qualify the dSpark adaptive profile for EXL3 on both one- and two-RTX configurations.
+Model Spark and RTX expert costs separately according to actual placement, and
+measure quantized draft cost as well as target verification cost. Do not reuse
+the full-model timing assumptions without measurement. Acceptance measurements
+above must explain whether quantizing both target and draft changes useful work
+per cycle; higher acceptance alone is not a performance requirement. Investigate
+material changes with bounded controls if needed, without automatically repeating
+the full qualification suite. FP4 PLE remains limited to tools and top-1 analysis.
 
 After engine optimization is complete and the candidate is ready to publish,
 perform a one-time quant analysis: size, shapes, tier distribution and top-1
@@ -416,3 +434,39 @@ Decode/prefill dispatch must select suitable compiled batch capacities before
 performance qualification; the initial worker currently uses one configured
 capacity. Generic K2–K5 coverage, optimization, full-model quality, requested
 benchmark tables and the deferred top-1 comparison remain required for v5.
+
+## Native build and release packaging
+
+CMake now builds EXL3 packages through `DS41RT_ENABLE_V41_EXL3_AOT`. The release
+artifact script enables it; the image and `build.sh` copy and verify the package
+alongside the native library. Coordinator profiles cover RTX TP1, RTX TP2 and
+dSpark; Spark profiles cover all four ranks, compiling each distinct shard width
+once. `DS41RT_V41_EXL3_CAPACITIES` defaults to 1/16/80/256/1024/4096 and
+`DS41RT_V41_EXL3_BITS` defaults to 3/4. Other supported two/three-tier exports can
+be selected at build time; four-tier/uniform execution qualification is still
+pending. EXL3 exports run after the other GPU export targets to avoid overlapping
+large compiler arenas.
+
+Runtime packages contain `libds41rt_exl3.so`, route modules, manifests and lookup
+tables. Earlier manually linked `libv41_exl3_probe.so` names are superseded. The
+CuTe runtime remains the dependency installed by the release image and exposed
+by its existing entrypoint. Package manifests record its checksum; image checks
+validate it together with the serving role, source revision and packaged files.
+Packages do not contain compiler objects or another copy of the CuTe runtime.
+
+[Packaging evidence](release-v5-exl3-packaging.json) passes for capacities 1 and
+16: six coordinator variants and eight Spark variants. Each package relocates
+and all its modules initialize concurrently through Rust without importing
+Python CUDA. Missing modules, corrupt modules, extra files and wrong
+source/role/runtime identities are rejected. The image verification command also
+passes without GPU access on both architectures. Complete image builds and the
+larger capacities remain unqualified.
+
+A fresh CMake native library on GB10 now passes the same mapped and chunked
+worker request checks with the packaged rank-2 module and canonical B12x fixture.
+This replaces the prior wire-decoder addon in that test. The minimal native build
+has CUDA/EXL3 enabled and traditional expert AOT, RDMA and XGrammar disabled; it
+is not the complete release build. The actual daemon loads a full EXL3 layer and
+opens its listener using the default adjacent package path, with no AOT override.
+The isolated smoke container was removed and standard v4 serving remains healthy.
+No RoCE inference traffic or end-to-end throughput is claimed by these checks.
