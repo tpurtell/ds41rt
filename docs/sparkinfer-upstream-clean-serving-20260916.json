@@ -108,6 +108,10 @@
     "clean-partial-concurrency.json": {
       "path": "/home/tj/.cache/ds41rt-upstream-20260916/clean-partial-concurrency.json",
       "sha256": "15092a756e5a112467759d883d162ec7b68325418ceda09afd3f6ea5a736c2a5"
+    },
+    "clean-worker-images.json": {
+      "path": "/home/tj/.cache/ds41rt-upstream-20260916/clean-worker-images.json",
+      "sha256": "2cc48f6319ad4868b07fb8115ccd29838f85e15799fda5e784e97fce92e769e8"
     }
   },
   "needle": [
@@ -194,5 +198,142 @@
     "path": "docs/evidence/upstream-clean-serving-20260916.json.gz",
     "sha256": "55a90f9db42fba66fcc46043f50321f5cbdcfc3ac058a2787d6c7efcf9373911",
     "bytes": 52628
+  },
+  "workers": [
+    {
+      "host": "ostrich",
+      "name": "ds41rt-spark-expert-ostrich-19441",
+      "container_id": "ea1a2d7c12e6fee35a927ebf37f7f8c550535e7a256fbc2909681133d0f50bc5",
+      "image_id": "sha256:d8fff406d7fdfd7bcc051e347254a392a708d8250866b75012e1a921d9843ba6",
+      "running": true,
+      "command": [
+        "ds41rt",
+        "expertd-native",
+        "--snapshot",
+        "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+        "--native-lib",
+        "/opt/ds41rt/lib/libds41rt_native.so",
+        "--rank",
+        "0",
+        "--capacity",
+        "4096",
+        "--device-budget-bytes",
+        "107374182400",
+        "--first-layer",
+        "20",
+        "--listen",
+        "0.0.0.0:19441"
+      ]
+    },
+    {
+      "host": "dodo",
+      "name": "ds41rt-spark-expert-dodo-19441",
+      "container_id": "34bf19241bab257a621313db3d92132da2e45b955b84724f78117c9c7e67fc7e",
+      "image_id": "sha256:d8fff406d7fdfd7bcc051e347254a392a708d8250866b75012e1a921d9843ba6",
+      "running": true,
+      "command": [
+        "ds41rt",
+        "expertd-native",
+        "--snapshot",
+        "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+        "--native-lib",
+        "/opt/ds41rt/lib/libds41rt_native.so",
+        "--rank",
+        "1",
+        "--capacity",
+        "4096",
+        "--device-budget-bytes",
+        "107374182400",
+        "--first-layer",
+        "20",
+        "--listen",
+        "0.0.0.0:19441"
+      ]
+    },
+    {
+      "host": "emu",
+      "name": "ds41rt-spark-expert-emu-19441",
+      "container_id": "fc65f8451253c3c6e115b614ecca2404171d5846f7674de4fe578549e653e13f",
+      "image_id": "sha256:d8fff406d7fdfd7bcc051e347254a392a708d8250866b75012e1a921d9843ba6",
+      "running": true,
+      "command": [
+        "ds41rt",
+        "expertd-native",
+        "--snapshot",
+        "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+        "--native-lib",
+        "/opt/ds41rt/lib/libds41rt_native.so",
+        "--rank",
+        "2",
+        "--capacity",
+        "4096",
+        "--device-budget-bytes",
+        "107374182400",
+        "--first-layer",
+        "20",
+        "--listen",
+        "0.0.0.0:19441"
+      ]
+    },
+    {
+      "host": "kiwi",
+      "name": "ds41rt-spark-expert-kiwi-19441",
+      "container_id": "c452a631215851c6be6a295ffee43aafad30d6c1aa2d8a57bbc62b255def9483",
+      "image_id": "sha256:d8fff406d7fdfd7bcc051e347254a392a708d8250866b75012e1a921d9843ba6",
+      "running": true,
+      "command": [
+        "ds41rt",
+        "expertd-native",
+        "--snapshot",
+        "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+        "--native-lib",
+        "/opt/ds41rt/lib/libds41rt_native.so",
+        "--rank",
+        "3",
+        "--capacity",
+        "4096",
+        "--device-budget-bytes",
+        "107374182400",
+        "--first-layer",
+        "20",
+        "--listen",
+        "0.0.0.0:19441"
+      ]
+    }
+  ],
+  "worker_image_labels": {
+    "com.nvidia.build.id": "313520560",
+    "com.nvidia.build.ref": "30a5fc6cbfce157e75fae3d0cf1fd8e273a3dc25",
+    "com.nvidia.cublas.version": "13.4.1.1",
+    "com.nvidia.cublasmp.version": "0.8.1.2360",
+    "com.nvidia.cuda.version": "9.0",
+    "com.nvidia.cudla.version": "13.2.75",
+    "com.nvidia.cudnn.version": "9.22.0.52",
+    "com.nvidia.cufft.version": "12.2.0.46",
+    "com.nvidia.curand.version": "10.4.2.55",
+    "com.nvidia.cusolver.version": "12.2.0.1",
+    "com.nvidia.cusolvermp.version": "0.8.0.3126",
+    "com.nvidia.cusparse.version": "12.7.10.1",
+    "com.nvidia.cusparselt.version": "0.9.1.1",
+    "com.nvidia.nccl.version": "2.30.4",
+    "com.nvidia.npp.version": "13.1.0.48",
+    "com.nvidia.nsightcompute.version": "2026.1.1.2",
+    "com.nvidia.nsightsystems.version": "2026.2.1.210",
+    "com.nvidia.nvjpeg.version": "13.1.0.48",
+    "com.nvidia.nvvm.version": "13.2.78",
+    "com.nvidia.pytorch.version": "2.12.0a0+5aff392",
+    "com.nvidia.tensorrt.version": "10.16.1.11",
+    "com.nvidia.tensorrtoss.version": "",
+    "com.nvidia.volumes.needed": "nvidia_driver",
+    "io.ds41rt.cuda_arch": "121",
+    "io.ds41rt.role": "expert",
+    "io.ds41rt.source-manifest.sha256": "fa74a1c9289ff62ad09f91575f4912ac49e260b32e2e5677253deb5bdfb951c2",
+    "io.ds41rt.sparkinfer.revision": "4e31d0a10ea7ca24ac48d522fb65eaafbc27ad30",
+    "org.opencontainers.image.description": "DeepSeek V4.1 Flash inference for one or two RTX PRO 6000 GPUs and four DGX Spark expert workers",
+    "org.opencontainers.image.licenses": "MIT",
+    "org.opencontainers.image.revision": "83808905f007bf4bd608b929385fa325320c654c-dirty-fa74a1c9289f",
+    "org.opencontainers.image.source": "https://github.com/tpurtell/ds41rt",
+    "org.opencontainers.image.title": "DS41RT inference",
+    "org.opencontainers.image.version": "upstream-candidate"
   }
 }
