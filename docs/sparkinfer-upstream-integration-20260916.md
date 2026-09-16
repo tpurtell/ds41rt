@@ -78,6 +78,45 @@ They may still require mechanical merge/import/test fixes when shared library
 surfaces change. Attention/projection parallelization across GPUs is deferred;
 retain the current ownership and expert parallelism in comparisons.
 
+## Experimental single-row projection policy (September 16)
+
+[Stage and serving evidence](sparkinfer-upstream-narrow-policy-20260916.json)
+records the exact-object diagnostic from
+[diagnose_v41_fp8_stages.py](../python/tools/diagnose_v41_fp8_stages.py).
+For the previous library's single-row plans, capacity-16 quantization costs
+approximately 1.03 µs versus 1.95 µs for capacity 1. Its GEMM plus reduction is
+also faster: Q-A 3.89 versus 4.72 µs, KV 3.56 versus 4.30 µs. Thus both the
+quantizer subgroup choice and the one-row GEMM path contribute.
+
+Fork candidate `e157965b` adds a b12x-owned native scheduling decision for
+single-row Q-A/KV on the 188-SM RTX. The exporter records `expected_m=16`
+while keeping capacity 1 and the original scratch sizes (Q-A 47104 bytes,
+KV 34816 bytes). It consistently applies that scheduling choice to quantizer
+compilation, runtime grids and GEMM compilation. Other shapes keep their
+original policy. DS41RT exposes this through the **off-by-default** experimental
+`DS41RT_ENABLE_V41_NARROW_AOT` build option; the production pin is unchanged.
+
+The new exports pass native quantized-oracle tests on both GPUs, including
+changed-input graph replay. Official-weight capacity testing covers 22
+shape/sequence cases through 4096 rows with scratch guards and output tails.
+Warm single-row component latency becomes approximately 4.51 µs for KV and
+4.92 µs for Q-A. No additional serving buffer or BF16 weight copy is needed.
+
+**Serving acceptance remains unproven.** All nine zero-cache corpus outputs
+match the mHC-only candidate exactly, but the new policy gives 95.36 weighted
+TPS, versus the earlier mHC-only 96.70 and an immediate mHC-only rerun of
+100.60 TPS. Counting is 182.20 versus the immediate baseline's 187.84 TPS.
+These are single-pass diagnostics, not a release performance claim. Preserve
+the policy as experimental until repeat measurements and draft/verification
+analysis distinguish a reproducible regression from runtime variability.
+
+An additional 256 MiB L2-flush probe gives approximately 14.06 µs for new Q-A
+versus 16.35 µs for the previous one-row plan, and 11.26 versus 12.29 µs for KV.
+The coarse/noisy cold timings do not reveal a component slowdown and therefore
+do **not** establish cold-cache behavior as the explanation for serving TPS.
+The exact narrow candidate FP8/attention export artifacts are preserved under
+`narrow-artifacts/` in the integration cache, alongside `libcandidate-narrow.so`.
+
 ## Narrow projection and rounding investigation (September 16)
 
 [Evidence](sparkinfer-upstream-narrow-and-rounding-20260916.json) extends the

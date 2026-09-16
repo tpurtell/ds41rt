@@ -68,7 +68,7 @@ def dispatch_header(output: Path, manifest: dict) -> None:
         groups = variant.get('groups', 1)
         if groups > 1:
             lines.append(f'#include "{label}_quant_rope.h"')
-        grids = [mxfp8_rows_quant_aot_grid(size_k=k, rows=rows, expected_m=capacity,
+        grids = [mxfp8_rows_quant_aot_grid(size_k=k, rows=rows, expected_m=variant.get('expected_m', capacity),
                                          sm_count=manifest['physical_sms']) for rows in range(1, capacity + 1)]
         if groups > 1:
             grids = [min(rows * 32, manifest['physical_sms'] * 4) for rows in range(1, capacity + 1)]
@@ -115,15 +115,20 @@ def export(output: Path, rows: tuple[int, ...], projections=PROJECTIONS) -> None
         for capacity in rows:
             label = f'v41_{name}_fp8_m{capacity}'
             groups = 8 if name == 'o_a' else 1
+            expected_m = capacity
+            if os.environ.get('DS41RT_EXPORT_NARROW_AOT') == '1':
+                from b12x._lib.dense_gemm import v41_fp8_aot_expected_m
+                expected_m = v41_fp8_aot_expected_m(capacity=capacity, input_dim=k, output_dim=n,
+                    sm_count=props.multi_processor_count, num_groups=groups)
             quant = (compile_wo_grouped_quant_aot(groups=groups, group_width=k // groups)
                      if groups > 1 else compile_mxfp8_rows_quant_aot(
-                         size_k=k, scale_block_size=32, expected_m=capacity, amax_floor=1e-4))
+                         size_k=k, scale_block_size=32, expected_m=expected_m, amax_floor=1e-4))
             quant.export_to_c(str(output), label + '_quant', 'ds41rt_' + label + '_quant')
             if groups > 1:
                 rope_quant = compile_wo_grouped_quant_aot(groups=groups, group_width=k // groups, row_frequencies=True)
                 rope_quant.export_to_c(str(output), label + '_quant_rope', 'ds41rt_' + label + '_quant_rope')
             gemm, split_k = compile_dense_gemm_mxfp8_aot(size_m=capacity, size_n=n // groups, size_k=k // groups, num_groups=groups,
-                                              expected_m=capacity, sfb_k_replicated=False, device=device,
+                                              expected_m=expected_m, sfb_k_replicated=False, device=device,
                                               return_split_k_metadata=True)
             gemm.export_to_c(str(output), label + '_gemm', 'ds41rt_' + label + '_gemm')
             layout = _block_fp8_linear_scratch_layout(tokens=capacity, in_features=k,
@@ -144,7 +149,7 @@ def export(output: Path, rows: tuple[int, ...], projections=PROJECTIONS) -> None
                                     activation_scratch_bytes=output_offset,
                                     scratch_bytes=output_offset + capacity * n * 2,
                                     activation_mma_scale_shape=[32, 4, (capacity + 127) // 128, 4, k // groups // 128, groups])
-            manifest['variants'].append({'capacity': capacity, 'label': label, 'input_dim': k, 'output_dim': n,
+            manifest['variants'].append({'capacity': capacity, 'expected_m': expected_m, 'label': label, 'input_dim': k, 'output_dim': n,
                 'activation_scratch_bytes': layout.nbytes,
                 'scratch_bytes': split_offset + split_bytes if split_k > 1 else layout.nbytes,
                 'split_k_offset': split_offset, 'split_k_bytes': split_bytes,

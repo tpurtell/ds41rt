@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compare native FP8 with upstream BF16 narrow projections on checkpoint weights.
 
-This is a warm component probe. BF16 requires expanded resident weights and
+This is a component probe with warm replay or explicit L2 flushing. BF16 requires expanded resident weights and
 changes activation quantization; neither performance nor numerical acceptance
 of this probe constitutes serving acceptance.
 """
@@ -17,6 +17,7 @@ import sys
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--cold', action='store_true', help='Flush 256 MiB before each timed single-launch graph')
     p.add_argument('--b12x-root', type=Path, required=True)
     p.add_argument('--native', type=Path, required=True)
     p.add_argument('--snapshot', type=Path, required=True)
@@ -30,6 +31,7 @@ def main():
     from tests.gemm.test_gemm_block_fp8_linear import _assert_v41_accumulation_matches_reference
     from tests.gemm.test_bf16_gemv import _assert_matches_f32_ref
     torch.manual_seed(41410)
+    flush = torch.empty(256*1024*1024,device='cuda',dtype=torch.uint8) if args.cold else None
     torch.backends.cuda.matmul.allow_tf32 = False
     lib = C.CDLL(str(args.native.resolve()))
     ptr,i32,u64 = C.c_void_p,C.c_int32,C.c_uint64
@@ -51,7 +53,7 @@ def main():
         with safe_open(args.snapshot/weight_map[name],framework='pt',device='cpu') as f:
             return f.get_tensor(name).cuda().contiguous()
     report={'scope':__doc__,'command':sys.argv,'revision':subprocess.check_output(['git','-C',str(args.b12x_root),'rev-parse','HEAD'],text=True).strip(),
-            'native_sha256':hashlib.sha256(args.native.read_bytes()).hexdigest(),'cases':[]}
+            'native_sha256':hashlib.sha256(args.native.read_bytes()).hexdigest(),'cache_mode':'256MiB flush' if args.cold else 'warm','cases':[]}
     for prefix in ('layers.0.attn.wkv','layers.0.attn.wq_a','layers.8.attn.indexer.wq_b'):
         weight,scales=load(prefix+'.weight'),load(prefix+'.scale')
         n,k=weight.shape
@@ -93,7 +95,7 @@ def main():
                         fn();torch.cuda.synchronize()
                         graph=torch.cuda.CUDAGraph()
                         with torch.cuda.graph(graph):
-                            for _ in range(20):fn()
+                            for _ in range(1 if args.cold else 20):fn()
                         graphs[name]=graph
                     source.neg_()
                     fp8_out.fill_(float('nan'));bf16_out.fill_(float('nan'))
@@ -107,18 +109,19 @@ def main():
                     if alternative:torch.testing.assert_close(alt_out,fp8_out,rtol=0,atol=0)
                     samples={key:[] for key in graphs}
                     before=torch.cuda.memory_allocated()
-                    for iteration in range(6):
+                    for iteration in range(40 if args.cold else 6):
                         order=list(graphs)
                         for name in (order if iteration%2 else list(reversed(order))):
                             start,end=torch.cuda.Event(enable_timing=True),torch.cuda.Event(enable_timing=True)
+                            if flush is not None:flush.zero_()
                             start.record()
-                            for _ in range(50):graphs[name].replay()
+                            for _ in range(1 if args.cold else 50):graphs[name].replay()
                             end.record();end.synchronize()
-                            samples[name].append(start.elapsed_time(end))
+                            samples[name].append(start.elapsed_time(end)*(1000 if args.cold else 1))
                     assert torch.cuda.memory_allocated()==before
                     case={'prefix':prefix,'capacity':capacity,'rows':rows,'separate_oracles_pass':True,'graph_mutation_and_tail_pass':True,
                           'extra_resident_weight_bytes':expanded.numel()*expanded.element_size()-weight.numel()*weight.element_size()-scales.numel()*scales.element_size(),
-                          'alternate_capacity_exact':alternative,'warm_us':samples,'median_us':{key:statistics.median(value) for key,value in samples.items()}}
+                          'alternate_capacity_exact':alternative,'samples_us':samples,'median_us':{key:statistics.median(value) for key,value in samples.items()}}
                     report['cases'].append(case);args.output.write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(case),flush=True)
                     for graph in graphs.values():graph.reset()
 
