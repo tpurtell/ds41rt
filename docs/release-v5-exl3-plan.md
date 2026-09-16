@@ -1137,3 +1137,23 @@ These are packages and binaries built using the existing v4 build environment,
 not new release images. Full-model serving with the rebuilt set, performance
 optimization, adaptive calibration, final qualification and clean v5 image
 builds remain required. Production serving was restored after package builds.
+
+## Serving with the rebuilt packages and optimized binaries
+
+[Current serving evidence](release-v5-exl3-current-serving.json) passes the
+dual-RTX/four-Spark FP8-PLE EXL3 functional checks with all four current optimized
+ARM workers and the rebuilt source-pinned packages. Automatic placement selects
+25 expert layers and retains 13,094,420,480 global KV/index bytes for
+14 × 1,048,576 tokens plus 32,768 private-tail tokens. Remaining reserved bytes
+are unchanged at 2,824,860,800 on RTX0 and 4,008,965,504 on RTX1.
+
+Arithmetic/cache reuse, concurrent short code/topic, constrained JSON,
+high-thinking tool use, a 364-token cached tool continuation, the 4822-token
+needle with 4828-token cached follow-up, and cancellation/recovery all pass.
+The code response is capped at 128 tokens and is not a complete quality result.
+Owner startup takes 28.025 seconds in this single observation; no matched
+loading or throughput claim follows. Production serving is restored afterward.
+
+The rebuilt set is ready for the next optimization measurements. Adaptive
+recalibration, content-type acceptance, the requested performance/quality and
+quant-analysis tables, clean release images and v5 publication remain ahead.

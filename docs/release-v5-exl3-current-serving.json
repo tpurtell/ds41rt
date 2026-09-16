@@ -1,0 +1,36 @@
+{
+  "passed": true,
+  "scope": "Functional dual-RTX/four-Spark FP8-PLE EXL3 serving using rebuilt source-pinned packages and current optimized binaries. Not final performance/quality qualification.",
+  "source_base_commit": "74d1b88",
+  "sparkinfer_revision": "fd8f8a68a3fd674e6c8d7d462692beb687b5939f",
+  "automatic_expert_layers": 25,
+  "kv_global_bytes": 13094420480,
+  "kv_tokens": 14680064,
+  "private_tail_tokens": 32768,
+  "unused_reserved_bytes": [
+    2824860800,
+    4008965504
+  ],
+  "owner_startup_seconds": 28.025,
+  "startup_scope": "Single observation; no matched loading-performance claim.",
+  "configuration": {
+    "rtx_gpus": 2,
+    "spark_workers": 4,
+    "draft_limit": 7,
+    "concurrency_limit": 16,
+    "prefix_cache_entries": 24,
+    "prefill_batch_tokens": 2048
+  },
+  "checks": [
+    "arithmetic and exact prompt cache reuse",
+    "concurrent short code/topic (code cap 128; not full code quality)",
+    "constrained JSON answer 42",
+    "high-thinking Paris tool call",
+    "tool continuation with 364 cached tokens",
+    "4822-token AMBER-7421 needle, then follow-up with 4828 cached tokens",
+    "stream cancellation and recovery"
+  ],
+  "production_restored": true,
+  "archive": "docs/evidence/v5-exl3-current-serving.tar.gz",
+  "archive_sha256": "80de28d31b2adbaca806a75c9bec06cde815d75f7c80df9867533fa30e46921f"
+}
