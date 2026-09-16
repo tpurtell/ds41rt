@@ -111,6 +111,9 @@ cmake \
   -DDS41RT_ENABLE_V41_LOCAL_EXPERT_AOT="$coordinator_aot" \
   -DDS41RT_ENABLE_V41_TP2_EXPERT_AOT="$coordinator_aot" \
   -DDS41RT_ENABLE_V41_FP8_AOT="$coordinator_aot" \
+  -DDS41RT_ENABLE_V41_ATTENTION_AOT="$coordinator_aot" \
+  -DDS41RT_ENABLE_V41_HC_LAGGED_AOT="$coordinator_aot" \
+  -DDS41RT_ENABLE_V41_NARROW_AOT="$coordinator_aot" \
   -DDS41RT_ENABLE_RDMA=ON \
   -DDS41RT_ENABLE_SPARKINFER_AOT="$sparkinfer_aot" \
   -DDS41RT_ENABLE_SPARKINFER_COORDINATOR_AOT="$coordinator_aot" \

@@ -16,6 +16,23 @@ flowchart LR
     F --> G[Clean image builds, README, reports and release]
 ```
 
+## Selected implementation on dev
+
+The dev submodule and verified lock now select merged fork `4e31d0a1`, which
+contains upstream `92cd3800` and the native adapters. Both standard build
+recipes enable the tested coordinator attention, lagged mHC and narrow
+projection AOT paths. The recipes and lock are byte-for-byte identical to the
+clean candidate image sources. Compact routed experts and the row vocabulary
+experiment remain off; existing shared experts and Engram/loading remain in use.
+
+The source hash verifier and upstream ancestry check pass. The ten focused
+release-launcher/provenance tests pass, as does shell syntax validation.
+Clean-image functional evidence is below. Final three-run tool quality,
+one/two-RTX performance, fork-master promotion and publication remain pending;
+this dev integration does not update the published containers or release tags.
+Earlier sections describing an unchanged pin record the historical experiment
+state before this integration.
+
 ## Clean-image serving qualification
 
 The archive build completed and the standard launcher started the two-RTX,
