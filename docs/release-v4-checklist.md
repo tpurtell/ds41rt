@@ -1,7 +1,7 @@
 # DS41RT v4 release checklist
 
-Status: candidate qualification in progress. V4 is the working version for the
-upstream integration; the published September 14 v3 is unchanged.
+Status: final performance and focused regression review completed; publication
+is pending. The published September 14 v3 is unchanged.
 
 - [x] Analyze applicable upstream changes and record native ABI, numerical,
   memory, and performance treatment by component.
@@ -26,13 +26,13 @@ upstream integration; the published September 14 v3 is unchanged.
   and verify matching images on all four Spark workers.
 - [x] Resolve and qualify the single-RTX mixed C16 memory exhaustion without
   reducing the configured KV pool; verify graph retention remains performant.
-- [ ] Refresh all one/two-RTX performance tables with matched prompts and three
+- [x] Refresh all one/two-RTX performance tables with matched prompts and three
   samples: target/dSpark content types, counting/code/topic concurrency, mixed
   traffic, prefill, and retained-context decode. Add the separate 2K retained
   context measurement. Review any material regressions.
-- [ ] Verify clean single-RTX launch, final startup times, memory use, cache
+- [x] Verify clean single-RTX launch, final startup times, memory use, cache
   capacity, and standard power/memory-clock settings.
-- [ ] Replicate all performance tables in README and the linked report; include
+- [x] Replicate all performance tables in README and the linked report; include
   the 400 W limit, standard memory speed, cache bytes and token counts, and
   actual RTX/Spark placement budgets.
 - [x] Promote the accepted merged fork to its master branch and verify the
@@ -42,7 +42,7 @@ upstream integration; the published September 14 v3 is unchanged.
   [Final clean-build evidence](sparkinfer-upstream-v4-final-build-20260916.json)
   records revision `3924227`, all five source labels, packaged checksums, and
   the 52.71-second dual-RTX standard launch. Performance qualification and
-  remote publication remain separate gates below.
+  remote publication are recorded separately; see the [final report](release-v4-performance.md).
 - [ ] Publish coordinator and Spark images, release notes, binaries, evidence,
   and checksums; verify remote digests/assets and release branch/tag identities.
 - [ ] Leave the standard service healthy, clean disposable intermediates while

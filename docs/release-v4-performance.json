@@ -1,0 +1,3027 @@
+{
+  "schema": 1,
+  "scope": "Upstream-integration release performance; quality evidence is separate",
+  "engine_commit": "39242276302b24e6e07313152cc532e43d8ed6ca",
+  "source_manifest_sha256": "bf22e0f27f0368db99fbe43c966b3be771a14ead09f2d1428d872521d98b0394",
+  "build_record": {
+    "name": "v4-final-build-record.json",
+    "bytes": 14182,
+    "sha256": "9ffd798f77a47b3d24d2ff9f737d63a709e43f8cfc35b858fdf6a8201c63148a"
+  },
+  "controls": {
+    "rtx_power_limit_watts": 400,
+    "rtx_memory": "stock; loaded 13,365 MHz, maximum 14,001 MHz",
+    "temperature": 0,
+    "thinking": "disabled",
+    "repeats": 3
+  },
+  "layouts": {
+    "single": {
+      "rtx_gpus": 1,
+      "decode": {
+        "passed": true,
+        "repeats": 3,
+        "median_weighted_tps": 78.96620619571394,
+        "cases": {
+          "code": {
+            "samples": 3,
+            "median_tps": 129.47200350430742,
+            "min_tps": 125.64605572397268,
+            "max_tps": 135.52361510356596
+          },
+          "counting": {
+            "samples": 3,
+            "median_tps": 161.71492012001085,
+            "min_tps": 160.69295246627271,
+            "max_tps": 162.09768126509036
+          },
+          "fable": {
+            "samples": 3,
+            "median_tps": 55.385148105110964,
+            "min_tps": 54.35352007195909,
+            "max_tps": 57.38895915157963
+          },
+          "hello": {
+            "samples": 3,
+            "median_tps": 67.30813973874855,
+            "min_tps": 66.04382214999627,
+            "max_tps": 72.44599446239212
+          },
+          "math": {
+            "samples": 3,
+            "median_tps": 125.76067271071285,
+            "min_tps": 112.7584945900188,
+            "max_tps": 129.01263493910733
+          },
+          "multilingual": {
+            "samples": 3,
+            "median_tps": 72.63112142841642,
+            "min_tps": 69.25501048301801,
+            "max_tps": 75.6256342052794
+          },
+          "structured-json": {
+            "samples": 3,
+            "median_tps": 103.0579123121197,
+            "min_tps": 91.56048528849693,
+            "max_tps": 103.93391544983388
+          },
+          "structured-json-schema": {
+            "samples": 3,
+            "median_tps": 105.38758952498355,
+            "min_tps": 96.26673761030266,
+            "max_tps": 105.66780627071981
+          },
+          "topic": {
+            "samples": 3,
+            "median_tps": 74.02235843463528,
+            "min_tps": 72.22824784800078,
+            "max_tps": 79.31633309662874
+          }
+        }
+      },
+      "target_decode": {
+        "passed": true,
+        "repeats": 3,
+        "median_weighted_tps": 47.77700158765865,
+        "cases": {
+          "code": {
+            "samples": 3,
+            "median_tps": 49.42169053309125,
+            "min_tps": 48.87094348425202,
+            "max_tps": 49.42664980519151
+          },
+          "counting": {
+            "samples": 3,
+            "median_tps": 49.57747443584137,
+            "min_tps": 49.495556980064144,
+            "max_tps": 49.613107154916186
+          },
+          "fable": {
+            "samples": 3,
+            "median_tps": 45.711236167505874,
+            "min_tps": 45.29604913103173,
+            "max_tps": 46.844769002112216
+          },
+          "hello": {
+            "samples": 3,
+            "median_tps": 45.915534608781435,
+            "min_tps": 44.777935249419905,
+            "max_tps": 47.22367548121639
+          },
+          "math": {
+            "samples": 3,
+            "median_tps": 49.18564983624404,
+            "min_tps": 48.307649101362934,
+            "max_tps": 49.256420580576794
+          },
+          "multilingual": {
+            "samples": 3,
+            "median_tps": 47.552862363320905,
+            "min_tps": 47.489277085086435,
+            "max_tps": 47.963114054818696
+          },
+          "structured-json": {
+            "samples": 3,
+            "median_tps": 48.825323566824416,
+            "min_tps": 48.615835902487696,
+            "max_tps": 48.93775074124654
+          },
+          "structured-json-schema": {
+            "samples": 3,
+            "median_tps": 48.598072656821216,
+            "min_tps": 47.4711788923188,
+            "max_tps": 48.6492940044516
+          },
+          "topic": {
+            "samples": 3,
+            "median_tps": 47.923184478811336,
+            "min_tps": 47.61577643238065,
+            "max_tps": 48.01472971509382
+          }
+        }
+      },
+      "concurrency": {
+        "counting": {
+          "passed": true,
+          "prompt": "phase2-release-final 20260914. Count from 1 to 200, separated by commas. Output only the sequence.",
+          "repeats": 3,
+          "summaries": [
+            {
+              "concurrency": 1,
+              "samples": 3,
+              "median_aggregate_tps": 159.21566262375535,
+              "min_aggregate_tps": 158.92929409211897,
+              "max_aggregate_tps": 159.7976319370339
+            },
+            {
+              "concurrency": 2,
+              "samples": 3,
+              "median_aggregate_tps": 251.99737814698366,
+              "min_aggregate_tps": 251.28707903048823,
+              "max_aggregate_tps": 256.417305469777
+            },
+            {
+              "concurrency": 4,
+              "samples": 3,
+              "median_aggregate_tps": 445.55027224944774,
+              "min_aggregate_tps": 433.8770462657664,
+              "max_aggregate_tps": 446.2079249011909
+            },
+            {
+              "concurrency": 8,
+              "samples": 3,
+              "median_aggregate_tps": 741.3543840152607,
+              "min_aggregate_tps": 719.0880282991695,
+              "max_aggregate_tps": 742.4947795635942
+            },
+            {
+              "concurrency": 16,
+              "samples": 3,
+              "median_aggregate_tps": 1258.2268780483432,
+              "min_aggregate_tps": 1210.6378778242101,
+              "max_aggregate_tps": 1261.0397379825815
+            }
+          ]
+        },
+        "code": {
+          "passed": true,
+          "prompt": "phase2-release-final 20260914. Write a Python function merge_intervals(intervals) that merges overlapping integer intervals. Include type hints, a short docstring, and three assert-based examples. Return only one Python code block.",
+          "repeats": 3,
+          "summaries": [
+            {
+              "concurrency": 1,
+              "samples": 3,
+              "median_aggregate_tps": 134.4418626645536,
+              "min_aggregate_tps": 134.26341690904593,
+              "max_aggregate_tps": 134.81773405840235
+            },
+            {
+              "concurrency": 2,
+              "samples": 3,
+              "median_aggregate_tps": 214.52140975954507,
+              "min_aggregate_tps": 171.61395261863228,
+              "max_aggregate_tps": 216.9644887266063
+            },
+            {
+              "concurrency": 4,
+              "samples": 3,
+              "median_aggregate_tps": 372.86707491592387,
+              "min_aggregate_tps": 359.89805234364786,
+              "max_aggregate_tps": 377.83362077151236
+            },
+            {
+              "concurrency": 8,
+              "samples": 3,
+              "median_aggregate_tps": 621.512873957234,
+              "min_aggregate_tps": 607.4834714299827,
+              "max_aggregate_tps": 629.5827034970488
+            },
+            {
+              "concurrency": 16,
+              "samples": 3,
+              "median_aggregate_tps": 1041.9994635560774,
+              "min_aggregate_tps": 990.1400746902942,
+              "max_aggregate_tps": 1047.521273474296
+            }
+          ]
+        },
+        "topic": {
+          "passed": true,
+          "prompt": "phase2-release-final 20260914. Explain virtual memory to a junior programmer in five concise bullet points, including paging, page faults, and the role of the TLB.",
+          "repeats": 3,
+          "summaries": [
+            {
+              "concurrency": 1,
+              "samples": 3,
+              "median_aggregate_tps": 72.48849657980777,
+              "min_aggregate_tps": 72.3065759389506,
+              "max_aggregate_tps": 72.70547986623407
+            },
+            {
+              "concurrency": 2,
+              "samples": 3,
+              "median_aggregate_tps": 124.22880586072226,
+              "min_aggregate_tps": 121.61375711292655,
+              "max_aggregate_tps": 124.66145419011904
+            },
+            {
+              "concurrency": 4,
+              "samples": 3,
+              "median_aggregate_tps": 215.38775780902236,
+              "min_aggregate_tps": 213.55357354625926,
+              "max_aggregate_tps": 217.47239882819594
+            },
+            {
+              "concurrency": 8,
+              "samples": 3,
+              "median_aggregate_tps": 336.88581888182455,
+              "min_aggregate_tps": 294.23339359446527,
+              "max_aggregate_tps": 355.0773613063595
+            },
+            {
+              "concurrency": 16,
+              "samples": 3,
+              "median_aggregate_tps": 554.1738973141375,
+              "min_aggregate_tps": 544.2638891198485,
+              "max_aggregate_tps": 577.5409488527524
+            }
+          ]
+        }
+      },
+      "mixed": {
+        "passed": true,
+        "repeats": 3,
+        "summaries": [
+          {
+            "concurrency": 1,
+            "samples": 3,
+            "median_aggregate_tps": 110.24493831173815,
+            "min_aggregate_tps": 109.15525668681371,
+            "max_aggregate_tps": 128.20188334530613
+          },
+          {
+            "concurrency": 2,
+            "samples": 3,
+            "median_aggregate_tps": 111.82515207517342,
+            "min_aggregate_tps": 106.00159182132808,
+            "max_aggregate_tps": 113.51832274202496
+          },
+          {
+            "concurrency": 4,
+            "samples": 3,
+            "median_aggregate_tps": 133.43381041876478,
+            "min_aggregate_tps": 131.78102446561863,
+            "max_aggregate_tps": 152.20024767756442
+          },
+          {
+            "concurrency": 8,
+            "samples": 3,
+            "median_aggregate_tps": 155.35896135368344,
+            "min_aggregate_tps": 147.94480259265953,
+            "max_aggregate_tps": 171.32603359753725
+          },
+          {
+            "concurrency": 16,
+            "samples": 3,
+            "median_aggregate_tps": 198.30547494403294,
+            "min_aggregate_tps": 189.82341939702286,
+            "max_aggregate_tps": 200.35029593555143
+          }
+        ]
+      },
+      "prefill": {
+        "passed": true,
+        "bases": [
+          0,
+          32768,
+          65536,
+          131072,
+          262144
+        ],
+        "suffixes": [
+          1024,
+          2048,
+          4096,
+          8192,
+          16384,
+          32768
+        ],
+        "repeats": 3,
+        "warmups_per_cell": 1,
+        "context_sha256": "9fd051edae59a6b4263a690fbdd70816c78c9671a50d6976903b51b4386593b0",
+        "cells": [
+          {
+            "base_context_tokens": 0,
+            "suffix_tokens": 1024,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 2907.091779265831,
+            "min_effective_prefill_tokens_per_second": 2885.712180517185,
+            "max_effective_prefill_tokens_per_second": 2916.3883083562055
+          },
+          {
+            "base_context_tokens": 0,
+            "suffix_tokens": 2048,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 3939.848509095851,
+            "min_effective_prefill_tokens_per_second": 3933.240577823803,
+            "max_effective_prefill_tokens_per_second": 3971.727113517196
+          },
+          {
+            "base_context_tokens": 0,
+            "suffix_tokens": 4096,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 6857.340740923836,
+            "min_effective_prefill_tokens_per_second": 6741.4519284126945,
+            "max_effective_prefill_tokens_per_second": 6872.527939120594
+          },
+          {
+            "base_context_tokens": 0,
+            "suffix_tokens": 8192,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 7403.062646680038,
+            "min_effective_prefill_tokens_per_second": 7338.147259173431,
+            "max_effective_prefill_tokens_per_second": 7403.951198956765
+          },
+          {
+            "base_context_tokens": 0,
+            "suffix_tokens": 16384,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 7681.360941794902,
+            "min_effective_prefill_tokens_per_second": 7410.481713268248,
+            "max_effective_prefill_tokens_per_second": 7714.4728171470915
+          },
+          {
+            "base_context_tokens": 0,
+            "suffix_tokens": 32768,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 7720.752247452075,
+            "min_effective_prefill_tokens_per_second": 7614.943136593552,
+            "max_effective_prefill_tokens_per_second": 7726.716586984431
+          },
+          {
+            "base_context_tokens": 32768,
+            "suffix_tokens": 1024,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 2119.6219711658828,
+            "min_effective_prefill_tokens_per_second": 2106.2074566520587,
+            "max_effective_prefill_tokens_per_second": 2138.4832065629776
+          },
+          {
+            "base_context_tokens": 32768,
+            "suffix_tokens": 2048,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 3093.9761384918156,
+            "min_effective_prefill_tokens_per_second": 3074.1042581019788,
+            "max_effective_prefill_tokens_per_second": 3106.117760542095
+          },
+          {
+            "base_context_tokens": 32768,
+            "suffix_tokens": 4096,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 4930.6542960209235,
+            "min_effective_prefill_tokens_per_second": 4587.754299880901,
+            "max_effective_prefill_tokens_per_second": 4983.211456278016
+          },
+          {
+            "base_context_tokens": 32768,
+            "suffix_tokens": 8192,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 5838.87695038074,
+            "min_effective_prefill_tokens_per_second": 5783.684469642479,
+            "max_effective_prefill_tokens_per_second": 5888.641089848741
+          },
+          {
+            "base_context_tokens": 32768,
+            "suffix_tokens": 16384,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 6391.655763484791,
+            "min_effective_prefill_tokens_per_second": 6380.681929680502,
+            "max_effective_prefill_tokens_per_second": 6394.972107852199
+          },
+          {
+            "base_context_tokens": 32768,
+            "suffix_tokens": 32768,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 6707.833387472328,
+            "min_effective_prefill_tokens_per_second": 6684.0208308880565,
+            "max_effective_prefill_tokens_per_second": 6711.562076662756
+          },
+          {
+            "base_context_tokens": 65536,
+            "suffix_tokens": 1024,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 1936.154056868871,
+            "min_effective_prefill_tokens_per_second": 1925.434101159854,
+            "max_effective_prefill_tokens_per_second": 1960.5727218335694
+          },
+          {
+            "base_context_tokens": 65536,
+            "suffix_tokens": 2048,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 2808.111895596214,
+            "min_effective_prefill_tokens_per_second": 2755.584850793782,
+            "max_effective_prefill_tokens_per_second": 2818.001026999297
+          },
+          {
+            "base_context_tokens": 65536,
+            "suffix_tokens": 4096,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 4651.948055436612,
+            "min_effective_prefill_tokens_per_second": 4637.300567237018,
+            "max_effective_prefill_tokens_per_second": 4652.766712365969
+          },
+          {
+            "base_context_tokens": 65536,
+            "suffix_tokens": 8192,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 5486.959993348448,
+            "min_effective_prefill_tokens_per_second": 5479.686666951278,
+            "max_effective_prefill_tokens_per_second": 5488.953910309615
+          },
+          {
+            "base_context_tokens": 65536,
+            "suffix_tokens": 16384,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 6013.906069824624,
+            "min_effective_prefill_tokens_per_second": 5998.3193026226145,
+            "max_effective_prefill_tokens_per_second": 6016.645731942447
+          },
+          {
+            "base_context_tokens": 65536,
+            "suffix_tokens": 32768,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 6248.527427986772,
+            "min_effective_prefill_tokens_per_second": 6247.37655894582,
+            "max_effective_prefill_tokens_per_second": 6253.680035601703
+          },
+          {
+            "base_context_tokens": 131072,
+            "suffix_tokens": 1024,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 1734.7660865935352,
+            "min_effective_prefill_tokens_per_second": 1706.1353418854103,
+            "max_effective_prefill_tokens_per_second": 1765.4818617917442
+          },
+          {
+            "base_context_tokens": 131072,
+            "suffix_tokens": 2048,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 2438.0411251989162,
+            "min_effective_prefill_tokens_per_second": 2422.990207391406,
+            "max_effective_prefill_tokens_per_second": 2458.705244108752
+          },
+          {
+            "base_context_tokens": 131072,
+            "suffix_tokens": 4096,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 3958.2333328704867,
+            "min_effective_prefill_tokens_per_second": 3894.702111180354,
+            "max_effective_prefill_tokens_per_second": 3959.905289983941
+          },
+          {
+            "base_context_tokens": 131072,
+            "suffix_tokens": 8192,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 4688.694460598439,
+            "min_effective_prefill_tokens_per_second": 4671.650583517307,
+            "max_effective_prefill_tokens_per_second": 4747.471091668571
+          },
+          {
+            "base_context_tokens": 131072,
+            "suffix_tokens": 16384,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 5242.995327536802,
+            "min_effective_prefill_tokens_per_second": 5231.462106961037,
+            "max_effective_prefill_tokens_per_second": 5248.325156792218
+          },
+          {
+            "base_context_tokens": 131072,
+            "suffix_tokens": 32768,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 5464.2841925680095,
+            "min_effective_prefill_tokens_per_second": 5461.830513753109,
+            "max_effective_prefill_tokens_per_second": 5468.226788687348
+          },
+          {
+            "base_context_tokens": 262144,
+            "suffix_tokens": 1024,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 1340.4597566208308,
+            "min_effective_prefill_tokens_per_second": 1327.1777429892836,
+            "max_effective_prefill_tokens_per_second": 1371.6934662824983
+          },
+          {
+            "base_context_tokens": 262144,
+            "suffix_tokens": 2048,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 1956.5960409689221,
+            "min_effective_prefill_tokens_per_second": 1950.9174415474668,
+            "max_effective_prefill_tokens_per_second": 1963.46135899768
+          },
+          {
+            "base_context_tokens": 262144,
+            "suffix_tokens": 4096,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 2977.894077454426,
+            "min_effective_prefill_tokens_per_second": 2975.992226687657,
+            "max_effective_prefill_tokens_per_second": 3023.321574946161
+          },
+          {
+            "base_context_tokens": 262144,
+            "suffix_tokens": 8192,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 3635.3478931699524,
+            "min_effective_prefill_tokens_per_second": 3632.3156921944355,
+            "max_effective_prefill_tokens_per_second": 3676.0443600963013
+          },
+          {
+            "base_context_tokens": 262144,
+            "suffix_tokens": 16384,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 4031.7405527239384,
+            "min_effective_prefill_tokens_per_second": 4028.6018901799853,
+            "max_effective_prefill_tokens_per_second": 4049.4272327405724
+          },
+          {
+            "base_context_tokens": 262144,
+            "suffix_tokens": 32768,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 4256.167037919271,
+            "min_effective_prefill_tokens_per_second": 4254.75630686227,
+            "max_effective_prefill_tokens_per_second": 4272.776686673511
+          }
+        ]
+      },
+      "retained_decode": {
+        "passed": true,
+        "objective_checks_passed": true,
+        "contexts": [
+          0,
+          32768,
+          65536,
+          131072,
+          262144
+        ],
+        "repeats": 3,
+        "context_sha256": "9fd051edae59a6b4263a690fbdd70816c78c9671a50d6976903b51b4386593b0",
+        "corpus_sha256": "e14ff2894de9290827a07aef2ff55e2bb5c792abe91dcdc029fa9d6ed97990bc",
+        "context_summaries": [
+          {
+            "context_tokens": 0,
+            "samples": 24,
+            "weighted_observed_decode_tokens_per_second": 76.69009624744011,
+            "serving_completed": 24,
+            "cache_valid": 24
+          },
+          {
+            "context_tokens": 32768,
+            "samples": 24,
+            "weighted_observed_decode_tokens_per_second": 76.26793641510373,
+            "serving_completed": 24,
+            "cache_valid": 24
+          },
+          {
+            "context_tokens": 65536,
+            "samples": 24,
+            "weighted_observed_decode_tokens_per_second": 76.22128449662372,
+            "serving_completed": 24,
+            "cache_valid": 24
+          },
+          {
+            "context_tokens": 131072,
+            "samples": 24,
+            "weighted_observed_decode_tokens_per_second": 74.80943771628154,
+            "serving_completed": 24,
+            "cache_valid": 24
+          },
+          {
+            "context_tokens": 262144,
+            "samples": 24,
+            "weighted_observed_decode_tokens_per_second": 72.21408495949763,
+            "serving_completed": 24,
+            "cache_valid": 24
+          }
+        ]
+      },
+      "retained_decode_2k": {
+        "passed": true,
+        "objective_checks_passed": true,
+        "contexts": [
+          2048
+        ],
+        "repeats": 3,
+        "context_sha256": "9fd051edae59a6b4263a690fbdd70816c78c9671a50d6976903b51b4386593b0",
+        "corpus_sha256": "e14ff2894de9290827a07aef2ff55e2bb5c792abe91dcdc029fa9d6ed97990bc",
+        "context_summaries": [
+          {
+            "context_tokens": 2048,
+            "samples": 24,
+            "weighted_observed_decode_tokens_per_second": 77.44180798433506,
+            "serving_completed": 24,
+            "cache_valid": 24
+          }
+        ]
+      }
+    },
+    "dual": {
+      "rtx_gpus": 2,
+      "decode": {
+        "passed": true,
+        "repeats": 3,
+        "median_weighted_tps": 97.78799882840723,
+        "cases": {
+          "code": {
+            "samples": 3,
+            "median_tps": 161.05442504412153,
+            "min_tps": 151.13698232977669,
+            "max_tps": 163.01913328442916
+          },
+          "counting": {
+            "samples": 3,
+            "median_tps": 196.69693041281192,
+            "min_tps": 184.24737858155999,
+            "max_tps": 196.80529370221913
+          },
+          "fable": {
+            "samples": 3,
+            "median_tps": 66.49922831970552,
+            "min_tps": 60.85874614955262,
+            "max_tps": 67.77401135338759
+          },
+          "hello": {
+            "samples": 3,
+            "median_tps": 94.59226024049374,
+            "min_tps": 70.51494132883812,
+            "max_tps": 101.96497825275388
+          },
+          "math": {
+            "samples": 3,
+            "median_tps": 143.54610986697375,
+            "min_tps": 141.11071786027927,
+            "max_tps": 143.97745871053945
+          },
+          "multilingual": {
+            "samples": 3,
+            "median_tps": 83.31884028400893,
+            "min_tps": 82.0684559557249,
+            "max_tps": 85.52646487882355
+          },
+          "structured-json": {
+            "samples": 3,
+            "median_tps": 118.22556890931719,
+            "min_tps": 110.06420667770142,
+            "max_tps": 130.20328797343532
+          },
+          "structured-json-schema": {
+            "samples": 3,
+            "median_tps": 129.40511512072717,
+            "min_tps": 128.78755875242462,
+            "max_tps": 132.4549303119648
+          },
+          "topic": {
+            "samples": 3,
+            "median_tps": 91.21656552166853,
+            "min_tps": 84.60325335190655,
+            "max_tps": 99.30564066120472
+          }
+        }
+      },
+      "target_decode": {
+        "passed": true,
+        "repeats": 3,
+        "median_weighted_tps": 50.20336319048339,
+        "cases": {
+          "code": {
+            "samples": 3,
+            "median_tps": 53.68716888571146,
+            "min_tps": 47.996916753245976,
+            "max_tps": 53.82152051374987
+          },
+          "counting": {
+            "samples": 3,
+            "median_tps": 53.85152030136385,
+            "min_tps": 47.667509579793716,
+            "max_tps": 53.86209373896252
+          },
+          "fable": {
+            "samples": 3,
+            "median_tps": 48.606014735047,
+            "min_tps": 48.04894243078728,
+            "max_tps": 49.00502994909271
+          },
+          "hello": {
+            "samples": 3,
+            "median_tps": 48.506368201911954,
+            "min_tps": 47.74694599689205,
+            "max_tps": 48.51411204791755
+          },
+          "math": {
+            "samples": 3,
+            "median_tps": 49.79821965954997,
+            "min_tps": 48.59425852953967,
+            "max_tps": 52.608076495063536
+          },
+          "multilingual": {
+            "samples": 3,
+            "median_tps": 49.33360037183624,
+            "min_tps": 48.28811061725732,
+            "max_tps": 51.91847010277226
+          },
+          "structured-json": {
+            "samples": 3,
+            "median_tps": 51.56492488850878,
+            "min_tps": 47.61731077072539,
+            "max_tps": 52.05286788065288
+          },
+          "structured-json-schema": {
+            "samples": 3,
+            "median_tps": 52.03660290192393,
+            "min_tps": 47.86215952594312,
+            "max_tps": 52.75371935495586
+          },
+          "topic": {
+            "samples": 3,
+            "median_tps": 48.71991911811217,
+            "min_tps": 48.20815146095654,
+            "max_tps": 48.97725554675441
+          }
+        }
+      },
+      "concurrency": {
+        "counting": {
+          "passed": true,
+          "prompt": "phase2-release-final 20260914. Count from 1 to 200, separated by commas. Output only the sequence.",
+          "repeats": 3,
+          "summaries": [
+            {
+              "concurrency": 1,
+              "samples": 3,
+              "median_aggregate_tps": 192.60592830502583,
+              "min_aggregate_tps": 192.24235111003824,
+              "max_aggregate_tps": 192.80709610909923
+            },
+            {
+              "concurrency": 2,
+              "samples": 3,
+              "median_aggregate_tps": 299.395238236039,
+              "min_aggregate_tps": 297.92757164312775,
+              "max_aggregate_tps": 299.5571036475358
+            },
+            {
+              "concurrency": 4,
+              "samples": 3,
+              "median_aggregate_tps": 541.4637770349799,
+              "min_aggregate_tps": 532.4720184800759,
+              "max_aggregate_tps": 543.5439734980538
+            },
+            {
+              "concurrency": 8,
+              "samples": 3,
+              "median_aggregate_tps": 912.14821122066,
+              "min_aggregate_tps": 884.4304070094188,
+              "max_aggregate_tps": 912.437882222748
+            },
+            {
+              "concurrency": 16,
+              "samples": 3,
+              "median_aggregate_tps": 1494.8459113033002,
+              "min_aggregate_tps": 1474.80350619634,
+              "max_aggregate_tps": 1502.2856490239747
+            }
+          ]
+        },
+        "code": {
+          "passed": true,
+          "prompt": "phase2-release-final 20260914. Write a Python function merge_intervals(intervals) that merges overlapping integer intervals. Include type hints, a short docstring, and three assert-based examples. Return only one Python code block.",
+          "repeats": 3,
+          "summaries": [
+            {
+              "concurrency": 1,
+              "samples": 3,
+              "median_aggregate_tps": 159.81944138894437,
+              "min_aggregate_tps": 159.3786735527473,
+              "max_aggregate_tps": 160.16470384165052
+            },
+            {
+              "concurrency": 2,
+              "samples": 3,
+              "median_aggregate_tps": 268.8627281129297,
+              "min_aggregate_tps": 211.9891594420015,
+              "max_aggregate_tps": 270.2492119344986
+            },
+            {
+              "concurrency": 4,
+              "samples": 3,
+              "median_aggregate_tps": 444.58318347536147,
+              "min_aggregate_tps": 424.1568603204138,
+              "max_aggregate_tps": 445.0931878779838
+            },
+            {
+              "concurrency": 8,
+              "samples": 3,
+              "median_aggregate_tps": 789.4327020550936,
+              "min_aggregate_tps": 758.6508583087711,
+              "max_aggregate_tps": 791.3309916590226
+            },
+            {
+              "concurrency": 16,
+              "samples": 3,
+              "median_aggregate_tps": 1298.7211307107082,
+              "min_aggregate_tps": 1243.645241026096,
+              "max_aggregate_tps": 1302.4475353212622
+            }
+          ]
+        },
+        "topic": {
+          "passed": true,
+          "prompt": "phase2-release-final 20260914. Explain virtual memory to a junior programmer in five concise bullet points, including paging, page faults, and the role of the TLB.",
+          "repeats": 3,
+          "summaries": [
+            {
+              "concurrency": 1,
+              "samples": 3,
+              "median_aggregate_tps": 98.3835530475946,
+              "min_aggregate_tps": 98.37964262030128,
+              "max_aggregate_tps": 98.46692614693828
+            },
+            {
+              "concurrency": 2,
+              "samples": 3,
+              "median_aggregate_tps": 167.52949818705486,
+              "min_aggregate_tps": 158.65536625229353,
+              "max_aggregate_tps": 169.48027522745002
+            },
+            {
+              "concurrency": 4,
+              "samples": 3,
+              "median_aggregate_tps": 289.90494119867236,
+              "min_aggregate_tps": 285.02934829494205,
+              "max_aggregate_tps": 289.95974276146814
+            },
+            {
+              "concurrency": 8,
+              "samples": 3,
+              "median_aggregate_tps": 461.6222083138669,
+              "min_aggregate_tps": 451.3813322777969,
+              "max_aggregate_tps": 462.75477373450445
+            },
+            {
+              "concurrency": 16,
+              "samples": 3,
+              "median_aggregate_tps": 734.39817063627,
+              "min_aggregate_tps": 715.2874395235875,
+              "max_aggregate_tps": 734.6482351326977
+            }
+          ]
+        }
+      },
+      "mixed": {
+        "passed": true,
+        "repeats": 3,
+        "summaries": [
+          {
+            "concurrency": 1,
+            "samples": 3,
+            "median_aggregate_tps": 151.94252872771244,
+            "min_aggregate_tps": 150.38626999359553,
+            "max_aggregate_tps": 158.22864008237755
+          },
+          {
+            "concurrency": 2,
+            "samples": 3,
+            "median_aggregate_tps": 145.15120615128893,
+            "min_aggregate_tps": 142.35710516787745,
+            "max_aggregate_tps": 151.22865471934628
+          },
+          {
+            "concurrency": 4,
+            "samples": 3,
+            "median_aggregate_tps": 187.18201637178274,
+            "min_aggregate_tps": 182.91617220852874,
+            "max_aggregate_tps": 192.4374691891705
+          },
+          {
+            "concurrency": 8,
+            "samples": 3,
+            "median_aggregate_tps": 226.388022512012,
+            "min_aggregate_tps": 204.87393708251614,
+            "max_aggregate_tps": 226.8195330622708
+          },
+          {
+            "concurrency": 16,
+            "samples": 3,
+            "median_aggregate_tps": 308.18928051461,
+            "min_aggregate_tps": 307.0099553984663,
+            "max_aggregate_tps": 313.5097391250372
+          }
+        ]
+      },
+      "prefill": {
+        "passed": true,
+        "bases": [
+          0,
+          32768,
+          65536,
+          131072,
+          262144
+        ],
+        "suffixes": [
+          1024,
+          2048,
+          4096,
+          8192,
+          16384,
+          32768
+        ],
+        "repeats": 3,
+        "warmups_per_cell": 1,
+        "context_sha256": "9fd051edae59a6b4263a690fbdd70816c78c9671a50d6976903b51b4386593b0",
+        "cells": [
+          {
+            "base_context_tokens": 0,
+            "suffix_tokens": 1024,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 4769.792885667884,
+            "min_effective_prefill_tokens_per_second": 4738.433606940773,
+            "max_effective_prefill_tokens_per_second": 4792.664981955221
+          },
+          {
+            "base_context_tokens": 0,
+            "suffix_tokens": 2048,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 6345.598824387376,
+            "min_effective_prefill_tokens_per_second": 6344.809888562953,
+            "max_effective_prefill_tokens_per_second": 6359.930548563363
+          },
+          {
+            "base_context_tokens": 0,
+            "suffix_tokens": 4096,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 7852.768474476951,
+            "min_effective_prefill_tokens_per_second": 7834.020934292707,
+            "max_effective_prefill_tokens_per_second": 7878.074533339513
+          },
+          {
+            "base_context_tokens": 0,
+            "suffix_tokens": 8192,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 8223.243350109346,
+            "min_effective_prefill_tokens_per_second": 8215.131147923496,
+            "max_effective_prefill_tokens_per_second": 8234.098474707498
+          },
+          {
+            "base_context_tokens": 0,
+            "suffix_tokens": 16384,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 8372.364984168618,
+            "min_effective_prefill_tokens_per_second": 8362.083968644682,
+            "max_effective_prefill_tokens_per_second": 8390.035666934948
+          },
+          {
+            "base_context_tokens": 0,
+            "suffix_tokens": 32768,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 8300.225967931685,
+            "min_effective_prefill_tokens_per_second": 8295.652817383212,
+            "max_effective_prefill_tokens_per_second": 8312.392202076671
+          },
+          {
+            "base_context_tokens": 32768,
+            "suffix_tokens": 1024,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 3704.099703721732,
+            "min_effective_prefill_tokens_per_second": 3702.6480707076803,
+            "max_effective_prefill_tokens_per_second": 3751.505685049472
+          },
+          {
+            "base_context_tokens": 32768,
+            "suffix_tokens": 2048,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 5187.510021845496,
+            "min_effective_prefill_tokens_per_second": 5181.763814590284,
+            "max_effective_prefill_tokens_per_second": 5261.314663491312
+          },
+          {
+            "base_context_tokens": 32768,
+            "suffix_tokens": 4096,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 6416.069166043454,
+            "min_effective_prefill_tokens_per_second": 6411.596605183553,
+            "max_effective_prefill_tokens_per_second": 6423.651947009657
+          },
+          {
+            "base_context_tokens": 32768,
+            "suffix_tokens": 8192,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 6986.81409876373,
+            "min_effective_prefill_tokens_per_second": 6966.98090177865,
+            "max_effective_prefill_tokens_per_second": 6993.063243680562
+          },
+          {
+            "base_context_tokens": 32768,
+            "suffix_tokens": 16384,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 7224.090295875949,
+            "min_effective_prefill_tokens_per_second": 7200.208405403674,
+            "max_effective_prefill_tokens_per_second": 7245.622607062204
+          },
+          {
+            "base_context_tokens": 32768,
+            "suffix_tokens": 32768,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 7261.706147606613,
+            "min_effective_prefill_tokens_per_second": 7255.9938599331745,
+            "max_effective_prefill_tokens_per_second": 7275.407214637412
+          },
+          {
+            "base_context_tokens": 65536,
+            "suffix_tokens": 1024,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 3281.754146275108,
+            "min_effective_prefill_tokens_per_second": 3266.5843402315863,
+            "max_effective_prefill_tokens_per_second": 3282.7263458770894
+          },
+          {
+            "base_context_tokens": 65536,
+            "suffix_tokens": 2048,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 4610.207393231743,
+            "min_effective_prefill_tokens_per_second": 4605.058046987276,
+            "max_effective_prefill_tokens_per_second": 4665.993819123718
+          },
+          {
+            "base_context_tokens": 65536,
+            "suffix_tokens": 4096,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 5715.872339956908,
+            "min_effective_prefill_tokens_per_second": 5685.851175534438,
+            "max_effective_prefill_tokens_per_second": 5722.778963401511
+          },
+          {
+            "base_context_tokens": 65536,
+            "suffix_tokens": 8192,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 6312.815232989758,
+            "min_effective_prefill_tokens_per_second": 6306.220777514495,
+            "max_effective_prefill_tokens_per_second": 6312.983906312957
+          },
+          {
+            "base_context_tokens": 65536,
+            "suffix_tokens": 16384,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 6543.325359193722,
+            "min_effective_prefill_tokens_per_second": 6538.745369771062,
+            "max_effective_prefill_tokens_per_second": 6553.230374241776
+          },
+          {
+            "base_context_tokens": 65536,
+            "suffix_tokens": 32768,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 6597.442325306503,
+            "min_effective_prefill_tokens_per_second": 6581.30252926656,
+            "max_effective_prefill_tokens_per_second": 6608.01011742398
+          },
+          {
+            "base_context_tokens": 131072,
+            "suffix_tokens": 1024,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 2618.0803853966445,
+            "min_effective_prefill_tokens_per_second": 2613.45472748354,
+            "max_effective_prefill_tokens_per_second": 2632.3603349917707
+          },
+          {
+            "base_context_tokens": 131072,
+            "suffix_tokens": 2048,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 3764.2171706747095,
+            "min_effective_prefill_tokens_per_second": 3746.0975971562893,
+            "max_effective_prefill_tokens_per_second": 3767.0130253438297
+          },
+          {
+            "base_context_tokens": 131072,
+            "suffix_tokens": 4096,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 4747.591520650006,
+            "min_effective_prefill_tokens_per_second": 4710.5603713167375,
+            "max_effective_prefill_tokens_per_second": 4781.607875827746
+          },
+          {
+            "base_context_tokens": 131072,
+            "suffix_tokens": 8192,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 5234.994841394387,
+            "min_effective_prefill_tokens_per_second": 5230.238725322722,
+            "max_effective_prefill_tokens_per_second": 5245.232791691912
+          },
+          {
+            "base_context_tokens": 131072,
+            "suffix_tokens": 16384,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 5498.342142760998,
+            "min_effective_prefill_tokens_per_second": 5495.617576849315,
+            "max_effective_prefill_tokens_per_second": 5528.441048455095
+          },
+          {
+            "base_context_tokens": 131072,
+            "suffix_tokens": 32768,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 5585.998666791856,
+            "min_effective_prefill_tokens_per_second": 5582.290502566684,
+            "max_effective_prefill_tokens_per_second": 5600.866845009701
+          },
+          {
+            "base_context_tokens": 262144,
+            "suffix_tokens": 1024,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 1805.9217642588953,
+            "min_effective_prefill_tokens_per_second": 1804.1608168970008,
+            "max_effective_prefill_tokens_per_second": 1819.584963026805
+          },
+          {
+            "base_context_tokens": 262144,
+            "suffix_tokens": 2048,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 2720.6687462865198,
+            "min_effective_prefill_tokens_per_second": 2641.8826835104687,
+            "max_effective_prefill_tokens_per_second": 2753.2797978485473
+          },
+          {
+            "base_context_tokens": 262144,
+            "suffix_tokens": 4096,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 3355.7437177923484,
+            "min_effective_prefill_tokens_per_second": 3354.729972114862,
+            "max_effective_prefill_tokens_per_second": 3427.4687341335584
+          },
+          {
+            "base_context_tokens": 262144,
+            "suffix_tokens": 8192,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 3840.764171582704,
+            "min_effective_prefill_tokens_per_second": 3811.237540708031,
+            "max_effective_prefill_tokens_per_second": 3866.690521962732
+          },
+          {
+            "base_context_tokens": 262144,
+            "suffix_tokens": 16384,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 4159.980109304242,
+            "min_effective_prefill_tokens_per_second": 4155.325792084255,
+            "max_effective_prefill_tokens_per_second": 4167.393431823061
+          },
+          {
+            "base_context_tokens": 262144,
+            "suffix_tokens": 32768,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 4270.11444822549,
+            "min_effective_prefill_tokens_per_second": 4258.702434531926,
+            "max_effective_prefill_tokens_per_second": 4270.180878167346
+          }
+        ]
+      },
+      "retained_decode": {
+        "passed": true,
+        "objective_checks_passed": true,
+        "contexts": [
+          0,
+          32768,
+          65536,
+          131072,
+          262144
+        ],
+        "repeats": 3,
+        "context_sha256": "9fd051edae59a6b4263a690fbdd70816c78c9671a50d6976903b51b4386593b0",
+        "corpus_sha256": "e14ff2894de9290827a07aef2ff55e2bb5c792abe91dcdc029fa9d6ed97990bc",
+        "context_summaries": [
+          {
+            "context_tokens": 0,
+            "samples": 24,
+            "weighted_observed_decode_tokens_per_second": 96.88761409534334,
+            "serving_completed": 24,
+            "cache_valid": 24
+          },
+          {
+            "context_tokens": 32768,
+            "samples": 24,
+            "weighted_observed_decode_tokens_per_second": 93.3458737347822,
+            "serving_completed": 24,
+            "cache_valid": 24
+          },
+          {
+            "context_tokens": 65536,
+            "samples": 24,
+            "weighted_observed_decode_tokens_per_second": 92.82764342780715,
+            "serving_completed": 24,
+            "cache_valid": 24
+          },
+          {
+            "context_tokens": 131072,
+            "samples": 24,
+            "weighted_observed_decode_tokens_per_second": 92.2843363944908,
+            "serving_completed": 24,
+            "cache_valid": 24
+          },
+          {
+            "context_tokens": 262144,
+            "samples": 24,
+            "weighted_observed_decode_tokens_per_second": 84.69749362294944,
+            "serving_completed": 24,
+            "cache_valid": 24
+          }
+        ]
+      },
+      "retained_decode_2k": {
+        "passed": true,
+        "objective_checks_passed": true,
+        "contexts": [
+          2048
+        ],
+        "repeats": 3,
+        "context_sha256": "9fd051edae59a6b4263a690fbdd70816c78c9671a50d6976903b51b4386593b0",
+        "corpus_sha256": "e14ff2894de9290827a07aef2ff55e2bb5c792abe91dcdc029fa9d6ed97990bc",
+        "context_summaries": [
+          {
+            "context_tokens": 2048,
+            "samples": 24,
+            "weighted_observed_decode_tokens_per_second": 98.30228715299488,
+            "serving_completed": 24,
+            "cache_valid": 24
+          }
+        ]
+      }
+    }
+  },
+  "provenance": {
+    "single-dspark": {
+      "layout": "single",
+      "phase": "dspark",
+      "started_ns": 1789552241669914431,
+      "container_id": "8ce8aefd1d9faa21fb052ffada2f35d94070a23169f18e1a5db16a5ac4c7c00b",
+      "image": "sha256:2ccc04760e7cb0b761cac5dad06c5e5e41a24365ad55e111a1247e52915740cf",
+      "arguments": [
+        "ds41rt",
+        "serve-native",
+        "--snapshot",
+        "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+        "--native-lib",
+        "/opt/ds41rt/lib/libds41rt_native.so",
+        "--peers",
+        "10.55.0.1:19441,10.55.0.2:19441,10.55.0.3:19441,10.55.0.4:19441",
+        "--rtx-gpus",
+        "1",
+        "--listen",
+        "0.0.0.0:8000",
+        "--prefill-batch-tokens",
+        "2048",
+        "--concurrency",
+        "16",
+        "--prefix-cache-entries",
+        "24",
+        "--max-context-tokens",
+        "1048576",
+        "--max-output-tokens",
+        "393216",
+        "--dspark"
+      ],
+      "commands": [
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-release-decode.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--tokenizer",
+            "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+            "--label",
+            "phase2-release-final-single",
+            "--repeats",
+            "3",
+            "--nonce-seed",
+            "61001",
+            "--include-counting",
+            "--output",
+            "/home/tj/.cache/ds41rt-upstream-20260916/v4-final-performance/single-decode.json"
+          ],
+          "exit_code": 0,
+          "started_ns": 1789552245070030219,
+          "completed_ns": 1789552296120039234
+        },
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-concurrent-api.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--label",
+            "phase2-release-final",
+            "--nonce",
+            "20260914",
+            "--case",
+            "code",
+            "--concurrency",
+            "1",
+            "2",
+            "4",
+            "8",
+            "16",
+            "--repeats",
+            "3",
+            "--output",
+            "/home/tj/.cache/ds41rt-upstream-20260916/v4-final-performance/single-code.json"
+          ],
+          "exit_code": 0,
+          "started_ns": 1789552296121561753,
+          "completed_ns": 1789552334283953069
+        },
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-concurrent-api.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--label",
+            "phase2-release-final",
+            "--nonce",
+            "20260914",
+            "--case",
+            "topic",
+            "--concurrency",
+            "1",
+            "2",
+            "4",
+            "8",
+            "16",
+            "--repeats",
+            "3",
+            "--output",
+            "/home/tj/.cache/ds41rt-upstream-20260916/v4-final-performance/single-topic.json"
+          ],
+          "exit_code": 0,
+          "started_ns": 1789552334285171701,
+          "completed_ns": 1789552444363329966
+        },
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-concurrent-api.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--label",
+            "phase2-release-final",
+            "--nonce",
+            "20260914",
+            "--case",
+            "counting",
+            "--concurrency",
+            "1",
+            "2",
+            "4",
+            "8",
+            "16",
+            "--repeats",
+            "3",
+            "--output",
+            "/home/tj/.cache/ds41rt-upstream-20260916/v4-final-performance/single-counting.json"
+          ],
+          "exit_code": 0,
+          "started_ns": 1789552444364739184,
+          "completed_ns": 1789552532770039652
+        },
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-adaptive-mixed.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--tokenizer",
+            "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+            "--nonce-seed",
+            "56001",
+            "--concurrency",
+            "1",
+            "2",
+            "4",
+            "8",
+            "16",
+            "--skip-lifecycle",
+            "--output",
+            "/home/tj/.cache/ds41rt-upstream-20260916/v4-final-performance/single-mixed-1.json"
+          ],
+          "exit_code": 0,
+          "started_ns": 1789552532771372936,
+          "completed_ns": 1789552569676478772
+        },
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-adaptive-mixed.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--tokenizer",
+            "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+            "--nonce-seed",
+            "56001",
+            "--concurrency",
+            "1",
+            "2",
+            "4",
+            "8",
+            "16",
+            "--skip-lifecycle",
+            "--output",
+            "/home/tj/.cache/ds41rt-upstream-20260916/v4-final-performance/single-mixed-2.json"
+          ],
+          "exit_code": 0,
+          "started_ns": 1789552569677364383,
+          "completed_ns": 1789552609679269581
+        },
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-adaptive-mixed.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--tokenizer",
+            "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+            "--nonce-seed",
+            "56001",
+            "--concurrency",
+            "1",
+            "2",
+            "4",
+            "8",
+            "16",
+            "--skip-lifecycle",
+            "--output",
+            "/home/tj/.cache/ds41rt-upstream-20260916/v4-final-performance/single-mixed-3.json"
+          ],
+          "exit_code": 0,
+          "started_ns": 1789552609679980520,
+          "completed_ns": 1789552649728442744
+        },
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-release-retained-decode.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--tokenizer",
+            "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+            "--context-file",
+            "/home/tj/.cache/ds41rt-upstream-20260916/release-matched-context-source.md",
+            "--label",
+            "phase2-release-final-single",
+            "--repeats",
+            "3",
+            "--context",
+            "0",
+            "--context",
+            "32768",
+            "--context",
+            "65536",
+            "--context",
+            "131072",
+            "--context",
+            "262144",
+            "--output",
+            "/home/tj/.cache/ds41rt-upstream-20260916/v4-final-performance/single-retained-decode.json",
+            "--context-tag",
+            "phase2-release-final-single"
+          ],
+          "exit_code": 0,
+          "started_ns": 1789552649729349527,
+          "completed_ns": 1789553132368123144
+        },
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-release-prefill-matrix.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--tokenizer",
+            "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+            "--context-file",
+            "/home/tj/.cache/ds41rt-upstream-20260916/release-matched-context-source.md",
+            "--label",
+            "phase2-release-final-single",
+            "--repeats",
+            "3",
+            "--warmups",
+            "1",
+            "--output",
+            "/home/tj/.cache/ds41rt-upstream-20260916/v4-final-performance/single-prefill.json"
+          ],
+          "exit_code": 0,
+          "started_ns": 1789553132656744451,
+          "completed_ns": 1789554415709514858
+        }
+      ],
+      "source_sha256": "9fd051edae59a6b4263a690fbdd70816c78c9671a50d6976903b51b4386593b0",
+      "workers": [
+        {
+          "host": "ostrich",
+          "id": "7b704a9c2cbdc5cb1b9c5a4e44fe478da4679299d191323e109e5d52bea6fd5f",
+          "image": "sha256:08c121661e14d681b18c84c04726dc609e18e4e3c3c522379f3274ff56168be9",
+          "args": [
+            "ds41rt",
+            "expertd-native",
+            "--snapshot",
+            "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+            "--native-lib",
+            "/opt/ds41rt/lib/libds41rt_native.so",
+            "--rank",
+            "0",
+            "--capacity",
+            "4096",
+            "--device-budget-bytes",
+            "107374182400",
+            "--first-layer",
+            "0",
+            "--listen",
+            "0.0.0.0:19441"
+          ]
+        },
+        {
+          "host": "dodo",
+          "id": "6c28f9587583f177093547d2f9d7f3f7d3143a504b748fbd7cbce9bb8df76fd7",
+          "image": "sha256:08c121661e14d681b18c84c04726dc609e18e4e3c3c522379f3274ff56168be9",
+          "args": [
+            "ds41rt",
+            "expertd-native",
+            "--snapshot",
+            "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+            "--native-lib",
+            "/opt/ds41rt/lib/libds41rt_native.so",
+            "--rank",
+            "1",
+            "--capacity",
+            "4096",
+            "--device-budget-bytes",
+            "107374182400",
+            "--first-layer",
+            "0",
+            "--listen",
+            "0.0.0.0:19441"
+          ]
+        },
+        {
+          "host": "emu",
+          "id": "2678052ec14026ac3765ff2a83e454b4a86e31c4b33dad7fbf065ff9396b4a47",
+          "image": "sha256:08c121661e14d681b18c84c04726dc609e18e4e3c3c522379f3274ff56168be9",
+          "args": [
+            "ds41rt",
+            "expertd-native",
+            "--snapshot",
+            "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+            "--native-lib",
+            "/opt/ds41rt/lib/libds41rt_native.so",
+            "--rank",
+            "2",
+            "--capacity",
+            "4096",
+            "--device-budget-bytes",
+            "107374182400",
+            "--first-layer",
+            "0",
+            "--listen",
+            "0.0.0.0:19441"
+          ]
+        },
+        {
+          "host": "kiwi",
+          "id": "ccaee68ff13f8a138f6006331826631439dcb35ad3ed9da7d21f3690fbc7ada1",
+          "image": "sha256:08c121661e14d681b18c84c04726dc609e18e4e3c3c522379f3274ff56168be9",
+          "args": [
+            "ds41rt",
+            "expertd-native",
+            "--snapshot",
+            "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+            "--native-lib",
+            "/opt/ds41rt/lib/libds41rt_native.so",
+            "--rank",
+            "3",
+            "--capacity",
+            "4096",
+            "--device-budget-bytes",
+            "107374182400",
+            "--first-layer",
+            "0",
+            "--listen",
+            "0.0.0.0:19441"
+          ]
+        }
+      ],
+      "binary_sha256": "666fdd1641991e316e85bf9ec41b1f33480b7ea72bd4fea312049809af7e1980",
+      "completed_ns": 1789554416083000283
+    },
+    "single-target": {
+      "layout": "single",
+      "phase": "target",
+      "started_ns": 1789554520056842067,
+      "container_id": "d15625e86f231424548afe3ea1bc3e9b8dce2860a83dc35b8b65f05d94396998",
+      "image": "sha256:2ccc04760e7cb0b761cac5dad06c5e5e41a24365ad55e111a1247e52915740cf",
+      "arguments": [
+        "ds41rt",
+        "serve-native",
+        "--snapshot",
+        "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+        "--native-lib",
+        "/opt/ds41rt/lib/libds41rt_native.so",
+        "--peers",
+        "10.55.0.1:19441,10.55.0.2:19441,10.55.0.3:19441,10.55.0.4:19441",
+        "--rtx-gpus",
+        "1",
+        "--listen",
+        "0.0.0.0:8000",
+        "--prefill-batch-tokens",
+        "2048",
+        "--concurrency",
+        "16",
+        "--prefix-cache-entries",
+        "24",
+        "--max-context-tokens",
+        "1048576",
+        "--max-output-tokens",
+        "393216"
+      ],
+      "commands": [
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-release-decode.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--tokenizer",
+            "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+            "--label",
+            "phase2-release-final-single",
+            "--repeats",
+            "3",
+            "--nonce-seed",
+            "61001",
+            "--include-counting",
+            "--output",
+            "/home/tj/.cache/ds41rt-upstream-20260916/v4-final-performance/single-target-decode.json"
+          ],
+          "exit_code": 0,
+          "started_ns": 1789554522415167530,
+          "completed_ns": 1789554624608974717
+        }
+      ],
+      "source_sha256": "9fd051edae59a6b4263a690fbdd70816c78c9671a50d6976903b51b4386593b0",
+      "workers": [
+        {
+          "host": "ostrich",
+          "id": "53ff5c41859d9426fee4d9e183b3dca36062eafbcbbb25dcc293865f109ca88b",
+          "image": "sha256:08c121661e14d681b18c84c04726dc609e18e4e3c3c522379f3274ff56168be9",
+          "args": [
+            "ds41rt",
+            "expertd-native",
+            "--snapshot",
+            "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+            "--native-lib",
+            "/opt/ds41rt/lib/libds41rt_native.so",
+            "--rank",
+            "0",
+            "--capacity",
+            "4096",
+            "--device-budget-bytes",
+            "107374182400",
+            "--first-layer",
+            "0",
+            "--listen",
+            "0.0.0.0:19441"
+          ]
+        },
+        {
+          "host": "dodo",
+          "id": "8f6d1f884ccea3a1cfc4bc2c9710d302a553d2db30c5db2758e10536b90531da",
+          "image": "sha256:08c121661e14d681b18c84c04726dc609e18e4e3c3c522379f3274ff56168be9",
+          "args": [
+            "ds41rt",
+            "expertd-native",
+            "--snapshot",
+            "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+            "--native-lib",
+            "/opt/ds41rt/lib/libds41rt_native.so",
+            "--rank",
+            "1",
+            "--capacity",
+            "4096",
+            "--device-budget-bytes",
+            "107374182400",
+            "--first-layer",
+            "0",
+            "--listen",
+            "0.0.0.0:19441"
+          ]
+        },
+        {
+          "host": "emu",
+          "id": "e6ad5add7cdb0aae8583ad9fa6ff6de2441724e888f1f43cb1d72ba233b6fbc1",
+          "image": "sha256:08c121661e14d681b18c84c04726dc609e18e4e3c3c522379f3274ff56168be9",
+          "args": [
+            "ds41rt",
+            "expertd-native",
+            "--snapshot",
+            "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+            "--native-lib",
+            "/opt/ds41rt/lib/libds41rt_native.so",
+            "--rank",
+            "2",
+            "--capacity",
+            "4096",
+            "--device-budget-bytes",
+            "107374182400",
+            "--first-layer",
+            "0",
+            "--listen",
+            "0.0.0.0:19441"
+          ]
+        },
+        {
+          "host": "kiwi",
+          "id": "8b0ebed55596d7a87ecd660b07e2d617158cc5335d7ba3d53fbe1f69eb435cbb",
+          "image": "sha256:08c121661e14d681b18c84c04726dc609e18e4e3c3c522379f3274ff56168be9",
+          "args": [
+            "ds41rt",
+            "expertd-native",
+            "--snapshot",
+            "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+            "--native-lib",
+            "/opt/ds41rt/lib/libds41rt_native.so",
+            "--rank",
+            "3",
+            "--capacity",
+            "4096",
+            "--device-budget-bytes",
+            "107374182400",
+            "--first-layer",
+            "0",
+            "--listen",
+            "0.0.0.0:19441"
+          ]
+        }
+      ],
+      "binary_sha256": "666fdd1641991e316e85bf9ec41b1f33480b7ea72bd4fea312049809af7e1980",
+      "completed_ns": 1789554625634327455
+    },
+    "single-retained_2k": {
+      "layout": "single",
+      "phase": "retained_2k",
+      "started_ns": 1789554416427229335,
+      "container_id": "8ce8aefd1d9faa21fb052ffada2f35d94070a23169f18e1a5db16a5ac4c7c00b",
+      "image": "sha256:2ccc04760e7cb0b761cac5dad06c5e5e41a24365ad55e111a1247e52915740cf",
+      "arguments": [
+        "ds41rt",
+        "serve-native",
+        "--snapshot",
+        "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+        "--native-lib",
+        "/opt/ds41rt/lib/libds41rt_native.so",
+        "--peers",
+        "10.55.0.1:19441,10.55.0.2:19441,10.55.0.3:19441,10.55.0.4:19441",
+        "--rtx-gpus",
+        "1",
+        "--listen",
+        "0.0.0.0:8000",
+        "--prefill-batch-tokens",
+        "2048",
+        "--concurrency",
+        "16",
+        "--prefix-cache-entries",
+        "24",
+        "--max-context-tokens",
+        "1048576",
+        "--max-output-tokens",
+        "393216",
+        "--dspark"
+      ],
+      "commands": [
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-release-retained-decode.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--tokenizer",
+            "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+            "--context-file",
+            "/home/tj/.cache/ds41rt-upstream-20260916/release-matched-context-source.md",
+            "--label",
+            "phase2-release-final-single",
+            "--repeats",
+            "3",
+            "--output",
+            "/home/tj/.cache/ds41rt-upstream-20260916/v4-final-performance/single-retained-2k.json",
+            "--context-tag",
+            "phase2-release-final-single",
+            "--context",
+            "2048"
+          ],
+          "exit_code": 0,
+          "started_ns": 1789554419747273617,
+          "completed_ns": 1789554460363807156
+        }
+      ],
+      "source_sha256": "9fd051edae59a6b4263a690fbdd70816c78c9671a50d6976903b51b4386593b0",
+      "workers": [
+        {
+          "host": "ostrich",
+          "id": "7b704a9c2cbdc5cb1b9c5a4e44fe478da4679299d191323e109e5d52bea6fd5f",
+          "image": "sha256:08c121661e14d681b18c84c04726dc609e18e4e3c3c522379f3274ff56168be9",
+          "args": [
+            "ds41rt",
+            "expertd-native",
+            "--snapshot",
+            "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+            "--native-lib",
+            "/opt/ds41rt/lib/libds41rt_native.so",
+            "--rank",
+            "0",
+            "--capacity",
+            "4096",
+            "--device-budget-bytes",
+            "107374182400",
+            "--first-layer",
+            "0",
+            "--listen",
+            "0.0.0.0:19441"
+          ]
+        },
+        {
+          "host": "dodo",
+          "id": "6c28f9587583f177093547d2f9d7f3f7d3143a504b748fbd7cbce9bb8df76fd7",
+          "image": "sha256:08c121661e14d681b18c84c04726dc609e18e4e3c3c522379f3274ff56168be9",
+          "args": [
+            "ds41rt",
+            "expertd-native",
+            "--snapshot",
+            "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+            "--native-lib",
+            "/opt/ds41rt/lib/libds41rt_native.so",
+            "--rank",
+            "1",
+            "--capacity",
+            "4096",
+            "--device-budget-bytes",
+            "107374182400",
+            "--first-layer",
+            "0",
+            "--listen",
+            "0.0.0.0:19441"
+          ]
+        },
+        {
+          "host": "emu",
+          "id": "2678052ec14026ac3765ff2a83e454b4a86e31c4b33dad7fbf065ff9396b4a47",
+          "image": "sha256:08c121661e14d681b18c84c04726dc609e18e4e3c3c522379f3274ff56168be9",
+          "args": [
+            "ds41rt",
+            "expertd-native",
+            "--snapshot",
+            "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+            "--native-lib",
+            "/opt/ds41rt/lib/libds41rt_native.so",
+            "--rank",
+            "2",
+            "--capacity",
+            "4096",
+            "--device-budget-bytes",
+            "107374182400",
+            "--first-layer",
+            "0",
+            "--listen",
+            "0.0.0.0:19441"
+          ]
+        },
+        {
+          "host": "kiwi",
+          "id": "ccaee68ff13f8a138f6006331826631439dcb35ad3ed9da7d21f3690fbc7ada1",
+          "image": "sha256:08c121661e14d681b18c84c04726dc609e18e4e3c3c522379f3274ff56168be9",
+          "args": [
+            "ds41rt",
+            "expertd-native",
+            "--snapshot",
+            "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+            "--native-lib",
+            "/opt/ds41rt/lib/libds41rt_native.so",
+            "--rank",
+            "3",
+            "--capacity",
+            "4096",
+            "--device-budget-bytes",
+            "107374182400",
+            "--first-layer",
+            "0",
+            "--listen",
+            "0.0.0.0:19441"
+          ]
+        }
+      ],
+      "binary_sha256": "666fdd1641991e316e85bf9ec41b1f33480b7ea72bd4fea312049809af7e1980",
+      "completed_ns": 1789554460885791075
+    },
+    "dual-dspark": {
+      "layout": "dual",
+      "phase": "dspark",
+      "started_ns": 1789549905261226677,
+      "container_id": "1bb5c5acf5f285f1b3c69db439d502f77d1a78b679d5564e9a380e54c4ef4166",
+      "image": "sha256:2ccc04760e7cb0b761cac5dad06c5e5e41a24365ad55e111a1247e52915740cf",
+      "arguments": [
+        "ds41rt",
+        "serve-native",
+        "--snapshot",
+        "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+        "--native-lib",
+        "/opt/ds41rt/lib/libds41rt_native.so",
+        "--peers",
+        "10.55.0.1:19441,10.55.0.2:19441,10.55.0.3:19441,10.55.0.4:19441",
+        "--rtx-gpus",
+        "2",
+        "--listen",
+        "0.0.0.0:8000",
+        "--prefill-batch-tokens",
+        "2048",
+        "--concurrency",
+        "16",
+        "--prefix-cache-entries",
+        "24",
+        "--max-context-tokens",
+        "1048576",
+        "--max-output-tokens",
+        "393216",
+        "--dspark"
+      ],
+      "commands": [
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-release-decode.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--tokenizer",
+            "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+            "--label",
+            "phase2-release-final-dual",
+            "--repeats",
+            "3",
+            "--nonce-seed",
+            "61001",
+            "--include-counting",
+            "--output",
+            "/home/tj/.cache/ds41rt-upstream-20260916/v4-final-performance/dual-decode.json"
+          ],
+          "exit_code": 0,
+          "started_ns": 1789549908194397465,
+          "completed_ns": 1789549951819112181
+        },
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-concurrent-api.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--label",
+            "phase2-release-final",
+            "--nonce",
+            "20260914",
+            "--case",
+            "code",
+            "--concurrency",
+            "1",
+            "2",
+            "4",
+            "8",
+            "16",
+            "--repeats",
+            "3",
+            "--output",
+            "/home/tj/.cache/ds41rt-upstream-20260916/v4-final-performance/dual-code.json"
+          ],
+          "exit_code": 0,
+          "started_ns": 1789549951820206406,
+          "completed_ns": 1789549982310899084
+        },
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-concurrent-api.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--label",
+            "phase2-release-final",
+            "--nonce",
+            "20260914",
+            "--case",
+            "topic",
+            "--concurrency",
+            "1",
+            "2",
+            "4",
+            "8",
+            "16",
+            "--repeats",
+            "3",
+            "--output",
+            "/home/tj/.cache/ds41rt-upstream-20260916/v4-final-performance/dual-topic.json"
+          ],
+          "exit_code": 0,
+          "started_ns": 1789549982312038125,
+          "completed_ns": 1789550061238298060
+        },
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-concurrent-api.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--label",
+            "phase2-release-final",
+            "--nonce",
+            "20260914",
+            "--case",
+            "counting",
+            "--concurrency",
+            "1",
+            "2",
+            "4",
+            "8",
+            "16",
+            "--repeats",
+            "3",
+            "--output",
+            "/home/tj/.cache/ds41rt-upstream-20260916/v4-final-performance/dual-counting.json"
+          ],
+          "exit_code": 0,
+          "started_ns": 1789550061239581700,
+          "completed_ns": 1789550134375231447
+        },
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-adaptive-mixed.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--tokenizer",
+            "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+            "--nonce-seed",
+            "56001",
+            "--concurrency",
+            "1",
+            "2",
+            "4",
+            "8",
+            "16",
+            "--skip-lifecycle",
+            "--output",
+            "/home/tj/.cache/ds41rt-upstream-20260916/v4-final-performance/dual-mixed-1.json"
+          ],
+          "exit_code": 0,
+          "started_ns": 1789550134376290979,
+          "completed_ns": 1789550159804667349
+        },
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-adaptive-mixed.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--tokenizer",
+            "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+            "--nonce-seed",
+            "56001",
+            "--concurrency",
+            "1",
+            "2",
+            "4",
+            "8",
+            "16",
+            "--skip-lifecycle",
+            "--output",
+            "/home/tj/.cache/ds41rt-upstream-20260916/v4-final-performance/dual-mixed-2.json"
+          ],
+          "exit_code": 0,
+          "started_ns": 1789550159805649265,
+          "completed_ns": 1789550185331055903
+        },
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-adaptive-mixed.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--tokenizer",
+            "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+            "--nonce-seed",
+            "56001",
+            "--concurrency",
+            "1",
+            "2",
+            "4",
+            "8",
+            "16",
+            "--skip-lifecycle",
+            "--output",
+            "/home/tj/.cache/ds41rt-upstream-20260916/v4-final-performance/dual-mixed-3.json"
+          ],
+          "exit_code": 0,
+          "started_ns": 1789550185332074274,
+          "completed_ns": 1789550212576235289
+        },
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-release-retained-decode.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--tokenizer",
+            "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+            "--context-file",
+            "/home/tj/.cache/ds41rt-upstream-20260916/release-matched-context-source.md",
+            "--label",
+            "phase2-release-final-dual",
+            "--repeats",
+            "3",
+            "--context",
+            "0",
+            "--context",
+            "32768",
+            "--context",
+            "65536",
+            "--context",
+            "131072",
+            "--context",
+            "262144",
+            "--output",
+            "/home/tj/.cache/ds41rt-upstream-20260916/v4-final-performance/dual-retained-decode.json",
+            "--context-tag",
+            "phase2-release-final-dual"
+          ],
+          "exit_code": 0,
+          "started_ns": 1789550212577175382,
+          "completed_ns": 1789550647305437049
+        },
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-release-prefill-matrix.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--tokenizer",
+            "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+            "--context-file",
+            "/home/tj/.cache/ds41rt-upstream-20260916/release-matched-context-source.md",
+            "--label",
+            "phase2-release-final-dual",
+            "--repeats",
+            "3",
+            "--warmups",
+            "1",
+            "--output",
+            "/home/tj/.cache/ds41rt-upstream-20260916/v4-final-performance/dual-prefill.json"
+          ],
+          "exit_code": 0,
+          "started_ns": 1789550647598504583,
+          "completed_ns": 1789551882311132172
+        }
+      ],
+      "source_sha256": "9fd051edae59a6b4263a690fbdd70816c78c9671a50d6976903b51b4386593b0",
+      "workers": [
+        {
+          "host": "ostrich",
+          "id": "cbbe56a221668f07e87c1c3646b759dbd536a1915c5fb14269885db1a8b9d196",
+          "image": "sha256:08c121661e14d681b18c84c04726dc609e18e4e3c3c522379f3274ff56168be9",
+          "args": [
+            "ds41rt",
+            "expertd-native",
+            "--snapshot",
+            "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+            "--native-lib",
+            "/opt/ds41rt/lib/libds41rt_native.so",
+            "--rank",
+            "0",
+            "--capacity",
+            "4096",
+            "--device-budget-bytes",
+            "107374182400",
+            "--first-layer",
+            "20",
+            "--listen",
+            "0.0.0.0:19441"
+          ]
+        },
+        {
+          "host": "dodo",
+          "id": "eaefa78f56f064ebc2470532488d84270556005ac188dec033b15c667e4218cf",
+          "image": "sha256:08c121661e14d681b18c84c04726dc609e18e4e3c3c522379f3274ff56168be9",
+          "args": [
+            "ds41rt",
+            "expertd-native",
+            "--snapshot",
+            "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+            "--native-lib",
+            "/opt/ds41rt/lib/libds41rt_native.so",
+            "--rank",
+            "1",
+            "--capacity",
+            "4096",
+            "--device-budget-bytes",
+            "107374182400",
+            "--first-layer",
+            "20",
+            "--listen",
+            "0.0.0.0:19441"
+          ]
+        },
+        {
+          "host": "emu",
+          "id": "e98919c5f38ed8f919f4f6bc444b55647bc7692e8467952c444fea4c78af227f",
+          "image": "sha256:08c121661e14d681b18c84c04726dc609e18e4e3c3c522379f3274ff56168be9",
+          "args": [
+            "ds41rt",
+            "expertd-native",
+            "--snapshot",
+            "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+            "--native-lib",
+            "/opt/ds41rt/lib/libds41rt_native.so",
+            "--rank",
+            "2",
+            "--capacity",
+            "4096",
+            "--device-budget-bytes",
+            "107374182400",
+            "--first-layer",
+            "20",
+            "--listen",
+            "0.0.0.0:19441"
+          ]
+        },
+        {
+          "host": "kiwi",
+          "id": "b9729aaed782738ea2bbd6db2f0fe75bb69768783dae047021b64e1903bbe07d",
+          "image": "sha256:08c121661e14d681b18c84c04726dc609e18e4e3c3c522379f3274ff56168be9",
+          "args": [
+            "ds41rt",
+            "expertd-native",
+            "--snapshot",
+            "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+            "--native-lib",
+            "/opt/ds41rt/lib/libds41rt_native.so",
+            "--rank",
+            "3",
+            "--capacity",
+            "4096",
+            "--device-budget-bytes",
+            "107374182400",
+            "--first-layer",
+            "20",
+            "--listen",
+            "0.0.0.0:19441"
+          ]
+        }
+      ],
+      "binary_sha256": "666fdd1641991e316e85bf9ec41b1f33480b7ea72bd4fea312049809af7e1980",
+      "completed_ns": 1789551883289053978
+    },
+    "dual-target": {
+      "layout": "dual",
+      "phase": "target",
+      "started_ns": 1789552077333512960,
+      "container_id": "0ce31c6603fac9ca88eb8090d10fc35dbf5b9c89e044d1a681a6d53bcde2222c",
+      "image": "sha256:2ccc04760e7cb0b761cac5dad06c5e5e41a24365ad55e111a1247e52915740cf",
+      "arguments": [
+        "ds41rt",
+        "serve-native",
+        "--snapshot",
+        "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+        "--native-lib",
+        "/opt/ds41rt/lib/libds41rt_native.so",
+        "--peers",
+        "10.55.0.1:19441,10.55.0.2:19441,10.55.0.3:19441,10.55.0.4:19441",
+        "--rtx-gpus",
+        "2",
+        "--listen",
+        "0.0.0.0:8000",
+        "--prefill-batch-tokens",
+        "2048",
+        "--concurrency",
+        "16",
+        "--prefix-cache-entries",
+        "24",
+        "--max-context-tokens",
+        "1048576",
+        "--max-output-tokens",
+        "393216"
+      ],
+      "commands": [
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-release-decode.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--tokenizer",
+            "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+            "--label",
+            "phase2-release-final-dual",
+            "--repeats",
+            "3",
+            "--nonce-seed",
+            "61001",
+            "--include-counting",
+            "--output",
+            "/home/tj/.cache/ds41rt-upstream-20260916/v4-final-performance/dual-target-decode.json"
+          ],
+          "exit_code": 0,
+          "started_ns": 1789552079772454094,
+          "completed_ns": 1789552180139420372
+        }
+      ],
+      "source_sha256": "9fd051edae59a6b4263a690fbdd70816c78c9671a50d6976903b51b4386593b0",
+      "workers": [
+        {
+          "host": "ostrich",
+          "id": "eaab08f820f9bfa31c4b7f13c766847a78734c75e57373980e693b041488833b",
+          "image": "sha256:08c121661e14d681b18c84c04726dc609e18e4e3c3c522379f3274ff56168be9",
+          "args": [
+            "ds41rt",
+            "expertd-native",
+            "--snapshot",
+            "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+            "--native-lib",
+            "/opt/ds41rt/lib/libds41rt_native.so",
+            "--rank",
+            "0",
+            "--capacity",
+            "4096",
+            "--device-budget-bytes",
+            "107374182400",
+            "--first-layer",
+            "20",
+            "--listen",
+            "0.0.0.0:19441"
+          ]
+        },
+        {
+          "host": "dodo",
+          "id": "f5714e661bd192fde1412efb9bb9e83270618b46e6e1c9a1bda85e50b1fe9835",
+          "image": "sha256:08c121661e14d681b18c84c04726dc609e18e4e3c3c522379f3274ff56168be9",
+          "args": [
+            "ds41rt",
+            "expertd-native",
+            "--snapshot",
+            "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+            "--native-lib",
+            "/opt/ds41rt/lib/libds41rt_native.so",
+            "--rank",
+            "1",
+            "--capacity",
+            "4096",
+            "--device-budget-bytes",
+            "107374182400",
+            "--first-layer",
+            "20",
+            "--listen",
+            "0.0.0.0:19441"
+          ]
+        },
+        {
+          "host": "emu",
+          "id": "d131211f59cf4f3473363fddede8322ab8379824698ac78048bd8672c38b16cb",
+          "image": "sha256:08c121661e14d681b18c84c04726dc609e18e4e3c3c522379f3274ff56168be9",
+          "args": [
+            "ds41rt",
+            "expertd-native",
+            "--snapshot",
+            "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+            "--native-lib",
+            "/opt/ds41rt/lib/libds41rt_native.so",
+            "--rank",
+            "2",
+            "--capacity",
+            "4096",
+            "--device-budget-bytes",
+            "107374182400",
+            "--first-layer",
+            "20",
+            "--listen",
+            "0.0.0.0:19441"
+          ]
+        },
+        {
+          "host": "kiwi",
+          "id": "2c803cec5d1c921c3a817337c5d659738c49207554105e9e2e6c30050b6ec4f0",
+          "image": "sha256:08c121661e14d681b18c84c04726dc609e18e4e3c3c522379f3274ff56168be9",
+          "args": [
+            "ds41rt",
+            "expertd-native",
+            "--snapshot",
+            "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+            "--native-lib",
+            "/opt/ds41rt/lib/libds41rt_native.so",
+            "--rank",
+            "3",
+            "--capacity",
+            "4096",
+            "--device-budget-bytes",
+            "107374182400",
+            "--first-layer",
+            "20",
+            "--listen",
+            "0.0.0.0:19441"
+          ]
+        }
+      ],
+      "binary_sha256": "666fdd1641991e316e85bf9ec41b1f33480b7ea72bd4fea312049809af7e1980",
+      "completed_ns": 1789552180911894024
+    },
+    "dual-retained_2k": {
+      "layout": "dual",
+      "phase": "retained_2k",
+      "started_ns": 1789551883639891309,
+      "container_id": "1bb5c5acf5f285f1b3c69db439d502f77d1a78b679d5564e9a380e54c4ef4166",
+      "image": "sha256:2ccc04760e7cb0b761cac5dad06c5e5e41a24365ad55e111a1247e52915740cf",
+      "arguments": [
+        "ds41rt",
+        "serve-native",
+        "--snapshot",
+        "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+        "--native-lib",
+        "/opt/ds41rt/lib/libds41rt_native.so",
+        "--peers",
+        "10.55.0.1:19441,10.55.0.2:19441,10.55.0.3:19441,10.55.0.4:19441",
+        "--rtx-gpus",
+        "2",
+        "--listen",
+        "0.0.0.0:8000",
+        "--prefill-batch-tokens",
+        "2048",
+        "--concurrency",
+        "16",
+        "--prefix-cache-entries",
+        "24",
+        "--max-context-tokens",
+        "1048576",
+        "--max-output-tokens",
+        "393216",
+        "--dspark"
+      ],
+      "commands": [
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-release-retained-decode.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--tokenizer",
+            "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+            "--context-file",
+            "/home/tj/.cache/ds41rt-upstream-20260916/release-matched-context-source.md",
+            "--label",
+            "phase2-release-final-dual",
+            "--repeats",
+            "3",
+            "--output",
+            "/home/tj/.cache/ds41rt-upstream-20260916/v4-final-performance/dual-retained-2k.json",
+            "--context-tag",
+            "phase2-release-final-dual",
+            "--context",
+            "2048"
+          ],
+          "exit_code": 0,
+          "started_ns": 1789551886765510645,
+          "completed_ns": 1789551920314811132
+        }
+      ],
+      "source_sha256": "9fd051edae59a6b4263a690fbdd70816c78c9671a50d6976903b51b4386593b0",
+      "workers": [
+        {
+          "host": "ostrich",
+          "id": "cbbe56a221668f07e87c1c3646b759dbd536a1915c5fb14269885db1a8b9d196",
+          "image": "sha256:08c121661e14d681b18c84c04726dc609e18e4e3c3c522379f3274ff56168be9",
+          "args": [
+            "ds41rt",
+            "expertd-native",
+            "--snapshot",
+            "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+            "--native-lib",
+            "/opt/ds41rt/lib/libds41rt_native.so",
+            "--rank",
+            "0",
+            "--capacity",
+            "4096",
+            "--device-budget-bytes",
+            "107374182400",
+            "--first-layer",
+            "20",
+            "--listen",
+            "0.0.0.0:19441"
+          ]
+        },
+        {
+          "host": "dodo",
+          "id": "eaefa78f56f064ebc2470532488d84270556005ac188dec033b15c667e4218cf",
+          "image": "sha256:08c121661e14d681b18c84c04726dc609e18e4e3c3c522379f3274ff56168be9",
+          "args": [
+            "ds41rt",
+            "expertd-native",
+            "--snapshot",
+            "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+            "--native-lib",
+            "/opt/ds41rt/lib/libds41rt_native.so",
+            "--rank",
+            "1",
+            "--capacity",
+            "4096",
+            "--device-budget-bytes",
+            "107374182400",
+            "--first-layer",
+            "20",
+            "--listen",
+            "0.0.0.0:19441"
+          ]
+        },
+        {
+          "host": "emu",
+          "id": "e98919c5f38ed8f919f4f6bc444b55647bc7692e8467952c444fea4c78af227f",
+          "image": "sha256:08c121661e14d681b18c84c04726dc609e18e4e3c3c522379f3274ff56168be9",
+          "args": [
+            "ds41rt",
+            "expertd-native",
+            "--snapshot",
+            "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+            "--native-lib",
+            "/opt/ds41rt/lib/libds41rt_native.so",
+            "--rank",
+            "2",
+            "--capacity",
+            "4096",
+            "--device-budget-bytes",
+            "107374182400",
+            "--first-layer",
+            "20",
+            "--listen",
+            "0.0.0.0:19441"
+          ]
+        },
+        {
+          "host": "kiwi",
+          "id": "b9729aaed782738ea2bbd6db2f0fe75bb69768783dae047021b64e1903bbe07d",
+          "image": "sha256:08c121661e14d681b18c84c04726dc609e18e4e3c3c522379f3274ff56168be9",
+          "args": [
+            "ds41rt",
+            "expertd-native",
+            "--snapshot",
+            "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+            "--native-lib",
+            "/opt/ds41rt/lib/libds41rt_native.so",
+            "--rank",
+            "3",
+            "--capacity",
+            "4096",
+            "--device-budget-bytes",
+            "107374182400",
+            "--first-layer",
+            "20",
+            "--listen",
+            "0.0.0.0:19441"
+          ]
+        }
+      ],
+      "binary_sha256": "666fdd1641991e316e85bf9ec41b1f33480b7ea72bd4fea312049809af7e1980",
+      "completed_ns": 1789551920835406937
+    }
+  },
+  "gpu_telemetry": {
+    "single-dspark": {
+      "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0": {
+        "samples": 2168,
+        "power_limit_watts": 400,
+        "minimum_free_mib": 99.0,
+        "peak_memory_mib": 97152.0,
+        "peak_power_watts": 415.37,
+        "peak_memory_clock_mhz": 13365.0,
+        "peak_temperature_celsius": 77.0
+      },
+      "GPU-95f8f212-9131-df99-fd53-7535965197d7": {
+        "samples": 2168,
+        "power_limit_watts": 400,
+        "minimum_free_mib": 97236.0,
+        "peak_memory_mib": 12.0,
+        "peak_power_watts": 22.13,
+        "peak_memory_clock_mhz": 405.0,
+        "peak_temperature_celsius": 57.0
+      }
+    },
+    "single-target": {
+      "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0": {
+        "samples": 103,
+        "power_limit_watts": 400,
+        "minimum_free_mib": 4483.0,
+        "peak_memory_mib": 92768.0,
+        "peak_power_watts": 231.66,
+        "peak_memory_clock_mhz": 13365.0,
+        "peak_temperature_celsius": 60.0
+      },
+      "GPU-95f8f212-9131-df99-fd53-7535965197d7": {
+        "samples": 103,
+        "power_limit_watts": 400,
+        "minimum_free_mib": 97236.0,
+        "peak_memory_mib": 12.0,
+        "peak_power_watts": 20.02,
+        "peak_memory_clock_mhz": 405.0,
+        "peak_temperature_celsius": 52.0
+      }
+    },
+    "single-retained_2k": {
+      "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0": {
+        "samples": 41,
+        "power_limit_watts": 400,
+        "minimum_free_mib": 99.0,
+        "peak_memory_mib": 97152.0,
+        "peak_power_watts": 246.32,
+        "peak_memory_clock_mhz": 13365.0,
+        "peak_temperature_celsius": 64.0
+      },
+      "GPU-95f8f212-9131-df99-fd53-7535965197d7": {
+        "samples": 41,
+        "power_limit_watts": 400,
+        "minimum_free_mib": 97236.0,
+        "peak_memory_mib": 12.0,
+        "peak_power_watts": 19.98,
+        "peak_memory_clock_mhz": 405.0,
+        "peak_temperature_celsius": 53.0
+      }
+    },
+    "dual-dspark": {
+      "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0": {
+        "samples": 1973,
+        "power_limit_watts": 400,
+        "minimum_free_mib": 1093.0,
+        "peak_memory_mib": 96158.0,
+        "peak_power_watts": 419.85,
+        "peak_memory_clock_mhz": 13365.0,
+        "peak_temperature_celsius": 71.0
+      },
+      "GPU-95f8f212-9131-df99-fd53-7535965197d7": {
+        "samples": 1973,
+        "power_limit_watts": 400,
+        "minimum_free_mib": 726.0,
+        "peak_memory_mib": 96522.0,
+        "peak_power_watts": 401.38,
+        "peak_memory_clock_mhz": 13365.0,
+        "peak_temperature_celsius": 88.0
+      }
+    },
+    "dual-target": {
+      "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0": {
+        "samples": 101,
+        "power_limit_watts": 400,
+        "minimum_free_mib": 2297.0,
+        "peak_memory_mib": 94954.0,
+        "peak_power_watts": 191.12,
+        "peak_memory_clock_mhz": 13365.0,
+        "peak_temperature_celsius": 57.0
+      },
+      "GPU-95f8f212-9131-df99-fd53-7535965197d7": {
+        "samples": 101,
+        "power_limit_watts": 400,
+        "minimum_free_mib": 10584.0,
+        "peak_memory_mib": 86664.0,
+        "peak_power_watts": 210.03,
+        "peak_memory_clock_mhz": 13365.0,
+        "peak_temperature_celsius": 67.0
+      }
+    },
+    "dual-retained_2k": {
+      "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0": {
+        "samples": 34,
+        "power_limit_watts": 400,
+        "minimum_free_mib": 1099.0,
+        "peak_memory_mib": 96152.0,
+        "peak_power_watts": 232.8,
+        "peak_memory_clock_mhz": 13365.0,
+        "peak_temperature_celsius": 63.0
+      },
+      "GPU-95f8f212-9131-df99-fd53-7535965197d7": {
+        "samples": 34,
+        "power_limit_watts": 400,
+        "minimum_free_mib": 726.0,
+        "peak_memory_mib": 96522.0,
+        "peak_power_watts": 252.3,
+        "peak_memory_clock_mhz": 13365.0,
+        "peak_temperature_celsius": 74.0
+      }
+    }
+  },
+  "startup_seconds": {
+    "single": 60.661337055964395,
+    "dual": 52.70677486201748
+  },
+  "deployment": {
+    "single": {
+      "global_pool_bytes": 16681077760,
+      "logical_pool_tokens": 18710016,
+      "runtime_headroom_bytes_per_gpu": 2147483648,
+      "private_tail_tokens": 32768,
+      "source_pages": [
+        36607,
+        36607,
+        36607,
+        73214
+      ],
+      "prompt_retention_entries": 24,
+      "completed_turn_retention_entries": 24,
+      "concurrency": 16,
+      "rtx_expert_layers": 5,
+      "rtx_expert_tp": 1,
+      "spark_first_layer": 0,
+      "spark_layers": 40,
+      "spark_budget_bytes_each": 107374182400
+    },
+    "dual": {
+      "global_pool_bytes": 13094420480,
+      "logical_pool_tokens": 14680064,
+      "runtime_headroom_bytes_per_gpu": 838860800,
+      "private_tail_tokens": 32768,
+      "source_pages": [
+        28736,
+        28736,
+        28736,
+        57472
+      ],
+      "prompt_retention_entries": 24,
+      "completed_turn_retention_entries": 24,
+      "concurrency": 16,
+      "rtx_expert_layers": 20,
+      "rtx_expert_tp": 2,
+      "spark_first_layer": 20,
+      "spark_layers": 20,
+      "spark_budget_bytes_each": 107374182400
+    }
+  },
+  "binary_sha256": "666fdd1641991e316e85bf9ec41b1f33480b7ea72bd4fea312049809af7e1980",
+  "context_sha256": "9fd051edae59a6b4263a690fbdd70816c78c9671a50d6976903b51b4386593b0",
+  "corpus_sha256": "e14ff2894de9290827a07aef2ff55e2bb5c792abe91dcdc029fa9d6ed97990bc",
+  "readiness_memory": {
+    "single": {
+      "launch_label": "single-dspark",
+      "gpus": [
+        {
+          "uuid": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0",
+          "used_mib": 94568.0,
+          "free_mib": 2683.0
+        }
+      ]
+    },
+    "dual": {
+      "launch_label": "dual-final",
+      "gpus": [
+        {
+          "uuid": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0",
+          "used_mib": 95080.0,
+          "free_mib": 2171.0
+        },
+        {
+          "uuid": "GPU-95f8f212-9131-df99-fd53-7535965197d7",
+          "used_mib": 95320.0,
+          "free_mib": 1928.0
+        }
+      ]
+    }
+  },
+  "previous_campaign_attempt": {
+    "name": "campaign-attempt1.record",
+    "bytes": 34725,
+    "sha256": "7c24f145042d68f54692f27794ca01e17199b2c7d301e401d98d8670c1e8a83a"
+  },
+  "artifacts": [
+    {
+      "name": "campaign-attempt1.log",
+      "bytes": 2926,
+      "sha256": "856b1080df96f7dd81073d96414a6c20f9b91dd46a286717f76bc1667d8264dc"
+    },
+    {
+      "name": "campaign-attempt1.record",
+      "bytes": 34725,
+      "sha256": "7c24f145042d68f54692f27794ca01e17199b2c7d301e401d98d8670c1e8a83a"
+    },
+    {
+      "name": "campaign.record",
+      "bytes": 103917,
+      "sha256": "923356b7889f4990328196abfb779cc2d1ecb26902abddea4283eeb00c5f161b"
+    },
+    {
+      "name": "dual-code.json",
+      "bytes": 162134,
+      "sha256": "ad65a5826045b42cd8c8bff5011e130c52cb1d4f3820cc946f88e1e2b6fe915a"
+    },
+    {
+      "name": "dual-counting.json",
+      "bytes": 174429,
+      "sha256": "e57be59844d42aed8d715dc07a2fc16c1ccf4c58df0b2cd246b4cd5faf9f67b8"
+    },
+    {
+      "name": "dual-decode.json",
+      "bytes": 67658,
+      "sha256": "1ae2b9c9dd4664d12582e262e7716de9f1a632f133de45b356263bc5f2431ee3"
+    },
+    {
+      "name": "dual-dspark-gpu.csv",
+      "bytes": 517222,
+      "sha256": "6a125bac3c22683b4740f543ebc9b9fc2aacf37a5aca251d710794c4460cf19c"
+    },
+    {
+      "name": "dual-dspark-metadata.record",
+      "bytes": 11051,
+      "sha256": "0f2ae4a9ac38a61d3be61b0964ce5a7eeb00709e471fa77a33c5c1cacd7ddf77"
+    },
+    {
+      "name": "dual-dspark-server.log",
+      "bytes": 5802,
+      "sha256": "fc8f2ed999a9d5b5757dc2104e3819061acb9398c50b067299ae96ab8f98f606"
+    },
+    {
+      "name": "dual-mixed-1.json",
+      "bytes": 67986,
+      "sha256": "3fd1df03448e2b667a10fa7704c26bdd454526341c1a533613d0ba1cb2566121"
+    },
+    {
+      "name": "dual-mixed-2.json",
+      "bytes": 67958,
+      "sha256": "dcdc63f7d89095fbe0c76ca3a0e83bb53834ea01737e42d9b23faeedcaaee34a"
+    },
+    {
+      "name": "dual-mixed-3.json",
+      "bytes": 68859,
+      "sha256": "94364edde57f7457bac954b70f1ae76110083e12007727a311eb6b7993e8bba7"
+    },
+    {
+      "name": "dual-prefill.json",
+      "bytes": 227665,
+      "sha256": "ef4021466a44f521f2139a1ee67e00783e769c37799f24a5288c25f115077194"
+    },
+    {
+      "name": "dual-retained-2k.json",
+      "bytes": 219020,
+      "sha256": "553773b4b3369b17a89b84541a56fa977c79801a2fe78a2a7932ddba7b2410ac"
+    },
+    {
+      "name": "dual-retained-decode.json",
+      "bytes": 47113514,
+      "sha256": "01357c1d10ca7476c07ee1c0553640fef86aaaa3a282ec3b83235ff500e067ce"
+    },
+    {
+      "name": "dual-retained_2k-gpu.csv",
+      "bytes": 9098,
+      "sha256": "b82ab100386ee8f777f6df1dd4e8a0888ace96b6db73588c19296cf8c3ba9633"
+    },
+    {
+      "name": "dual-retained_2k-metadata.record",
+      "bytes": 4892,
+      "sha256": "dcaa8e0008e319f8c2c5b8ec03a8029fdeba39923699076b1fc8723378c47851"
+    },
+    {
+      "name": "dual-startup-seconds.txt",
+      "bytes": 18,
+      "sha256": "3b94768308d46e690fbc63067893da731f2f65196e19355169fcf0f73e33cc75"
+    },
+    {
+      "name": "dual-target-decode.json",
+      "bytes": 67615,
+      "sha256": "1b9215616b8d5573fa68e56a85935ac8a306061b0284aeee90b4d692af25a2df"
+    },
+    {
+      "name": "dual-target-gpu.csv",
+      "bytes": 26919,
+      "sha256": "3d97c96290822e1c177ca96e23f91af00fc94ff20e01d5d18c860674088a6385"
+    },
+    {
+      "name": "dual-target-metadata.record",
+      "bytes": 4724,
+      "sha256": "e50405d06042de034b6379ced3a7e2e3a08ddc717fe4eeb8e763e04a811ef520"
+    },
+    {
+      "name": "dual-topic.json",
+      "bytes": 227931,
+      "sha256": "c6938ca9b21b275af50d425b5c1042db0c349a8ca8230e28983b86f10b6bd28e"
+    },
+    {
+      "name": "single-code.json",
+      "bytes": 163016,
+      "sha256": "d3f20c1d03800ff3a16cc86509ec5bcffe86d2c57e1d4c476be05bb71c8a8dcb"
+    },
+    {
+      "name": "single-counting.json",
+      "bytes": 174409,
+      "sha256": "86d7b324b58642ec2752635c5cb913290aa1e75a5ac8062e8e07a6efadf26382"
+    },
+    {
+      "name": "single-decode.json",
+      "bytes": 67184,
+      "sha256": "8fcebc61910e0202634bbc0ea261e52f4d5f4c69a0c44c38819bfcfa7de231b7"
+    },
+    {
+      "name": "single-dspark-gpu.csv",
+      "bytes": 556256,
+      "sha256": "83f572bac4364b65489466cc446999e80a3a37a3f69406f28546d88f58930d7d"
+    },
+    {
+      "name": "single-dspark-metadata.record",
+      "bytes": 11075,
+      "sha256": "9301b768dddc4e74ae42d8e8a4ec2b7a1e1c3cf1f727596884e0106267c749dd"
+    },
+    {
+      "name": "single-dspark-server.log",
+      "bytes": 2872,
+      "sha256": "0956e81648f7e0130c05230707d183986ffe531df1ef75c20ea9ff24400d1969"
+    },
+    {
+      "name": "single-mixed-1.json",
+      "bytes": 68939,
+      "sha256": "80ae91cfebf375b11cea5c932f57f88c8f752254aee1ec9482bfea0f28d0187e"
+    },
+    {
+      "name": "single-mixed-2.json",
+      "bytes": 69116,
+      "sha256": "017e8023ce40b47e00abfc61c37a9abf388cc640a1364cef3e83722c55d387aa"
+    },
+    {
+      "name": "single-mixed-3.json",
+      "bytes": 69119,
+      "sha256": "27acc94718fea689835f953f64f71e2f0cd40275a1874b676d96577462ab8ef9"
+    },
+    {
+      "name": "single-prefill.json",
+      "bytes": 227621,
+      "sha256": "f34e3daf7690eb0b5c662603b9ae562c735ed9ff2440155b13b41197623bd9f2"
+    },
+    {
+      "name": "single-retained-2k.json",
+      "bytes": 218485,
+      "sha256": "2b5e15424c258697555a7e468d4b77c8d78acc67528f90ac3fb298f64e10ff91"
+    },
+    {
+      "name": "single-retained-decode.json",
+      "bytes": 47114956,
+      "sha256": "b1091690d45327751df4eb7effc63a8d15541adbe2791fa0a5b95af9b859665a"
+    },
+    {
+      "name": "single-retained_2k-gpu.csv",
+      "bytes": 10694,
+      "sha256": "9a264883c007c61e80ac426a43fc19a7e59fd0b3443fa9ab537845a6b065c10b"
+    },
+    {
+      "name": "single-retained_2k-metadata.record",
+      "bytes": 4896,
+      "sha256": "3637df4f206d0029b08a370185b36c49b1953773263aa7f0b649b488119fe1bf"
+    },
+    {
+      "name": "single-startup-seconds.txt",
+      "bytes": 19,
+      "sha256": "02ab7f0790140750034f2da41b1f1915617ccad40796e7750a45f00f9ff57526"
+    },
+    {
+      "name": "single-target-decode.json",
+      "bytes": 67273,
+      "sha256": "0f4c603c5fa893675bc1f051dc4240411f1149871c8bc235f50b4f3ff8d84a2e"
+    },
+    {
+      "name": "single-target-gpu.csv",
+      "bytes": 26732,
+      "sha256": "3084a465c6726f7c44c3689c922fd24080643f8e3ab4d60fcd322727728a30fa"
+    },
+    {
+      "name": "single-target-metadata.record",
+      "bytes": 4726,
+      "sha256": "dcaceeb2f988e92a5027125f642b1dfad7aa276c1abc4423d6a816925377bd37"
+    },
+    {
+      "name": "single-topic.json",
+      "bytes": 234924,
+      "sha256": "f69f83a7682d16081b25f0a82223f97ebf4d46c6db3df0ce98d0f8024749b56c"
+    }
+  ],
+  "performance_matrix_passed": true
+}

@@ -150,6 +150,7 @@ def main() -> None:
     binary_hashes = set()
     context_hashes = set()
     corpus_hashes = set()
+    recorded_output_directories = set()
     for layout in ("single", "dual"):
         expected = {
             "dspark": {
@@ -178,9 +179,10 @@ def main() -> None:
             for command in metadata["commands"]:
                 assert command["exit_code"] == 0
                 cmd = command["command"]
-                path = Path(cmd[cmd.index("--output") + 1])
+                recorded_path = Path(cmd[cmd.index("--output") + 1])
+                recorded_output_directories.add(str(recorded_path.parent))
+                path = args.input / recorded_path.name
                 observed.append(path.name)
-                assert path.resolve().parent == args.input.resolve()
                 raw = load(path)
                 assert raw["passed"] is True, path
                 if "corpus_sha256" in raw:
@@ -227,6 +229,7 @@ def main() -> None:
         assert result["prefill"]["suffixes"] == [1024, 2048, 4096, 8192, 16384, 32768]
         report["layouts"][layout] = result
     assert len(binary_hashes) == len(context_hashes) == len(corpus_hashes) == 1
+    assert len(recorded_output_directories) == 1
     report["binary_sha256"] = next(iter(binary_hashes))
     report["context_sha256"] = next(iter(context_hashes))
     report["corpus_sha256"] = next(iter(corpus_hashes))

@@ -20,23 +20,28 @@ flowchart LR
 
 ## Corrected clean v4 decode results
 
-**Current candidate:** in-place query RoPE saves 512 MiB and restores full
-graph retention without reducing KV capacity. The [single-RTX warm-history run](sparkinfer-upstream-query-inplace-serving-20260916.json)
-passes all three mixed sweeps with 329 MiB minimum free. Weighted decode is
-82.26 versus published v3's 76.72 TPS (+7.2%); mixed C16 is 206.04 versus
-196.46 TPS (+4.9%), with a 193.81–209.87 three-run range. Post-history 1.04M
-retrieval/vision and dual prefix/branch checks now pass in the
-[focused serving evidence](sparkinfer-upstream-query-inplace-focused-20260916.json).
-Single-card minimum free after long-context/vision is 269 MiB.
+**Final measured image:** runtime revision `3924227` passes the complete
+one/two-RTX matrix, with every table replicated in the [v4 report](release-v4-performance.md)
+and README. Weighted dSpark decode is 78.97 / 97.79 TPS (+2.9% / +23.3% versus
+v3); mixed C16 is 198.31 / 308.19 TPS (+0.9% / −0.3%). In-place query RoPE
+saves 512 MiB without reducing KV capacity. The accumulated single-RTX matrix
+passes with 99 MiB minimum free.
 
-The [final clean build](sparkinfer-upstream-v4-final-build-20260916.json) at
-`3924227` now passes standard launch with matching source labels on all five
-hosts. Its [completed dual decode measurements](sparkinfer-upstream-v4-final-dual-decode-20260916.json)
-show weighted throughput of 97.79 versus v3's 79.33 TPS (+23.3%). Mixed C16
-is 308.19 TPS (307.01–313.51), versus 309.06 in v3 (−0.3%); this three-sweep
-result does not reproduce the lower 290.21 TPS single pilot. Mixed C8 rises
-from 203.05 to 226.39 TPS (+11.5%). The remaining final-image performance
-matrix is running; these completed subsets do not establish all release gates.
+The report preserves single-topic C4/C8 losses and the 10–17% historical
+short-prefill differences. [Fresh controls](sparkinfer-upstream-short-prefill-focused-20260916.json)
+and [matched decode-history controls](sparkinfer-upstream-short-prefill-history-20260916.json)
+do not reproduce the large short-prefill loss; neither control reproduces the
+full matrix's preceding long-context decode history. The internal source of
+state sensitivity is not isolated, and the full matrix's values remain unchanged.
+
+The earlier [single-RTX warm-history candidate](sparkinfer-upstream-query-inplace-serving-20260916.json)
+measured 82.26 weighted TPS and 206.04 mixed C16 TPS, with 329 MiB minimum free.
+Those earlier numbers are superseded by the final-image tables above. Its
+post-history 1.04M retrieval/vision and dual prefix/branch checks passed in the
+[focused serving evidence](sparkinfer-upstream-query-inplace-focused-20260916.json),
+with 269 MiB single-card minimum free after long-context/vision. The
+[final clean build](sparkinfer-upstream-v4-final-build-20260916.json) records
+matching source labels on all five hosts. Publication is the remaining release step.
 
 **Earlier release blocker:** single-RTX qualification reproduced CUDA out-of-memory
 after the second mixed C16 sweep. The original run reached 97,248 MiB used;
@@ -1777,15 +1782,15 @@ experiment sections preserve their original pending decisions and measurements.
 - [x] Prioritize measured hot paths: compressed attention and projection
   chains, then mHC/indexer and expert candidates. Profile unresolved plateaus;
   retain promising structural candidates long enough to diagnose failures.
-- [ ] Integrate measured winners, reprofile serving, and refit adaptive draft
+- [x] Integrate measured winners, reprofile serving, and refit adaptive draft
   costs. Validate both one-RTX and dual-RTX configurations, Spark expert paths,
   independent lanes, startup and memory budgeting.
-- [ ] Freeze the candidate. Run three final qualification repetitions where
+- [x] Freeze the candidate. Run three final qualification repetitions where
   repetitions apply. Tool evaluations use thinking enabled at high effort by
   default; also cover supported constrained/no-thinking behavior explicitly.
   Run needle/long-context, retained prefix and snapshot/replay, tool/schema,
   cancellation/recovery, vision and concurrent serving checks.
-- [ ] Refresh every README performance table and its linked report: counting,
+- [x] Refresh every README performance table and its linked report: counting,
   code and topic concurrency; representative weighted/mixed decode; prefill;
   startup and memory. State GPU power limits and standard memory speed up front,
   with UUIDs, clocks/mode, exact configuration and raw samples in evidence.
