@@ -1,5 +1,5 @@
 {
-  "scope": "Interim clean dual-RTX comparison with published v3; exact matched prompts and three samples. Remaining release tables are pending. Topic outputs differ; the slowdown is retained, not attributed solely to kernel latency.",
+  "scope": "Completed initial clean dual-RTX dSpark matrix, compared with published v3 using matched prompts and three samples. Adaptive-cost comparison, target-only and single-RTX measurements remain pending; this is not final release acceptance.",
   "coordinator_image": "sha256:3d95c6a7feed2dfc9fc8240815446295949f56ab75da361cd53257bf554b10e3",
   "workloads": {
     "decode": {
@@ -470,6 +470,512 @@
           "sha256": "94820359015773f84b01319aee3ff68ca8d2f3a04cf15ec8e80e290ab2b9c001"
         }
       ]
+    },
+    "prefill": {
+      "passed": true,
+      "repeats": 3,
+      "context_sha256": "9fd051edae59a6b4263a690fbdd70816c78c9671a50d6976903b51b4386593b0",
+      "baseline": [
+        {
+          "base_context_tokens": 0,
+          "suffix_tokens": 1024,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 4849.664334445336,
+          "min_effective_prefill_tokens_per_second": 4840.701656823897,
+          "max_effective_prefill_tokens_per_second": 4850.49213259158
+        },
+        {
+          "base_context_tokens": 0,
+          "suffix_tokens": 2048,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 6470.625973615694,
+          "min_effective_prefill_tokens_per_second": 6428.761614981917,
+          "max_effective_prefill_tokens_per_second": 6514.286064632358
+        },
+        {
+          "base_context_tokens": 0,
+          "suffix_tokens": 4096,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 7981.749791625653,
+          "min_effective_prefill_tokens_per_second": 7940.610005696885,
+          "max_effective_prefill_tokens_per_second": 7985.345861686489
+        },
+        {
+          "base_context_tokens": 0,
+          "suffix_tokens": 8192,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 8330.70609850098,
+          "min_effective_prefill_tokens_per_second": 8297.956271511886,
+          "max_effective_prefill_tokens_per_second": 8348.05625030461
+        },
+        {
+          "base_context_tokens": 0,
+          "suffix_tokens": 16384,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 8453.537055390892,
+          "min_effective_prefill_tokens_per_second": 8446.26241559961,
+          "max_effective_prefill_tokens_per_second": 8458.032129697629
+        },
+        {
+          "base_context_tokens": 0,
+          "suffix_tokens": 32768,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 8348.150582939359,
+          "min_effective_prefill_tokens_per_second": 8337.923098908053,
+          "max_effective_prefill_tokens_per_second": 8378.519038334614
+        },
+        {
+          "base_context_tokens": 32768,
+          "suffix_tokens": 1024,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 3736.2134638368416,
+          "min_effective_prefill_tokens_per_second": 3724.2246289648456,
+          "max_effective_prefill_tokens_per_second": 3845.9683231856793
+        },
+        {
+          "base_context_tokens": 32768,
+          "suffix_tokens": 2048,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 5067.752873547818,
+          "min_effective_prefill_tokens_per_second": 5052.8126877914365,
+          "max_effective_prefill_tokens_per_second": 5107.581885604723
+        },
+        {
+          "base_context_tokens": 32768,
+          "suffix_tokens": 4096,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 5632.556850022948,
+          "min_effective_prefill_tokens_per_second": 5566.913317952805,
+          "max_effective_prefill_tokens_per_second": 5638.4964246609625
+        },
+        {
+          "base_context_tokens": 32768,
+          "suffix_tokens": 8192,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 6433.87211987657,
+          "min_effective_prefill_tokens_per_second": 6425.713748288465,
+          "max_effective_prefill_tokens_per_second": 6436.370325148736
+        },
+        {
+          "base_context_tokens": 32768,
+          "suffix_tokens": 16384,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 6937.388100605384,
+          "min_effective_prefill_tokens_per_second": 6917.098331793982,
+          "max_effective_prefill_tokens_per_second": 6947.877416928678
+        },
+        {
+          "base_context_tokens": 32768,
+          "suffix_tokens": 32768,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 7101.117956573673,
+          "min_effective_prefill_tokens_per_second": 7098.935390763047,
+          "max_effective_prefill_tokens_per_second": 7111.112003078233
+        },
+        {
+          "base_context_tokens": 65536,
+          "suffix_tokens": 1024,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 3318.2057391066696,
+          "min_effective_prefill_tokens_per_second": 3294.0287824794586,
+          "max_effective_prefill_tokens_per_second": 3323.7163467612118
+        },
+        {
+          "base_context_tokens": 65536,
+          "suffix_tokens": 2048,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 4542.632177933229,
+          "min_effective_prefill_tokens_per_second": 4529.871710890384,
+          "max_effective_prefill_tokens_per_second": 4606.339939262484
+        },
+        {
+          "base_context_tokens": 65536,
+          "suffix_tokens": 4096,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 5065.760227305859,
+          "min_effective_prefill_tokens_per_second": 5036.361162354052,
+          "max_effective_prefill_tokens_per_second": 5075.878843314308
+        },
+        {
+          "base_context_tokens": 65536,
+          "suffix_tokens": 8192,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 5831.637539073575,
+          "min_effective_prefill_tokens_per_second": 5814.823373615251,
+          "max_effective_prefill_tokens_per_second": 5850.190817002824
+        },
+        {
+          "base_context_tokens": 65536,
+          "suffix_tokens": 16384,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 6315.921510301603,
+          "min_effective_prefill_tokens_per_second": 6299.211796973854,
+          "max_effective_prefill_tokens_per_second": 6327.828503326852
+        },
+        {
+          "base_context_tokens": 65536,
+          "suffix_tokens": 32768,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 6459.052849354531,
+          "min_effective_prefill_tokens_per_second": 6450.527516321289,
+          "max_effective_prefill_tokens_per_second": 6467.314140007322
+        },
+        {
+          "base_context_tokens": 131072,
+          "suffix_tokens": 1024,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 2747.8875164765645,
+          "min_effective_prefill_tokens_per_second": 2731.12525586963,
+          "max_effective_prefill_tokens_per_second": 2752.3677647928835
+        },
+        {
+          "base_context_tokens": 131072,
+          "suffix_tokens": 2048,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 3789.6316122916087,
+          "min_effective_prefill_tokens_per_second": 3789.4161631202005,
+          "max_effective_prefill_tokens_per_second": 3870.3450505520414
+        },
+        {
+          "base_context_tokens": 131072,
+          "suffix_tokens": 4096,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 4257.805800034847,
+          "min_effective_prefill_tokens_per_second": 4248.55722686654,
+          "max_effective_prefill_tokens_per_second": 4270.408394181737
+        },
+        {
+          "base_context_tokens": 131072,
+          "suffix_tokens": 8192,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 4948.605003608061,
+          "min_effective_prefill_tokens_per_second": 4947.492175520237,
+          "max_effective_prefill_tokens_per_second": 4966.449270800508
+        },
+        {
+          "base_context_tokens": 131072,
+          "suffix_tokens": 16384,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 5328.596934117981,
+          "min_effective_prefill_tokens_per_second": 5317.353403622833,
+          "max_effective_prefill_tokens_per_second": 5342.056934962882
+        },
+        {
+          "base_context_tokens": 131072,
+          "suffix_tokens": 32768,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 5482.639935795241,
+          "min_effective_prefill_tokens_per_second": 5480.235188767858,
+          "max_effective_prefill_tokens_per_second": 5484.593837643749
+        },
+        {
+          "base_context_tokens": 262144,
+          "suffix_tokens": 1024,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 1922.563281377212,
+          "min_effective_prefill_tokens_per_second": 1913.4835315646321,
+          "max_effective_prefill_tokens_per_second": 1927.997379041973
+        },
+        {
+          "base_context_tokens": 262144,
+          "suffix_tokens": 2048,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 2730.667263878847,
+          "min_effective_prefill_tokens_per_second": 2716.7460202664884,
+          "max_effective_prefill_tokens_per_second": 2733.060758730906
+        },
+        {
+          "base_context_tokens": 262144,
+          "suffix_tokens": 4096,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 3213.0420162643763,
+          "min_effective_prefill_tokens_per_second": 3162.6557878263693,
+          "max_effective_prefill_tokens_per_second": 3235.248842340963
+        },
+        {
+          "base_context_tokens": 262144,
+          "suffix_tokens": 8192,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 3728.919420283456,
+          "min_effective_prefill_tokens_per_second": 3718.4612138620673,
+          "max_effective_prefill_tokens_per_second": 3729.3193361192507
+        },
+        {
+          "base_context_tokens": 262144,
+          "suffix_tokens": 16384,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 4051.8072884175044,
+          "min_effective_prefill_tokens_per_second": 4051.2307714449184,
+          "max_effective_prefill_tokens_per_second": 4064.2025903095464
+        },
+        {
+          "base_context_tokens": 262144,
+          "suffix_tokens": 32768,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 4198.309677007978,
+          "min_effective_prefill_tokens_per_second": 4185.0630182010855,
+          "max_effective_prefill_tokens_per_second": 4209.101279356768
+        }
+      ],
+      "candidate": [
+        {
+          "base_context_tokens": 0,
+          "suffix_tokens": 1024,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 4816.145843539782,
+          "min_effective_prefill_tokens_per_second": 4789.5475369305495,
+          "max_effective_prefill_tokens_per_second": 4833.4331447647255
+        },
+        {
+          "base_context_tokens": 0,
+          "suffix_tokens": 2048,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 6421.509729773609,
+          "min_effective_prefill_tokens_per_second": 6406.282260675827,
+          "max_effective_prefill_tokens_per_second": 6428.709611734121
+        },
+        {
+          "base_context_tokens": 0,
+          "suffix_tokens": 4096,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 7837.665777139843,
+          "min_effective_prefill_tokens_per_second": 7810.259775994214,
+          "max_effective_prefill_tokens_per_second": 7860.42597791035
+        },
+        {
+          "base_context_tokens": 0,
+          "suffix_tokens": 8192,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 8183.300341471029,
+          "min_effective_prefill_tokens_per_second": 8175.082067983652,
+          "max_effective_prefill_tokens_per_second": 8192.11599228107
+        },
+        {
+          "base_context_tokens": 0,
+          "suffix_tokens": 16384,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 8320.806230116967,
+          "min_effective_prefill_tokens_per_second": 8305.209342183738,
+          "max_effective_prefill_tokens_per_second": 8329.2907670191
+        },
+        {
+          "base_context_tokens": 0,
+          "suffix_tokens": 32768,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 8248.255052148945,
+          "min_effective_prefill_tokens_per_second": 8244.233225415033,
+          "max_effective_prefill_tokens_per_second": 8248.347872961072
+        },
+        {
+          "base_context_tokens": 32768,
+          "suffix_tokens": 1024,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 3648.583280758299,
+          "min_effective_prefill_tokens_per_second": 3621.5853306350486,
+          "max_effective_prefill_tokens_per_second": 3687.259404291916
+        },
+        {
+          "base_context_tokens": 32768,
+          "suffix_tokens": 2048,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 4968.522588591262,
+          "min_effective_prefill_tokens_per_second": 4940.276722724613,
+          "max_effective_prefill_tokens_per_second": 4970.430573485201
+        },
+        {
+          "base_context_tokens": 32768,
+          "suffix_tokens": 4096,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 6219.88280590703,
+          "min_effective_prefill_tokens_per_second": 6202.279029034764,
+          "max_effective_prefill_tokens_per_second": 6237.313582567791
+        },
+        {
+          "base_context_tokens": 32768,
+          "suffix_tokens": 8192,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 6844.851125884813,
+          "min_effective_prefill_tokens_per_second": 6825.968432853598,
+          "max_effective_prefill_tokens_per_second": 6854.603597302773
+        },
+        {
+          "base_context_tokens": 32768,
+          "suffix_tokens": 16384,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 7140.379380451392,
+          "min_effective_prefill_tokens_per_second": 7116.701669370336,
+          "max_effective_prefill_tokens_per_second": 7149.563655192897
+        },
+        {
+          "base_context_tokens": 32768,
+          "suffix_tokens": 32768,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 7197.211752092078,
+          "min_effective_prefill_tokens_per_second": 7194.566794727115,
+          "max_effective_prefill_tokens_per_second": 7199.491674063404
+        },
+        {
+          "base_context_tokens": 65536,
+          "suffix_tokens": 1024,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 3224.905318081077,
+          "min_effective_prefill_tokens_per_second": 3207.95228278191,
+          "max_effective_prefill_tokens_per_second": 3229.2806437218433
+        },
+        {
+          "base_context_tokens": 65536,
+          "suffix_tokens": 2048,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 4450.888709221437,
+          "min_effective_prefill_tokens_per_second": 4438.572255932386,
+          "max_effective_prefill_tokens_per_second": 4500.579682812168
+        },
+        {
+          "base_context_tokens": 65536,
+          "suffix_tokens": 4096,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 5575.869765195122,
+          "min_effective_prefill_tokens_per_second": 5553.908170143912,
+          "max_effective_prefill_tokens_per_second": 5602.789722312943
+        },
+        {
+          "base_context_tokens": 65536,
+          "suffix_tokens": 8192,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 6162.869470348046,
+          "min_effective_prefill_tokens_per_second": 6159.49840068282,
+          "max_effective_prefill_tokens_per_second": 6184.503451273516
+        },
+        {
+          "base_context_tokens": 65536,
+          "suffix_tokens": 16384,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 6477.654637418059,
+          "min_effective_prefill_tokens_per_second": 6471.593985197275,
+          "max_effective_prefill_tokens_per_second": 6491.079305470724
+        },
+        {
+          "base_context_tokens": 65536,
+          "suffix_tokens": 32768,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 6540.28629631554,
+          "min_effective_prefill_tokens_per_second": 6537.193725185224,
+          "max_effective_prefill_tokens_per_second": 6543.757687198315
+        },
+        {
+          "base_context_tokens": 131072,
+          "suffix_tokens": 1024,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 2578.8629248693674,
+          "min_effective_prefill_tokens_per_second": 2575.4214176725154,
+          "max_effective_prefill_tokens_per_second": 2599.125915990758
+        },
+        {
+          "base_context_tokens": 131072,
+          "suffix_tokens": 2048,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 3647.9384700845544,
+          "min_effective_prefill_tokens_per_second": 3623.822840994332,
+          "max_effective_prefill_tokens_per_second": 3652.848848775238
+        },
+        {
+          "base_context_tokens": 131072,
+          "suffix_tokens": 4096,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 4582.2487591309055,
+          "min_effective_prefill_tokens_per_second": 4570.977682600398,
+          "max_effective_prefill_tokens_per_second": 4600.918192440924
+        },
+        {
+          "base_context_tokens": 131072,
+          "suffix_tokens": 8192,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 5167.435582515532,
+          "min_effective_prefill_tokens_per_second": 5147.979852567949,
+          "max_effective_prefill_tokens_per_second": 5188.466018391102
+        },
+        {
+          "base_context_tokens": 131072,
+          "suffix_tokens": 16384,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 5458.484479238201,
+          "min_effective_prefill_tokens_per_second": 5443.437604022203,
+          "max_effective_prefill_tokens_per_second": 5474.6757201756445
+        },
+        {
+          "base_context_tokens": 131072,
+          "suffix_tokens": 32768,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 5544.948059782685,
+          "min_effective_prefill_tokens_per_second": 5531.968664307475,
+          "max_effective_prefill_tokens_per_second": 5554.9135229181165
+        },
+        {
+          "base_context_tokens": 262144,
+          "suffix_tokens": 1024,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 1836.3636638736507,
+          "min_effective_prefill_tokens_per_second": 1832.9943653659332,
+          "max_effective_prefill_tokens_per_second": 1847.8847278521096
+        },
+        {
+          "base_context_tokens": 262144,
+          "suffix_tokens": 2048,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 2724.914180359858,
+          "min_effective_prefill_tokens_per_second": 2620.2265190193375,
+          "max_effective_prefill_tokens_per_second": 2737.6440014660925
+        },
+        {
+          "base_context_tokens": 262144,
+          "suffix_tokens": 4096,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 3422.155859213616,
+          "min_effective_prefill_tokens_per_second": 3375.0945999214136,
+          "max_effective_prefill_tokens_per_second": 3426.5585500298885
+        },
+        {
+          "base_context_tokens": 262144,
+          "suffix_tokens": 8192,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 3852.3538873316443,
+          "min_effective_prefill_tokens_per_second": 3824.695657365786,
+          "max_effective_prefill_tokens_per_second": 3890.2515494050513
+        },
+        {
+          "base_context_tokens": 262144,
+          "suffix_tokens": 16384,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 4129.964431997356,
+          "min_effective_prefill_tokens_per_second": 4119.886355395746,
+          "max_effective_prefill_tokens_per_second": 4132.119019745215
+        },
+        {
+          "base_context_tokens": 262144,
+          "suffix_tokens": 32768,
+          "samples": 3,
+          "median_effective_prefill_tokens_per_second": 4217.872295571104,
+          "min_effective_prefill_tokens_per_second": 4217.7961294314655,
+          "max_effective_prefill_tokens_per_second": 4223.73895429035
+        }
+      ],
+      "raw_candidate": "/home/tj/.cache/ds41rt-upstream-20260916/clean-performance/dual-prefill.json",
+      "raw_candidate_sha256": "7bfe05d3cd01a214129b51a495aa6e661d3643dfcc0902199d91d8762e0f3c43"
+    },
+    "retained_2k": {
+      "passed": true,
+      "scope": "Separate new 2K retained-context row; no matching published v3 2K baseline was collected. Do not treat this versus the v3 zero-context result as a speedup.",
+      "candidate": [
+        {
+          "context_tokens": 2048,
+          "samples": 24,
+          "weighted_observed_decode_tokens_per_second": 92.68350818585174,
+          "serving_completed": 24,
+          "cache_valid": 24
+        }
+      ],
+      "raw_candidate": "/home/tj/.cache/ds41rt-upstream-20260916/dual-retained-2k.json",
+      "raw_candidate_sha256": "5c2208100932334433757e93db886e9de594915456f2bfedbd3b61068a8759a6"
     }
   }
 }

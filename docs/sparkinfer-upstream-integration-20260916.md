@@ -38,11 +38,20 @@ falls 12.2%. Three mixed repetitions produce medians
 147.91/122.04/154.47/187.28/283.68 at C1/C2/C4/C8/C16; the published C16
 median is 309.06. These regressions remain release concerns.
 
-Prefill and the separate 2K retained-context row are running next. A clean-image
-K5 legacy/refit cost comparison is queued behind the complete dual matrix,
-using the same prompts and restoring the standard coordinator afterward.
-Single-RTX and target-only measurements remain pending. Review the complete
-matrix and the controlled comparison before acceptance.
+The complete prefill matrix passes all 90 measured samples (plus 30 warmups).
+Cold medians are 0.7–1.8% below the published cells. Retained +4K cells improve
+6.5–10.4%, and +8K cells improve 3.3–6.4%; retained +1K/+2K cells range from
+0.2–6.2% slower. The comparison JSON preserves all 30 cells, including losses.
+
+The separate 2K retained-context row passes all 24 samples at **92.68 weighted
+TPS**, versus 82.17 for this candidate's zero-base retained-corpus row. There is
+no corresponding published v3 2K result, so this is not a before/after release
+speedup claim. Both rows remain visible.
+
+The clean-image K5 legacy/refit cost comparison has started using the same
+code/topic/mixed prompts; it restores the standard coordinator afterward.
+Single-RTX and target-only measurements remain pending. Review the controlled
+comparison before accepting the performance tradeoffs.
 
 ## Selected implementation on dev
 
