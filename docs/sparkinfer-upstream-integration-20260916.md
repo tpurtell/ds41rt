@@ -61,7 +61,13 @@ from 80.28/122.03/218.87/356.11 to 93.62/160.41/278.61/444.08 TPS despite
 restarting the original standard container also produces 95.54/151.54/283.04/
 449.19/711.70 at C1/C2/C4/C8/C16. The difference therefore does not require
 the experimental launcher or refitted model. Serving-history sensitivity remains
-unresolved; a serial long-context-then-short-decode probe is underway. Do not
+unresolved. A [serial history probe](sparkinfer-upstream-clean-history-20260916.json)
+passes 32K, 128K and 1.04M cold/exact needle requests without reproducing the
+slowdown: after 1.04M, topic remains 96.06 TPS at C1 and 449.39 at C8. Schema
+and vision transitions also stay near 96 TPS at C1 and 448–452 at C8. A
+subsequent mixed C1/C2/C4/C8/C16 sweep **reproduces the slowdown**: topic C1
+falls to 80.58 TPS and C8 to 385.50. This gives a bounded reproducer for tracing
+the persistent serving state; root cause and fix remain pending. Do not
 replace the initial matrix with the faster results without resolving this concern.
 Single-RTX and target-only measurements remain pending.
 

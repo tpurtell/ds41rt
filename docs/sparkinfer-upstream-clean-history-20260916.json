@@ -1,0 +1,170 @@
+{
+  "scope": "Same standard dual-RTX coordinator, sequential context warmups followed by identical topic requests; no restart between stages",
+  "stages": [
+    {
+      "context": 32768,
+      "needle_passed": true,
+      "needle_seconds": {
+        "cold": 4.9250290599884465,
+        "exact": 0.551670512999408
+      },
+      "topic": [
+        {
+          "concurrency": 1,
+          "samples": 3,
+          "median_aggregate_tps": 96.5232105335703,
+          "min_aggregate_tps": 96.4169913217286,
+          "max_aggregate_tps": 96.52408288047172
+        },
+        {
+          "concurrency": 8,
+          "samples": 3,
+          "median_aggregate_tps": 449.3871887506814,
+          "min_aggregate_tps": 379.1031501368865,
+          "max_aggregate_tps": 453.1399924078928
+        }
+      ],
+      "artifacts": {
+        "/home/tj/.cache/ds41rt-upstream-20260916/clean-history-probe/needle-32768.json": "ba720c0817d88b55e31683d8846f0b824791e3e01e359516aa652cddab5ddc30",
+        "/home/tj/.cache/ds41rt-upstream-20260916/clean-history-probe/topic-after-32768.json": "c9e7e4f7737aa8ca19e7844a2ad3f9f5087c8a97f3a205c65fae92518035b3de"
+      }
+    },
+    {
+      "context": 131072,
+      "needle_passed": true,
+      "needle_seconds": {
+        "cold": 19.435042085009627,
+        "exact": 0.6791977569228038
+      },
+      "topic": [
+        {
+          "concurrency": 1,
+          "samples": 3,
+          "median_aggregate_tps": 96.62339620072059,
+          "min_aggregate_tps": 96.49008655409071,
+          "max_aggregate_tps": 96.98856893187765
+        },
+        {
+          "concurrency": 8,
+          "samples": 3,
+          "median_aggregate_tps": 452.8509022665772,
+          "min_aggregate_tps": 449.0983884474359,
+          "max_aggregate_tps": 453.2643149363783
+        }
+      ],
+      "artifacts": {
+        "/home/tj/.cache/ds41rt-upstream-20260916/clean-history-probe/needle-131072.json": "05d6244f424135e250aa56c7dd05dd761c04638ee5e60a701edc55119337ec94",
+        "/home/tj/.cache/ds41rt-upstream-20260916/clean-history-probe/topic-after-131072.json": "18eca28196aca73c4b97f9b402a119feec3c0720959d73e3ae8dad06a0df7556"
+      }
+    },
+    {
+      "context": 1040000,
+      "needle_passed": true,
+      "needle_seconds": {
+        "cold": 351.6817115599988,
+        "exact": 2.0904230179730803
+      },
+      "topic": [
+        {
+          "concurrency": 1,
+          "samples": 3,
+          "median_aggregate_tps": 96.05594936921138,
+          "min_aggregate_tps": 94.45251289256335,
+          "max_aggregate_tps": 96.31202528929623
+        },
+        {
+          "concurrency": 8,
+          "samples": 3,
+          "median_aggregate_tps": 449.3911535906156,
+          "min_aggregate_tps": 449.0353025938912,
+          "max_aggregate_tps": 449.79804067800615
+        }
+      ],
+      "artifacts": {
+        "/home/tj/.cache/ds41rt-upstream-20260916/clean-history-probe/needle-1040000.json": "f4476b3a3a256f9ae82e2b486464720f358c249b79508ba33db8036e65a74d83",
+        "/home/tj/.cache/ds41rt-upstream-20260916/clean-history-probe/topic-after-1040000.json": "1fd37854ef52fb27a70fb1a410ff8d41bbe8cbabb006779c5ea087a5537137a0"
+      }
+    },
+    {
+      "history": "schema",
+      "passed": true,
+      "topic": [
+        {
+          "concurrency": 1,
+          "samples": 3,
+          "median_aggregate_tps": 96.27033929189372,
+          "min_aggregate_tps": 95.43592294152393,
+          "max_aggregate_tps": 96.3256865706949
+        },
+        {
+          "concurrency": 8,
+          "samples": 3,
+          "median_aggregate_tps": 451.84829253564106,
+          "min_aggregate_tps": 450.0531471555868,
+          "max_aggregate_tps": 452.6671944195009
+        }
+      ],
+      "artifacts": {
+        "/home/tj/.cache/ds41rt-upstream-20260916/clean-history-probe/schema.json": "e1470cfa25678ace7bb5fb38659ad4dc068a5b0647a3af8509c7ce740570c694",
+        "/home/tj/.cache/ds41rt-upstream-20260916/clean-history-probe/topic-after-schema.json": "bb7f7ebc2ed53df2bcead58ec51ddc67318ee3f3aeeaafe91aa58efec60233ea"
+      }
+    },
+    {
+      "history": "vision",
+      "passed": true,
+      "topic": [
+        {
+          "concurrency": 1,
+          "samples": 3,
+          "median_aggregate_tps": 95.82455816763553,
+          "min_aggregate_tps": 95.25670742813759,
+          "max_aggregate_tps": 96.12478514979085
+        },
+        {
+          "concurrency": 8,
+          "samples": 3,
+          "median_aggregate_tps": 447.7991101728103,
+          "min_aggregate_tps": 391.2804836977882,
+          "max_aggregate_tps": 448.8169983935826
+        }
+      ],
+      "artifacts": {
+        "/home/tj/.cache/ds41rt-upstream-20260916/clean-history-probe/vision.json": "40bf44381315165e5744a4c66b565147f2f7d6b6250197be91c3121ccc24fa1e",
+        "/home/tj/.cache/ds41rt-upstream-20260916/clean-history-probe/topic-after-vision.json": "44253831619ee25a61647cc36369a9cfdcc233fe06abcc3ddb2d272483577e3a"
+      }
+    },
+    {
+      "history": "mixed C1/C2/C4/C8/C16 sweep",
+      "passed": true,
+      "topic": [
+        {
+          "concurrency": 1,
+          "samples": 3,
+          "median_aggregate_tps": 80.5845479874706,
+          "min_aggregate_tps": 79.72797919436088,
+          "max_aggregate_tps": 80.59442700432602
+        },
+        {
+          "concurrency": 8,
+          "samples": 3,
+          "median_aggregate_tps": 385.49951237283403,
+          "min_aggregate_tps": 344.2446414900681,
+          "max_aggregate_tps": 392.25704844957545
+        }
+      ],
+      "same_ordered_topic_texts_as_preceding_vision_stage": {
+        "1": true,
+        "8": false
+      },
+      "artifacts": {
+        "/home/tj/.cache/ds41rt-upstream-20260916/clean-history-probe/mixed-history.json": "18a4965c5a80f6d8743c1cda1dae07d465f6bccd73427fc20e58446c26206356",
+        "/home/tj/.cache/ds41rt-upstream-20260916/clean-history-probe/topic-after-mixed.json": "997a053e537c7e96129e683577887f0d455e2da26e753493f73f9560bd364af8"
+      }
+    }
+  ],
+  "finding": "Heterogeneous concurrent sweep reproduces persistent short-topic slowdown; long context, schema and vision preceding it did not.",
+  "evidence_archive": {
+    "path": "docs/evidence/upstream-clean-history-20260916.tar.gz",
+    "sha256": "a5b4897532ac5caa9dab60211d211f365366b844bf5daf81aeb2c5abe1849450"
+  }
+}
