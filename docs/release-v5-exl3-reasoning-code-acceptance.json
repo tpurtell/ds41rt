@@ -1,0 +1,519 @@
+{
+  "scope": "Instrumented high-effort reasoning-code acceptance on dual-RTX paired EXL3; includes reasoning and final answer. Not release throughput or full-model quantization comparison.",
+  "observations": 6360,
+  "rounds": 1433,
+  "acceptance": {
+    "observations": 6334,
+    "excluded_terminal_or_constrained": 26,
+    "requests": 26,
+    "proposed_drafts": 44338,
+    "accepted_drafts": 20395,
+    "accepted_fraction": 0.4599891740719022,
+    "mean_accepted_drafts": 3.2199242185033152,
+    "mean_verified_drafts": 7.0,
+    "verified_width_counts": {
+      "7": 6334
+    },
+    "interpretation": "Prefix acceptance among verified drafts, excluding terminal and constrained observations. Adaptive selection censors unverified drafts; this is not unconditional draft accuracy."
+  },
+  "calibration": [
+    {
+      "position": 1,
+      "samples": 6334,
+      "bins": [
+        {
+          "lower_probability": 0.3,
+          "samples": 20,
+          "mean_confidence": 0.36770158497952543,
+          "observed_acceptance": 0
+        },
+        {
+          "lower_probability": 0.4,
+          "samples": 248,
+          "mean_confidence": 0.45780973571632283,
+          "observed_acceptance": 0.6008064516129032
+        },
+        {
+          "lower_probability": 0.5,
+          "samples": 627,
+          "mean_confidence": 0.5554573805943792,
+          "observed_acceptance": 0.3763955342902711
+        },
+        {
+          "lower_probability": 0.6,
+          "samples": 872,
+          "mean_confidence": 0.6479324463642645,
+          "observed_acceptance": 0.6387614678899083
+        },
+        {
+          "lower_probability": 0.7,
+          "samples": 650,
+          "mean_confidence": 0.7500387944514378,
+          "observed_acceptance": 0.7630769230769231
+        },
+        {
+          "lower_probability": 0.8,
+          "samples": 652,
+          "mean_confidence": 0.8519651831604369,
+          "observed_acceptance": 0.906441717791411
+        },
+        {
+          "lower_probability": 0.9,
+          "samples": 3265,
+          "mean_confidence": 0.9854810495833479,
+          "observed_acceptance": 0.9978560490045941
+        }
+      ]
+    },
+    {
+      "position": 2,
+      "samples": 5287,
+      "bins": [
+        {
+          "lower_probability": 0.1,
+          "samples": 16,
+          "mean_confidence": 0.1713991227997562,
+          "observed_acceptance": 0
+        },
+        {
+          "lower_probability": 0.2,
+          "samples": 25,
+          "mean_confidence": 0.2927642143427393,
+          "observed_acceptance": 0.96
+        },
+        {
+          "lower_probability": 0.3,
+          "samples": 242,
+          "mean_confidence": 0.35257438564840005,
+          "observed_acceptance": 0.25206611570247933
+        },
+        {
+          "lower_probability": 0.4,
+          "samples": 344,
+          "mean_confidence": 0.44990459517724096,
+          "observed_acceptance": 0.49709302325581395
+        },
+        {
+          "lower_probability": 0.5,
+          "samples": 712,
+          "mean_confidence": 0.5529003550404565,
+          "observed_acceptance": 0.6474719101123596
+        },
+        {
+          "lower_probability": 0.6,
+          "samples": 528,
+          "mean_confidence": 0.655041184294114,
+          "observed_acceptance": 0.7537878787878788
+        },
+        {
+          "lower_probability": 0.7,
+          "samples": 397,
+          "mean_confidence": 0.7449232652764701,
+          "observed_acceptance": 0.7103274559193955
+        },
+        {
+          "lower_probability": 0.8,
+          "samples": 450,
+          "mean_confidence": 0.8503368473833158,
+          "observed_acceptance": 0.9244444444444444
+        },
+        {
+          "lower_probability": 0.9,
+          "samples": 2573,
+          "mean_confidence": 0.9840764442256599,
+          "observed_acceptance": 0.9996113486202876
+        }
+      ]
+    },
+    {
+      "position": 3,
+      "samples": 4385,
+      "bins": [
+        {
+          "lower_probability": 0.2,
+          "samples": 44,
+          "mean_confidence": 0.25371689915208107,
+          "observed_acceptance": 0
+        },
+        {
+          "lower_probability": 0.3,
+          "samples": 313,
+          "mean_confidence": 0.35817494265361277,
+          "observed_acceptance": 0.6198083067092651
+        },
+        {
+          "lower_probability": 0.4,
+          "samples": 376,
+          "mean_confidence": 0.44949081020975645,
+          "observed_acceptance": 0.48936170212765956
+        },
+        {
+          "lower_probability": 0.5,
+          "samples": 553,
+          "mean_confidence": 0.5530110981783368,
+          "observed_acceptance": 0.5569620253164557
+        },
+        {
+          "lower_probability": 0.6,
+          "samples": 436,
+          "mean_confidence": 0.6535143960371259,
+          "observed_acceptance": 0.7431192660550459
+        },
+        {
+          "lower_probability": 0.7,
+          "samples": 295,
+          "mean_confidence": 0.742745248193394,
+          "observed_acceptance": 0.7050847457627119
+        },
+        {
+          "lower_probability": 0.8,
+          "samples": 437,
+          "mean_confidence": 0.8563352590447167,
+          "observed_acceptance": 0.8443935926773455
+        },
+        {
+          "lower_probability": 0.9,
+          "samples": 1931,
+          "mean_confidence": 0.9848220842958519,
+          "observed_acceptance": 0.9953392024857587
+        }
+      ]
+    },
+    {
+      "position": 4,
+      "samples": 3509,
+      "bins": [
+        {
+          "lower_probability": 0.2,
+          "samples": 73,
+          "mean_confidence": 0.274882926586398,
+          "observed_acceptance": 0.2876712328767123
+        },
+        {
+          "lower_probability": 0.3,
+          "samples": 299,
+          "mean_confidence": 0.3509957592928259,
+          "observed_acceptance": 0.5016722408026756
+        },
+        {
+          "lower_probability": 0.4,
+          "samples": 329,
+          "mean_confidence": 0.4559472815084492,
+          "observed_acceptance": 0.48632218844984804
+        },
+        {
+          "lower_probability": 0.5,
+          "samples": 398,
+          "mean_confidence": 0.5475226766949375,
+          "observed_acceptance": 0.39195979899497485
+        },
+        {
+          "lower_probability": 0.6,
+          "samples": 227,
+          "mean_confidence": 0.6465647824216503,
+          "observed_acceptance": 0.5022026431718062
+        },
+        {
+          "lower_probability": 0.7,
+          "samples": 255,
+          "mean_confidence": 0.7477580163553217,
+          "observed_acceptance": 0.8823529411764706
+        },
+        {
+          "lower_probability": 0.8,
+          "samples": 346,
+          "mean_confidence": 0.8559255068350134,
+          "observed_acceptance": 0.846820809248555
+        },
+        {
+          "lower_probability": 0.9,
+          "samples": 1582,
+          "mean_confidence": 0.9850158589454738,
+          "observed_acceptance": 0.9898862199747156
+        }
+      ]
+    },
+    {
+      "position": 5,
+      "samples": 2685,
+      "bins": [
+        {
+          "lower_probability": 0.1,
+          "samples": 36,
+          "mean_confidence": 0.17117164784713623,
+          "observed_acceptance": 0
+        },
+        {
+          "lower_probability": 0.2,
+          "samples": 103,
+          "mean_confidence": 0.2680419431898667,
+          "observed_acceptance": 0.06796116504854369
+        },
+        {
+          "lower_probability": 0.3,
+          "samples": 195,
+          "mean_confidence": 0.3423704937709599,
+          "observed_acceptance": 0.35384615384615387
+        },
+        {
+          "lower_probability": 0.4,
+          "samples": 161,
+          "mean_confidence": 0.44828656871185846,
+          "observed_acceptance": 0.6583850931677019
+        },
+        {
+          "lower_probability": 0.5,
+          "samples": 244,
+          "mean_confidence": 0.5497692713788481,
+          "observed_acceptance": 0.3360655737704918
+        },
+        {
+          "lower_probability": 0.6,
+          "samples": 188,
+          "mean_confidence": 0.6452644662533574,
+          "observed_acceptance": 0.5957446808510638
+        },
+        {
+          "lower_probability": 0.7,
+          "samples": 223,
+          "mean_confidence": 0.7494854775565001,
+          "observed_acceptance": 0.8789237668161435
+        },
+        {
+          "lower_probability": 0.8,
+          "samples": 200,
+          "mean_confidence": 0.8570121275286836,
+          "observed_acceptance": 0.9
+        },
+        {
+          "lower_probability": 0.9,
+          "samples": 1335,
+          "mean_confidence": 0.9795315517664043,
+          "observed_acceptance": 0.9842696629213483
+        }
+      ]
+    },
+    {
+      "position": 6,
+      "samples": 2066,
+      "bins": [
+        {
+          "lower_probability": 0.1,
+          "samples": 20,
+          "mean_confidence": 0.18332981867704523,
+          "observed_acceptance": 1
+        },
+        {
+          "lower_probability": 0.2,
+          "samples": 28,
+          "mean_confidence": 0.25907447073932927,
+          "observed_acceptance": 0.14285714285714285
+        },
+        {
+          "lower_probability": 0.3,
+          "samples": 190,
+          "mean_confidence": 0.3441815849424786,
+          "observed_acceptance": 0.3263157894736842
+        },
+        {
+          "lower_probability": 0.4,
+          "samples": 87,
+          "mean_confidence": 0.464658339435216,
+          "observed_acceptance": 0.21839080459770116
+        },
+        {
+          "lower_probability": 0.5,
+          "samples": 118,
+          "mean_confidence": 0.5526766338832986,
+          "observed_acceptance": 0.4152542372881356
+        },
+        {
+          "lower_probability": 0.6,
+          "samples": 102,
+          "mean_confidence": 0.6486423967814244,
+          "observed_acceptance": 0.3431372549019608
+        },
+        {
+          "lower_probability": 0.7,
+          "samples": 154,
+          "mean_confidence": 0.7455912558798993,
+          "observed_acceptance": 0.5194805194805194
+        },
+        {
+          "lower_probability": 0.8,
+          "samples": 250,
+          "mean_confidence": 0.8562156469566407,
+          "observed_acceptance": 0.868
+        },
+        {
+          "lower_probability": 0.9,
+          "samples": 1117,
+          "mean_confidence": 0.9753353779016816,
+          "observed_acceptance": 0.8961504028648165
+        }
+      ]
+    },
+    {
+      "position": 7,
+      "samples": 1487,
+      "bins": [
+        {
+          "lower_probability": 0.2,
+          "samples": 32,
+          "mean_confidence": 0.26686206136696505,
+          "observed_acceptance": 0.28125
+        },
+        {
+          "lower_probability": 0.3,
+          "samples": 68,
+          "mean_confidence": 0.3364509175676086,
+          "observed_acceptance": 0.08823529411764706
+        },
+        {
+          "lower_probability": 0.4,
+          "samples": 120,
+          "mean_confidence": 0.47154737186719453,
+          "observed_acceptance": 0.16666666666666666
+        },
+        {
+          "lower_probability": 0.5,
+          "samples": 102,
+          "mean_confidence": 0.5581938183765163,
+          "observed_acceptance": 0.5294117647058824
+        },
+        {
+          "lower_probability": 0.6,
+          "samples": 113,
+          "mean_confidence": 0.652450352682355,
+          "observed_acceptance": 0.8407079646017699
+        },
+        {
+          "lower_probability": 0.7,
+          "samples": 65,
+          "mean_confidence": 0.7498772039091568,
+          "observed_acceptance": 0.6461538461538462
+        },
+        {
+          "lower_probability": 0.8,
+          "samples": 211,
+          "mean_confidence": 0.8514892169378317,
+          "observed_acceptance": 0.5308056872037915
+        },
+        {
+          "lower_probability": 0.9,
+          "samples": 776,
+          "mean_confidence": 0.965637390091317,
+          "observed_acceptance": 0.8221649484536082
+        }
+      ]
+    }
+  ],
+  "costs": [
+    {
+      "requests": 1,
+      "verifier_rows": 8,
+      "samples": 447,
+      "draft_us": {
+        "median": 2613,
+        "minimum": 2272,
+        "maximum": 6555
+      },
+      "verify_us": {
+        "median": 29795,
+        "minimum": 24553,
+        "maximum": 50828
+      },
+      "total_us": {
+        "median": 32788,
+        "minimum": 27502,
+        "maximum": 58025
+      }
+    },
+    {
+      "requests": 3,
+      "verifier_rows": 24,
+      "samples": 39,
+      "draft_us": {
+        "median": 4893,
+        "minimum": 4122,
+        "maximum": 5573
+      },
+      "verify_us": {
+        "median": 44077,
+        "minimum": 38310,
+        "maximum": 58689
+      },
+      "total_us": {
+        "median": 49681,
+        "minimum": 43434,
+        "maximum": 64890
+      }
+    },
+    {
+      "requests": 4,
+      "verifier_rows": 32,
+      "samples": 445,
+      "draft_us": {
+        "median": 5568,
+        "minimum": 4467,
+        "maximum": 7747
+      },
+      "verify_us": {
+        "median": 54318,
+        "minimum": 41936,
+        "maximum": 537899
+      },
+      "total_us": {
+        "median": 60692,
+        "minimum": 47515,
+        "maximum": 546504
+      }
+    },
+    {
+      "requests": 8,
+      "verifier_rows": 64,
+      "samples": 502,
+      "draft_us": {
+        "median": 8042.5,
+        "minimum": 6159,
+        "maximum": 10105
+      },
+      "verify_us": {
+        "median": 60894.5,
+        "minimum": 56403,
+        "maximum": 87121
+      },
+      "total_us": {
+        "median": 70352.0,
+        "minimum": 65813,
+        "maximum": 98364
+      }
+    }
+  ],
+  "source_commit": "411411f",
+  "model": "wrldsuksgo2mars/DeepSeek-V4.1-EXL3-K3.25-v1",
+  "rtx_gpus": 2,
+  "rtx_expert_layers": 25,
+  "spark_layout": "paired TP4, m80 two blocks",
+  "draft_policy": "fixed",
+  "draft_limit": 7,
+  "thinking": "enabled",
+  "reasoning_effort": "high",
+  "concurrency": [
+    1,
+    8,
+    16
+  ],
+  "warmup_included": true,
+  "code_checks_passed": true,
+  "original_services_restored": true,
+  "trace_sha256": "adc9c469a9b220d0897f3d7d129a1684f046f4590d9264a40cd490627330ad13",
+  "full_server_log_sha256": "665839c417e345f05d608d5859aa7399d05ae5f7c92d81f2e44d40c5ac3f9b2d",
+  "archive_filter": "Retain every draft policy observation and scheduler round; omit per-layer timing and setup messages only.",
+  "limitations": [
+    "26 short-context requests including warmup and concurrency drain; terminal and constrained observations excluded.",
+    "Model continuations and lengths may differ across concurrency points.",
+    "Instrumented timings are diagnostic, not final performance measurements.",
+    "Full-model and single-RTX acceptance comparisons remain pending."
+  ]
+}

@@ -432,3 +432,22 @@ addition to even draft widths on code/mixed. The remaining width collection and
 adaptive serving validation are pending. Debug-instrumented throughput must not
 be used in release performance tables. Evidence and reproducible analysis:
 `release-v5-exl3-paired-k7-acceptance.json` and its adjacent archive.
+
+### High-effort reasoning-code acceptance
+
+The new ninth content category uses the same merge-intervals coding task with
+thinking enabled and high effort. A fixed-K7 dual-RTX paired run passed code
+checks at C1/C8/C16, retaining both reasoning and final answers. Across 26
+requests including warmup, 6,334 nonterminal observations accepted 20,395 of
+44,338 verified draft tokens: **46.00%, or 3.220 drafts per cycle**. This cohort
+covers both reasoning and answer generation. The corresponding non-thinking
+code baseline was 4.468 drafts per cycle; topic was 1.735. This is a content
+comparison, not a measurement of quantization loss.
+
+Throughput accounting now times all completion tokens from the first reasoning
+or answer delta; answer latency remains separately recorded. These runs enable
+debug instrumentation and do not supply final release throughput. Original
+services were restored. Evidence: `release-v5-exl3-reasoning-code-acceptance.json`
+and its archive, including all draft observations, scheduler rounds, client
+responses and collector sources. Per-layer timing logs are excluded from this
+acceptance archive; the complete original log hash is recorded.
