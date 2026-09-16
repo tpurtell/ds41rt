@@ -5,10 +5,40 @@ from __future__ import annotations
 
 import argparse
 import csv
+import io
 import json
 import re
 import runpy
 from pathlib import Path
+
+
+def summarize_readiness(campaign: dict, build: dict) -> dict:
+    """Use post-readiness snapshots from the standard launches, in GPU order."""
+    assert campaign.get("measurements_passed") is True and campaign.get("completed_ns")
+    result = {}
+    for layout, label, count in (("single", "single-dspark", 1), ("dual", "dual-final", 2)):
+        events = [event for event in campaign["events"] if event.get("label") == label]
+        assert len(events) == 1
+        event = events[0]
+        assert event["exit_code"] == 0
+        container = event["container"]
+        assert container["Image"] == build["coordinator"]["image_id"]
+        assert container["State"]["Running"]
+        assert "--dspark" in container["Config"]["Cmd"]
+        ids = [uuid for request in container["HostConfig"]["DeviceRequests"]
+               for uuid in request["DeviceIDs"]]
+        assert len(ids) == len(set(ids)) == count
+        rows = {row["uuid"]: row for row in csv.DictReader(
+            io.StringIO(event["gpu_memory"]), skipinitialspace=True)}
+        gpus = []
+        for uuid in ids:
+            row = rows[uuid]
+            assert float(row["power.limit [W]"].split()[0]) == 400
+            gpus.append({"uuid": uuid,
+                         "used_mib": float(row["memory.used [MiB]"].split()[0]),
+                         "free_mib": float(row["memory.free [MiB]"].split()[0])})
+        result[layout] = {"launch_label": label, "gpus": gpus}
+    return result
 
 
 def summarize_telemetry(path: Path) -> dict:
@@ -50,6 +80,7 @@ def summarize_deployment(metadata: dict, log: Path) -> dict:
     line = rows[0]
     pages = json.loads(re.search(r"source_pages=(\[[^]]+\])", line).group(1))
     pool_bytes = int(re.search(r"global_bytes=(\d+)", line).group(1))
+    runtime_headroom = int(re.search(r"runtime_headroom_bytes=(\d+)", line).group(1))
     tails = concurrency + 2 * retained
     assert len(pages) == 4 and pages == [pages[0]] * 3 + [2 * pages[0]]
     assert pages[0] > tails
@@ -65,6 +96,7 @@ def summarize_deployment(metadata: dict, log: Path) -> dict:
     first = {option(w["args"], "--first-layer") for w in workers}
     assert len(budgets) == len(first) == 1
     return {"global_pool_bytes": pool_bytes, "logical_pool_tokens": (pages[0] - tails) * 512,
+            "runtime_headroom_bytes_per_gpu": runtime_headroom,
             "private_tail_tokens": tails * 512, "source_pages": pages,
             "prompt_retention_entries": retained, "completed_turn_retention_entries": retained,
             "concurrency": concurrency, "rtx_expert_layers": layers, "rtx_expert_tp": tp,
@@ -198,6 +230,9 @@ def main() -> None:
     report["binary_sha256"] = next(iter(binary_hashes))
     report["context_sha256"] = next(iter(context_hashes))
     report["corpus_sha256"] = next(iter(corpus_hashes))
+    campaign_path = args.input / "campaign.record"
+    report["readiness_memory"] = summarize_readiness(load(campaign_path), build)
+    artifacts.add(campaign_path)
     report["artifacts"] = [helpers["artifact"](p) for p in sorted(artifacts)]
     report["performance_matrix_passed"] = True
     args.output.write_text(json.dumps(report, indent=2) + "\n")

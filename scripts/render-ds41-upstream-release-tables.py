@@ -63,6 +63,12 @@ section('Deployment and cache capacity','Actual launch controls and startup pool
 section('Startup', 'Measured standard-script startup to API readiness, including deployment orchestration. Each entry is one launch, not a three-run median.',
  ['Layout', 'v3 seconds', 'v4 seconds', 'Change'], [[label, f(old['startup_seconds'][layout]), f(d['startup_seconds'][layout]), pct(d['startup_seconds'][layout],old['startup_seconds'][layout])] for layout,label in [('single','1 RTX'),('dual','2 RTX')]])
 rows=[]
+for layout,label in [('single','1 RTX'),('dual','2 RTX')]:
+ for index,gpu in enumerate(d['readiness_memory'][layout]['gpus']):
+  rows.append([label,index,f(gpu['used_mib']),f(gpu['free_mib']),f(d['deployment'][layout]['runtime_headroom_bytes_per_gpu']/2**20)])
+section('Memory after readiness','Measured immediately after the standard dSpark launch: the initial single-RTX launch and the final restored dual-RTX launch. Includes all GPU allocations, not just KV; free memory is the reported driver value.',
+ ['Layout','GPU','Loaded MiB','Free MiB','Runtime headroom policy MiB'],rows)
+rows=[]
 for phase,gpus in sorted(d['gpu_telemetry'].items()):
  for uuid,gpu in sorted(gpus.items()):
   rows.append([phase,uuid, f(gpu['peak_memory_mib']/1024),f(gpu['minimum_free_mib']/1024),f(gpu['peak_power_watts']),f(gpu['peak_memory_clock_mhz'])])
