@@ -36,3 +36,37 @@ def test_topic_is_held_out_even_at_odd_widths(tmp_path, monkeypatch):
         assert variant['evaluations']['rtx2_code_odd']['training'] is True
         assert variant['evaluations']['rtx2_mixed_odd']['training'] is True
         assert variant['evaluations']['rtx2_code_even_holdout']['training'] is False
+
+
+def test_stale_capture_recovery_requires_exact_trace_and_layer_manifest(tmp_path):
+    import hashlib
+    import pytest
+    path = Path(__file__).parents[1] / 'fit-ds41-placement-costs.py'
+    spec = importlib.util.spec_from_file_location('placement_exclusions', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    directory = tmp_path / 'rtx2-k5'
+    directory.mkdir()
+    (directory / 'code.json').write_text('{}')
+    trace = b'2026-09-17T00:00:00Z DEBUG ds41rt::cost_model: verification layer cost batch=12 layer=0 rows=42\n'
+    (directory / 'server.log').write_bytes(trace)
+    with pytest.raises(ValueError, match='unfinished layer'):
+        module.observations(directory)
+    manifest = dict(trace_sha256=hashlib.sha256(trace).hexdigest(),
+                    batches=[dict(batch=12, layers=[0], reason='Audited prefill artifact fixture')])
+    exclusion = directory / 'excluded_non_verification_batches.json'
+    exclusion.write_text(json.dumps(manifest))
+    assert module.observations(directory)[0] == []
+    manifest['batches'][0]['layers'] = [0, 1]
+    exclusion.write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match='unfinished layer'):
+        module.observations(directory)
+    manifest['batches'][0]['layers'] = [0]
+    trace += b'2026-09-17T00:00:01Z DEBUG ds41rt::cost_model: verification round cost batch=12 rows=42 verify_us=1\n'
+    (directory / 'server.log').write_bytes(trace)
+    with pytest.raises(ValueError, match='another trace'):
+        module.observations(directory)
+    manifest['trace_sha256'] = hashlib.sha256(trace).hexdigest()
+    exclusion.write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match='cannot exclude a completed verification'):
+        module.observations(directory)

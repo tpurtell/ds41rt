@@ -50,8 +50,12 @@ pub(crate) struct CompletedLayer<'t> {
 impl CompletedLayer<'_> {
     /// Opt-in calibration uses routes already captured by the lane. These are
     /// elapsed stage times (including scheduling/transport), not GPU kernel times.
-    fn log_cost(&self, captured: &[Vec<[u32; 6]>]) {
+    fn log_cost(&self, lane: &BackboneLane<'_, '_>) {
         if !tracing::enabled!(target: "ds41rt::cost_model", tracing::Level::DEBUG) { return; }
+        // Disabling capture retains allocated route buffers. Their old row
+        // count can match a subsequent prefill; those are not its routes.
+        if !lane.route_capture_enabled() { return; }
+        let captured = lane.captured_routes();
         let Some(routes) = captured.get(self.layer).filter(|r| r.len() == self.rows) else { return; };
         let mut counts = [0usize; 384];
         for &expert in routes.iter().flatten() {
@@ -572,7 +576,7 @@ impl<'w, 'a> BackboneExecution<'w, 'a> {
             && batch.identity() == completed.batch && self.progress.next == completed.layer
             && self.progress.stage == batch.stage(), "completed backbone layer identity differs");
         unsafe { lane.finish_ffn(completed.result.binding(), completed.result.values)?; }
-        completed.log_cost(lane.captured_routes());
+        completed.log_cost(lane);
         tracing::debug!(target: "ds41rt::timing", layer=completed.layer, rows=completed.rows,
             produced_us=completed.produced_us, index_us=completed.indexed_us-completed.produced_us,
             attention_us=completed.attended_us-completed.indexed_us,
@@ -590,7 +594,7 @@ impl<'w, 'a> BackboneExecution<'w, 'a> {
             && batch.identity() == completed.batch && self.progress.next == completed.layer
             && self.progress.stage == batch.stage(), "completed backbone layer identity differs");
         unsafe { lane.finish_ffn_cooperative(completed.result.binding(), completed.result.values).await?; }
-        completed.log_cost(lane.captured_routes());
+        completed.log_cost(lane);
         tracing::debug!(target: "ds41rt::timing", layer=completed.layer, rows=completed.rows,
             produced_us=completed.produced_us, index_us=completed.indexed_us-completed.produced_us,
             attention_us=completed.attended_us-completed.indexed_us,

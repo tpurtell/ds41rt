@@ -725,6 +725,7 @@ impl<'w, 'a> BackboneLane<'w, 'a> {
         }
     }
     pub fn captured_routes(&self) -> &[Vec<[u32; 6]>] { &self.route_capture }
+    pub fn route_capture_enabled(&self) -> bool { self.capture_routes }
     pub fn reserve_sparse_decode_rows(&mut self, rows: usize) -> Result<()> {
         self.sparse.reserve_decode_rows(rows)
     }

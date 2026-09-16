@@ -254,7 +254,7 @@ impl<'w, 'a> DistributedExecution<'w, 'a> {
                     .finish_ffn_cooperative(completed.result.binding(), completed.result.values)
             })
             .await?;
-        completed.log_cost(lane.captured_routes());
+        completed.log_cost(lane);
         tracing::debug!(target: "ds41rt::timing", layer=completed.layer, rows=completed.rows,
             production_and_index_us=completed.indexed_us,
             attention_us=completed.attended_us-completed.indexed_us,

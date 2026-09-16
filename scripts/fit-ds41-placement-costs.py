@@ -22,6 +22,15 @@ def observations(directory):
         raise ValueError(f'expected directory ending in rtxN-kN: {directory}')
     gpus, width = map(int, match.groups())
     path = directory / 'server.log'
+    trace_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+    # Older engines could label prefill with stale captured decode routes.
+    # Recovery requires an audited, exact-trace exclusion manifest. Never
+    # silently drop an incomplete verification round or arbitrary leftovers.
+    exclusion_path = directory / 'excluded_non_verification_batches.json'
+    exclusions = json.loads(exclusion_path.read_text()) if exclusion_path.exists() else None
+    if exclusions and exclusions['trace_sha256'] != trace_hash:
+        raise ValueError('non-verification exclusions belong to another trace')
+    excluded = {int(x['batch']): x for x in exclusions['batches']} if exclusions else {}
     # The client writes its final code report after receiving the last response;
     # mixed requests are issued only after that client exits. Explicit segment
     # offsets take precedence when the collector recorded them.
@@ -45,6 +54,8 @@ def observations(directory):
                 raise ValueError(f'duplicate layer {batch}/{layer}')
             pending[batch][layer] = fields
             continue
+        if batch in excluded:
+            raise ValueError(f'cannot exclude a completed verification round: {batch}')
         layers = pending.pop(batch)
         rows = int(fields['rows'])
         verify_us = int(fields['verify_us'])
@@ -79,9 +90,11 @@ def observations(directory):
                             workload=workload, warm=seen_shapes[shape] > 2,
                             verify_us=verify_us, groups=grouped,
                             other_us=verify_us-sum(g['expert_us'] for g in grouped.values())))
-    if pending:
+    if set(pending) != set(excluded) or any(
+            set(pending[batch]) != set(entry['layers'])
+            or not entry['reason'] for batch, entry in excluded.items()):
         raise ValueError(f'unfinished layer records in {path}')
-    return records, hashlib.sha256(path.read_bytes()).hexdigest()
+    return records, trace_hash
 
 
 def fit(x, y):
@@ -177,6 +190,9 @@ def main():
     report = dict(scope=__doc__, trace_sha256=hashes, rounds=len(records), warm_rounds=len(warm),
                   training_rounds=len(training), training_workload=args.training_workload, variants=variants,
                   limitations='Observed expert routes; no history prediction error included. Odd widths train; even widths are held out. Workload selection is explicit. Elapsed timing includes instrumentation and concurrent scheduling. Short-context corpus only; not a serving-default qualification.')
+    report['excluded_non_verification_batches'] = {
+        directory.name: json.loads((directory / 'excluded_non_verification_batches.json').read_text())
+        for directory in args.directories if (directory / 'excluded_non_verification_batches.json').exists()}
     with args.output.open('x') as stream:
         json.dump(report, stream, indent=2)
         stream.write('\n')
