@@ -4,9 +4,32 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import runpy
 from pathlib import Path
+
+
+def summarize_telemetry(path: Path) -> dict:
+    """Keep controls and memory peaks per monitored GPU, including idle cards."""
+    gpus = {}
+    columns = {
+        "peak_memory_mib": "memory.used [MiB]",
+        "peak_power_watts": "power.draw [W]",
+        "peak_memory_clock_mhz": "clocks.current.memory [MHz]",
+        "peak_temperature_celsius": "temperature.gpu",
+    }
+    with path.open() as source:
+        for row in csv.DictReader(source, skipinitialspace=True):
+            assert float(row["power.limit [W]"].split()[0]) == 400, path
+            gpu = gpus.setdefault(row["uuid"], {"samples": 0, "power_limit_watts": 400})
+            gpu["samples"] += 1
+            for output, column in columns.items():
+                value = float(row[column].split()[0])
+                gpu[output] = max(gpu.get(output, value), value)
+            assert gpu["peak_memory_clock_mhz"] <= 14001, path
+    assert gpus, path
+    return gpus
 
 
 def main() -> None:
@@ -48,6 +71,7 @@ def main() -> None:
         },
         "layouts": {},
         "provenance": {},
+        "gpu_telemetry": {},
         "startup_seconds": {},
     }
     artifacts = set()
@@ -95,6 +119,7 @@ def main() -> None:
             telemetry = args.input / f"{layout}-{phase}-gpu.csv"
             assert telemetry.is_file() and telemetry.stat().st_size > 0
             artifacts.add(telemetry)
+            report["gpu_telemetry"][f"{layout}-{phase}"] = summarize_telemetry(telemetry)
             report["provenance"][f"{layout}-{phase}"] = metadata
         startup = args.input / f"{layout}-startup-seconds.txt"
         seconds = float(startup.read_text())
