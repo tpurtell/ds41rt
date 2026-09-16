@@ -10,6 +10,9 @@ use ds41rt_ffi::{
 use std::{collections::VecDeque, cell::Cell, ffi::c_void, marker::PhantomData, rc::Rc};
 const WIDTH: usize = 16384;
 const BLOCKS: usize = WIDTH / 8;
+// Index fingerprints include request layouts; retain a bounded recent set.
+// Per-layer projection graphs have a separate residency limit.
+const MAX_RETAINED_DECODE_GRAPHS: usize = 512;
 
 pub(crate) struct SelectionRequest<'a> {
     pub proposal: &'a IndexProposal<'a>,
@@ -175,7 +178,7 @@ impl<'a> IndexSelectionWave<'a> {
     }
     pub fn enable_small_graph_shapes(&mut self) {
         if !self.retain_decode_graphs {
-            self.retained_graphs.reserve(512);
+            self.retained_graphs.reserve(MAX_RETAINED_DECODE_GRAPHS);
             self.retain_decode_graphs = true;
         }
     }
@@ -198,7 +201,7 @@ impl<'a> IndexSelectionWave<'a> {
             // (including source pointers, widths and candidate mode) still match
             // exactly before replay. Large prefill graphs are never retained.
             if old.1[1] <= 8 * (ds41rt_core::MAX_DSPARK_PROPOSALS + 1) {
-                if self.retained_graphs.len() == 512 {
+                if self.retained_graphs.len() == MAX_RETAINED_DECODE_GRAPHS {
                     let (graph, _) = self.retained_graphs.pop_front().unwrap();
                     unsafe { self.stream.library.cuda_graph_exec_destroy(graph)?; }
                 }
@@ -599,6 +602,35 @@ mod graph_tests {
             assert_eq!(&actual[..rows * 4], vec![value; rows * 4]);
             assert!(actual[rows * 4..].iter().all(|&x| x == 0));
         }
+        wave.clear_graph()?;
+        assert!(wave.graph.is_none() && wave.retained_graphs.is_empty());
+        // Exercise actual CUDA handle destruction at the retention limit, then
+        // replay current data through each newly captured graph. Distinct final
+        // fingerprint fields stand in for changing request/source layouts.
+        for key in 0..MAX_RETAINED_DECODE_GRAPHS + 3 {
+            wave.restart()?;
+            let fingerprint = vec![2, 4, input.ptr as usize, output.ptr as usize, key];
+            wave.select_graph(&fingerprint)?;
+            assert!(wave.graph.is_none());
+            unsafe {
+                library.cuda_graph_begin_capture(wave.stream.raw)?;
+                library.copy_d2d_async(output, input, 16, wave.stream.raw)?;
+                let graph = library.cuda_graph_end_capture(wave.stream.raw)?;
+                wave.graph = Some((graph, fingerprint));
+            }
+            assert!(wave.retained_graphs.len() <= MAX_RETAINED_DECODE_GRAPHS);
+            let value = (key % 251 + 1) as u8;
+            library.copy_h2d(input, &vec![value; 320])?;
+            library.copy_h2d(output, &[0; 320])?;
+            unsafe { library.cuda_graph_launch(wave.graph.as_ref().unwrap().0, wave.stream.raw)?; }
+            wave.synchronize()?;
+            let mut actual = vec![0; 320];
+            library.copy_d2h(&mut actual, output)?;
+            assert_eq!(&actual[..16], &[value; 16]);
+            assert!(actual[16..].iter().all(|&x| x == 0));
+        }
+        assert_eq!(wave.retained_graphs.len(), MAX_RETAINED_DECODE_GRAPHS);
+        assert!(!wave.retained_graphs.iter().any(|(_, key)| key[4] == 0));
         wave.clear_graph()?;
         assert!(wave.graph.is_none() && wave.retained_graphs.is_empty());
         Ok(())
