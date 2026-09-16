@@ -7,7 +7,7 @@ use anyhow::{ensure, Context, Result};
 use ds41rt_ffi::{
     Ds41rtDeviceBuffer, NativeLibrary, V41CandidateBlocks, V41IndexScores, V41IndexTopK,
 };
-use std::{cell::Cell, ffi::c_void, marker::PhantomData, rc::Rc};
+use std::{collections::VecDeque, cell::Cell, ffi::c_void, marker::PhantomData, rc::Rc};
 const WIDTH: usize = 16384;
 const BLOCKS: usize = WIDTH / 8;
 
@@ -71,6 +71,8 @@ pub(crate) struct IndexSelectionWave<'a> {
     top: V41IndexTopK<'a>,
     candidates: V41CandidateBlocks<'a>,
     graph: Option<(*mut c_void, Vec<usize>)>,
+    retained_graphs: VecDeque<(*mut c_void, Vec<usize>)>,
+    retain_decode_graphs: bool,
     ready: Option<Ready>,
     pending: Option<Ready>,
     in_flight: bool,
@@ -127,7 +129,7 @@ impl<'a> IndexSelectionWave<'a> {
             score: library.v41_index_scores()?,
             top: library.v41_index_topk()?,
             candidates: library.v41_candidate_blocks()?,
-            graph: None,
+            graph: None, retained_graphs: VecDeque::new(), retain_decode_graphs: false,
             ready: None,
             pending: None,
             in_flight: false,
@@ -159,7 +161,8 @@ impl<'a> IndexSelectionWave<'a> {
             stream: LoadStream { library, raw: library.cuda_stream_create()? }, buffers,
             shared_scratch_busy: Some(busy.clone()), staging: HostAllocation::new(library, capacity * 56)?,
             capacity, score: library.v41_index_scores()?, top: library.v41_index_topk()?,
-            candidates: library.v41_candidate_blocks()?, graph: None, ready: None, pending: None, in_flight: false,
+            candidates: library.v41_candidate_blocks()?, graph: None,
+            retained_graphs: VecDeque::new(), retain_decode_graphs: false, ready: None, pending: None, in_flight: false,
         };
         source.shared_scratch_busy = Some(busy);
         Ok(value)
@@ -170,16 +173,54 @@ impl<'a> IndexSelectionWave<'a> {
     fn synchronize(&self) -> Result<()> {
         unsafe { self.stream.library.cuda_stream_synchronize(self.stream.raw) }
     }
+    pub fn enable_small_graph_shapes(&mut self) {
+        if !self.retain_decode_graphs {
+            self.retained_graphs.reserve(512);
+            self.retain_decode_graphs = true;
+        }
+    }
+    /// Invalidate published selections without discarding immutable launch shapes.
+    pub fn restart(&mut self) -> Result<()> {
+        if !self.retain_decode_graphs { return self.clear_graph(); }
+        ensure!(!self.in_flight, "index selection pending");
+        self.stream.require_complete()?;
+        self.ready = None;
+        Ok(())
+    }
+    fn select_graph(&mut self, fingerprint: &[usize]) -> Result<()> {
+        if self.graph.as_ref().is_some_and(|(_, key)| key == fingerprint) { return Ok(()); }
+        if !self.retain_decode_graphs { return self.clear_graph(); }
+        self.restart()?;
+        let found = self.retained_graphs.iter().position(|(_, key)| key == fingerprint)
+            .and_then(|index| self.retained_graphs.remove(index));
+        if let Some(old) = self.graph.take() {
+            // Fingerprint begins with layer and row count. All remaining fields
+            // (including source pointers, widths and candidate mode) still match
+            // exactly before replay. Large prefill graphs are never retained.
+            if old.1[1] <= 8 * (ds41rt_core::MAX_DSPARK_PROPOSALS + 1) {
+                if self.retained_graphs.len() == 512 {
+                    let (graph, _) = self.retained_graphs.pop_front().unwrap();
+                    unsafe { self.stream.library.cuda_graph_exec_destroy(graph)?; }
+                }
+                self.retained_graphs.push_back(old);
+            } else {
+                unsafe { self.stream.library.cuda_graph_exec_destroy(old.0)?; }
+            }
+        }
+        self.graph = found;
+        Ok(())
+    }
     pub fn clear_graph(&mut self) -> Result<()> {
         ensure!(!self.in_flight, "index selection pending");
         self.ready = None;
         self.stream.require_complete()?;
-        if let Some((g, _)) = self.graph.take() {
-            unsafe {
-                self.stream.library.cuda_graph_exec_destroy(g)?;
+        let mut failure = None;
+        for (graph, _) in self.graph.take().into_iter().chain(self.retained_graphs.drain(..)) {
+            if let Err(error) = unsafe { self.stream.library.cuda_graph_exec_destroy(graph) } {
+                failure.get_or_insert(error);
             }
         }
-        Ok(())
+        failure.map_or(Ok(()), Err)
     }
     unsafe fn enqueue(
         &self,
@@ -440,7 +481,7 @@ impl<'a> IndexSelectionWave<'a> {
             }
             staging[rows * 48 + i * 8..rows * 48 + i * 8 + 8].copy_from_slice(&m[1].to_ne_bytes());
         }
-        if self.graph.as_ref().map(|(_, f)| f) != Some(&fingerprint) { self.clear_graph()?; }
+        self.select_graph(&fingerprint)?;
         if defer {
             self.in_flight = true;
             if let Some(busy) = &self.shared_scratch_busy { busy.set(true); }
@@ -510,5 +551,56 @@ impl Drop for IndexSelectionWave<'_> {
         if let Err(error) = self.clear_graph() {
             tracing::error!(%error,"draining index selection graph");
         }
+    }
+}
+
+#[cfg(test)]
+mod graph_tests {
+    use super::*;
+
+    #[test]
+    fn cuda_selection_shapes_replay_current_inputs_after_restart() -> Result<()> {
+        let Some(path) = std::env::var_os("DS41RT_INDEX_GRAPH_LIBRARY") else {
+            eprintln!("skip selection graph lifetime test: DS41RT_INDEX_GRAPH_LIBRARY unset");
+            return Ok(());
+        };
+        let library = unsafe { NativeLibrary::load(path)? };
+        library.cuda_set_device(0)?;
+        let mut wave = IndexSelectionWave::new(&library, 80, IndexSelectionWave::device_bytes(80)?)?;
+        wave.enable_small_graph_shapes();
+        let input = slice(wave.b(0), 0, 320);
+        let output = slice(wave.b(1), 0, 320);
+        let mut handles = std::collections::BTreeMap::new();
+        for (iteration, (layer, rows)) in [(2, 4), (8, 2), (2, 4), (8, 2), (2, 80), (2, 4), (8, 2)]
+            .into_iter().enumerate() {
+            wave.restart()?;
+            let fingerprint = vec![layer, rows, input.ptr as usize, output.ptr as usize];
+            wave.select_graph(&fingerprint)?;
+            if wave.graph.is_none() {
+                unsafe {
+                    library.cuda_graph_begin_capture(wave.stream.raw)?;
+                    library.copy_d2d_async(output, input, rows * 4, wave.stream.raw)?;
+                    let graph = library.cuda_graph_end_capture(wave.stream.raw)?;
+                    wave.graph = Some((graph, fingerprint));
+                }
+            }
+            let graph = wave.graph.as_ref().unwrap().0;
+            if rows <= 64 {
+                assert_eq!(*handles.entry((layer, rows)).or_insert(graph), graph,
+                    "restart or large-prefill transition discarded a decode graph");
+            }
+            let value = iteration as u8 + 1;
+            library.copy_h2d(input, &vec![value; 320])?;
+            library.copy_h2d(output, &[0; 320])?;
+            unsafe { library.cuda_graph_launch(graph, wave.stream.raw)?; }
+            wave.synchronize()?;
+            let mut actual = vec![0; 320];
+            library.copy_d2h(&mut actual, output)?;
+            assert_eq!(&actual[..rows * 4], vec![value; rows * 4]);
+            assert!(actual[rows * 4..].iter().all(|&x| x == 0));
+        }
+        wave.clear_graph()?;
+        assert!(wave.graph.is_none() && wave.retained_graphs.is_empty());
+        Ok(())
     }
 }

@@ -16,7 +16,32 @@ flowchart LR
     F --> G[Clean image builds, README, reports and release]
 ```
 
-## Interim clean release performance
+## Serving-history graph reuse correction
+
+The [qualified graph-reuse experiment](sparkinfer-upstream-index-graph-reuse-20260916.json)
+removes the reproduced post-mixed topic slowdown. Three samples give C1
+**98.67 → 97.65 TPS** before/after mixed traffic and C8 **465.95 → 459.33**.
+The unchanged-image control fell from 95.82 to 80.58 at C1 and from 447.80 to
+385.50 at C8. C1 generated text is unchanged across the candidate transition.
+These are targeted regression measurements, not the final release matrix.
+
+Per-layer traces localized the persistent loss to the eight index-selection
+layers. The dual pass omitted the index shape-retention enablement present in
+the single-GPU pass. It now enables that path on both devices. SWA/compressed
+producers also retain bounded decode shapes, and index selection keeps bounded
+full-fingerprint graph reuse across batch restarts while invalidating published
+outputs. Snapshot, pointer, width, row-layout and candidate-mode checks remain.
+The CUDA kernels and numerical policy are unchanged.
+
+Retained-prefix equivalence and all 16 divergent branches pass. A real CUDA
+lifetime test verifies current inputs through shape switches, batch restarts and
+a large-prefill transition. Measured post-mixed occupancy is 96,200/96,568 MiB
+out of 97,887 MiB per RTX, preserving the 14M-token pool. A targeted 1.04M
+cold/exact needle and subsequent short-decode check is in progress. Refresh the
+release performance matrix with this correction before publication.
+
+## Initial clean release performance (before graph-reuse correction)
+
 
 Matched published prompts and three samples produce weighted dual-RTX decode
 **79.33 → 85.42 TPS (+7.7%)** and C16 code **1181.49 → 1217.34 aggregate TPS

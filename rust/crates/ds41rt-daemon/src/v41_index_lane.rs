@@ -98,7 +98,11 @@ impl<'w, 'a> IndexLane<'w, 'a> {
         self.next = Self::next_owned(self.weights, self.device, self.next + 1);
     }
     /// Begin a new batch after all consumers finish; also recovers failed work.
-    pub fn enable_small_graph_shapes(&mut self) { self.query.enable_small_graph_shapes(); }
+    pub fn enable_small_graph_shapes(&mut self) {
+        self.query.enable_small_graph_shapes();
+        self.source.enable_small_graph_shapes();
+        if let Some(reindex) = &mut self.reindex { reindex.enable_small_graph_shapes(); }
+    }
     pub fn restart(&mut self) -> Result<()> {
         self.restart_at(0)
     }
@@ -109,8 +113,8 @@ impl<'w, 'a> IndexLane<'w, 'a> {
     fn restart_at(&mut self, first: usize) -> Result<()> {
         self.invalid = true;
         self.ready = None;
-        self.source.clear_graph()?;
-        if let Some(reindex) = &mut self.reindex { reindex.clear_graph()?; }
+        self.source.restart()?;
+        if let Some(reindex) = &mut self.reindex { reindex.restart()?; }
         let first = Self::next_owned(self.weights, self.device, first);
         if first < LAYERS.len() { self.query.rebind(&self.weights.weights[first])?; }
         self.next = first;

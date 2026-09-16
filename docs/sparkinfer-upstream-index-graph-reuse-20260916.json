@@ -1,0 +1,255 @@
+{
+  "scope": "Bounded cache-producer and index graph reuse; mixed-history regression reproducer and targeted cache validation",
+  "implementation": "Dual route capture now enables index shape retention, matching the single-GPU path. Producer waves retain up to 64 decode shapes; index selections retain at most 512 previous small-shape fingerprints plus the current graph. Full fingerprints remain mandatory for replay.",
+  "candidate": {
+    "before": [
+      {
+        "concurrency": 1,
+        "samples": 3,
+        "median_aggregate_tps": 98.67221455765052,
+        "min_aggregate_tps": 97.74819648725776,
+        "max_aggregate_tps": 98.8657283140317
+      },
+      {
+        "concurrency": 8,
+        "samples": 3,
+        "median_aggregate_tps": 465.9518542952229,
+        "min_aggregate_tps": 337.19463185692814,
+        "max_aggregate_tps": 471.246160823692
+      }
+    ],
+    "after": [
+      {
+        "concurrency": 1,
+        "samples": 3,
+        "median_aggregate_tps": 97.65331258637951,
+        "min_aggregate_tps": 97.43353528425976,
+        "max_aggregate_tps": 97.69991575413506
+      },
+      {
+        "concurrency": 8,
+        "samples": 3,
+        "median_aggregate_tps": 459.330406391484,
+        "min_aggregate_tps": 430.23024892938366,
+        "max_aggregate_tps": 459.39361507901225
+      }
+    ],
+    "before_c1_text_sha256": [
+      "43578586db56df15e058cc78fa1c6635f8588d98d307d831cc7b42b879f20433",
+      "43578586db56df15e058cc78fa1c6635f8588d98d307d831cc7b42b879f20433",
+      "43578586db56df15e058cc78fa1c6635f8588d98d307d831cc7b42b879f20433"
+    ],
+    "after_c1_text_sha256": [
+      "43578586db56df15e058cc78fa1c6635f8588d98d307d831cc7b42b879f20433",
+      "43578586db56df15e058cc78fa1c6635f8588d98d307d831cc7b42b879f20433",
+      "43578586db56df15e058cc78fa1c6635f8588d98d307d831cc7b42b879f20433"
+    ]
+  },
+  "control": {
+    "before": [
+      {
+        "concurrency": 1,
+        "samples": 3,
+        "median_aggregate_tps": 95.82455816763553,
+        "min_aggregate_tps": 95.25670742813759,
+        "max_aggregate_tps": 96.12478514979085
+      },
+      {
+        "concurrency": 8,
+        "samples": 3,
+        "median_aggregate_tps": 447.7991101728103,
+        "min_aggregate_tps": 391.2804836977882,
+        "max_aggregate_tps": 448.8169983935826
+      }
+    ],
+    "after": [
+      {
+        "concurrency": 1,
+        "samples": 3,
+        "median_aggregate_tps": 80.5845479874706,
+        "min_aggregate_tps": 79.72797919436088,
+        "max_aggregate_tps": 80.59442700432602
+      },
+      {
+        "concurrency": 8,
+        "samples": 3,
+        "median_aggregate_tps": 385.49951237283403,
+        "min_aggregate_tps": 344.2446414900681,
+        "max_aggregate_tps": 392.25704844957545
+      }
+    ]
+  },
+  "quality": {
+    "prefix_passed": true,
+    "concurrent_branches": 16,
+    "branch_command_exit_code": 0,
+    "cuda_graph_lifetime_test": {
+      "test": "v41_index_selection::graph_tests::cuda_selection_shapes_replay_current_inputs_after_restart",
+      "result": "1 passed; 0 failed; 0 ignored",
+      "native_library": "/opt/ds41rt/lib/libds41rt_native.so",
+      "image": "ds41rt-coordinator:upstream-candidate"
+    },
+    "one_million_context": "pending separate targeted run"
+  },
+  "metadata": {
+    "launch": [
+      "docker",
+      "run",
+      "-d",
+      "--name",
+      "ds41rt-index-shapes-enabled",
+      "--gpus",
+      "\"device=GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0,GPU-95f8f212-9131-df99-fd53-7535965197d7\"",
+      "--network",
+      "host",
+      "--ipc",
+      "host",
+      "--ulimit",
+      "memlock=-1:-1",
+      "--device=/dev/infiniband",
+      "-e",
+      "CUDA_VISIBLE_DEVICES=GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0,GPU-95f8f212-9131-df99-fd53-7535965197d7",
+      "-e",
+      "RUST_LOG=info",
+      "-v",
+      "/home/tj/.cache/huggingface:/root/.cache/huggingface:ro",
+      "-v",
+      "/home/tj/.cache/ds41rt-upstream-20260916/ds41rt-index-shapes-enabled:/opt/ds41rt/bin/ds41rt:ro",
+      "sha256:3d95c6a7feed2dfc9fc8240815446295949f56ab75da361cd53257bf554b10e3",
+      "ds41rt",
+      "serve-native",
+      "--snapshot",
+      "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+      "--native-lib",
+      "/opt/ds41rt/lib/libds41rt_native.so",
+      "--peers",
+      "10.55.0.1:19441,10.55.0.2:19441,10.55.0.3:19441,10.55.0.4:19441",
+      "--rtx-gpus",
+      "2",
+      "--listen",
+      "0.0.0.0:8000",
+      "--prefill-batch-tokens",
+      "2048",
+      "--concurrency",
+      "16",
+      "--prefix-cache-entries",
+      "24",
+      "--max-context-tokens",
+      "1048576",
+      "--max-output-tokens",
+      "393216",
+      "--dspark"
+    ],
+    "commands": [
+      {
+        "label": "topic-before",
+        "command": [
+          "/home/tj/Developer/ds41rt/.venv/bin/python",
+          "/home/tj/Developer/ds41rt/scripts/bench-ds41-concurrent-api.py",
+          "--base-url",
+          "http://127.0.0.1:8000",
+          "--label",
+          "phase2-release-final",
+          "--nonce",
+          "20260914",
+          "--case",
+          "topic",
+          "--concurrency",
+          "1",
+          "8",
+          "--repeats",
+          "3",
+          "--output",
+          "/home/tj/.cache/ds41rt-upstream-20260916/clean-history-index-shapes-enabled/topic-before.json"
+        ],
+        "start_ns": 1789538117821753629,
+        "end_ns": 1789538150121359892,
+        "exit": 0,
+        "gpu_memory": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, 95630 MiB, 97887 MiB\nGPU-95f8f212-9131-df99-fd53-7535965197d7, 95934 MiB, 97887 MiB\n"
+      },
+      {
+        "label": "mixed",
+        "command": [
+          "/home/tj/Developer/ds41rt/.venv/bin/python",
+          "/home/tj/Developer/ds41rt/scripts/bench-ds41-adaptive-mixed.py",
+          "--base-url",
+          "http://127.0.0.1:8000",
+          "--tokenizer",
+          "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+          "--nonce-seed",
+          "56001",
+          "--concurrency",
+          "1",
+          "2",
+          "4",
+          "8",
+          "16",
+          "--skip-lifecycle",
+          "--output",
+          "/home/tj/.cache/ds41rt-upstream-20260916/clean-history-index-shapes-enabled/mixed.json"
+        ],
+        "start_ns": 1789538150141663090,
+        "end_ns": 1789538176923772386,
+        "exit": 0,
+        "gpu_memory": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, 96200 MiB, 97887 MiB\nGPU-95f8f212-9131-df99-fd53-7535965197d7, 96568 MiB, 97887 MiB\n"
+      },
+      {
+        "label": "topic-after",
+        "command": [
+          "/home/tj/Developer/ds41rt/.venv/bin/python",
+          "/home/tj/Developer/ds41rt/scripts/bench-ds41-concurrent-api.py",
+          "--base-url",
+          "http://127.0.0.1:8000",
+          "--label",
+          "phase2-release-final",
+          "--nonce",
+          "20260914",
+          "--case",
+          "topic",
+          "--concurrency",
+          "1",
+          "8",
+          "--repeats",
+          "3",
+          "--output",
+          "/home/tj/.cache/ds41rt-upstream-20260916/clean-history-index-shapes-enabled/topic-after.json"
+        ],
+        "start_ns": 1789538176945453997,
+        "end_ns": 1789538206893436038,
+        "exit": 0,
+        "gpu_memory": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, 96200 MiB, 97887 MiB\nGPU-95f8f212-9131-df99-fd53-7535965197d7, 96568 MiB, 97887 MiB\n"
+      },
+      {
+        "label": "prefix",
+        "command": [
+          "/home/tj/Developer/ds41rt/.venv/bin/python",
+          "/home/tj/Developer/ds41rt/scripts/qualify-ds41-partial-prefix-api.py",
+          "--base-url",
+          "http://127.0.0.1:8000",
+          "--reference-report",
+          "/home/tj/.cache/ds41rt-upstream-20260916/clean-prefix-reference.json",
+          "--output",
+          "/home/tj/.cache/ds41rt-upstream-20260916/clean-history-index-shapes-enabled/prefix.json"
+        ],
+        "exit": 0
+      },
+      {
+        "label": "branches",
+        "command": [
+          "/home/tj/Developer/ds41rt/.venv/bin/python",
+          "/home/tj/Developer/ds41rt/scripts/qualify-ds41-partial-concurrency.py",
+          "--base-url",
+          "http://127.0.0.1:8000",
+          "--output",
+          "/home/tj/.cache/ds41rt-upstream-20260916/clean-history-index-shapes-enabled/branches.json"
+        ],
+        "exit": 0
+      }
+    ],
+    "binary_sha256": "932d4190a681eb2c296e5787af93f3a2df3fcd8dd4c85c7556afa860be96cb3b"
+  },
+  "evidence_archive": {
+    "path": "docs/evidence/upstream-index-graph-reuse-20260916.tar.gz",
+    "sha256": "6a40d57daa7dd27a5e15822024579d31b0e8daec2f1dc255f2b5541aea161f8a"
+  }
+}

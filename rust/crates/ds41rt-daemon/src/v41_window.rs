@@ -305,6 +305,7 @@ impl<'a> WindowWeights<'a> {
             staging: HostAllocation::new(self.library, rows * 8 + 128)?,
             capacity: rows,
             graph: None,
+            retained_graphs: [None; 64],
             ready: None,
             pending_query: None,
             pending_commit: None,
@@ -391,6 +392,8 @@ pub(crate) struct WindowWave<'w, 'a> {
     staging: HostAllocation<'a>,
     capacity: usize,
     graph: Option<(*mut c_void, usize, u64)>,
+    // Lane-local decode shapes; large prefill retains only the current graph.
+    retained_graphs: [Option<(*mut c_void, usize, u64)>; 64],
     ready: Option<Prepared>,
     pending_query: Option<(Prepared, bool)>,
     pending_commit: Option<PendingCommit>,
@@ -515,8 +518,8 @@ impl WindowWave<'_, '_> {
             && query.hidden.device_id == self.input.buffer.device_id
             && query.tokens()?.iter().copied().eq(chunks.iter().flat_map(|c|
                 c.position..c.position + u64::from(c.tokens))), "queued cache query differs");
-        let capture = self.graph.is_none_or(|(_, rows, owner)| rows != prepared.rows || owner != state.owner);
-        if capture { self.clear_graph_inner(false)?; }
+        self.select_graph(prepared.rows, state.owner, false)?;
+        let capture = self.graph.is_none();
         let result = (|| -> Result<()> {
             unsafe { self.stream.library.copy_d2d_async(self.input.buffer, query.hidden,
                 query.hidden.bytes, self.stream.raw)?; }
@@ -593,8 +596,8 @@ impl WindowWave<'_, '_> {
                     self.input.buffer, query.hidden, query.hidden.bytes, self.stream.raw,
                 )?;
             }
-            if self.graph.is_none_or(|(_, rows, owner)| rows != prepared.rows || owner != state.owner) {
-                self.clear_graph()?;
+            self.select_graph(prepared.rows, state.owner, true)?;
+            if self.graph.is_none() {
                 unsafe { self.capture(state, chunks)?; }
             }
             unsafe { self.replay(state, chunks)?; }
@@ -742,6 +745,32 @@ impl WindowWave<'_, '_> {
         );
         Ok(())
     }
+    /// Switch only after prior launches finish. Graphs bind the cache owner and
+    /// lane workspace, while current request descriptors are uploaded on replay.
+    fn select_graph(&mut self, rows: usize, owner: u64, drain: bool) -> Result<()> {
+        if self.graph.is_some_and(|(_, n, o)| n == rows && o == owner) { return Ok(()); }
+        ensure!(self.pending_query.is_none() && self.pending_commit.is_none(),
+            "cannot switch a pending cache producer graph");
+        if self.graph.is_some_and(|(_, _, o)| o != owner)
+            || self.retained_graphs.iter().flatten().any(|(_, _, o)| *o != owner) {
+            return self.clear_graph_inner(drain);
+        }
+        self.ready = None;
+        if drain { self.synchronize()?; } else { self.stream.require_complete()?; }
+        if let Some(old) = self.graph.take() {
+            if (1..=self.retained_graphs.len()).contains(&old.1) {
+                let slot = &mut self.retained_graphs[old.1 - 1];
+                ensure!(slot.is_none(), "duplicate retained cache producer shape");
+                *slot = Some(old);
+            } else {
+                unsafe { self.stream.library.cuda_graph_exec_destroy(old.0)?; }
+            }
+        }
+        if (1..=self.retained_graphs.len()).contains(&rows) {
+            self.graph = self.retained_graphs[rows - 1].take();
+        }
+        Ok(())
+    }
     pub fn clear_graph(&mut self) -> Result<()> {
         self.clear_graph_inner(true)
     }
@@ -750,7 +779,8 @@ impl WindowWave<'_, '_> {
         ensure!(self.pending_commit.is_none(), "cannot reset a pending window commit");
         self.ready = None;
         if drain { self.synchronize()?; } else { self.stream.require_complete()?; }
-        if let Some((g, _, _)) = self.graph.take() {
+        for (g, _, _) in self.graph.take().into_iter()
+            .chain(self.retained_graphs.iter_mut().filter_map(Option::take)) {
             unsafe {
                 self.stream.library.cuda_graph_exec_destroy(g)?;
             }

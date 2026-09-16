@@ -170,6 +170,11 @@ impl<'w, 'a> DistributedTargetPass<'w, 'a> {
         }
         self.capture_routes = enabled;
         if enabled {
+            // Match the single-GPU pass: adaptive row changes must retain the
+            // index projection and selection graphs on both owning devices.
+            for index in self.indices.iter_mut().flatten() {
+                index.get_mut().enable_small_graph_shapes();
+            }
             for rows in &mut self.route_capture { rows.clear(); }
         }
         Ok(())
