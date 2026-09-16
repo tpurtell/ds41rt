@@ -1,0 +1,162 @@
+{
+  "scope": "Live SM121 rank-0 EXL3 decode kernel profile",
+  "engine_commit": "74d1b88",
+  "worker_timing_commit": "30b0c6d",
+  "sparkinfer_commit": "fd8f8a68a3fd674e6c8d7d462692beb687b5939f",
+  "configuration": {
+    "rtx_gpus": 2,
+    "spark_gpus": 4,
+    "rtx_expert_layers": 25,
+    "rank": 0,
+    "intermediate": 640,
+    "capacity": 16,
+    "rows": 8,
+    "layers": [
+      30,
+      31
+    ],
+    "distinct_experts": [
+      30,
+      31
+    ],
+    "tile": [
+      128,
+      128,
+      128,
+      128
+    ]
+  },
+  "profiler": {
+    "version": "2026.1.1.0",
+    "options": "--set basic --clock-control none --cache-control none --launch-skip 100 --launch-count 12",
+    "replay_passes": 9
+  },
+  "cores": [
+    {
+      "id": "3",
+      "kernel": "kernel_cutlass_kernel_b12xmoe_sharedkernelsw4a16mixed_trellisW4A16MixedTrellisKernel_object_at__tensorptrbf16gmemalign16oi641_tensorptrf16gmemalign16o614401_tensorptrf16gmemalign16o614401_0",
+      "block": "(256, 1, 1)",
+      "grid": "(48, 1, 1)",
+      "metrics": {
+        "gpu__time_duration.sum": {
+          "value": 693.248,
+          "unit": "us"
+        },
+        "launch__registers_per_thread": {
+          "value": 152.0,
+          "unit": "register/thread"
+        },
+        "launch__shared_mem_per_block": {
+          "value": 53.248,
+          "unit": "Kbyte/block"
+        },
+        "launch__shared_mem_per_block_dynamic": {
+          "value": 52.224,
+          "unit": "Kbyte/block"
+        },
+        "launch__occupancy_limit_registers": {
+          "value": 1.0,
+          "unit": "block"
+        },
+        "launch__occupancy_limit_shared_mem": {
+          "value": 1.0,
+          "unit": "block"
+        },
+        "launch__waves_per_multiprocessor": {
+          "value": 1.0,
+          "unit": ""
+        },
+        "sm__warps_active.avg.pct_of_peak_sustained_active": {
+          "value": 16.77973,
+          "unit": "%"
+        },
+        "sm__throughput.avg.pct_of_peak_sustained_elapsed": {
+          "value": 23.576237,
+          "unit": "%"
+        },
+        "sm__pipe_tensor_cycles_active.avg.pct_of_peak_sustained_elapsed": {
+          "value": 5.546828,
+          "unit": "%"
+        },
+        "sm__pipe_aluheavy_cycles_active.avg.pct_of_peak_sustained_elapsed": {
+          "value": 23.576237,
+          "unit": "%"
+        },
+        "lts__throughput.avg.pct_of_peak_sustained_elapsed": {
+          "value": 16.423225,
+          "unit": "%"
+        }
+      }
+    },
+    {
+      "id": "8",
+      "kernel": "kernel_cutlass_kernel_b12xmoe_sharedkernelsw4a16mixed_trellisW4A16MixedTrellisKernel_object_at__tensorptrbf16gmemalign16oi641_tensorptrf16gmemalign16o614401_tensorptrf16gmemalign16o614401_0",
+      "block": "(256, 1, 1)",
+      "grid": "(48, 1, 1)",
+      "metrics": {
+        "gpu__time_duration.sum": {
+          "value": 698.208,
+          "unit": "us"
+        },
+        "launch__registers_per_thread": {
+          "value": 152.0,
+          "unit": "register/thread"
+        },
+        "launch__shared_mem_per_block": {
+          "value": 53.248,
+          "unit": "Kbyte/block"
+        },
+        "launch__shared_mem_per_block_dynamic": {
+          "value": 52.224,
+          "unit": "Kbyte/block"
+        },
+        "launch__occupancy_limit_registers": {
+          "value": 1.0,
+          "unit": "block"
+        },
+        "launch__occupancy_limit_shared_mem": {
+          "value": 1.0,
+          "unit": "block"
+        },
+        "launch__waves_per_multiprocessor": {
+          "value": 1.0,
+          "unit": ""
+        },
+        "sm__warps_active.avg.pct_of_peak_sustained_active": {
+          "value": 16.379599,
+          "unit": "%"
+        },
+        "sm__throughput.avg.pct_of_peak_sustained_elapsed": {
+          "value": 24.169673,
+          "unit": "%"
+        },
+        "sm__pipe_tensor_cycles_active.avg.pct_of_peak_sustained_elapsed": {
+          "value": 5.694644,
+          "unit": "%"
+        },
+        "sm__pipe_aluheavy_cycles_active.avg.pct_of_peak_sustained_elapsed": {
+          "value": 24.169673,
+          "unit": "%"
+        },
+        "lts__throughput.avg.pct_of_peak_sustained_elapsed": {
+          "value": 17.135619,
+          "unit": "%"
+        }
+      }
+    }
+  ],
+  "findings": [
+    "The mixed expert core dominates each captured layer: approximately 693 and 698 us, versus 8\u201319 us per supporting kernel under the profiler.",
+    "Each core launches 48 blocks of 256 threads, one block per SM. 152 registers/thread and 53,248 shared bytes/block independently limit this tile to one resident block per SM.",
+    "The launch model also explicitly pins M8 routing to one block/SM, based on earlier I_tp=1024 barrier-overhead observations. Current Spark slices are 640/512. This policy deserves a controlled shape-specific experiment rather than assuming more blocks will help.",
+    "Next experiment: compare the current K128/N128 tile with smaller tiles and legal additional resident blocks, verify changed-input outputs, then measure real code/topic serving before selecting a policy."
+  ],
+  "caveats": [
+    "Two adjacent layers of one C1 request; not representative of every content type or concurrency.",
+    "Kernel replay saves/restores memory and perturbs clocks/cache state. No serving performance claim derives from this run.",
+    "No DRAM throughput counter is present in this report; L2/SM utilization does not prove external memory bandwidth is unsaturated.",
+    "Several short supporting kernels have implausible occupancy percentages above 100 in the raw report. Do not use those derived short-kernel occupancy values; retain raw evidence for review.",
+    "Low active-warp occupancy alone does not establish that increasing occupancy will improve runtime."
+  ],
+  "validation": "The 256-token code request completed; source candidate shut down and original serving containers restored."
+}
