@@ -1,0 +1,52 @@
+{
+  "version": "v4",
+  "status": "Registry v4 manifests verified; GitHub release and latest tags pending",
+  "engine_revision": "39242276302b24e6e07313152cc532e43d8ed6ca",
+  "source_manifest_sha256": "bf22e0f27f0368db99fbe43c966b3be771a14ead09f2d1428d872521d98b0394",
+  "images": {
+    "coordinator": {
+      "repository": "ghcr.io/tpurtell/ds41rt-coordinator",
+      "tag": "v4",
+      "digest": "sha256:2ccc04760e7cb0b761cac5dad06c5e5e41a24365ad55e111a1247e52915740cf",
+      "platform": "amd64",
+      "config_digest": "sha256:b3d72cce1cdd1d8176611e6f420575cca7d71c0bd78af1c14e1a614b97a9297d",
+      "verified_labels": {
+        "org.opencontainers.image.revision": "39242276302b24e6e07313152cc532e43d8ed6ca",
+        "io.ds41rt.source-manifest.sha256": "bf22e0f27f0368db99fbe43c966b3be771a14ead09f2d1428d872521d98b0394",
+        "io.ds41rt.sparkinfer.revision": "4e31d0a10ea7ca24ac48d522fb65eaafbc27ad30",
+        "org.opencontainers.image.version": "v4"
+      }
+    },
+    "spark": {
+      "repository": "ghcr.io/tpurtell/ds41rt-spark-expert",
+      "tag": "v4",
+      "digest": "sha256:f8098d2b69a04d306654475621e6409b3b9fdd9efd64aa2e715beea5ef13cf5d",
+      "platform": "arm64",
+      "config_digest": "sha256:08c121661e14d681b18c84c04726dc609e18e4e3c3c522379f3274ff56168be9",
+      "verified_labels": {
+        "org.opencontainers.image.revision": "39242276302b24e6e07313152cc532e43d8ed6ca",
+        "io.ds41rt.source-manifest.sha256": "bf22e0f27f0368db99fbe43c966b3be771a14ead09f2d1428d872521d98b0394",
+        "io.ds41rt.sparkinfer.revision": "4e31d0a10ea7ca24ac48d522fb65eaafbc27ad30",
+        "org.opencontainers.image.version": "v4"
+      }
+    }
+  },
+  "assets": [
+    {
+      "name": "ds41rt-v4-coordinator-linux-amd64.tar.gz",
+      "bytes": 17648514,
+      "sha256": "bc65de7473ef6f2f416841c55892fdc541525e445242e87684bce3939c64dd3e"
+    },
+    {
+      "name": "ds41rt-v4-qualification-evidence.tar.gz",
+      "bytes": 63576625,
+      "sha256": "9e9c64d429000b42e3665ded069f3a9f48b9a4c8e4de5385090b2fe76a5c902f"
+    },
+    {
+      "name": "ds41rt-v4-spark-expert-linux-arm64.tar.gz",
+      "bytes": 15679863,
+      "sha256": "b38a7b4e9b238df73b20f8a478e4ff956a2d534ce63b3d3b85e9146818d96099"
+    }
+  ],
+  "release_url": "https://github.com/tpurtell/ds41rt/releases/tag/v4"
+}
