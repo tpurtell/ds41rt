@@ -1,0 +1,36 @@
+{
+  "passed": true,
+  "scope": "Fresh CMake/Ninja package builds, package integrity verification, optimized host/ARM binaries and staging. Not rebuilt-container or full-serving qualification.",
+  "source_base_commit": "74d1b88",
+  "sparkinfer_revision": "fd8f8a68a3fd674e6c8d7d462692beb687b5939f",
+  "variants": {
+    "rtx": 18,
+    "spark": 24
+  },
+  "capacities": [
+    1,
+    16,
+    80,
+    256,
+    1024,
+    4096
+  ],
+  "bits": [
+    3,
+    4
+  ],
+  "build_fix": "Ninja precreates BYPRODUCT directories; accept empty directory scaffolding, but reject unknown payload files and symlinks without a recognized package marker. Three destination tests pass.",
+  "binary_sha256": {
+    "host": "688843ffcd2828c22fe0ef0a9e308e331fcaf2225b040a9aac4b120134a4e564",
+    "arm": "f34e0b48395f86b1d70a44efb08651a6fe32b3905871a48d8f011aa69faf2a20"
+  },
+  "spark_staged_hosts": [
+    "ostrich",
+    "dodo",
+    "emu",
+    "kiwi"
+  ],
+  "staging_verified": true,
+  "archive": "docs/evidence/v5-exl3-current-packages.tar.gz",
+  "archive_sha256": "b81c05cd828d2f5065d2d07ad6cb7b5df44675ba07e6d2fcff1dabfbf9719657"
+}

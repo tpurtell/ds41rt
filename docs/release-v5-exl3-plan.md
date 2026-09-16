@@ -1119,3 +1119,21 @@ A native all-K4 payload bound to a K3/K4 package also matches the homogeneous
 reference bitwise at rows 16/1/3/16 and changed-input graph replay. This verifies
 the subset representation alongside the planner tests; arbitrary-quant full
 serving and complete geometry/capacity coverage remain separate release work.
+
+## Fresh package rebuild after generic-tier integration
+
+[Rebuild evidence](release-v5-exl3-current-packages.json) verifies 18 SM120 and
+24 SM121 K3/K4 variants at capacities 1/16/80/256/1024/4096 under SparkInfer
+fd8f8a68. Both optimized host and ARM binaries include the common-family loader;
+the ARM binary and verified package are staged on all four Sparks.
+
+Fresh CMake/Ninja builds exposed a destination-validation bug: Ninja creates
+empty parent directories for declared byproducts before invoking the package
+builder. The installer now accepts empty directory scaffolding while retaining
+rejection of unrecognized payloads and symlinks. Three focused destination
+tests pass, and both fresh architecture builds complete and verify afterward.
+
+These are packages and binaries built using the existing v4 build environment,
+not new release images. Full-model serving with the rebuilt set, performance
+optimization, adaptive calibration, final qualification and clean v5 image
+builds remain required. Production serving was restored after package builds.

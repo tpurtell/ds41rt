@@ -66,7 +66,10 @@ def verify(package: Path, revision: str | None = None, runtime: Path | None = No
 def validate_destination(output: Path) -> None:
     if output.is_symlink() or (output.exists() and not output.is_dir()):
         raise ValueError('EXL3 output must be a package directory')
-    if output.exists() and any(output.iterdir()):
+    # Ninja creates the parent directories of declared BYPRODUCTS before the
+    # command runs. An empty directory tree is still a fresh destination.
+    # Symlinks are never treated as empty scaffolding, including dangling ones.
+    if output.exists() and any(p.is_symlink() or not p.is_dir() for p in output.rglob('*')):
         marker = output / 'manifest.json'
         if not marker.is_file() or json.loads(marker.read_text()).get('schema') != 'ds41rt.exl3-package.v1':
             raise ValueError('refusing to replace a non-package directory')
