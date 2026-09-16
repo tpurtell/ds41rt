@@ -1,0 +1,468 @@
+{
+  "scope": "Completed dual-RTX decode portion of the clean v4 release matrix; remaining layouts and prefill pending",
+  "engine_revision": "6f118818c18317b961789f5afc34bec21959c41c",
+  "build_record": "sparkinfer-upstream-v4-build-20260916.json",
+  "controls": {
+    "power_limit_watts_per_rtx": 400,
+    "memory_clock": "stock; loaded 13365 MHz, advertised maximum 14001 MHz",
+    "repeats": 3,
+    "thinking": false,
+    "temperature": 0
+  },
+  "decode": {
+    "passed": true,
+    "repeats": 3,
+    "median_weighted_tps": 97.5474385863065,
+    "cases": {
+      "code": {
+        "samples": 3,
+        "median_tps": 162.70889886133304,
+        "min_tps": 148.87458300012838,
+        "max_tps": 164.032074750174
+      },
+      "counting": {
+        "samples": 3,
+        "median_tps": 200.4070931628887,
+        "min_tps": 184.22111788846115,
+        "max_tps": 201.6126942782679
+      },
+      "fable": {
+        "samples": 3,
+        "median_tps": 67.72821922052155,
+        "min_tps": 63.33031260557795,
+        "max_tps": 68.49536870646851
+      },
+      "hello": {
+        "samples": 3,
+        "median_tps": 97.44028487712092,
+        "min_tps": 71.01379669208987,
+        "max_tps": 105.4627977031524
+      },
+      "math": {
+        "samples": 3,
+        "median_tps": 148.1947884025438,
+        "min_tps": 143.18006078051357,
+        "max_tps": 148.42053947922093
+      },
+      "multilingual": {
+        "samples": 3,
+        "median_tps": 83.59239095508728,
+        "min_tps": 83.29813994006882,
+        "max_tps": 87.02088774959378
+      },
+      "structured-json": {
+        "samples": 3,
+        "median_tps": 121.21587631626153,
+        "min_tps": 114.414492371813,
+        "max_tps": 131.43454268688302
+      },
+      "structured-json-schema": {
+        "samples": 3,
+        "median_tps": 132.15445026361394,
+        "min_tps": 126.51991039139395,
+        "max_tps": 133.95669903437857
+      },
+      "topic": {
+        "samples": 3,
+        "median_tps": 90.67543063060174,
+        "min_tps": 85.5275317396958,
+        "max_tps": 100.34045087107769
+      }
+    }
+  },
+  "concurrency": {
+    "code": {
+      "passed": true,
+      "prompt": "phase2-release-final 20260914. Write a Python function merge_intervals(intervals) that merges overlapping integer intervals. Include type hints, a short docstring, and three assert-based examples. Return only one Python code block.",
+      "repeats": 3,
+      "summaries": [
+        {
+          "concurrency": 1,
+          "samples": 3,
+          "median_aggregate_tps": 163.37437338687695,
+          "min_aggregate_tps": 162.74349121721082,
+          "max_aggregate_tps": 164.30144772691744
+        },
+        {
+          "concurrency": 2,
+          "samples": 3,
+          "median_aggregate_tps": 265.9041056550371,
+          "min_aggregate_tps": 208.11547020565982,
+          "max_aggregate_tps": 268.67278133930387
+        },
+        {
+          "concurrency": 4,
+          "samples": 3,
+          "median_aggregate_tps": 444.495148830845,
+          "min_aggregate_tps": 418.73650662154375,
+          "max_aggregate_tps": 446.00015930610914
+        },
+        {
+          "concurrency": 8,
+          "samples": 3,
+          "median_aggregate_tps": 797.0902467870982,
+          "min_aggregate_tps": 754.2910351898189,
+          "max_aggregate_tps": 797.4364686752165
+        },
+        {
+          "concurrency": 16,
+          "samples": 3,
+          "median_aggregate_tps": 1296.3025023491052,
+          "min_aggregate_tps": 1251.1141202172867,
+          "max_aggregate_tps": 1299.7826816302832
+        }
+      ]
+    },
+    "topic": {
+      "passed": true,
+      "prompt": "phase2-release-final 20260914. Explain virtual memory to a junior programmer in five concise bullet points, including paging, page faults, and the role of the TLB.",
+      "repeats": 3,
+      "summaries": [
+        {
+          "concurrency": 1,
+          "samples": 3,
+          "median_aggregate_tps": 100.90746711543146,
+          "min_aggregate_tps": 100.8802328759346,
+          "max_aggregate_tps": 101.11410960001155
+        },
+        {
+          "concurrency": 2,
+          "samples": 3,
+          "median_aggregate_tps": 167.76575430027918,
+          "min_aggregate_tps": 161.49604445471485,
+          "max_aggregate_tps": 175.06480514164113
+        },
+        {
+          "concurrency": 4,
+          "samples": 3,
+          "median_aggregate_tps": 295.0404690032856,
+          "min_aggregate_tps": 287.66843544323723,
+          "max_aggregate_tps": 295.44246502275917
+        },
+        {
+          "concurrency": 8,
+          "samples": 3,
+          "median_aggregate_tps": 464.1563955186062,
+          "min_aggregate_tps": 441.3559946089806,
+          "max_aggregate_tps": 466.65238321404763
+        },
+        {
+          "concurrency": 16,
+          "samples": 3,
+          "median_aggregate_tps": 748.704501205392,
+          "min_aggregate_tps": 712.8011924980224,
+          "max_aggregate_tps": 752.6475171900594
+        }
+      ]
+    },
+    "counting": {
+      "passed": true,
+      "prompt": "phase2-release-final 20260914. Count from 1 to 200, separated by commas. Output only the sequence.",
+      "repeats": 3,
+      "summaries": [
+        {
+          "concurrency": 1,
+          "samples": 3,
+          "median_aggregate_tps": 197.4873523013218,
+          "min_aggregate_tps": 197.19532219471768,
+          "max_aggregate_tps": 197.56487299050235
+        },
+        {
+          "concurrency": 2,
+          "samples": 3,
+          "median_aggregate_tps": 303.08488688175765,
+          "min_aggregate_tps": 302.02196289896966,
+          "max_aggregate_tps": 303.6858148051251
+        },
+        {
+          "concurrency": 4,
+          "samples": 3,
+          "median_aggregate_tps": 543.0431589621451,
+          "min_aggregate_tps": 540.6044162037475,
+          "max_aggregate_tps": 543.5436083954289
+        },
+        {
+          "concurrency": 8,
+          "samples": 3,
+          "median_aggregate_tps": 919.4452330810992,
+          "min_aggregate_tps": 897.589684993898,
+          "max_aggregate_tps": 922.0702745487625
+        },
+        {
+          "concurrency": 16,
+          "samples": 3,
+          "median_aggregate_tps": 1518.4188117775657,
+          "min_aggregate_tps": 1497.9793761125854,
+          "max_aggregate_tps": 1526.368186070854
+        }
+      ]
+    }
+  },
+  "mixed": {
+    "passed": true,
+    "repeats": 3,
+    "summaries": [
+      {
+        "concurrency": 1,
+        "samples": 3,
+        "median_aggregate_tps": 157.10738288035247,
+        "min_aggregate_tps": 149.5905461234404,
+        "max_aggregate_tps": 162.61346659140028
+      },
+      {
+        "concurrency": 2,
+        "samples": 3,
+        "median_aggregate_tps": 148.95102456860087,
+        "min_aggregate_tps": 142.07235878018315,
+        "max_aggregate_tps": 150.75687237286598
+      },
+      {
+        "concurrency": 4,
+        "samples": 3,
+        "median_aggregate_tps": 185.8817633645469,
+        "min_aggregate_tps": 175.74654492606498,
+        "max_aggregate_tps": 186.79909207617823
+      },
+      {
+        "concurrency": 8,
+        "samples": 3,
+        "median_aggregate_tps": 219.5844696227334,
+        "min_aggregate_tps": 207.40423844334885,
+        "max_aggregate_tps": 233.12954299897203
+      },
+      {
+        "concurrency": 16,
+        "samples": 3,
+        "median_aggregate_tps": 304.639444543635,
+        "min_aggregate_tps": 304.43587094673325,
+        "max_aggregate_tps": 309.0492763173308
+      }
+    ]
+  },
+  "baseline": "phase2-release-performance.json",
+  "archive": {
+    "path": "docs/evidence/upstream-v4-dual-decode-20260916.tar.gz",
+    "sha256": "27572d604a74aebdc46f755854d94add66cd8ee9941e8bea132a2cd95aea1a7e"
+  },
+  "artifacts": [
+    {
+      "name": "dual-decode.json",
+      "bytes": 67648,
+      "sha256": "ee934079b807eabc6c52e4d04c9162146801d278078ec1a2bf80ecae891cefe6"
+    },
+    {
+      "name": "dual-code.json",
+      "bytes": 162133,
+      "sha256": "bddfe87faabcb142a370ae0fe26e0db81dd2399d9aea6fca9ed32a35256cb5ff"
+    },
+    {
+      "name": "dual-topic.json",
+      "bytes": 227921,
+      "sha256": "8c0cefe80e51c75ac9ccbefc3a1fd3919a9607cd810ca342bc4357e5c1db6f91"
+    },
+    {
+      "name": "dual-counting.json",
+      "bytes": 174448,
+      "sha256": "64a23bf66023e6cdcb445b6740a35789731507cd7b819e89eecddea5cfc347f4"
+    },
+    {
+      "name": "dual-mixed-1.json",
+      "bytes": 68663,
+      "sha256": "778a0e3fc6b5a5203cdf1cce7d9fde4fff7dfaba5549110a438a52f518c43cb7"
+    },
+    {
+      "name": "dual-mixed-2.json",
+      "bytes": 68869,
+      "sha256": "522e404a4edca0c745a5578bc5eccbd12b726ad07c637e77c06b0830133110de"
+    },
+    {
+      "name": "dual-mixed-3.json",
+      "bytes": 68550,
+      "sha256": "b001c9268079aab8bd48e225101401f14722a7b570913d65dc5bc7a7affc9434"
+    }
+  ],
+  "comparison": {
+    "weighted_decode": {
+      "v3": 79.33223115339362,
+      "v4": 97.5474385863065,
+      "change_percent": 22.960664496744943
+    },
+    "cases": {
+      "code": {
+        "v3": 149.0654781801746,
+        "v4": 162.70889886133304,
+        "change_percent": 9.152636041369488
+      },
+      "counting": {
+        "v3": 181.3092291176843,
+        "v4": 200.4070931628887,
+        "change_percent": 10.53331048735988
+      },
+      "fable": {
+        "v3": 52.636278240161964,
+        "v4": 67.72821922052155,
+        "change_percent": 28.672127826933448
+      },
+      "hello": {
+        "v3": 84.69059274180383,
+        "v4": 97.44028487712092,
+        "change_percent": 15.05443724332769
+      },
+      "math": {
+        "v3": 135.72494113264705,
+        "v4": 148.1947884025438,
+        "change_percent": 9.187587164034717
+      },
+      "multilingual": {
+        "v3": 66.31402140234114,
+        "v4": 83.59239095508728,
+        "change_percent": 26.055378918908612
+      },
+      "structured-json": {
+        "v3": 121.764070119477,
+        "v4": 121.21587631626153,
+        "change_percent": -0.45020982189374337
+      },
+      "structured-json-schema": {
+        "v3": 107.62753081354721,
+        "v4": 132.15445026361394,
+        "change_percent": 22.788704028300067
+      },
+      "topic": {
+        "v3": 75.28274068995646,
+        "v4": 90.67543063060174,
+        "change_percent": 20.446505798770474
+      }
+    },
+    "concurrency": {
+      "code": [
+        {
+          "concurrency": 1,
+          "v3": 148.8278332569845,
+          "v4": 163.37437338687695,
+          "change_percent": 9.774072370438013
+        },
+        {
+          "concurrency": 2,
+          "v3": 231.6324952302119,
+          "v4": 265.9041056550371,
+          "change_percent": 14.795683304608787
+        },
+        {
+          "concurrency": 4,
+          "v3": 412.59910381620125,
+          "v4": 444.495148830845,
+          "change_percent": 7.730517279274629
+        },
+        {
+          "concurrency": 8,
+          "v3": 712.0900430142423,
+          "v4": 797.0902467870982,
+          "change_percent": 11.936721290618557
+        },
+        {
+          "concurrency": 16,
+          "v3": 1181.488607058986,
+          "v4": 1296.3025023491052,
+          "change_percent": 9.717731902292236
+        }
+      ],
+      "topic": [
+        {
+          "concurrency": 1,
+          "v3": 81.13211827982116,
+          "v4": 100.90746711543146,
+          "change_percent": 24.374254308763366
+        },
+        {
+          "concurrency": 2,
+          "v3": 131.93964719376262,
+          "v4": 167.76575430027918,
+          "change_percent": 27.153405264077612
+        },
+        {
+          "concurrency": 4,
+          "v3": 242.5758857018839,
+          "v4": 295.0404690032856,
+          "change_percent": 21.628111611175793
+        },
+        {
+          "concurrency": 8,
+          "v3": 415.8616719000186,
+          "v4": 464.1563955186062,
+          "change_percent": 11.61317016736243
+        },
+        {
+          "concurrency": 16,
+          "v3": 596.1449928761241,
+          "v4": 748.704501205392,
+          "change_percent": 25.59100724695158
+        }
+      ],
+      "counting": [
+        {
+          "concurrency": 1,
+          "v3": 186.82672969258954,
+          "v4": 197.4873523013218,
+          "change_percent": 5.706154909564387
+        },
+        {
+          "concurrency": 2,
+          "v3": 294.15033894838393,
+          "v4": 303.08488688175765,
+          "change_percent": 3.037408682007836
+        },
+        {
+          "concurrency": 4,
+          "v3": 524.0438306896144,
+          "v4": 543.0431589621451,
+          "change_percent": 3.625522744448406
+        },
+        {
+          "concurrency": 8,
+          "v3": 808.4732186999886,
+          "v4": 919.4452330810992,
+          "change_percent": 13.726121263429336
+        },
+        {
+          "concurrency": 16,
+          "v3": 1333.5683645379274,
+          "v4": 1518.4188117775657,
+          "change_percent": 13.86134015736702
+        }
+      ]
+    },
+    "mixed": [
+      {
+        "concurrency": 1,
+        "v3": 151.25680247103253,
+        "v4": 157.10738288035247,
+        "change_percent": 3.867978374354708
+      },
+      {
+        "concurrency": 2,
+        "v3": 141.5351978830491,
+        "v4": 148.95102456860087,
+        "change_percent": 5.239563583102114
+      },
+      {
+        "concurrency": 4,
+        "v3": 181.73792726568666,
+        "v4": 185.8817633645469,
+        "change_percent": 2.280116297795276
+      },
+      {
+        "concurrency": 8,
+        "v3": 203.0477219927709,
+        "v4": 219.5844696227334,
+        "change_percent": 8.144266514130717
+      },
+      {
+        "concurrency": 16,
+        "v3": 309.0626574278938,
+        "v4": 304.639444543635,
+        "change_percent": -1.4311702750083088
+      }
+    ]
+  }
+}

@@ -16,6 +16,23 @@ flowchart LR
     F --> G[Clean image builds, README, reports and release]
 ```
 
+## Corrected clean v4 decode results
+
+The completed [dual-RTX decode measurements](sparkinfer-upstream-v4-dual-decode-20260916.json)
+use the standard clean images built from `6f118818`, matched published prompts,
+three samples, 400 W per RTX and stock memory clocks. Weighted eight-type
+decode rises from **79.33 to 97.55 TPS (+23.0%)** against published v3.
+Code concurrency improves 7.7–14.8% across C1–C16; topic improves 11.6–27.2%.
+At C16, code reaches **1296.30** and topic **748.70 aggregate TPS**.
+Natural JSON is effectively flat (121.76 → 121.22 TPS). Mixed traffic improves
+2.3–8.1% at C1–C8 but C16 is effectively flat/slightly lower
+(309.06 → 304.64 TPS, −1.4%). These are prompt-matched serving results;
+numerical changes can also change generated text and draft acceptance.
+
+Raw samples, ranges and hashes are archived with that report. Retained-context
+decode, prefill, single-RTX measurements and target-only comparisons remain
+pending; this completed subset does not establish the full release gate.
+
 ## Serving-history graph reuse correction
 
 The [qualified graph-reuse experiment](sparkinfer-upstream-index-graph-reuse-20260916.json)
