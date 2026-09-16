@@ -1,0 +1,64 @@
+{
+  "scope": "Real layer30 fixed-input sequential rank CUDA graph timings on one GB10; m80 production tiles, not end-to-end or m1/m16 performance",
+  "correctness_checks_passed": 60,
+  "paired_source_revision": "e685f48c3b941208a8dc5915a742738a3c2de706",
+  "rows": [
+    {
+      "rows": 1,
+      "unique": 6,
+      "disjoint_b1_us": 123.61503601074219,
+      "paired_b1_us": 123.09215545654297,
+      "disjoint_b2_control_us": 129.90240097045898,
+      "paired_b2_us": 90.39711952209473,
+      "b2_vs_disjoint_percent": -30.411509836025374
+    },
+    {
+      "rows": 8,
+      "unique": 6,
+      "disjoint_b1_us": 132.8444766998291,
+      "paired_b1_us": 121.59232139587402,
+      "disjoint_b2_control_us": 136.9164752960205,
+      "paired_b2_us": 96.32543563842773,
+      "b2_vs_disjoint_percent": -29.646570706580665
+    },
+    {
+      "rows": 8,
+      "unique": 30,
+      "disjoint_b1_us": 597.6451110839844,
+      "paired_b1_us": 563.7446212768555,
+      "disjoint_b2_control_us": 601.5366363525391,
+      "paired_b2_us": 524.6060943603516,
+      "b2_vs_disjoint_percent": -12.789003585660453
+    },
+    {
+      "rows": 16,
+      "unique": 60,
+      "disjoint_b1_us": 1140.4573059082031,
+      "paired_b1_us": 1061.6706848144531,
+      "disjoint_b2_control_us": 1132.7667236328125,
+      "paired_b2_us": 1003.2720184326172,
+      "b2_vs_disjoint_percent": -11.431718684752889
+    },
+    {
+      "rows": 24,
+      "unique": 60,
+      "disjoint_b1_us": 1142.6483154296875,
+      "paired_b1_us": 1083.1423950195312,
+      "disjoint_b2_control_us": 1140.098876953125,
+      "paired_b2_us": 1009.3030548095703,
+      "b2_vs_disjoint_percent": -11.472322689511106
+    },
+    {
+      "rows": 64,
+      "unique": 384,
+      "disjoint_b1_us": 7018.626708984375,
+      "paired_b1_us": 6562.4407958984375,
+      "disjoint_b2_control_us": 7041.30859375,
+      "paired_b2_us": 6205.7452392578125,
+      "b2_vs_disjoint_percent": -11.866591889380473
+    }
+  ],
+  "archive_sha256": "f4138d4975f5dad020dcc25280a2a5f5e44e988446b61d5b131e5b57c5871fd4",
+  "decision": "Try paired m80 two-block artifacts in serving; no default change yet",
+  "all_original_services_restored": true
+}

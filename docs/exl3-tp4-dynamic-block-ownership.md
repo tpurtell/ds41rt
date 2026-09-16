@@ -376,3 +376,16 @@ do not isolate kernel cost. Paired mode remains opt-in. Fixed-input timing using
 production tile policies and the same weight-byte planner costs is next. All
 original services were restored. Evidence and raw outputs:
 `release-v5-exl3-paired-comparison.json` and its adjacent archive.
+
+### Fixed-input production-tile timing
+
+The m80 comparison used real layer30 weights, identical routed inputs and the
+same weight-byte ownership policy on one GB10, timing each rank sequentially.
+It retained production tiles, including the different 512-wide disjoint tile.
+All 60 sum/reference checks passed across one- and two-block paired runs. With
+30–384 distinct experts, paired one-block slowest-rank times improved roughly
+5–7%; two-block paired times improved 11–13% versus their disjoint controls.
+Six-expert cases benefited more from two blocks, but these were still m80
+executions, not measurements of the m1 serving policy. The next candidate uses
+two blocks only for paired m80. No serving-default change is justified yet.
+Evidence: `release-v5-exl3-paired-fixed-input.json` and its raw archive.
