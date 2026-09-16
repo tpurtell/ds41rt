@@ -231,8 +231,16 @@ def main() -> None:
     report["context_sha256"] = next(iter(context_hashes))
     report["corpus_sha256"] = next(iter(corpus_hashes))
     campaign_path = args.input / "campaign.record"
-    report["readiness_memory"] = summarize_readiness(load(campaign_path), build)
+    campaign = load(campaign_path)
+    report["readiness_memory"] = summarize_readiness(campaign, build)
     artifacts.add(campaign_path)
+    if previous := campaign.get("previous_attempt"):
+        assert Path(previous).name == previous
+        prior = args.input / previous
+        assert load(prior).get("completed_ns")
+        report["previous_campaign_attempt"] = helpers["artifact"](prior)
+        artifacts.add(prior)
+        artifacts.add(prior.with_suffix(".log"))
     report["artifacts"] = [helpers["artifact"](p) for p in sorted(artifacts)]
     report["performance_matrix_passed"] = True
     args.output.write_text(json.dumps(report, indent=2) + "\n")
