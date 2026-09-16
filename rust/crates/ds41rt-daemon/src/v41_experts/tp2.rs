@@ -942,3 +942,7 @@ mod tests {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "tp2/reference_tests.rs"]
+mod reference_tests;

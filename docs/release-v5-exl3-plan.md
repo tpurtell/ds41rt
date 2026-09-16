@@ -543,3 +543,22 @@ The evidence still uses the v4 native library plus the wire addon and rebuilt
 EXL3 packages, not complete release images. Remaining integration includes the
 stitched TP2 reference check, dSpark selection, four-Spark RoCE inference, larger
 capacities and FP4 PLE gathering, followed by optimization and full qualification.
+
+## Combined TP2 numerical reference
+
+[TP2 reference evidence](release-v5-exl3-tp2-reference.json) now closes the bounded
+two-rank B12x check. Both 1152-wide rank slices use identical FP8-K32 input and
+route prefixes, with separate matching-tile references at capacities 1 and 16.
+Each GPU holds all 384 experts of layer 0; six real-checkpoint experts are routed.
+Across 16/1/3/16/1 rows, each rank's FP32 output matches B12x bitwise, and the FP32
+rank sum rounded to BF16 matches the peer reducer on both destination GPUs.
+The two lanes use different and changing row orders, live-sized input views and
+verified fixture hashes; device scope restores correctly. Reference outputs are
+finite and nonzero. This is a component numerical check, not full-model quality,
+loading-performance or serving-throughput qualification.
+
+The fixture tool can now reuse the same hidden-input/route prefix across TP
+slices, because those inputs are replicated while intermediate weights differ.
+It preserves snapshot/layer/top-k/input-format checks and records the source
+fixture manifest hash. dSpark backend selection is the next integration step;
+four-Spark RoCE, full capacities, FP4 PLE and release qualification remain ahead.

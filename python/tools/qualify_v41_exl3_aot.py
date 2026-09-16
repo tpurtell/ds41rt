@@ -175,8 +175,9 @@ def main() -> None:
                 source_meta=json.loads((args.fixture_input/'fixture.json').read_text())
                 assert source_meta['input_format']==args.fixture_format
                 assert source_meta['snapshot_revision']==args.snapshot.name
-                assert source_meta['layer']==layer_prefix and source_meta['width']==width
-                assert source_meta['slice_start']==start and source_meta['topk']==topk
+                # TP ranks slice intermediate weights, not the replicated
+                # hidden input or route IDs. Reuse the same inputs across ranks.
+                assert source_meta['layer']==layer_prefix and source_meta['topk']==topk
                 assert source_meta['capacity']>=capacity
                 assert source_meta['canonical_routes']==args.fixture_canonical_routes
                 def source_tensor(name,dtype,columns):
@@ -208,6 +209,8 @@ def main() -> None:
                 'direct':meta['direct'],'tile':meta['tile'],
                 'input_format':args.fixture_format,'output_dtype':meta['output_dtype'],
                 'canonical_routes':args.fixture_canonical_routes,
+                'input_fixture_manifest_sha256':None if args.fixture_input is None else
+                    hashlib.sha256((args.fixture_input/'fixture.json').read_bytes()).hexdigest(),
                 'snapshot_revision':args.snapshot.name,'artifacts':artifacts},indent=2)+'\n')
         args.output.write_text(json.dumps({'passed':True,'scope':'native AOT versus B12x, six real checkpoint experts; not full-model qualification',
             'output_dtype':meta['output_dtype'],'checkpoint_layer':layer_prefix,'topk':topk,'native_info_verified':info_verified,
