@@ -19,6 +19,7 @@ def main() -> None:
     layer.add_argument('--layer', type=int, choices=range(40), default=0)
     parser.add_argument('--slice-start', type=int, default=0)
     parser.add_argument('--fixture', type=Path)
+    parser.add_argument('--fixture-input', type=Path, help='Reuse a prior fixture input prefix for a different capacity/tile reference')
     parser.add_argument('--fixture-canonical-routes', action='store_true',
         help='Emit valid Spark wire routes, using zero weights instead of masked IDs')
     parser.add_argument('--fixture-format', choices=('bf16','fp8_k32'), default='bf16')
@@ -170,10 +171,29 @@ def main() -> None:
                 ids.copy_(torch.arange(experts,device=ids.device,dtype=ids.dtype).repeat(capacity,1).roll(1,dims=1))
                 weights[::2,1]=0
             fixture_input=x
+            if args.fixture_input is not None:
+                source_meta=json.loads((args.fixture_input/'fixture.json').read_text())
+                assert source_meta['input_format']==args.fixture_format
+                assert source_meta['snapshot_revision']==args.snapshot.name
+                assert source_meta['layer']==layer_prefix and source_meta['width']==width
+                assert source_meta['slice_start']==start and source_meta['topk']==topk
+                assert source_meta['capacity']>=capacity
+                assert source_meta['canonical_routes']==args.fixture_canonical_routes
+                def source_tensor(name,dtype,columns):
+                    raw=(args.fixture_input/(name+'.bin')).read_bytes()
+                    assert len(raw)==source_meta['artifacts'][name]['bytes']
+                    assert hashlib.sha256(raw).hexdigest()==source_meta['artifacts'][name]['sha256']
+                    return torch.frombuffer(bytearray(raw),dtype=dtype).reshape(-1,columns)[:capacity].clone().to('cuda')
+                ids.copy_(source_tensor('ids',torch.int32,topk))
+                weights.copy_(source_tensor('weights',torch.float32,topk))
+                fixture_input=source_tensor('input',torch.uint8 if args.fixture_format=='fp8_k32' else torch.bfloat16,
+                    5280 if args.fixture_format=='fp8_k32' else hidden)
+                if args.fixture_format=='bf16': x=fixture_input
             if args.fixture_format=='fp8_k32':
-                from qualify_v41_exl3_wire import quantize_wire
-                fixture_input=torch.empty(capacity,5280,dtype=torch.uint8,device='cuda')
-                quantize_wire(x,fixture_input)
+                if args.fixture_input is None:
+                    from qualify_v41_exl3_wire import quantize_wire
+                    fixture_input=torch.empty(capacity,5280,dtype=torch.uint8,device='cuda')
+                    quantize_wire(x,fixture_input)
                 values=fixture_input[:,:5120].contiguous().view(torch.float8_e4m3fn).float()
                 scales=fixture_input[:,5120:].int().repeat_interleave(32,dim=1)-127
                 x=torch.ldexp(values,scales).to(torch.bfloat16)

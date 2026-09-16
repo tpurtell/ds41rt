@@ -412,10 +412,9 @@ impl<'a> Exl3Execution<'a> {
             )?)
         };
         let wire = if format == Exl3InputFormat::Fp8K32 {
-            ensure!(
-                weights.iter().all(|w| w.layout.world == 4),
-                "FP8 wire input requires a Spark TP4 shard"
-            );
+            // The router's 5120-value wire row is replicated across TP ranks;
+            // only intermediate expert weights are sliced. Local RTX TP1/TP2
+            // therefore use the same decoder as Spark TP4.
             Some((
                 library.v41_exl3_wire()?,
                 DeviceAllocation::new(library, meta.capacity * 5120 * 2)?,
@@ -531,7 +530,8 @@ impl<'a> Exl3Execution<'a> {
             self.route_pointers[0] = inputs[1].ptr;
             self.route_pointers[1] = binding.expert_map.ptr;
             self.route_bytes[1] = binding.expert_map.bytes as u64;
-            // Native packing owns capacity-sized input storage; live rows bound reads.
+            // Router views may expose only live IDs; metadata scratch retains
+            // its compiled capacity while all input reads are live-row bounded.
             self.route_bytes[0] = inputs[1].bytes as u64;
             routes.launch(&self.route_pointers, &self.route_bytes, rows as i32, stream)?;
         }

@@ -36,7 +36,10 @@ def main() -> None:
     assert lib.ds41rt_exl3_routes_create(ct.byref(context))==0
     graph=None
 
-    def launch(rows,byte_sizes=sizes):
+    def launch(rows,byte_sizes=None):
+        if byte_sizes is None:
+            byte_sizes=(ct.c_uint64*7)(*sizes)
+            byte_sizes[0]=max(0,rows)*topk*4
         return lib.ds41rt_exl3_routes_launch(context,pointers,byte_sizes,rows,
             ct.c_void_p(torch.cuda.current_stream().cuda_stream))
 
@@ -80,11 +83,14 @@ def main() -> None:
         too_small=(ct.c_uint64*7)(*sizes);too_small[2]-=4
         assert launch(1,too_small)==1
         for rows in sorted(set([1,min(3,capacity),max(1,capacity-1),capacity])):
+            short_ids=(ct.c_uint64*7)(*sizes);short_ids[0]=rows*topk*4-1
+            assert launch(rows,short_ids)==1
             for seed,invalid in [(41,False),(42,False),(43,True)]:
                 ids,mapping=prepare(seed,invalid)
                 assert launch(rows)==0
                 check(rows,ids,mapping)
-            checks.append(dict(rows=rows,random_and_empty_routes=True,guard_regions=True))
+            checks.append(dict(rows=rows,random_and_empty_routes=True,guard_regions=True,
+                exact_live_input_extent=True,short_live_input_rejected=True))
         rows=min(3,capacity)
         ids,mapping=prepare(44)
         assert launch(rows)==0

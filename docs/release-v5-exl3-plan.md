@@ -485,7 +485,26 @@ optimization still to do, not an assumed memory saving.
 
 This wiring compiles and all 12 existing serving memory-planning tests pass.
 The test binary needed the host Python library directory in `LD_LIBRARY_PATH`.
-Its combined local EXL3/shared-expert GPU numerics and
-full serving are not yet qualified. RTX TP2 and dSpark backend integration remain
+Its combined local EXL3/shared-expert GPU numerics now pass the bounded checks
+below; full serving is not yet qualified. RTX TP2 and dSpark backend integration remain
 pending, as do full-capacity packages and four-Spark RoCE inference. Existing
 full-model local kernels retain their original selection and shared scratch.
+
+[Local RTX evidence](release-v5-exl3-local-rtx.json) covers one full resident TP1
+layer (384 experts, 5,554,974,736 bytes), with six routed real-checkpoint experts
+checked against B12x. Two independent lane owners use 32,586,256 workspace bytes
+each at configured capacity 16. The 1/3/16/1-row sequence passes bitwise FP32
+expert-output comparison, the existing BF16 routed boundary followed by signed
+shared-expert addition, output-tail guards and rejection/reuse checks. Separate
+batch-1 and batch-16 references use identical input prefixes and matching tile
+policies; the expected serving sum includes the existing BF16 rounding before
+shared addition. These are numerical checks, not startup or throughput results.
+
+The test exposed and fixed two integration restrictions: FP8-K32 input had been
+limited to Spark TP4 despite the same input geometry on RTX, and the native route
+bridge required capacity-sized ID views instead of the live extent. Route kernels
+already mask reads by live count; the bridge now accepts exactly that extent and
+still rejects short input. CPU-oracle route checks pass at capacities 16 and 1024,
+including empty/invalid routes, guards and changed graph inputs. This run uses the
+wire-decoder addon with the v4 native library and rebuilt EXL3 modules, not a clean
+release image. TP2 execution and complete serving remain unqualified.

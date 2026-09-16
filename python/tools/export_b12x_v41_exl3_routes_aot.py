@@ -99,8 +99,11 @@ def export(output: Path, capacity: int, experts: int, topk: int) -> dict:
         'if (current != ctx->owner) return CUDA_ERROR_INVALID_CONTEXT;',
         'CUdeviceptr p[7];']
     for i, count in enumerate(slots.values()):
+        # Metadata kernels mask every ID read by live_numel. Router views expose
+        # only live rows, even when a larger compiled capacity handles them.
+        required = f'(uint64_t(rows) * {topk * 4})' if i == 0 else str(count * 4)
         source += [f'p[{i}] = reinterpret_cast<CUdeviceptr>(pointers[{i}]);',
-            f'if (!p[{i}] || p[{i}] % 16 || bytes[{i}] < {count*4} || p[{i}] > UINT64_MAX - {count*4}) return CUDA_ERROR_INVALID_VALUE;']
+            f'if (!p[{i}] || p[{i}] % 16 || bytes[{i}] < {required} || p[{i}] > UINT64_MAX - {required}) return CUDA_ERROR_INVALID_VALUE;']
     source += ['for (int i = 0; i < 7; ++i) for (int j = i+1; j < 7; ++j) {',
         'if (bytes[i] > UINT64_MAX-p[i] || bytes[j] > UINT64_MAX-p[j]) return CUDA_ERROR_INVALID_VALUE;',
         'if (p[i] < p[j]+bytes[j] && p[j] < p[i]+bytes[i]) return CUDA_ERROR_INVALID_VALUE; }',

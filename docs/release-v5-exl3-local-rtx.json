@@ -1,0 +1,268 @@
+{
+  "scope": "Single RTX TP1 EXL3 local expert lane plus existing shared-expert reduction, one full resident backbone layer, six routed reference experts. Not full-model serving, TP2, dSpark or throughput qualification.",
+  "passed": true,
+  "device": "RTX PRO 6000 Blackwell Workstation SM120",
+  "resident_experts": 384,
+  "layer": 0,
+  "world": 1,
+  "rank": 0,
+  "resident_bytes": 5554974736,
+  "workspace_bytes_per_lane": 32586256,
+  "lanes": 2,
+  "row_sequence": [
+    1,
+    3,
+    16,
+    1
+  ],
+  "checks": [
+    "FP32 routed output bitwise equals matching-tile B12x reference",
+    "BF16 routed boundary then positive/negative shared addition bitwise equals CPU oracle",
+    "capacity transitions 1 to 16 to 1",
+    "independent lane output storage",
+    "output tail guards",
+    "invalid layer and short input rejection followed by successful execution"
+  ],
+  "fixes": [
+    "Remove Spark-only restriction on identical FP8-K32 router input format",
+    "Route bridge validates live ID extent instead of capacity extent"
+  ],
+  "reference_corrections": [
+    "Match batch-1 and batch-16 tile policies using identical input prefixes",
+    "Preserve existing BF16 routed rounding before shared addition in expected values"
+  ],
+  "route_qualification": [
+    {
+      "passed": true,
+      "scope": "Native metadata route packing; CPU coverage, ownership, padding and guard oracle. Not expert compute or serving qualification.",
+      "manifest_sha256": "1f1f1ad208f984a935310b07d29cd4c36cce3affe27d11f5b6af8c21a1187f36",
+      "library_sha256": "0d0568bc6464f227cdb9c342f2c7ee05893d1f11efab68a6bd9abb7f234fe1a5",
+      "compute": [
+        12,
+        0
+      ],
+      "capacity": 16,
+      "experts": 384,
+      "topk": 6,
+      "small_prefix": true,
+      "checks": [
+        {
+          "rows": 1,
+          "random_and_empty_routes": true,
+          "guard_regions": true,
+          "exact_live_input_extent": true,
+          "short_live_input_rejected": true
+        },
+        {
+          "rows": 3,
+          "random_and_empty_routes": true,
+          "guard_regions": true,
+          "exact_live_input_extent": true,
+          "short_live_input_rejected": true
+        },
+        {
+          "rows": 15,
+          "random_and_empty_routes": true,
+          "guard_regions": true,
+          "exact_live_input_extent": true,
+          "short_live_input_rejected": true
+        },
+        {
+          "rows": 16,
+          "random_and_empty_routes": true,
+          "guard_regions": true,
+          "exact_live_input_extent": true,
+          "short_live_input_rejected": true
+        }
+      ],
+      "changed_graph_inputs_and_mapping": true,
+      "invalid_host_bounds_rejected": true
+    },
+    {
+      "passed": true,
+      "scope": "Native metadata route packing; CPU coverage, ownership, padding and guard oracle. Not expert compute or serving qualification.",
+      "manifest_sha256": "8e61ca6a949c6b3f1daa1d63ec42725992b017d4ebae4a533cdd495a1a5456aa",
+      "library_sha256": "11b05694b894cb30a077c49f70c07869a62edec466162d0766e5851fd61be5b3",
+      "compute": [
+        12,
+        0
+      ],
+      "capacity": 1024,
+      "experts": 384,
+      "topk": 6,
+      "small_prefix": false,
+      "checks": [
+        {
+          "rows": 1,
+          "random_and_empty_routes": true,
+          "guard_regions": true,
+          "exact_live_input_extent": true,
+          "short_live_input_rejected": true
+        },
+        {
+          "rows": 3,
+          "random_and_empty_routes": true,
+          "guard_regions": true,
+          "exact_live_input_extent": true,
+          "short_live_input_rejected": true
+        },
+        {
+          "rows": 1023,
+          "random_and_empty_routes": true,
+          "guard_regions": true,
+          "exact_live_input_extent": true,
+          "short_live_input_rejected": true
+        },
+        {
+          "rows": 1024,
+          "random_and_empty_routes": true,
+          "guard_regions": true,
+          "exact_live_input_extent": true,
+          "short_live_input_rejected": true
+        }
+      ],
+      "changed_graph_inputs_and_mapping": true,
+      "invalid_host_bounds_rejected": true
+    }
+  ],
+  "reference_qualification": [
+    {
+      "passed": true,
+      "scope": "native AOT versus B12x, six real checkpoint experts; not full-model qualification",
+      "output_dtype": "fp32",
+      "checkpoint_layer": "layers.0",
+      "topk": 6,
+      "native_info_verified": true,
+      "slice_start": 0,
+      "sparkinfer_revision": "c024d14ce936ddfc2c863377d033d85e1787924b",
+      "compute": [
+        12,
+        0
+      ],
+      "intermediate": 2304,
+      "direct": false,
+      "route_bridge_sha256": "baa40663a52a6b848c9b0164e897ec58e709f2797b796e415aba44cba7fd199a",
+      "snapshot_revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+      "projection_tiers": [
+        [
+          3,
+          4,
+          3
+        ],
+        [
+          3,
+          3,
+          3
+        ],
+        [
+          4,
+          4,
+          4
+        ],
+        [
+          3,
+          3,
+          3
+        ],
+        [
+          4,
+          4,
+          4
+        ],
+        [
+          3,
+          3,
+          3
+        ]
+      ],
+      "aot_manifest_sha256": "fc0c468e175283a1dd1ce5ffc57837ed66010339871f6c5c23979f675171e824",
+      "bridge_sha256": "9dfe5633e0e787da5ad98336910f1b7e9abd148e456f60f7cf37cb2a63ff910b",
+      "checks": [
+        {
+          "rows": 1,
+          "bitwise_equal": true
+        }
+      ],
+      "graph_changed_inputs_and_routes": true,
+      "packed_metadata_poisoned_before_native": true
+    },
+    {
+      "passed": true,
+      "scope": "native AOT versus B12x, six real checkpoint experts; not full-model qualification",
+      "output_dtype": "fp32",
+      "checkpoint_layer": "layers.0",
+      "topk": 6,
+      "native_info_verified": true,
+      "slice_start": 0,
+      "sparkinfer_revision": "c024d14ce936ddfc2c863377d033d85e1787924b",
+      "compute": [
+        12,
+        0
+      ],
+      "intermediate": 2304,
+      "direct": false,
+      "route_bridge_sha256": "f49c47b0ff99f2dcbf75104d4419a4d600392c8dd368eba1426985a1014712fe",
+      "snapshot_revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+      "projection_tiers": [
+        [
+          3,
+          4,
+          3
+        ],
+        [
+          3,
+          3,
+          3
+        ],
+        [
+          4,
+          4,
+          4
+        ],
+        [
+          3,
+          3,
+          3
+        ],
+        [
+          4,
+          4,
+          4
+        ],
+        [
+          3,
+          3,
+          3
+        ]
+      ],
+      "aot_manifest_sha256": "7504548fc7a14eb16888c26a0fb494afa1a834eb77490a97617b09fefe77ecf8",
+      "bridge_sha256": "1e1229658e3ecc9f49269944cef50b1f21dd442f5d6036d1aa193c027ec9beb1",
+      "checks": [
+        {
+          "rows": 1,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 3,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 15,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 16,
+          "bitwise_equal": true
+        }
+      ],
+      "graph_changed_inputs_and_routes": true,
+      "packed_metadata_poisoned_before_native": true
+    }
+  ],
+  "native_library_scope": "New wire decoder addon linked to published v4 native library; packaged EXL3 core/route modules rebuilt from current source. Not a complete release image.",
+  "snapshot_revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+  "archive": "docs/evidence/v5-exl3-local-rtx.tar.gz",
+  "archive_sha256": "76ed141ae6579606d36b9db1f7b492cfbe09907f8937cf9a298ac0e4e5432298",
+  "verified_at": "2026-09-16T16:15:53.165256+00:00",
+  "coordinator_restored_health_http_status": 200
+}

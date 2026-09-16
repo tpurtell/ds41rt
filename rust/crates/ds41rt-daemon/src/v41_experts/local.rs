@@ -243,11 +243,33 @@ impl<'a> LocalExpertWave<'a> {
                 && rows == shared.rows,
             "local router and shared expert binding differ"
         );
+        unsafe {
+            self.enqueue_buffers(
+                routed.layer,
+                rows,
+                [routed.expert_input, routed.ids, routed.routing],
+                shared.values,
+            )
+        }
+    }
+
+    // Caller checks block provenance and retains input owners through the drain.
+    unsafe fn enqueue_buffers(
+        &mut self,
+        layer: usize,
+        rows: u32,
+        inputs: [Ds41rtDeviceBuffer; 3],
+        shared: Ds41rtDeviceBuffer,
+    ) -> Result<()> {
+        ensure!(
+            self.contains(layer) && rows > 0 && rows <= self.capacity,
+            "local expert layer/rows are not resident or exceed capacity"
+        );
         for (buffer, bytes) in [
-            (routed.expert_input, rows as usize * 5280),
-            (routed.ids, rows as usize * 24),
-            (routed.routing, rows as usize * 24),
-            (shared.values, rows as usize * 10240),
+            (inputs[0], rows as usize * 5280),
+            (inputs[1], rows as usize * 24),
+            (inputs[2], rows as usize * 24),
+            (shared, rows as usize * 10240),
         ] {
             ensure!(
                 buffer.bytes == bytes && buffer.device_id == self.output.buffer.device_id,
@@ -263,8 +285,8 @@ impl<'a> LocalExpertWave<'a> {
                         .context("local EXL3 capacity state missing")?;
                     let values = unsafe {
                         state.launch_layer(
-                            routed.layer,
-                            [routed.expert_input, routed.ids, routed.routing],
+                            layer,
+                            [inputs[0], inputs[1], inputs[2]],
                             rows as usize,
                             self.stream.raw,
                         )?
@@ -272,7 +294,7 @@ impl<'a> LocalExpertWave<'a> {
                     unsafe {
                         self.reducer.finish(
                             values.ptr.cast(),
-                            shared.values.ptr.cast(),
+                            shared.ptr.cast(),
                             self.output.buffer.ptr.cast(),
                             rows,
                             true,
@@ -287,10 +309,10 @@ impl<'a> LocalExpertWave<'a> {
                         .iter_mut()
                         .find(|s| s.kernel.info().capacity_rows >= rows)
                         .context("local expert capacity state missing")?;
-                    weights[routed.layer].bind(&state.kernel, &mut state.slots)?;
-                    state.slots[0] = routed.expert_input.ptr;
-                    state.slots[1] = routed.ids.ptr;
-                    state.slots[2] = routed.routing.ptr;
+                    weights[layer].bind(&state.kernel, &mut state.slots)?;
+                    state.slots[0] = inputs[0].ptr;
+                    state.slots[1] = inputs[1].ptr;
+                    state.slots[2] = inputs[2].ptr;
                     let info = state.kernel.info();
                     let args = V41ExpertLaunchArgs {
                         tensors: state.slots,
@@ -311,7 +333,7 @@ impl<'a> LocalExpertWave<'a> {
                     unsafe {
                         self.reducer.finish(
                             state.slots[41].cast(),
-                            shared.values.ptr.cast(),
+                            shared.ptr.cast(),
                             self.output.buffer.ptr.cast(),
                             rows,
                             state.kernel.accumulates_tokens(),
@@ -332,3 +354,7 @@ impl<'a> LocalExpertWave<'a> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "local/tests.rs"]
+mod tests;
