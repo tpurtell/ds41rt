@@ -29,9 +29,16 @@ Natural JSON is effectively flat (121.76 → 121.22 TPS). Mixed traffic improves
 (309.06 → 304.64 TPS, −1.4%). These are prompt-matched serving results;
 numerical changes can also change generated text and draft acceptance.
 
-Raw samples, ranges and hashes are archived with that report. Retained-context
-decode, prefill, single-RTX measurements and target-only comparisons remain
-pending; this completed subset does not establish the full release gate.
+Retained-context decode also passes all 120 requests and assessed objectives.
+Weighted throughput at 0/32K/64K/128K/256K is
+**96.97 / 89.93 / 93.85 / 88.54 / 84.07 TPS**, improving 3.6–8.1% over the
+corresponding v3 results. All 24 cache checks pass at each context size.
+This uses the separate retained-context prompt protocol, so its zero-context
+row is not interchangeable with the direct-corpus headline.
+
+Raw samples, ranges and hashes are archived with that report. Prefill,
+single-RTX measurements, the separate 2K-context row and target-only
+comparisons remain pending; this subset does not establish the full release gate.
 
 ## Serving-history graph reuse correction
 

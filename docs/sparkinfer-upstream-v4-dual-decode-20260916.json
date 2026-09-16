@@ -1,5 +1,5 @@
 {
-  "scope": "Completed dual-RTX decode portion of the clean v4 release matrix; remaining layouts and prefill pending",
+  "scope": "Completed dual-RTX direct, concurrent and retained-context decode portions of the clean v4 matrix; remaining layouts and prefill pending",
   "engine_revision": "6f118818c18317b961789f5afc34bec21959c41c",
   "build_record": "sparkinfer-upstream-v4-build-20260916.json",
   "controls": {
@@ -242,7 +242,7 @@
   "baseline": "phase2-release-performance.json",
   "archive": {
     "path": "docs/evidence/upstream-v4-dual-decode-20260916.tar.gz",
-    "sha256": "27572d604a74aebdc46f755854d94add66cd8ee9941e8bea132a2cd95aea1a7e"
+    "sha256": "4ca9eb98615157e60ede8f42b95108e8bfdb3ebeb8ce5de225a01be1692b9fdd"
   },
   "artifacts": [
     {
@@ -279,6 +279,11 @@
       "name": "dual-mixed-3.json",
       "bytes": 68550,
       "sha256": "b001c9268079aab8bd48e225101401f14722a7b570913d65dc5bc7a7affc9434"
+    },
+    {
+      "name": "dual-retained-decode.json",
+      "bytes": 47113430,
+      "sha256": "2689bd0db6095f28fa05e2f55b0993b1d3b350af3171ebd3ca9c05fe744b5c58"
     }
   ],
   "comparison": {
@@ -462,6 +467,89 @@
         "v3": 309.0626574278938,
         "v4": 304.639444543635,
         "change_percent": -1.4311702750083088
+      }
+    ],
+    "retained_decode": [
+      {
+        "context_tokens": 0,
+        "v3": 93.58378458151165,
+        "v4": 96.97328944122305,
+        "change_percent": 3.6218933385399943
+      },
+      {
+        "context_tokens": 32768,
+        "v3": 85.82285352402761,
+        "v4": 89.932798493662,
+        "change_percent": 4.788870097967268
+      },
+      {
+        "context_tokens": 65536,
+        "v3": 86.8192071046167,
+        "v4": 93.8520820864242,
+        "change_percent": 8.10059803164631
+      },
+      {
+        "context_tokens": 131072,
+        "v3": 84.19861449089427,
+        "v4": 88.54137538902404,
+        "change_percent": 5.157758146482827
+      },
+      {
+        "context_tokens": 262144,
+        "v3": 78.0849448753665,
+        "v4": 84.07360330661416,
+        "change_percent": 7.6694149439515025
+      }
+    ]
+  },
+  "retained_decode": {
+    "passed": true,
+    "objective_checks_passed": true,
+    "contexts": [
+      0,
+      32768,
+      65536,
+      131072,
+      262144
+    ],
+    "repeats": 3,
+    "context_sha256": "9fd051edae59a6b4263a690fbdd70816c78c9671a50d6976903b51b4386593b0",
+    "corpus_sha256": "e14ff2894de9290827a07aef2ff55e2bb5c792abe91dcdc029fa9d6ed97990bc",
+    "context_summaries": [
+      {
+        "context_tokens": 0,
+        "samples": 24,
+        "weighted_observed_decode_tokens_per_second": 96.97328944122305,
+        "serving_completed": 24,
+        "cache_valid": 24
+      },
+      {
+        "context_tokens": 32768,
+        "samples": 24,
+        "weighted_observed_decode_tokens_per_second": 89.932798493662,
+        "serving_completed": 24,
+        "cache_valid": 24
+      },
+      {
+        "context_tokens": 65536,
+        "samples": 24,
+        "weighted_observed_decode_tokens_per_second": 93.8520820864242,
+        "serving_completed": 24,
+        "cache_valid": 24
+      },
+      {
+        "context_tokens": 131072,
+        "samples": 24,
+        "weighted_observed_decode_tokens_per_second": 88.54137538902404,
+        "serving_completed": 24,
+        "cache_valid": 24
+      },
+      {
+        "context_tokens": 262144,
+        "samples": 24,
+        "weighted_observed_decode_tokens_per_second": 84.07360330661416,
+        "serving_completed": 24,
+        "cache_valid": 24
       }
     ]
   }
