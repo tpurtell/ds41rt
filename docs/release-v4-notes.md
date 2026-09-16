@@ -41,8 +41,11 @@ prompt-matched results at 400 W per RTX with stock memory clocks; the
 preserve ranges and individual cases. The remaining final-image performance
 measurements are still in progress.
 
-The three tool campaigns and vision checks used the clean candidate before the final
-graph-reuse correction. That correction changes graph lifetime, not kernel
+The three tool campaigns used the clean candidate before the final
+graph-reuse correction. Vision and cold/exact 1.04M retrieval were also rerun
+after the in-place query change, following the accumulated single-RTX
+performance workload; both passed. The [focused evidence](
+sparkinfer-upstream-query-inplace-focused-20260916.json) records those checks. That correction changes graph lifetime, not kernel
 arithmetic; it separately passed prefix equivalence, all 16 divergent cache
 branches, a CUDA graph lifetime test, and cold/exact 1.04M-token retrieval.
 The [correction evidence](sparkinfer-upstream-index-graph-reuse-20260916.json)

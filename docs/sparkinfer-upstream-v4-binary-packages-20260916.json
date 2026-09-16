@@ -1,0 +1,32 @@
+{
+  "scope": "Local v4 binary release packages; publication and full performance qualification pending",
+  "packages": [
+    {
+      "file": "ds41rt-v4-coordinator-linux-amd64.tar.gz",
+      "bytes": 17648514,
+      "sha256": "bc65de7473ef6f2f416841c55892fdc541525e445242e87684bce3939c64dd3e",
+      "provenance": {
+        "version": "v4",
+        "role": "coordinator",
+        "architecture": "amd64",
+        "engine_revision": "39242276302b24e6e07313152cc532e43d8ed6ca",
+        "source_manifest_sha256": "bf22e0f27f0368db99fbe43c966b3be771a14ead09f2d1428d872521d98b0394",
+        "image_id": "sha256:2ccc04760e7cb0b761cac5dad06c5e5e41a24365ad55e111a1247e52915740cf"
+      }
+    },
+    {
+      "file": "ds41rt-v4-spark-expert-linux-arm64.tar.gz",
+      "bytes": 15679863,
+      "sha256": "b38a7b4e9b238df73b20f8a478e4ff956a2d534ce63b3d3b85e9146818d96099",
+      "provenance": {
+        "version": "v4",
+        "role": "spark-expert",
+        "architecture": "arm64",
+        "engine_revision": "39242276302b24e6e07313152cc532e43d8ed6ca",
+        "source_manifest_sha256": "bf22e0f27f0368db99fbe43c966b3be771a14ead09f2d1428d872521d98b0394",
+        "image_id": "sha256:08c121661e14d681b18c84c04726dc609e18e4e3c3c522379f3274ff56168be9"
+      }
+    }
+  ],
+  "verification": "Every archive member was read back and compared byte-for-byte with its input; built role artifacts matched dist/SHA256SUMS before packaging."
+}

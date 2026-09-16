@@ -54,8 +54,8 @@ for layout,label in [('single','1 RTX'),('dual','2 RTX')]:
   f"{q['prompt_retention_entries']} / {q['completed_turn_retention_entries']}"])
 section('Deployment and cache capacity','Actual launch controls and startup pool reservation. Prompt/completed retention counts are cache entries.',
  ['Layout','RTX expert layers','Spark residency / budget','Global FP4 source pool','Prompt / completed retention'],rows)
-section('Startup', 'Measured standard-script startup for the qualified image.',
- ['Layout', 'Startup seconds'], [[label, f(d['startup_seconds'][layout])] for layout,label in [('single','1 RTX'),('dual','2 RTX')]])
+section('Startup', 'Measured standard-script startup to API readiness, including deployment orchestration. Each entry is one launch, not a three-run median.',
+ ['Layout', 'v3 seconds', 'v4 seconds', 'Change'], [[label, f(old['startup_seconds'][layout]), f(d['startup_seconds'][layout]), pct(d['startup_seconds'][layout],old['startup_seconds'][layout])] for layout,label in [('single','1 RTX'),('dual','2 RTX')]])
 rows=[]
 for phase,gpus in sorted(d['gpu_telemetry'].items()):
  for uuid,gpu in sorted(gpus.items()):
