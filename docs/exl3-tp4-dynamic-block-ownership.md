@@ -414,3 +414,21 @@ request also passed. This covers larger prefill-to-decode transitions and basic
 cache/cancellation behavior for the dual-RTX candidate, not the entire release
 quality suite or 1M-context behavior. Original services were restored. Evidence:
 `release-v5-exl3-paired-lifecycle.json` and the adjacent archive.
+
+### Fixed-K7 acceptance baseline
+
+The preferred paired candidate completed an instrumented fixed-K7 collection
+with code and topic at C1/C8/C16 plus mixed C4/C16. Excluding terminal/constrained
+observations, code accepted 4.468 of 7 verified drafts on average (4,602/7,210;
+63.83%), while topic accepted 1.735 (4,924/19,866; 24.79%). Each content cohort
+contains 26 requests including warmup and concurrency drain. These pooled,
+short-context observations are not a full-model quantization comparison.
+Conditional confidence calibration stops at the first mismatch; unverified
+suffixes are never assigned labels.
+
+The summary now supports K7 and independent-lane scheduler records. Ten focused
+analysis tests pass. Placement-cost fitting keeps topic entirely held out, in
+addition to even draft widths on code/mixed. The remaining width collection and
+adaptive serving validation are pending. Debug-instrumented throughput must not
+be used in release performance tables. Evidence and reproducible analysis:
+`release-v5-exl3-paired-k7-acceptance.json` and its adjacent archive.
