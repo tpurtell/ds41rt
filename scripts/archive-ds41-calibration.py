@@ -48,6 +48,9 @@ def main():
         dst.mkdir()
         raw = (src / 'server.log').read_bytes()
         windows = json.loads((src / 'segments.json').read_text())
+        # Keep actual residency/pool/device startup evidence, not only the
+        # requested command-line settings and the full trace's hash.
+        (dst / 'startup.log').write_bytes(raw[:min(window['begin'] for window in windows)])
         filtered = bytearray()
         mapped = []
         acceptance = []

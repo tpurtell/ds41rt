@@ -586,3 +586,48 @@ acceptance summaries. The archive includes clients' results, run configuration,
 parsers and a file-hash manifest. A single-RTX K5 trial reproduced all 3,089 cost
 rounds and all content acceptance summaries exactly. This validates evidence
 preservation; instrumented timings remain unsuitable for release TPS tables.
+
+### Single-RTX EXL3 calibration completed
+
+Fixed K1–K5 collections passed code, high-effort reasoning code, topic at
+C1/C8/C16, and mixed traffic at C4/C16. This configuration keeps six routed
+expert layers on one RTX, with paired TP4 Spark ownership and the m80 two-block
+package. There are 21,932 complete cost rounds, of which 21,772 pass the warm
+shape filter; 2,451 odd-width code/mixed rounds train the fit. All topic and
+reasoning-code rounds are held out, as are even-width code/mixed rounds.
+
+| Held-out workload | Legacy formula median error | Affine fit median error | Affine p90 error |
+| --- | ---: | ---: | ---: |
+| Code, K2/K4 | 13.77% | 8.32% | 17.95% |
+| Mixed, K2/K4 | 16.02% | 6.16% | 15.01% |
+| Topic, K2/K4 | 13.94% | 8.73% | 18.70% |
+| Reasoning code, K2/K4 | 13.44% | 6.30% | 17.21% |
+| Reasoning code, K1/K3/K5 | 12.69% | 8.24% | 18.38% |
+
+The reference column is the legacy affine formula, **not** the existing
+single-RTX placement profile. These observed-route fits do not qualify a new
+serving default. The capped16 diagnostic improves most held-out median errors
+further but remains non-exportable; mixed even-width median error increases
+from 6.16% to 6.52%. All variants and cohorts are retained in
+`release-v5-exl3-single-cost-fit.json`.
+
+The K5 acceptance slice includes 26 requests per content type, including warmup
+and concurrency drain. Terminal and constrained observations are excluded.
+Reasoning-code counts include both reasoning and final-answer generation.
+
+| Content, fixed K5 | Accepted / verified drafts | Acceptance | Mean emitted tokens/cycle | Zero-acceptance cycles |
+| --- | ---: | ---: | ---: | ---: |
+| Code | 4,422 / 5,450 | 81.14% | 5.06 | 4.40% |
+| Reasoning code | 26,602 / 42,740 | 62.24% | 4.11 | 15.72% |
+| Topic | 3,876 / 10,990 | 35.27% | 2.76 | 24.84% |
+
+These rates cannot be compared directly with the earlier dual-RTX K7 slice as
+a quant-quality change: verification length differs. The evidence retains all
+five widths for later matched-width full/EXL3 comparisons. Instrumentation also
+precludes using these runs as final throughput tables.
+
+Evidence: `release-v5-exl3-single-calibration.json` and its archive. Every cost
+record, acceptance observation and lane round is reproduced exactly after
+filtering, and all fitted coefficients/evaluations match the originals. Startup
+logs retain the actual residency and pool reservation alongside run commands.
+Full-model calibration on two RTX cards has started; its one-RTX runs follow.
