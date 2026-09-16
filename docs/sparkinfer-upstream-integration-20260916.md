@@ -36,9 +36,18 @@ corresponding v3 results. All 24 cache checks pass at each context size.
 This uses the separate retained-context prompt protocol, so its zero-context
 row is not interchangeable with the direct-corpus headline.
 
-Raw samples, ranges and hashes are archived with that report. Prefill,
-single-RTX measurements, the separate 2K-context row and target-only
-comparisons remain pending; this subset does not establish the full release gate.
+The [corrected clean prefill matrix and 2K-context check](sparkinfer-upstream-v4-dual-prefill-20260916.json)
+also pass. Peak prefill is **8383 TPS**, versus 8454 in v3 (−0.8%). Cold
+cells change by −0.4% to −1.9%; retained 4K–32K suffixes gain 0.7–10.2%,
+while retained 1K/2K suffixes lose 0.9–7.4%. This short-suffix tradeoff is
+preserved in the report rather than hidden behind the peak or decode gains.
+The separate 2K retained-context run completes all 24 requests and cache checks
+at **96.22 weighted TPS**. It does not beat this run's separate zero-context
+row (96.97 TPS), and it has no matching published v3 baseline.
+
+Raw samples, ranges and hashes are archived with those reports. Single-RTX
+measurements and target-only comparisons remain pending; this subset does not
+establish the full release gate.
 
 ## Serving-history graph reuse correction
 

@@ -1,0 +1,557 @@
+{
+  "scope": "Completed clean dual-RTX prefill matrix and separate 2K retained decode; single-RTX and target-only phases remain pending",
+  "engine_revision": "6f118818c18317b961789f5afc34bec21959c41c",
+  "build_record": "sparkinfer-upstream-v4-build-20260916.json",
+  "other_decode_record": "sparkinfer-upstream-v4-dual-decode-20260916.json",
+  "prefill": {
+    "passed": true,
+    "bases": [
+      0,
+      32768,
+      65536,
+      131072,
+      262144
+    ],
+    "suffixes": [
+      1024,
+      2048,
+      4096,
+      8192,
+      16384,
+      32768
+    ],
+    "repeats": 3,
+    "warmups_per_cell": 1,
+    "context_sha256": "9fd051edae59a6b4263a690fbdd70816c78c9671a50d6976903b51b4386593b0",
+    "cells": [
+      {
+        "base_context_tokens": 0,
+        "suffix_tokens": 1024,
+        "samples": 3,
+        "median_effective_prefill_tokens_per_second": 4757.349882868724,
+        "min_effective_prefill_tokens_per_second": 4742.361026208102,
+        "max_effective_prefill_tokens_per_second": 4799.920448221435
+      },
+      {
+        "base_context_tokens": 0,
+        "suffix_tokens": 2048,
+        "samples": 3,
+        "median_effective_prefill_tokens_per_second": 6356.988320135675,
+        "min_effective_prefill_tokens_per_second": 6351.162537182194,
+        "max_effective_prefill_tokens_per_second": 6411.9160059826345
+      },
+      {
+        "base_context_tokens": 0,
+        "suffix_tokens": 4096,
+        "samples": 3,
+        "median_effective_prefill_tokens_per_second": 7863.969245332123,
+        "min_effective_prefill_tokens_per_second": 7813.62239785569,
+        "max_effective_prefill_tokens_per_second": 7885.182532830396
+      },
+      {
+        "base_context_tokens": 0,
+        "suffix_tokens": 8192,
+        "samples": 3,
+        "median_effective_prefill_tokens_per_second": 8240.344029926779,
+        "min_effective_prefill_tokens_per_second": 8217.78937875696,
+        "max_effective_prefill_tokens_per_second": 8244.605455030618
+      },
+      {
+        "base_context_tokens": 0,
+        "suffix_tokens": 16384,
+        "samples": 3,
+        "median_effective_prefill_tokens_per_second": 8382.625926472992,
+        "min_effective_prefill_tokens_per_second": 8369.116897448714,
+        "max_effective_prefill_tokens_per_second": 8383.567394655214
+      },
+      {
+        "base_context_tokens": 0,
+        "suffix_tokens": 32768,
+        "samples": 3,
+        "median_effective_prefill_tokens_per_second": 8316.062705437475,
+        "min_effective_prefill_tokens_per_second": 8308.054279738382,
+        "max_effective_prefill_tokens_per_second": 8320.524536010835
+      },
+      {
+        "base_context_tokens": 32768,
+        "suffix_tokens": 1024,
+        "samples": 3,
+        "median_effective_prefill_tokens_per_second": 3614.575409899016,
+        "min_effective_prefill_tokens_per_second": 3577.0148883065203,
+        "max_effective_prefill_tokens_per_second": 3618.7818684974864
+      },
+      {
+        "base_context_tokens": 32768,
+        "suffix_tokens": 2048,
+        "samples": 3,
+        "median_effective_prefill_tokens_per_second": 4922.798560536875,
+        "min_effective_prefill_tokens_per_second": 4912.127236639608,
+        "max_effective_prefill_tokens_per_second": 4938.410736171734
+      },
+      {
+        "base_context_tokens": 32768,
+        "suffix_tokens": 4096,
+        "samples": 3,
+        "median_effective_prefill_tokens_per_second": 6208.435144950578,
+        "min_effective_prefill_tokens_per_second": 6199.429188983236,
+        "max_effective_prefill_tokens_per_second": 6236.320109450628
+      },
+      {
+        "base_context_tokens": 32768,
+        "suffix_tokens": 8192,
+        "samples": 3,
+        "median_effective_prefill_tokens_per_second": 6878.933253831245,
+        "min_effective_prefill_tokens_per_second": 6840.236179024001,
+        "max_effective_prefill_tokens_per_second": 6881.316245634641
+      },
+      {
+        "base_context_tokens": 32768,
+        "suffix_tokens": 16384,
+        "samples": 3,
+        "median_effective_prefill_tokens_per_second": 7183.643716229511,
+        "min_effective_prefill_tokens_per_second": 7177.810183459535,
+        "max_effective_prefill_tokens_per_second": 7186.9623366748365
+      },
+      {
+        "base_context_tokens": 32768,
+        "suffix_tokens": 32768,
+        "samples": 3,
+        "median_effective_prefill_tokens_per_second": 7238.030388476954,
+        "min_effective_prefill_tokens_per_second": 7229.1368624920315,
+        "max_effective_prefill_tokens_per_second": 7241.91366941095
+      },
+      {
+        "base_context_tokens": 65536,
+        "suffix_tokens": 1024,
+        "samples": 3,
+        "median_effective_prefill_tokens_per_second": 3174.329878814674,
+        "min_effective_prefill_tokens_per_second": 3169.0908569593985,
+        "max_effective_prefill_tokens_per_second": 3181.524449429851
+      },
+      {
+        "base_context_tokens": 65536,
+        "suffix_tokens": 2048,
+        "samples": 3,
+        "median_effective_prefill_tokens_per_second": 4412.037578620032,
+        "min_effective_prefill_tokens_per_second": 4399.292277395182,
+        "max_effective_prefill_tokens_per_second": 4486.530210996257
+      },
+      {
+        "base_context_tokens": 65536,
+        "suffix_tokens": 4096,
+        "samples": 3,
+        "median_effective_prefill_tokens_per_second": 5535.299803050455,
+        "min_effective_prefill_tokens_per_second": 5532.413957261875,
+        "max_effective_prefill_tokens_per_second": 5600.1413487264435
+      },
+      {
+        "base_context_tokens": 65536,
+        "suffix_tokens": 8192,
+        "samples": 3,
+        "median_effective_prefill_tokens_per_second": 6198.248089893827,
+        "min_effective_prefill_tokens_per_second": 6190.441727406204,
+        "max_effective_prefill_tokens_per_second": 6206.798636779336
+      },
+      {
+        "base_context_tokens": 65536,
+        "suffix_tokens": 16384,
+        "samples": 3,
+        "median_effective_prefill_tokens_per_second": 6484.9692385122,
+        "min_effective_prefill_tokens_per_second": 6472.931431324395,
+        "max_effective_prefill_tokens_per_second": 6490.163406227272
+      },
+      {
+        "base_context_tokens": 65536,
+        "suffix_tokens": 32768,
+        "samples": 3,
+        "median_effective_prefill_tokens_per_second": 6574.40487519677,
+        "min_effective_prefill_tokens_per_second": 6555.276804497393,
+        "max_effective_prefill_tokens_per_second": 6577.30673793949
+      },
+      {
+        "base_context_tokens": 131072,
+        "suffix_tokens": 1024,
+        "samples": 3,
+        "median_effective_prefill_tokens_per_second": 2543.225735161984,
+        "min_effective_prefill_tokens_per_second": 2539.894764225548,
+        "max_effective_prefill_tokens_per_second": 2580.9107323792855
+      },
+      {
+        "base_context_tokens": 131072,
+        "suffix_tokens": 2048,
+        "samples": 3,
+        "median_effective_prefill_tokens_per_second": 3612.331740085875,
+        "min_effective_prefill_tokens_per_second": 3601.130278937453,
+        "max_effective_prefill_tokens_per_second": 3713.065690548998
+      },
+      {
+        "base_context_tokens": 131072,
+        "suffix_tokens": 4096,
+        "samples": 3,
+        "median_effective_prefill_tokens_per_second": 4609.771902683873,
+        "min_effective_prefill_tokens_per_second": 4594.565093648647,
+        "max_effective_prefill_tokens_per_second": 4628.564135236358
+      },
+      {
+        "base_context_tokens": 131072,
+        "suffix_tokens": 8192,
+        "samples": 3,
+        "median_effective_prefill_tokens_per_second": 5159.794564305569,
+        "min_effective_prefill_tokens_per_second": 5104.768487663948,
+        "max_effective_prefill_tokens_per_second": 5191.103492046127
+      },
+      {
+        "base_context_tokens": 131072,
+        "suffix_tokens": 16384,
+        "samples": 3,
+        "median_effective_prefill_tokens_per_second": 5468.2982281683635,
+        "min_effective_prefill_tokens_per_second": 5434.344630029905,
+        "max_effective_prefill_tokens_per_second": 5486.666836020907
+      },
+      {
+        "base_context_tokens": 131072,
+        "suffix_tokens": 32768,
+        "samples": 3,
+        "median_effective_prefill_tokens_per_second": 5561.869187587188,
+        "min_effective_prefill_tokens_per_second": 5556.112546842019,
+        "max_effective_prefill_tokens_per_second": 5566.200208491797
+      },
+      {
+        "base_context_tokens": 262144,
+        "suffix_tokens": 1024,
+        "samples": 3,
+        "median_effective_prefill_tokens_per_second": 1817.166340723614,
+        "min_effective_prefill_tokens_per_second": 1776.51290068132,
+        "max_effective_prefill_tokens_per_second": 1837.5723007190481
+      },
+      {
+        "base_context_tokens": 262144,
+        "suffix_tokens": 2048,
+        "samples": 3,
+        "median_effective_prefill_tokens_per_second": 2705.792049679539,
+        "min_effective_prefill_tokens_per_second": 2613.9164974822697,
+        "max_effective_prefill_tokens_per_second": 2721.0396282254287
+      },
+      {
+        "base_context_tokens": 262144,
+        "suffix_tokens": 4096,
+        "samples": 3,
+        "median_effective_prefill_tokens_per_second": 3390.717656386769,
+        "min_effective_prefill_tokens_per_second": 3366.1532562391067,
+        "max_effective_prefill_tokens_per_second": 3421.1180848813674
+      },
+      {
+        "base_context_tokens": 262144,
+        "suffix_tokens": 8192,
+        "samples": 3,
+        "median_effective_prefill_tokens_per_second": 3879.140325817493,
+        "min_effective_prefill_tokens_per_second": 3835.1308087450443,
+        "max_effective_prefill_tokens_per_second": 3881.8969510533693
+      },
+      {
+        "base_context_tokens": 262144,
+        "suffix_tokens": 16384,
+        "samples": 3,
+        "median_effective_prefill_tokens_per_second": 4141.628641735771,
+        "min_effective_prefill_tokens_per_second": 4136.485390605942,
+        "max_effective_prefill_tokens_per_second": 4145.521719513482
+      },
+      {
+        "base_context_tokens": 262144,
+        "suffix_tokens": 32768,
+        "samples": 3,
+        "median_effective_prefill_tokens_per_second": 4229.587272204541,
+        "min_effective_prefill_tokens_per_second": 4227.636757525942,
+        "max_effective_prefill_tokens_per_second": 4240.783502303505
+      }
+    ]
+  },
+  "retained_decode_2k": {
+    "passed": true,
+    "objective_checks_passed": true,
+    "contexts": [
+      2048
+    ],
+    "repeats": 3,
+    "context_sha256": "9fd051edae59a6b4263a690fbdd70816c78c9671a50d6976903b51b4386593b0",
+    "corpus_sha256": "e14ff2894de9290827a07aef2ff55e2bb5c792abe91dcdc029fa9d6ed97990bc",
+    "context_summaries": [
+      {
+        "context_tokens": 2048,
+        "samples": 24,
+        "weighted_observed_decode_tokens_per_second": 96.22408211491842,
+        "serving_completed": 24,
+        "cache_valid": 24
+      }
+    ]
+  },
+  "baseline": "phase2-release-performance.json",
+  "prefill_comparison": [
+    {
+      "base_context_tokens": 0,
+      "suffix_tokens": 1024,
+      "v3": 4849.664334445336,
+      "v4": 4757.349882868724,
+      "change_percent": -1.9035224957928976
+    },
+    {
+      "base_context_tokens": 0,
+      "suffix_tokens": 2048,
+      "v3": 6470.625973615694,
+      "v4": 6356.988320135675,
+      "change_percent": -1.7562080383471845
+    },
+    {
+      "base_context_tokens": 0,
+      "suffix_tokens": 4096,
+      "v3": 7981.749791625653,
+      "v4": 7863.969245332123,
+      "change_percent": -1.4756231323751146
+    },
+    {
+      "base_context_tokens": 0,
+      "suffix_tokens": 8192,
+      "v3": 8330.70609850098,
+      "v4": 8240.344029926779,
+      "change_percent": -1.0846867901204704
+    },
+    {
+      "base_context_tokens": 0,
+      "suffix_tokens": 16384,
+      "v3": 8453.537055390892,
+      "v4": 8382.625926472992,
+      "change_percent": -0.8388338331430045
+    },
+    {
+      "base_context_tokens": 0,
+      "suffix_tokens": 32768,
+      "v3": 8348.150582939359,
+      "v4": 8316.062705437475,
+      "change_percent": -0.3843710913344123
+    },
+    {
+      "base_context_tokens": 32768,
+      "suffix_tokens": 1024,
+      "v3": 3736.2134638368416,
+      "v4": 3614.575409899016,
+      "change_percent": -3.2556505433956495
+    },
+    {
+      "base_context_tokens": 32768,
+      "suffix_tokens": 2048,
+      "v3": 5067.752873547818,
+      "v4": 4922.798560536875,
+      "change_percent": -2.860327183031397
+    },
+    {
+      "base_context_tokens": 32768,
+      "suffix_tokens": 4096,
+      "v3": 5632.556850022948,
+      "v4": 6208.435144950578,
+      "change_percent": 10.224100888130128
+    },
+    {
+      "base_context_tokens": 32768,
+      "suffix_tokens": 8192,
+      "v3": 6433.87211987657,
+      "v4": 6878.933253831245,
+      "change_percent": 6.9174693817696475
+    },
+    {
+      "base_context_tokens": 32768,
+      "suffix_tokens": 16384,
+      "v3": 6937.388100605384,
+      "v4": 7183.643716229511,
+      "change_percent": 3.5496877506771884
+    },
+    {
+      "base_context_tokens": 32768,
+      "suffix_tokens": 32768,
+      "v3": 7101.117956573673,
+      "v4": 7238.030388476954,
+      "change_percent": 1.9280405246125731
+    },
+    {
+      "base_context_tokens": 65536,
+      "suffix_tokens": 1024,
+      "v3": 3318.2057391066696,
+      "v4": 3174.329878814674,
+      "change_percent": -4.335953572629592
+    },
+    {
+      "base_context_tokens": 65536,
+      "suffix_tokens": 2048,
+      "v3": 4542.632177933229,
+      "v4": 4412.037578620032,
+      "change_percent": -2.8748662492989685
+    },
+    {
+      "base_context_tokens": 65536,
+      "suffix_tokens": 4096,
+      "v3": 5065.760227305859,
+      "v4": 5535.299803050455,
+      "change_percent": 9.268886695695677
+    },
+    {
+      "base_context_tokens": 65536,
+      "suffix_tokens": 8192,
+      "v3": 5831.637539073575,
+      "v4": 6198.248089893827,
+      "change_percent": 6.286579856238661
+    },
+    {
+      "base_context_tokens": 65536,
+      "suffix_tokens": 16384,
+      "v3": 6315.921510301603,
+      "v4": 6484.9692385122,
+      "change_percent": 2.676533074941978
+    },
+    {
+      "base_context_tokens": 65536,
+      "suffix_tokens": 32768,
+      "v3": 6459.052849354531,
+      "v4": 6574.40487519677,
+      "change_percent": 1.7858969191398844
+    },
+    {
+      "base_context_tokens": 131072,
+      "suffix_tokens": 1024,
+      "v3": 2747.8875164765645,
+      "v4": 2543.225735161984,
+      "change_percent": -7.447967942188727
+    },
+    {
+      "base_context_tokens": 131072,
+      "suffix_tokens": 2048,
+      "v3": 3789.6316122916087,
+      "v4": 3612.331740085875,
+      "change_percent": -4.678551646831963
+    },
+    {
+      "base_context_tokens": 131072,
+      "suffix_tokens": 4096,
+      "v3": 4257.805800034847,
+      "v4": 4609.771902683873,
+      "change_percent": 8.266372849746805
+    },
+    {
+      "base_context_tokens": 131072,
+      "suffix_tokens": 8192,
+      "v3": 4948.605003608061,
+      "v4": 5159.794564305569,
+      "change_percent": 4.267658472307412
+    },
+    {
+      "base_context_tokens": 131072,
+      "suffix_tokens": 16384,
+      "v3": 5328.596934117981,
+      "v4": 5468.2982281683635,
+      "change_percent": 2.62172755375627
+    },
+    {
+      "base_context_tokens": 131072,
+      "suffix_tokens": 32768,
+      "v3": 5482.639935795241,
+      "v4": 5561.869187587188,
+      "change_percent": 1.4450931069660777
+    },
+    {
+      "base_context_tokens": 262144,
+      "suffix_tokens": 1024,
+      "v3": 1922.563281377212,
+      "v4": 1817.166340723614,
+      "change_percent": -5.482105149646765
+    },
+    {
+      "base_context_tokens": 262144,
+      "suffix_tokens": 2048,
+      "v3": 2730.667263878847,
+      "v4": 2705.792049679539,
+      "change_percent": -0.9109573520126757
+    },
+    {
+      "base_context_tokens": 262144,
+      "suffix_tokens": 4096,
+      "v3": 3213.0420162643763,
+      "v4": 3390.717656386769,
+      "change_percent": 5.529826227699508
+    },
+    {
+      "base_context_tokens": 262144,
+      "suffix_tokens": 8192,
+      "v3": 3728.919420283456,
+      "v4": 3879.140325817493,
+      "change_percent": 4.028537187392955
+    },
+    {
+      "base_context_tokens": 262144,
+      "suffix_tokens": 16384,
+      "v3": 4051.8072884175044,
+      "v4": 4141.628641735771,
+      "change_percent": 2.2168219494305808
+    },
+    {
+      "base_context_tokens": 262144,
+      "suffix_tokens": 32768,
+      "v3": 4198.309677007978,
+      "v4": 4229.587272204541,
+      "change_percent": 0.745004480442546
+    }
+  ],
+  "archive": {
+    "path": "docs/evidence/upstream-v4-dual-prefill-20260916.tar.gz",
+    "sha256": "95d8555db8902f1fd51c2233ae8d2a9594fb71a56edd7ea82d658eed5e0e8354"
+  },
+  "artifacts": [
+    {
+      "name": "dual-prefill.json",
+      "bytes": 227657,
+      "sha256": "6628176a501869a6e47932ca7aacb77e9950f62f1eaebf16499e502fde8fc0cd"
+    },
+    {
+      "name": "dual-prefill.log",
+      "bytes": 9954,
+      "sha256": "6f6195efca2581180b946a73a3203f74f9a32f3d455e0ad7b5335ad1184056d7"
+    },
+    {
+      "name": "dual-retained-2k.json",
+      "bytes": 219021,
+      "sha256": "cf5fb5f082d31776830c588ac2e7642a93944af2ab025c5d67a4109e94e6c287"
+    },
+    {
+      "name": "dual-retained-2k.log",
+      "bytes": 2195,
+      "sha256": "1a6cf3d1a8f22e4af2735aca1d738c3e557621ada0007c22993096b0dfe563ef"
+    },
+    {
+      "name": "dual-dspark-metadata.record",
+      "bytes": 10997,
+      "sha256": "3e1446b005e9ce1078af438c6dc6ad27246e9a43bee29fa107d8610a9f28b871"
+    },
+    {
+      "name": "dual-retained_2k-metadata.record",
+      "bytes": 4886,
+      "sha256": "c240c64f65c25c83f47fce26934957b5fb8969fb71504917a5e404982c38a93f"
+    },
+    {
+      "name": "dual-dspark-gpu.csv",
+      "bytes": 479953,
+      "sha256": "13d42223076a7e6d8112ee2edc5c727d41d3708314db8531d6895540b880bcc6"
+    },
+    {
+      "name": "dual-retained_2k-gpu.csv",
+      "bytes": 8677,
+      "sha256": "7114a341e1387244ad57a1704d8335a40bc97468aba7b2a6ba5cf1a06d12758e"
+    },
+    {
+      "name": "dual-initial-server.log",
+      "bytes": 5802,
+      "sha256": "0a4c813796d3a8f86f4ef494f03a2defcde3798b7ba8b18c5e2beeba51cc94b4"
+    },
+    {
+      "name": "dual-initial-startup-allocations.record",
+      "bytes": 3599,
+      "sha256": "22c4c49eb9cb26c7a458c8efcc1f8028e85fb1835b62cf819ad55ecce5fd1e3d"
+    }
+  ]
+}
