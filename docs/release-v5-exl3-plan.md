@@ -6,6 +6,9 @@ the supplied K3.25 checkpoints, measure the resulting residency and speed,
 and publish v5. V4 remains the full-model baseline until measured replacement
 tables are ready.
 
+TP6 support for the user's two additional Sparks is a separate goal, after
+finishing TP4. V5 qualification remains one/two RTX cards with four Sparks.
+
 ```mermaid
 flowchart LR
     A[Inventory and hard-link PLE variant] --> B[Loader and mixed projection ABI]
