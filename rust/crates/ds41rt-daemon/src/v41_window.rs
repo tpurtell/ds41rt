@@ -553,9 +553,8 @@ impl WindowWave<'_, '_> {
                     (Err(error), Err(_)) | (Ok(()), Err(error)) => return Err(error),
                 };
                 self.graph = Some((graph, prepared.rows, state.owner));
-                self.pending_query.as_mut().unwrap().1 = false;
-                unsafe { self.stream.library.cuda_graph_launch(graph, self.stream.raw)?; }
-                return Ok(false);
+                // Eager proposal is complete. Capture records future work without
+                // committing cache state; publish the existing result below.
             }
             self.ready = Some(self.pending_query.take().unwrap().0);
             self.output(state)?;

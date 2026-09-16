@@ -47,8 +47,14 @@ recapture, plus cancellation/reuse and paired-encoder checks. This validation
 used the experimental retention policy. Its completed single-RTX campaign
 passes endurance but reaches only 159.69 TPS mixed C16, versus 156.38 before
 and published v3's 196.46. This does not establish a useful performance recovery.
-A separate window/compressor cold-output follow-up has passed the real-weight
-production parity fixture and is being measured.
+The separate window/compressor cold-output change passes real-weight
+production parity, but the same 24/16 policy still yields only 156.32 TPS mixed
+C16. Its [capture diagnostic](sparkinfer-upstream-producer-graph-trials-20260916.json)
+records 5,520 captures each for query, router and shared FFN across two mixed
+sweeps, including 3,680 each with full banks. Counts include both lanes and
+initial captures; instrumented timings are excluded from release benchmarks.
+The next trial restores full producer-shape retention with 24 projection shapes,
+preserving the KV pool and measuring the reduced memory margin.
 The [failure evidence](sparkinfer-upstream-single-memory-20260916.json)
 preserves the failed streams and reproduction logs. The dual measurements
 below describe the earlier 512-entry candidate, not a completed release.

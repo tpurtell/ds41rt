@@ -1,0 +1,257 @@
+{
+  "scope": "Reuse completed cache-producer proposals after cold capture; diagnose bounded-cache churn",
+  "numerical_validation": {
+    "command": [
+      "docker",
+      "run",
+      "--rm",
+      "--name",
+      "ds41rt-cold-result-parity",
+      "--gpus",
+      "\"device=GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0\"",
+      "--network",
+      "host",
+      "--ipc",
+      "host",
+      "--ulimit",
+      "memlock=-1:-1",
+      "--device=/dev/infiniband",
+      "-e",
+      "CUDA_VISIBLE_DEVICES=GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0",
+      "-e",
+      "DS41RT_LAYER0_LIBRARY=/opt/ds41rt/lib/libds41rt_native.so",
+      "-e",
+      "DS41RT_LAYER0_MODEL=/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+      "-e",
+      "DS41RT_LAYER0_PEERS=10.55.0.1:19441,10.55.0.2:19441,10.55.0.3:19441,10.55.0.4:19441",
+      "-e",
+      "RUST_LOG=info",
+      "-v",
+      "/home/tj/.cache/huggingface:/root/.cache/huggingface:ro",
+      "-v",
+      "/home/tj/Developer/ds41rt/rust/target/release/deps/ds41rt-691d0823c7a973d1:/tmp/parity-tests:ro",
+      "--entrypoint",
+      "/tmp/parity-tests",
+      "sha256:bc6bc46908bcd09278726eee77aa47c40c04c2b430df6d4f3cc0a9dd95c0b9fb",
+      "real_layer_zero_executes_embedding_attention_tp4_and_mhc",
+      "--nocapture"
+    ],
+    "exit_code": 0,
+    "elapsed_seconds": 5.612324476242065
+  },
+  "performance": {
+    "status": "combined policy not accepted for release",
+    "single_endurance_passed": true,
+    "single_mixed_C16_samples_tps": [
+      167.257498477811,
+      146.83780297772898,
+      156.3227811536562
+    ],
+    "single_mixed_C16_median_tps": 156.3227811536562,
+    "next_step": "diagnose graph misses by component and row count"
+  },
+  "graph_miss_trace": {
+    "scope": "Diagnostic capture counts; instrumented timings are not release benchmarks",
+    "captures_by_owner": {
+      "ds41rt::v41_attention_query::AttentionQueryWeights<'_>": 5520,
+      "ds41rt::v41_backbone_router::BackboneRouterWeights<'_>": 5520,
+      "ds41rt::v41_backbone_shared::BackboneSharedWeights<'_>": 5520,
+      "ds41rt::v41_index_query::IndexQueryWeights<'_>": 1104
+    },
+    "captures_with_full_bank": {
+      "ds41rt::v41_attention_query::AttentionQueryWeights<'_>": 3680,
+      "ds41rt::v41_backbone_router::BackboneRouterWeights<'_>": 3680,
+      "ds41rt::v41_backbone_shared::BackboneSharedWeights<'_>": 3680,
+      "ds41rt::v41_index_query::IndexQueryWeights<'_>": 736
+    },
+    "hottest_repeated_bindings": [
+      {
+        "owner": "ds41rt::v41_attention_query::AttentionQueryWeights<'_>",
+        "layer": 0,
+        "rows": 3,
+        "captures": 6
+      },
+      {
+        "owner": "ds41rt::v41_backbone_router::BackboneRouterWeights<'_>",
+        "layer": 0,
+        "rows": 3,
+        "captures": 6
+      },
+      {
+        "owner": "ds41rt::v41_backbone_shared::BackboneSharedWeights<'_>",
+        "layer": 0,
+        "rows": 3,
+        "captures": 6
+      },
+      {
+        "owner": "ds41rt::v41_attention_query::AttentionQueryWeights<'_>",
+        "layer": 1,
+        "rows": 3,
+        "captures": 6
+      },
+      {
+        "owner": "ds41rt::v41_backbone_router::BackboneRouterWeights<'_>",
+        "layer": 1,
+        "rows": 3,
+        "captures": 6
+      },
+      {
+        "owner": "ds41rt::v41_backbone_shared::BackboneSharedWeights<'_>",
+        "layer": 1,
+        "rows": 3,
+        "captures": 6
+      },
+      {
+        "owner": "ds41rt::v41_attention_query::AttentionQueryWeights<'_>",
+        "layer": 2,
+        "rows": 3,
+        "captures": 6
+      },
+      {
+        "owner": "ds41rt::v41_index_query::IndexQueryWeights<'_>",
+        "layer": 2,
+        "rows": 3,
+        "captures": 6
+      },
+      {
+        "owner": "ds41rt::v41_backbone_router::BackboneRouterWeights<'_>",
+        "layer": 2,
+        "rows": 3,
+        "captures": 6
+      },
+      {
+        "owner": "ds41rt::v41_backbone_shared::BackboneSharedWeights<'_>",
+        "layer": 2,
+        "rows": 3,
+        "captures": 6
+      },
+      {
+        "owner": "ds41rt::v41_attention_query::AttentionQueryWeights<'_>",
+        "layer": 3,
+        "rows": 3,
+        "captures": 6
+      },
+      {
+        "owner": "ds41rt::v41_backbone_router::BackboneRouterWeights<'_>",
+        "layer": 3,
+        "rows": 3,
+        "captures": 6
+      },
+      {
+        "owner": "ds41rt::v41_backbone_shared::BackboneSharedWeights<'_>",
+        "layer": 3,
+        "rows": 3,
+        "captures": 6
+      },
+      {
+        "owner": "ds41rt::v41_attention_query::AttentionQueryWeights<'_>",
+        "layer": 4,
+        "rows": 3,
+        "captures": 6
+      },
+      {
+        "owner": "ds41rt::v41_backbone_router::BackboneRouterWeights<'_>",
+        "layer": 4,
+        "rows": 3,
+        "captures": 6
+      },
+      {
+        "owner": "ds41rt::v41_backbone_shared::BackboneSharedWeights<'_>",
+        "layer": 4,
+        "rows": 3,
+        "captures": 6
+      },
+      {
+        "owner": "ds41rt::v41_attention_query::AttentionQueryWeights<'_>",
+        "layer": 5,
+        "rows": 3,
+        "captures": 6
+      },
+      {
+        "owner": "ds41rt::v41_backbone_router::BackboneRouterWeights<'_>",
+        "layer": 5,
+        "rows": 3,
+        "captures": 6
+      },
+      {
+        "owner": "ds41rt::v41_backbone_shared::BackboneSharedWeights<'_>",
+        "layer": 5,
+        "rows": 3,
+        "captures": 6
+      },
+      {
+        "owner": "ds41rt::v41_attention_query::AttentionQueryWeights<'_>",
+        "layer": 6,
+        "rows": 3,
+        "captures": 6
+      },
+      {
+        "owner": "ds41rt::v41_backbone_router::BackboneRouterWeights<'_>",
+        "layer": 6,
+        "rows": 3,
+        "captures": 6
+      },
+      {
+        "owner": "ds41rt::v41_backbone_shared::BackboneSharedWeights<'_>",
+        "layer": 6,
+        "rows": 3,
+        "captures": 6
+      },
+      {
+        "owner": "ds41rt::v41_attention_query::AttentionQueryWeights<'_>",
+        "layer": 7,
+        "rows": 3,
+        "captures": 6
+      },
+      {
+        "owner": "ds41rt::v41_backbone_router::BackboneRouterWeights<'_>",
+        "layer": 7,
+        "rows": 3,
+        "captures": 6
+      },
+      {
+        "owner": "ds41rt::v41_backbone_shared::BackboneSharedWeights<'_>",
+        "layer": 7,
+        "rows": 3,
+        "captures": 6
+      },
+      {
+        "owner": "ds41rt::v41_attention_query::AttentionQueryWeights<'_>",
+        "layer": 8,
+        "rows": 3,
+        "captures": 6
+      },
+      {
+        "owner": "ds41rt::v41_index_query::IndexQueryWeights<'_>",
+        "layer": 8,
+        "rows": 3,
+        "captures": 6
+      },
+      {
+        "owner": "ds41rt::v41_backbone_router::BackboneRouterWeights<'_>",
+        "layer": 8,
+        "rows": 3,
+        "captures": 6
+      },
+      {
+        "owner": "ds41rt::v41_backbone_shared::BackboneSharedWeights<'_>",
+        "layer": 8,
+        "rows": 3,
+        "captures": 6
+      },
+      {
+        "owner": "ds41rt::v41_attention_query::AttentionQueryWeights<'_>",
+        "layer": 9,
+        "rows": 3,
+        "captures": 6
+      }
+    ],
+    "note": "Counts combine two independent lanes and initial captures; repeated bindings are not individually attributable to one lane."
+  },
+  "provenance": "Numerical and performance runs used 24 projection and 16 producer shape limits. Neither limit is accepted; the committed producer change only removes the duplicate immediate replay. Diagnostic timings are not release numbers.",
+  "next_step": "Measure 24 projection shapes with original full producer-shape retention; KV pool unchanged",
+  "archive": {
+    "path": "docs/evidence/upstream-producer-graph-trials-20260916.tar.gz",
+    "sha256": "7c2bf67eb5a3bf7ae6f1da16ec1cb0f507f20d4b97e0d1f46ff8ad7576646199"
+  }
+}
