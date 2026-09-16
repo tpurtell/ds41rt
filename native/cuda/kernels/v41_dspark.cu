@@ -5,6 +5,31 @@
 #include <stdint.h>
 #include "ds41rt_v41_dspark.h"
 namespace {
+#if defined(DS41RT_V41_VOCAB_ROW_EXPERIMENT)
+// Upstream's vocabulary row-reduction strategy, retaining native FP32 logits.
+// One block per vocabulary row; only selected for a single input row.
+__global__ void vocabulary_row(const __nv_bfloat16* input,
+    const __nv_bfloat16* weight, float* output) {
+  const uint64_t row = blockIdx.x;
+  const int tid = threadIdx.x;
+  float sum = 0;
+  #pragma unroll
+  for (int col = tid; col < 5120; col += 256)
+    sum = fmaf(__bfloat162float(input[col]),
+               __bfloat162float(weight[row * 5120 + col]), sum);
+  for (int offset = 16; offset; offset >>= 1)
+    sum += __shfl_down_sync(0xffffffffu, sum, offset);
+  __shared__ float partials[8];
+  if (tid % 32 == 0) partials[tid / 32] = sum;
+  __syncthreads();
+  if (tid < 32) {
+    sum = tid < 8 ? partials[tid] : 0;
+    for (int offset = 16; offset; offset >>= 1)
+      sum += __shfl_down_sync(0xffffffffu, sum, offset);
+    if (tid == 0) output[row] = sum;
+  }
+}
+#endif
 __device__ float warp_sum(float value) {
   for (int offset = 16; offset; offset >>= 1)
     value += __shfl_down_sync(0xffffffffu, value, offset);
@@ -115,6 +140,14 @@ static int32_t launch_head(void* opaque, const uint16_t* embedding,
       !disjoint(handle->workspace, kMarkovWorkspace, embedding, e) ||
       !disjoint(handle->workspace, kMarkovWorkspace, weight, w) ||
       !disjoint(handle->workspace, kMarkovWorkspace, logits, o)) return cudaErrorInvalidValue;
+#if defined(DS41RT_V41_VOCAB_ROW_EXPERIMENT)
+  if (width == 5120 && rows == 1) {
+    vocabulary_row<<<handle->vocab_rows, 256, 0, reinterpret_cast<cudaStream_t>(stream)>>>(
+        reinterpret_cast<const __nv_bfloat16*>(embedding),
+        reinterpret_cast<const __nv_bfloat16*>(weight), logits);
+    return cudaGetLastError();
+  }
+#endif
   auto result = cublasSetStream(handle->blas, reinterpret_cast<cudaStream_t>(stream));
   if (result != CUBLAS_STATUS_SUCCESS) return blas_status(result);
   // SetStream resets the workspace: rebind this wave's owned storage afterward.

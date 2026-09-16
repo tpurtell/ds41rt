@@ -124,7 +124,8 @@ def main():
                 bad = ptr(1)
                 assert create(workspaces[0].data_ptr(), workspaces[0].numel(), count, C.byref(bad)) != 0
                 assert not bad.value
-            assert launch(handles[0], xs[0].data_ptr(), weights[0].data_ptr(), outputs[0].data_ptr(), 81, streams[0].cuda_stream) != 0
+            # Head handles support up to 128 rows (including K7 verification).
+            assert launch(handles[0], xs[0].data_ptr(), weights[0].data_ptr(), outputs[0].data_ptr(), 129, streams[0].cuda_stream) != 0
             assert launch(handles[1], xs[0].data_ptr(), weights[0].data_ptr(), outputs[0].data_ptr(), 1, streams[0].cuda_stream) != 0
         edge_ids, edge_scores = gpu_merge(
             torch.tensor([0, split - 1, 1, -1, 0, 0, 0]),

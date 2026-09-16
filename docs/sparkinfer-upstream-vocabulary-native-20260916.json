@@ -1,0 +1,1505 @@
+{
+  "scope": "Single-row CUDA vocabulary adapter preserving FP32 logits; component qualification before serving acceptance.",
+  "synthetic": {
+    "scope": "Bounded native/upstream vocabulary projection screen; not serving acceptance.",
+    "command": [
+      "python/tools/compare_v41_vocab_upstream.py",
+      "--b12x-root",
+      "/home/tj/.cache/ds41rt-upstream-20260916/sparkinfer",
+      "--native-lib",
+      "/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-index-sort.so",
+      "--candidate-native-lib",
+      "/home/tj/.cache/ds41rt-upstream-20260916/libvocab-row-screen.so",
+      "--output",
+      "/home/tj/.cache/ds41rt-upstream-20260916/vocab-native-row-screen.json"
+    ],
+    "revision": "4e31d0a10ea7ca24ac48d522fb65eaafbc27ad30",
+    "native_sha256": "8c6cccb1c3372567a1c49cc480a9cdf2b44d776a0a69cfa7c9d823caebaf0a4c",
+    "script_sha256": "859fdbb5117db5f6589caf687dd0d16bd6c71c28dc0164528567c2ccfec1229c",
+    "gpu": "uuid, name, power.limit [W], clocks.current.memory [MHz]\nGPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, NVIDIA RTX PRO 6000 Blackwell Workstation Edition, 400.00 W, 405 MHz\nGPU-95f8f212-9131-df99-fd53-7535965197d7, NVIDIA RTX PRO 6000 Blackwell Workstation Edition, 400.00 W, 405 MHz\n",
+    "protocol": "Synthetic BF16 weights; native FP32 logits versus upstream row kernel instantiated with FP32 output. Upstream public BF16 rounding assessed separately. Balanced warm CUDA graphs.",
+    "cases": [
+      {
+        "vocab": 64640,
+        "rows": 1,
+        "checks": [
+          {
+            "input_std": 0.2,
+            "max_error": 3.725290298461914e-07,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.0038988590240478516,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 3.725290298461914e-07,
+            "candidate_greedy_exact": true
+          },
+          {
+            "input_std": 0.01,
+            "max_error": 1.4901161193847656e-08,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.00012197345495223999,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 1.5832483768463135e-08,
+            "candidate_greedy_exact": true
+          },
+          {
+            "input_std": 0.0,
+            "max_error": 0.0,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.0,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 0.0,
+            "candidate_greedy_exact": true
+          }
+        ],
+        "stable_replay_allocation": true,
+        "warm_us": {
+          "native": [
+            444.79007720947266,
+            444.9055862426758,
+            446.53343200683594,
+            449.61246490478516,
+            449.98878479003906,
+            449.40704345703125
+          ],
+          "upstream_fp32": [
+            402.4595260620117,
+            402.47936248779297,
+            402.44991302490234,
+            402.43518829345703,
+            402.4803161621094,
+            402.4825668334961
+          ],
+          "candidate_native": [
+            402.88543701171875,
+            402.81089782714844,
+            402.9148864746094,
+            402.8691101074219,
+            402.9305648803711,
+            402.9555130004883
+          ]
+        },
+        "median_us": {
+          "native": 447.9702377319336,
+          "upstream_fp32": 402.46944427490234,
+          "candidate_native": 402.90016174316406
+        }
+      },
+      {
+        "vocab": 64640,
+        "rows": 4,
+        "checks": [
+          {
+            "input_std": 0.2,
+            "max_error": 2.384185791015625e-07,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.003880023956298828,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 0.0,
+            "candidate_greedy_exact": true
+          },
+          {
+            "input_std": 0.01,
+            "max_error": 1.4901161193847656e-08,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.00016573071479797363,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 0.0,
+            "candidate_greedy_exact": true
+          },
+          {
+            "input_std": 0.0,
+            "max_error": 0.0,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.0,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 0.0,
+            "candidate_greedy_exact": true
+          }
+        ],
+        "stable_replay_allocation": true,
+        "warm_us": {
+          "native": [
+            463.93951416015625,
+            479.89185333251953,
+            480.55614471435547,
+            480.0841522216797,
+            481.35425567626953,
+            479.72320556640625
+          ],
+          "upstream_fp32": [
+            1605.6626892089844,
+            1605.6495666503906,
+            1605.6944274902344,
+            1605.7040405273438,
+            1605.657958984375,
+            1605.7530212402344
+          ],
+          "candidate_native": [
+            479.47105407714844,
+            480.9366226196289,
+            479.64351654052734,
+            480.43262481689453,
+            479.8783874511719,
+            480.9747314453125
+          ]
+        },
+        "median_us": {
+          "native": 479.9880027770996,
+          "upstream_fp32": 1605.6785583496094,
+          "candidate_native": 480.1555061340332
+        }
+      },
+      {
+        "vocab": 64640,
+        "rows": 16,
+        "checks": [
+          {
+            "input_std": 0.2,
+            "max_error": 3.5762786865234375e-07,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.003901362419128418,
+            "bf16_greedy_exact": false,
+            "candidate_max_error": 0.0,
+            "candidate_greedy_exact": true
+          },
+          {
+            "input_std": 0.01,
+            "max_error": 1.4901161193847656e-08,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.0002340748906135559,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 0.0,
+            "candidate_greedy_exact": true
+          },
+          {
+            "input_std": 0.0,
+            "max_error": 0.0,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.0,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 0.0,
+            "candidate_greedy_exact": true
+          }
+        ],
+        "stable_replay_allocation": true,
+        "warm_us": {
+          "native": [
+            1581.84326171875,
+            1591.1871337890625,
+            1592.6316833496094,
+            1594.7494506835938,
+            1594.4876098632812,
+            1596.3468933105469
+          ],
+          "upstream_fp32": [
+            6416.5814208984375,
+            6416.591796875,
+            6416.4825439453125,
+            6416.722412109375,
+            6416.52099609375,
+            6416.6558837890625
+          ],
+          "candidate_native": [
+            1589.4720458984375,
+            1592.247314453125,
+            1593.2730102539062,
+            1596.0394287109375,
+            1594.5887756347656,
+            1595.5264282226562
+          ]
+        },
+        "median_us": {
+          "native": 1593.5596466064453,
+          "upstream_fp32": 6416.586608886719,
+          "candidate_native": 1593.930892944336
+        }
+      },
+      {
+        "vocab": 129280,
+        "rows": 1,
+        "checks": [
+          {
+            "input_std": 0.2,
+            "max_error": 4.172325134277344e-07,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.003896474838256836,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 4.172325134277344e-07,
+            "candidate_greedy_exact": true
+          },
+          {
+            "input_std": 0.01,
+            "max_error": 1.862645149230957e-08,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.000170193612575531,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 2.0489096641540527e-08,
+            "candidate_greedy_exact": true
+          },
+          {
+            "input_std": 0.0,
+            "max_error": 0.0,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.0,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 0.0,
+            "candidate_greedy_exact": true
+          }
+        ],
+        "stable_replay_allocation": true,
+        "warm_us": {
+          "native": [
+            887.2946929931641,
+            889.6595001220703,
+            890.1142120361328,
+            890.2130889892578,
+            890.0054168701172,
+            889.6774291992188
+          ],
+          "upstream_fp32": [
+            803.2672119140625,
+            803.2323455810547,
+            803.2166290283203,
+            803.2351684570312,
+            803.2473754882812,
+            803.1699371337891
+          ],
+          "candidate_native": [
+            803.6627197265625,
+            803.6886596679688,
+            803.6252593994141,
+            803.6268615722656,
+            803.7187194824219,
+            803.663330078125
+          ]
+        },
+        "median_us": {
+          "native": 889.841423034668,
+          "upstream_fp32": 803.233757019043,
+          "candidate_native": 803.6630249023438
+        }
+      },
+      {
+        "vocab": 129280,
+        "rows": 4,
+        "checks": [
+          {
+            "input_std": 0.2,
+            "max_error": 3.5762786865234375e-07,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.003888726234436035,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 0.0,
+            "candidate_greedy_exact": true
+          },
+          {
+            "input_std": 0.01,
+            "max_error": 1.4901161193847656e-08,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.00023671984672546387,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 0.0,
+            "candidate_greedy_exact": true
+          },
+          {
+            "input_std": 0.0,
+            "max_error": 0.0,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.0,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 0.0,
+            "candidate_greedy_exact": true
+          }
+        ],
+        "stable_replay_allocation": true,
+        "warm_us": {
+          "native": [
+            964.8995208740234,
+            971.5865325927734,
+            971.0336303710938,
+            973.5263824462891,
+            972.3197174072266,
+            974.1091156005859
+          ],
+          "upstream_fp32": [
+            3209.1769409179688,
+            3209.149169921875,
+            3209.1299438476562,
+            3209.1464233398438,
+            3209.1812133789062,
+            3209.0802001953125
+          ],
+          "candidate_native": [
+            972.2160339355469,
+            971.1344146728516,
+            972.410888671875,
+            972.4201965332031,
+            973.0352020263672,
+            972.7046203613281
+          ]
+        },
+        "median_us": {
+          "native": 971.953125,
+          "upstream_fp32": 3209.1477966308594,
+          "candidate_native": 972.4155426025391
+        }
+      },
+      {
+        "vocab": 129280,
+        "rows": 16,
+        "checks": [
+          {
+            "input_std": 0.2,
+            "max_error": 3.5762786865234375e-07,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.00390470027923584,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 0.0,
+            "candidate_greedy_exact": true
+          },
+          {
+            "input_std": 0.01,
+            "max_error": 1.4901161193847656e-08,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.00024078786373138428,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 0.0,
+            "candidate_greedy_exact": true
+          },
+          {
+            "input_std": 0.0,
+            "max_error": 0.0,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.0,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 0.0,
+            "candidate_greedy_exact": true
+          }
+        ],
+        "stable_replay_allocation": true,
+        "warm_us": {
+          "native": [
+            3208.3621215820312,
+            3221.9003295898438,
+            3225.5899047851562,
+            3232.8756713867188,
+            3237.6593017578125,
+            3247.9861450195312
+          ],
+          "upstream_fp32": [
+            12831.6357421875,
+            12831.58447265625,
+            12831.54541015625,
+            12831.387939453125,
+            12831.484375,
+            12831.483154296875
+          ],
+          "candidate_native": [
+            3216.7483520507812,
+            3217.3373413085938,
+            3232.3248291015625,
+            3231.7410278320312,
+            3239.5498657226562,
+            3244.0478515625
+          ]
+        },
+        "median_us": {
+          "native": 3229.2327880859375,
+          "upstream_fp32": 12831.514892578125,
+          "candidate_native": 3232.032928466797
+        }
+      }
+    ],
+    "candidate_sha256": "174eacdb90e7c60a28526ae595bfbe4a5df8082542255409a9c7bce3f7b0cf01"
+  },
+  "checkpoint_weights": {
+    "scope": "Bounded native/upstream vocabulary projection screen; not serving acceptance.",
+    "command": [
+      "python/tools/compare_v41_vocab_upstream.py",
+      "--b12x-root",
+      "/home/tj/.cache/ds41rt-upstream-20260916/sparkinfer",
+      "--native-lib",
+      "/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-index-sort.so",
+      "--candidate-native-lib",
+      "/home/tj/.cache/ds41rt-upstream-20260916/libvocab-row-screen.so",
+      "--snapshot",
+      "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+      "--output",
+      "/home/tj/.cache/ds41rt-upstream-20260916/vocab-native-real-weight.json"
+    ],
+    "revision": "4e31d0a10ea7ca24ac48d522fb65eaafbc27ad30",
+    "native_sha256": "8c6cccb1c3372567a1c49cc480a9cdf2b44d776a0a69cfa7c9d823caebaf0a4c",
+    "script_sha256": "a7cc64534f69d8bb9a85e271700632eab218f333147d3d2bc4a387973dbf0b44",
+    "gpu": "uuid, name, power.limit [W], clocks.current.memory [MHz]\nGPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, NVIDIA RTX PRO 6000 Blackwell Workstation Edition, 400.00 W, 405 MHz\nGPU-95f8f212-9131-df99-fd53-7535965197d7, NVIDIA RTX PRO 6000 Blackwell Workstation Edition, 400.00 W, 405 MHz\n",
+    "protocol": "Synthetic BF16 weights; native FP32 logits versus upstream row kernel instantiated with FP32 output. Upstream public BF16 rounding assessed separately. Balanced warm CUDA graphs.",
+    "cases": [
+      {
+        "vocab": 64640,
+        "rows": 1,
+        "checks": [
+          {
+            "input_std": 0.2,
+            "max_error": 3.0994415283203125e-06,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.031246185302734375,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 3.337860107421875e-06,
+            "candidate_greedy_exact": true
+          },
+          {
+            "input_std": 0.01,
+            "max_error": 1.30385160446167e-07,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.0009764730930328369,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 1.4901161193847656e-07,
+            "candidate_greedy_exact": true
+          },
+          {
+            "input_std": 0.0,
+            "max_error": 0.0,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.0,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 0.0,
+            "candidate_greedy_exact": true
+          }
+        ],
+        "stable_replay_allocation": true,
+        "warm_us": {
+          "native": [
+            444.920654296875,
+            444.8486328125,
+            446.82559967041016,
+            449.57313537597656,
+            450.1897430419922,
+            449.6198272705078
+          ],
+          "upstream_fp32": [
+            402.4911880493164,
+            402.4697494506836,
+            402.4505615234375,
+            402.47840881347656,
+            402.46910095214844,
+            402.5020980834961
+          ],
+          "candidate_native": [
+            402.88158416748047,
+            402.7964782714844,
+            402.9507064819336,
+            402.91553497314453,
+            402.9344177246094,
+            402.95326232910156
+          ]
+        },
+        "median_us": {
+          "native": 448.19936752319336,
+          "upstream_fp32": 402.4740791320801,
+          "candidate_native": 402.92497634887695
+        }
+      },
+      {
+        "vocab": 64640,
+        "rows": 4,
+        "checks": [
+          {
+            "input_std": 0.2,
+            "max_error": 1.9073486328125e-06,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.031162261962890625,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 0.0,
+            "candidate_greedy_exact": true
+          },
+          {
+            "input_std": 0.01,
+            "max_error": 1.1920928955078125e-07,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.0019366145133972168,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 0.0,
+            "candidate_greedy_exact": true
+          },
+          {
+            "input_std": 0.0,
+            "max_error": 0.0,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.0,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 0.0,
+            "candidate_greedy_exact": true
+          }
+        ],
+        "stable_replay_allocation": true,
+        "warm_us": {
+          "native": [
+            463.7977600097656,
+            478.4739303588867,
+            479.5414352416992,
+            479.04510498046875,
+            480.0012969970703,
+            479.97825622558594
+          ],
+          "upstream_fp32": [
+            1605.6019592285156,
+            1605.6953430175781,
+            1605.5609130859375,
+            1605.6594848632812,
+            1605.684814453125,
+            1605.6803894042969
+          ],
+          "candidate_native": [
+            477.7008056640625,
+            480.59200286865234,
+            478.81534576416016,
+            480.30529022216797,
+            479.52545166015625,
+            479.6758270263672
+          ]
+        },
+        "median_us": {
+          "native": 479.293270111084,
+          "upstream_fp32": 1605.669937133789,
+          "candidate_native": 479.6006393432617
+        }
+      },
+      {
+        "vocab": 64640,
+        "rows": 16,
+        "checks": [
+          {
+            "input_std": 0.2,
+            "max_error": 2.86102294921875e-06,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.031235694885253906,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 0.0,
+            "candidate_greedy_exact": true
+          },
+          {
+            "input_std": 0.01,
+            "max_error": 1.1920928955078125e-07,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.0019278526306152344,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 0.0,
+            "candidate_greedy_exact": true
+          },
+          {
+            "input_std": 0.0,
+            "max_error": 0.0,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.0,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 0.0,
+            "candidate_greedy_exact": true
+          }
+        ],
+        "stable_replay_allocation": true,
+        "warm_us": {
+          "native": [
+            1585.8505249023438,
+            1591.3516235351562,
+            1592.1136474609375,
+            1595.1536560058594,
+            1596.8173217773438,
+            1598.1111145019531
+          ],
+          "upstream_fp32": [
+            6416.8475341796875,
+            6416.6180419921875,
+            6416.739501953125,
+            6416.54541015625,
+            6416.6314697265625,
+            6416.6851806640625
+          ],
+          "candidate_native": [
+            1588.9404296875,
+            1592.0060729980469,
+            1591.7890930175781,
+            1595.8134460449219,
+            1595.2400207519531,
+            1596.5916442871094
+          ]
+        },
+        "median_us": {
+          "native": 1593.6336517333984,
+          "upstream_fp32": 6416.6583251953125,
+          "candidate_native": 1593.623046875
+        }
+      },
+      {
+        "vocab": 129280,
+        "rows": 1,
+        "checks": [
+          {
+            "input_std": 0.2,
+            "max_error": 3.337860107421875e-06,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.030927658081054688,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 3.0994415283203125e-06,
+            "candidate_greedy_exact": true
+          },
+          {
+            "input_std": 0.01,
+            "max_error": 1.7881393432617188e-07,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.001863241195678711,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 1.7881393432617188e-07,
+            "candidate_greedy_exact": true
+          },
+          {
+            "input_std": 0.0,
+            "max_error": 0.0,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.0,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 0.0,
+            "candidate_greedy_exact": true
+          }
+        ],
+        "stable_replay_allocation": true,
+        "warm_us": {
+          "native": [
+            880.0361633300781,
+            889.9468994140625,
+            890.2729797363281,
+            889.6867370605469,
+            890.1760101318359,
+            889.9001312255859
+          ],
+          "upstream_fp32": [
+            803.3084869384766,
+            803.2166290283203,
+            803.1683349609375,
+            803.2166290283203,
+            803.2144165039062,
+            803.1763458251953
+          ],
+          "candidate_native": [
+            803.6566162109375,
+            803.6966705322266,
+            803.6720275878906,
+            803.6946868896484,
+            803.6876678466797,
+            803.7129974365234
+          ]
+        },
+        "median_us": {
+          "native": 889.9235153198242,
+          "upstream_fp32": 803.2155227661133,
+          "candidate_native": 803.6911773681641
+        }
+      },
+      {
+        "vocab": 129280,
+        "rows": 4,
+        "checks": [
+          {
+            "input_std": 0.2,
+            "max_error": 2.1457672119140625e-06,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.031194686889648438,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 0.0,
+            "candidate_greedy_exact": true
+          },
+          {
+            "input_std": 0.01,
+            "max_error": 1.1920928955078125e-07,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.0018646717071533203,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 0.0,
+            "candidate_greedy_exact": true
+          },
+          {
+            "input_std": 0.0,
+            "max_error": 0.0,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.0,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 0.0,
+            "candidate_greedy_exact": true
+          }
+        ],
+        "stable_replay_allocation": true,
+        "warm_us": {
+          "native": [
+            964.4719696044922,
+            973.0937957763672,
+            972.6927947998047,
+            973.2163238525391,
+            973.8409423828125,
+            975.7478332519531
+          ],
+          "upstream_fp32": [
+            3209.1397094726562,
+            3209.1848754882812,
+            3209.1259765625,
+            3209.2922973632812,
+            3209.2254638671875,
+            3209.215087890625
+          ],
+          "candidate_native": [
+            973.2511901855469,
+            973.3853149414062,
+            974.5139312744141,
+            973.5078430175781,
+            975.440673828125,
+            974.7939300537109
+          ]
+        },
+        "median_us": {
+          "native": 973.1550598144531,
+          "upstream_fp32": 3209.199981689453,
+          "candidate_native": 974.0108871459961
+        }
+      },
+      {
+        "vocab": 129280,
+        "rows": 16,
+        "checks": [
+          {
+            "input_std": 0.2,
+            "max_error": 2.86102294921875e-06,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.03124237060546875,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 0.0,
+            "candidate_greedy_exact": true
+          },
+          {
+            "input_std": 0.01,
+            "max_error": 1.4901161193847656e-07,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.0019494891166687012,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 0.0,
+            "candidate_greedy_exact": true
+          },
+          {
+            "input_std": 0.0,
+            "max_error": 0.0,
+            "greedy_exact": true,
+            "bf16_logit_max_error": 0.0,
+            "bf16_greedy_exact": true,
+            "candidate_max_error": 0.0,
+            "candidate_greedy_exact": true
+          }
+        ],
+        "stable_replay_allocation": true,
+        "warm_us": {
+          "native": [
+            3211.20849609375,
+            3231.9293212890625,
+            3233.9157104492188,
+            3241.4688110351562,
+            3243.6013793945312,
+            3254.5516967773438
+          ],
+          "upstream_fp32": [
+            12831.45263671875,
+            12831.463623046875,
+            12831.435546875,
+            12831.455078125,
+            12831.529541015625,
+            12831.317138671875
+          ],
+          "candidate_native": [
+            3224.9960327148438,
+            3230.0155639648438,
+            3236.387939453125,
+            3241.1630249023438,
+            3254.168701171875,
+            3256.1517333984375
+          ]
+        },
+        "median_us": {
+          "native": 3237.6922607421875,
+          "upstream_fp32": 12831.453857421875,
+          "candidate_native": 3238.7754821777344
+        }
+      }
+    ],
+    "candidate_sha256": "174eacdb90e7c60a28526ae595bfbe4a5df8082542255409a9c7bce3f7b0cf01",
+    "checkpoint": {
+      "snapshot": "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+      "tensor": "head.weight",
+      "index_sha256": "74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8",
+      "tensor_sha256": "68f446ddda4243d5c8d57d2a9729c125f7fb8b2ee050c78ac6ff5e0cacde6789",
+      "inputs": "Synthetic hidden states, not captured serving activations"
+    }
+  },
+  "two_gpu_shard_test": "PASS rows=1 shard/full max_error=0 global greedy exact\nPASS rows=3 shard/full max_error=0 global greedy exact\nPASS rows=16 shard/full max_error=0 global greedy exact\nPASS rows=80 shard/full max_error=0 global greedy exact\nPASS rows=3 shard/full max_error=0 global greedy exact\nPASS rows=3 shard/full max_error=0 global greedy exact\nPASS rows=3 shard/full max_error=0 global greedy exact\nPASS GPU merge ties, boundary offsets, invalid candidates, and graph replay\nPASS graph replay, invalid shard/row bounds, and wrong-device rejection\n",
+  "baseline_relink": {
+    "command": [
+      "/usr/bin/c++",
+      "-fPIC",
+      "-O3",
+      "-DNDEBUG",
+      "-shared",
+      "-Wl,-soname,libds41rt_native.so",
+      "-o",
+      "/home/tj/.cache/ds41rt-upstream-20260916/libindex-sort-relinked-control.so",
+      "b12x_coordinator_aot/coordinator_w4a16_q_b_m8.o",
+      "b12x_coordinator_aot/coordinator_w4a16_q_b_m16_candidate.o",
+      "b12x_coordinator_aot/coordinator_w4a16_o_proj_m1.o",
+      "b12x_coordinator_aot/coordinator_w4a16_o_proj_m16_candidate.o",
+      "b12x_coordinator_aot/coordinator_w4a16_o_proj_m1_tn64_candidate.o",
+      "v41_experts/v41_expert_input_quant.o",
+      "v41_experts/v41_coordinator_m1.o",
+      "v41_experts/v41_coordinator_m16.o",
+      "v41_experts/v41_coordinator_m40.o",
+      "v41_experts/v41_coordinator_m80.o",
+      "v41_experts/v41_coordinator_m256.o",
+      "v41_experts/v41_coordinator_m1024.o",
+      "v41_experts/v41_coordinator_m4096.o",
+      "v41_local_experts/v41_rtx_backbone_m1.o",
+      "v41_local_experts/v41_rtx_backbone_m16.o",
+      "v41_local_experts/v41_rtx_backbone_m80.o",
+      "v41_local_experts/v41_rtx_backbone_m256.o",
+      "v41_local_experts/v41_rtx_backbone_m1024.o",
+      "v41_local_experts/v41_rtx_backbone_m4096.o",
+      "v41_tp2_experts/v41_rtx_tp2_m1.o",
+      "v41_tp2_experts/v41_rtx_tp2_m16.o",
+      "v41_tp2_experts/v41_rtx_tp2_m80.o",
+      "v41_tp2_experts/v41_rtx_tp2_m256.o",
+      "v41_tp2_experts/v41_rtx_tp2_m1024.o",
+      "v41_tp2_experts/v41_rtx_tp2_m4096.o",
+      "v41_fp8/v41_engram_fp8_m1_quant.o",
+      "v41_fp8/v41_engram_fp8_m1_gemm.o",
+      "v41_fp8/v41_engram_fp8_m16_quant.o",
+      "v41_fp8/v41_engram_fp8_m16_gemm.o",
+      "v41_fp8/v41_engram_fp8_m80_quant.o",
+      "v41_fp8/v41_engram_fp8_m80_gemm.o",
+      "v41_fp8/v41_engram_fp8_m256_quant.o",
+      "v41_fp8/v41_engram_fp8_m256_gemm.o",
+      "v41_fp8/v41_engram_fp8_m1024_quant.o",
+      "v41_fp8/v41_engram_fp8_m1024_gemm.o",
+      "v41_fp8/v41_engram_fp8_m4096_quant.o",
+      "v41_fp8/v41_engram_fp8_m4096_gemm.o",
+      "v41_fp8/v41_ffn_up_fp8_m1_quant.o",
+      "v41_fp8/v41_ffn_up_fp8_m1_gemm.o",
+      "v41_fp8/v41_ffn_up_fp8_m16_quant.o",
+      "v41_fp8/v41_ffn_up_fp8_m16_gemm.o",
+      "v41_fp8/v41_ffn_up_fp8_m80_quant.o",
+      "v41_fp8/v41_ffn_up_fp8_m80_gemm.o",
+      "v41_fp8/v41_ffn_up_fp8_m256_quant.o",
+      "v41_fp8/v41_ffn_up_fp8_m256_gemm.o",
+      "v41_fp8/v41_ffn_up_fp8_m1024_quant.o",
+      "v41_fp8/v41_ffn_up_fp8_m1024_gemm.o",
+      "v41_fp8/v41_ffn_up_fp8_m4096_quant.o",
+      "v41_fp8/v41_ffn_up_fp8_m4096_gemm.o",
+      "v41_fp8/v41_ffn_down_fp8_m1_quant.o",
+      "v41_fp8/v41_ffn_down_fp8_m1_gemm.o",
+      "v41_fp8/v41_ffn_down_fp8_m16_quant.o",
+      "v41_fp8/v41_ffn_down_fp8_m16_gemm.o",
+      "v41_fp8/v41_ffn_down_fp8_m80_quant.o",
+      "v41_fp8/v41_ffn_down_fp8_m80_gemm.o",
+      "v41_fp8/v41_ffn_down_fp8_m256_quant.o",
+      "v41_fp8/v41_ffn_down_fp8_m256_gemm.o",
+      "v41_fp8/v41_ffn_down_fp8_m1024_quant.o",
+      "v41_fp8/v41_ffn_down_fp8_m1024_gemm.o",
+      "v41_fp8/v41_ffn_down_fp8_m4096_quant.o",
+      "v41_fp8/v41_ffn_down_fp8_m4096_gemm.o",
+      "v41_fp8/v41_main_fp8_m1_quant.o",
+      "v41_fp8/v41_main_fp8_m1_gemm.o",
+      "v41_fp8/v41_main_fp8_m16_quant.o",
+      "v41_fp8/v41_main_fp8_m16_gemm.o",
+      "v41_fp8/v41_main_fp8_m80_quant.o",
+      "v41_fp8/v41_main_fp8_m80_gemm.o",
+      "v41_fp8/v41_main_fp8_m256_quant.o",
+      "v41_fp8/v41_main_fp8_m256_gemm.o",
+      "v41_fp8/v41_main_fp8_m1024_quant.o",
+      "v41_fp8/v41_main_fp8_m1024_gemm.o",
+      "v41_fp8/v41_main_fp8_m4096_quant.o",
+      "v41_fp8/v41_main_fp8_m4096_gemm.o",
+      "v41_fp8/v41_q_a_fp8_m1_quant.o",
+      "v41_fp8/v41_q_a_fp8_m1_gemm.o",
+      "v41_fp8/v41_q_a_fp8_m16_quant.o",
+      "v41_fp8/v41_q_a_fp8_m16_gemm.o",
+      "v41_fp8/v41_q_a_fp8_m80_quant.o",
+      "v41_fp8/v41_q_a_fp8_m80_gemm.o",
+      "v41_fp8/v41_q_a_fp8_m256_quant.o",
+      "v41_fp8/v41_q_a_fp8_m256_gemm.o",
+      "v41_fp8/v41_q_a_fp8_m1024_quant.o",
+      "v41_fp8/v41_q_a_fp8_m1024_gemm.o",
+      "v41_fp8/v41_q_a_fp8_m4096_quant.o",
+      "v41_fp8/v41_q_a_fp8_m4096_gemm.o",
+      "v41_fp8/v41_q_b_fp8_m1_quant.o",
+      "v41_fp8/v41_q_b_fp8_m1_gemm.o",
+      "v41_fp8/v41_q_b_fp8_m16_quant.o",
+      "v41_fp8/v41_q_b_fp8_m16_gemm.o",
+      "v41_fp8/v41_q_b_fp8_m80_quant.o",
+      "v41_fp8/v41_q_b_fp8_m80_gemm.o",
+      "v41_fp8/v41_q_b_fp8_m256_quant.o",
+      "v41_fp8/v41_q_b_fp8_m256_gemm.o",
+      "v41_fp8/v41_q_b_fp8_m1024_quant.o",
+      "v41_fp8/v41_q_b_fp8_m1024_gemm.o",
+      "v41_fp8/v41_q_b_fp8_m4096_quant.o",
+      "v41_fp8/v41_q_b_fp8_m4096_gemm.o",
+      "v41_fp8/v41_kv_fp8_m1_quant.o",
+      "v41_fp8/v41_kv_fp8_m1_gemm.o",
+      "v41_fp8/v41_kv_fp8_m16_quant.o",
+      "v41_fp8/v41_kv_fp8_m16_gemm.o",
+      "v41_fp8/v41_kv_fp8_m80_quant.o",
+      "v41_fp8/v41_kv_fp8_m80_gemm.o",
+      "v41_fp8/v41_kv_fp8_m256_quant.o",
+      "v41_fp8/v41_kv_fp8_m256_gemm.o",
+      "v41_fp8/v41_kv_fp8_m1024_quant.o",
+      "v41_fp8/v41_kv_fp8_m1024_gemm.o",
+      "v41_fp8/v41_kv_fp8_m4096_quant.o",
+      "v41_fp8/v41_kv_fp8_m4096_gemm.o",
+      "v41_fp8/v41_o_b_fp8_m1_quant.o",
+      "v41_fp8/v41_o_b_fp8_m1_gemm.o",
+      "v41_fp8/v41_o_b_fp8_m16_quant.o",
+      "v41_fp8/v41_o_b_fp8_m16_gemm.o",
+      "v41_fp8/v41_o_b_fp8_m80_quant.o",
+      "v41_fp8/v41_o_b_fp8_m80_gemm.o",
+      "v41_fp8/v41_o_b_fp8_m256_quant.o",
+      "v41_fp8/v41_o_b_fp8_m256_gemm.o",
+      "v41_fp8/v41_o_b_fp8_m1024_quant.o",
+      "v41_fp8/v41_o_b_fp8_m1024_gemm.o",
+      "v41_fp8/v41_o_b_fp8_m4096_quant.o",
+      "v41_fp8/v41_o_b_fp8_m4096_gemm.o",
+      "v41_fp8/v41_o_a_fp8_m1_quant.o",
+      "v41_fp8/v41_o_a_fp8_m1_gemm.o",
+      "v41_fp8/v41_o_a_fp8_m1_quant_rope.o",
+      "v41_fp8/v41_o_a_fp8_m16_quant.o",
+      "v41_fp8/v41_o_a_fp8_m16_gemm.o",
+      "v41_fp8/v41_o_a_fp8_m16_quant_rope.o",
+      "v41_fp8/v41_o_a_fp8_m80_quant.o",
+      "v41_fp8/v41_o_a_fp8_m80_gemm.o",
+      "v41_fp8/v41_o_a_fp8_m80_quant_rope.o",
+      "v41_fp8/v41_o_a_fp8_m256_quant.o",
+      "v41_fp8/v41_o_a_fp8_m256_gemm.o",
+      "v41_fp8/v41_o_a_fp8_m256_quant_rope.o",
+      "v41_fp8/v41_o_a_fp8_m1024_quant.o",
+      "v41_fp8/v41_o_a_fp8_m1024_gemm.o",
+      "v41_fp8/v41_o_a_fp8_m1024_quant_rope.o",
+      "v41_fp8/v41_o_a_fp8_m4096_quant.o",
+      "v41_fp8/v41_o_a_fp8_m4096_gemm.o",
+      "v41_fp8/v41_o_a_fp8_m4096_quant_rope.o",
+      "v41_fp8/v41_index_q_fp8_m1_quant.o",
+      "v41_fp8/v41_index_q_fp8_m1_gemm.o",
+      "v41_fp8/v41_index_q_fp8_m16_quant.o",
+      "v41_fp8/v41_index_q_fp8_m16_gemm.o",
+      "v41_fp8/v41_index_q_fp8_m80_quant.o",
+      "v41_fp8/v41_index_q_fp8_m80_gemm.o",
+      "v41_fp8/v41_index_q_fp8_m256_quant.o",
+      "v41_fp8/v41_index_q_fp8_m256_gemm.o",
+      "v41_fp8/v41_index_q_fp8_m1024_quant.o",
+      "v41_fp8/v41_index_q_fp8_m1024_gemm.o",
+      "v41_fp8/v41_index_q_fp8_m4096_quant.o",
+      "v41_fp8/v41_index_q_fp8_m4096_gemm.o",
+      "v41_fp8/v41_ffn_tp2_up_fp8_m1_quant.o",
+      "v41_fp8/v41_ffn_tp2_up_fp8_m1_gemm.o",
+      "v41_fp8/v41_ffn_tp2_up_fp8_m16_quant.o",
+      "v41_fp8/v41_ffn_tp2_up_fp8_m16_gemm.o",
+      "v41_fp8/v41_ffn_tp2_up_fp8_m80_quant.o",
+      "v41_fp8/v41_ffn_tp2_up_fp8_m80_gemm.o",
+      "v41_fp8/v41_ffn_tp2_up_fp8_m256_quant.o",
+      "v41_fp8/v41_ffn_tp2_up_fp8_m256_gemm.o",
+      "v41_fp8/v41_ffn_tp2_up_fp8_m1024_quant.o",
+      "v41_fp8/v41_ffn_tp2_up_fp8_m1024_gemm.o",
+      "v41_fp8/v41_ffn_tp2_up_fp8_m4096_quant.o",
+      "v41_fp8/v41_ffn_tp2_up_fp8_m4096_gemm.o",
+      "v41_fp8/v41_ffn_tp2_down_fp8_m1_quant.o",
+      "v41_fp8/v41_ffn_tp2_down_fp8_m1_gemm.o",
+      "v41_fp8/v41_ffn_tp2_down_fp8_m16_quant.o",
+      "v41_fp8/v41_ffn_tp2_down_fp8_m16_gemm.o",
+      "v41_fp8/v41_ffn_tp2_down_fp8_m80_quant.o",
+      "v41_fp8/v41_ffn_tp2_down_fp8_m80_gemm.o",
+      "v41_fp8/v41_ffn_tp2_down_fp8_m256_quant.o",
+      "v41_fp8/v41_ffn_tp2_down_fp8_m256_gemm.o",
+      "v41_fp8/v41_ffn_tp2_down_fp8_m1024_quant.o",
+      "v41_fp8/v41_ffn_tp2_down_fp8_m1024_gemm.o",
+      "v41_fp8/v41_ffn_tp2_down_fp8_m4096_quant.o",
+      "v41_fp8/v41_ffn_tp2_down_fp8_m4096_gemm.o",
+      "v41_fp8/v41_hc_project.o",
+      "v41_fp8/v41_hc_lagged.o",
+      "v41_index/v41_index_score.o",
+      "v41_router/v41_router_e128.o",
+      "v41_router/v41_router_e384.o",
+      "v41_attention/v41_attention.o",
+      "CMakeFiles/ds41rt_native.dir/src/ds41rt_native.cc.o",
+      "CMakeFiles/ds41rt_native.dir/src/xgrammar_adapter.cc.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_expert_pack.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_route_reduce.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/engram.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_dspark.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_hc.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_router.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_dspark_cache.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_dspark_attention.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_compressor.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_vision.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_kv.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_sparse_attention.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_index_scores.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_index_topk.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_candidate_blocks.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_attention_ops.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/norm.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/mlp.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/residual.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/kv_cache.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/mla_indexing.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/router.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/linear.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/attention.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/embedding.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/sampling.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/nibbles.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/nvfp4_payload.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/ds4_flash_direct.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/packed_fp8_mla_exact.cu.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/b12x_coordinator.cu.o",
+      "CMakeFiles/ds41rt_native.dir/src/v41_experts.cc.o",
+      "CMakeFiles/ds41rt_native.dir/src/v41_local_experts.cc.o",
+      "CMakeFiles/ds41rt_native.dir/src/v41_tp2_experts.cc.o",
+      "CMakeFiles/ds41rt_native.dir/src/v41_fp8.cc.o",
+      "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_fp8.cu.o",
+      "CMakeFiles/ds41rt_native.dir/src/v41_index_score.cc.o",
+      "CMakeFiles/ds41rt_native.dir/src/v41_router_scores.cc.o",
+      "CMakeFiles/ds41rt_native.dir/src/v41_attention_aot.cc.o",
+      "-L/usr/local/cuda-13.3/targets/x86_64-linux/lib/stubs",
+      "-L/usr/local/cuda-13.3/targets/x86_64-linux/lib",
+      "-Wl,-rpath,/home/tj/Developer/ds41rt/.venv/lib/python3.12/site-packages/nvidia_cutlass_dsl/cu13/lib:/usr/local/cuda-13.3/targets/x86_64-linux/lib",
+      "libds41rt_xgrammar.a",
+      "/usr/local/cuda-13.3/targets/x86_64-linux/lib/libcudart.so",
+      "/usr/local/cuda-13.3/targets/x86_64-linux/lib/libcublas.so",
+      "/usr/local/cuda-13.3/targets/x86_64-linux/lib/stubs/libcuda.so",
+      "/home/tj/Developer/ds41rt/.venv/lib/python3.12/site-packages/nvidia_cutlass_dsl/cu13/lib/libcute_dsl_runtime.so",
+      "/usr/lib/x86_64-linux-gnu/libibverbs.so",
+      "/usr/local/cuda-13.3/targets/x86_64-linux/lib/libcublasLt.so",
+      "/usr/local/cuda-13.3/targets/x86_64-linux/lib/libculibos.a",
+      "-ldl",
+      "/usr/lib/x86_64-linux-gnu/librt.a",
+      "-lcudadevrt",
+      "-lcudart_static",
+      "-lrt",
+      "-lpthread",
+      "-ldl"
+    ],
+    "cwd": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving",
+    "sha256": "8c6cccb1c3372567a1c49cc480a9cdf2b44d776a0a69cfa7c9d823caebaf0a4c"
+  },
+  "candidate_library_sha256": "a4509710660ac23253be633cb178894b83a6f6406cfbd3184c5e359afd2653ca",
+  "limits": "Checkpoint weights use synthetic hidden states. Full serving and clean build acceptance are separate.",
+  "serving": {
+    "scope": "Three-repeat short decode screen with unchanged original Spark workers, matched request bodies, K5 and original cache/residency. Not final release qualification.",
+    "startup_ms": 15838,
+    "arms": {
+      "baseline": {
+        "raw_path": "/home/tj/.cache/ds41rt-upstream-20260916/compact-tp2-serving-baseline.json",
+        "sha256": "2ffdaaa042a0703eadc5306dfcd93078e2a70ab8138b54d54d92ce722320855b",
+        "passed": 27,
+        "weighted_tps_samples": [
+          96.72462493883654,
+          96.41564157048707,
+          93.38798525205536
+        ],
+        "weighted_tps_mean": 95.50941725379299,
+        "weighted_tps_median": 96.41564157048707,
+        "cases": {
+          "code": {
+            "tps_samples": [
+              148.8372657779057,
+              160.08046603803044,
+              157.32561599992928
+            ],
+            "median_tps": 157.32561599992928
+          },
+          "topic": {
+            "tps_samples": [
+              88.95543493535395,
+              85.22287578471466,
+              86.5490240718238
+            ],
+            "median_tps": 86.5490240718238
+          },
+          "counting": {
+            "tps_samples": [
+              185.35998092927377,
+              200.39106033440672,
+              202.43143736484342
+            ],
+            "median_tps": 200.39106033440672
+          }
+        }
+      },
+      "candidate": {
+        "raw_path": "/home/tj/.cache/ds41rt-upstream-20260916/vocab-row-serving-candidate.json",
+        "sha256": "08c68ff1356ebffcd6f73866270ee2864a4a23c9531e04fb5f45f9d31cc75dd9",
+        "passed": 27,
+        "weighted_tps_samples": [
+          96.4911258233427,
+          94.69489260793603,
+          90.8558532985885
+        ],
+        "weighted_tps_mean": 94.01395724328907,
+        "weighted_tps_median": 94.69489260793603,
+        "cases": {
+          "code": {
+            "tps_samples": [
+              147.51414880379863,
+              158.72138204198012,
+              154.6134655145343
+            ],
+            "median_tps": 154.6134655145343
+          },
+          "topic": {
+            "tps_samples": [
+              89.75148844942966,
+              82.82965601372483,
+              83.42963335544852
+            ],
+            "median_tps": 83.42963335544852
+          },
+          "counting": {
+            "tps_samples": [
+              182.24650598550554,
+              195.39634040836884,
+              196.52085389613805
+            ],
+            "median_tps": 195.39634040836884
+          }
+        }
+      }
+    },
+    "decision": "Initial object used sm_120 rather than the baseline sm_120f; retain as preliminary evidence only. Matching-build follow-up recorded separately."
+  },
+  "matched_build_serving": {
+    "raw_path": "/home/tj/.cache/ds41rt-upstream-20260916/vocab-row-matched-serving-candidate.json",
+    "sha256": "873e8c1cc5ce01d6af32177357979b1e9fd60f0c3123edcf170e757c4f6b4963",
+    "passed": 27,
+    "requests": 27,
+    "weighted_tps_samples": [
+      96.61599298460378,
+      95.2035859378206,
+      90.84444972744265
+    ],
+    "weighted_tps_mean": 94.22134288328901,
+    "weighted_tps_median": 95.2035859378206,
+    "startup_ms": 13065,
+    "artifact": {
+      "command": [
+        "/usr/bin/c++",
+        "-fPIC",
+        "-O3",
+        "-DNDEBUG",
+        "-shared",
+        "-Wl,-soname,libds41rt_native.so",
+        "-o",
+        "/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-vocab-row-matched.so",
+        "b12x_coordinator_aot/coordinator_w4a16_q_b_m8.o",
+        "b12x_coordinator_aot/coordinator_w4a16_q_b_m16_candidate.o",
+        "b12x_coordinator_aot/coordinator_w4a16_o_proj_m1.o",
+        "b12x_coordinator_aot/coordinator_w4a16_o_proj_m16_candidate.o",
+        "b12x_coordinator_aot/coordinator_w4a16_o_proj_m1_tn64_candidate.o",
+        "v41_experts/v41_expert_input_quant.o",
+        "v41_experts/v41_coordinator_m1.o",
+        "v41_experts/v41_coordinator_m16.o",
+        "v41_experts/v41_coordinator_m40.o",
+        "v41_experts/v41_coordinator_m80.o",
+        "v41_experts/v41_coordinator_m256.o",
+        "v41_experts/v41_coordinator_m1024.o",
+        "v41_experts/v41_coordinator_m4096.o",
+        "v41_local_experts/v41_rtx_backbone_m1.o",
+        "v41_local_experts/v41_rtx_backbone_m16.o",
+        "v41_local_experts/v41_rtx_backbone_m80.o",
+        "v41_local_experts/v41_rtx_backbone_m256.o",
+        "v41_local_experts/v41_rtx_backbone_m1024.o",
+        "v41_local_experts/v41_rtx_backbone_m4096.o",
+        "v41_tp2_experts/v41_rtx_tp2_m1.o",
+        "v41_tp2_experts/v41_rtx_tp2_m16.o",
+        "v41_tp2_experts/v41_rtx_tp2_m80.o",
+        "v41_tp2_experts/v41_rtx_tp2_m256.o",
+        "v41_tp2_experts/v41_rtx_tp2_m1024.o",
+        "v41_tp2_experts/v41_rtx_tp2_m4096.o",
+        "v41_fp8/v41_engram_fp8_m1_quant.o",
+        "v41_fp8/v41_engram_fp8_m1_gemm.o",
+        "v41_fp8/v41_engram_fp8_m16_quant.o",
+        "v41_fp8/v41_engram_fp8_m16_gemm.o",
+        "v41_fp8/v41_engram_fp8_m80_quant.o",
+        "v41_fp8/v41_engram_fp8_m80_gemm.o",
+        "v41_fp8/v41_engram_fp8_m256_quant.o",
+        "v41_fp8/v41_engram_fp8_m256_gemm.o",
+        "v41_fp8/v41_engram_fp8_m1024_quant.o",
+        "v41_fp8/v41_engram_fp8_m1024_gemm.o",
+        "v41_fp8/v41_engram_fp8_m4096_quant.o",
+        "v41_fp8/v41_engram_fp8_m4096_gemm.o",
+        "v41_fp8/v41_ffn_up_fp8_m1_quant.o",
+        "v41_fp8/v41_ffn_up_fp8_m1_gemm.o",
+        "v41_fp8/v41_ffn_up_fp8_m16_quant.o",
+        "v41_fp8/v41_ffn_up_fp8_m16_gemm.o",
+        "v41_fp8/v41_ffn_up_fp8_m80_quant.o",
+        "v41_fp8/v41_ffn_up_fp8_m80_gemm.o",
+        "v41_fp8/v41_ffn_up_fp8_m256_quant.o",
+        "v41_fp8/v41_ffn_up_fp8_m256_gemm.o",
+        "v41_fp8/v41_ffn_up_fp8_m1024_quant.o",
+        "v41_fp8/v41_ffn_up_fp8_m1024_gemm.o",
+        "v41_fp8/v41_ffn_up_fp8_m4096_quant.o",
+        "v41_fp8/v41_ffn_up_fp8_m4096_gemm.o",
+        "v41_fp8/v41_ffn_down_fp8_m1_quant.o",
+        "v41_fp8/v41_ffn_down_fp8_m1_gemm.o",
+        "v41_fp8/v41_ffn_down_fp8_m16_quant.o",
+        "v41_fp8/v41_ffn_down_fp8_m16_gemm.o",
+        "v41_fp8/v41_ffn_down_fp8_m80_quant.o",
+        "v41_fp8/v41_ffn_down_fp8_m80_gemm.o",
+        "v41_fp8/v41_ffn_down_fp8_m256_quant.o",
+        "v41_fp8/v41_ffn_down_fp8_m256_gemm.o",
+        "v41_fp8/v41_ffn_down_fp8_m1024_quant.o",
+        "v41_fp8/v41_ffn_down_fp8_m1024_gemm.o",
+        "v41_fp8/v41_ffn_down_fp8_m4096_quant.o",
+        "v41_fp8/v41_ffn_down_fp8_m4096_gemm.o",
+        "v41_fp8/v41_main_fp8_m1_quant.o",
+        "v41_fp8/v41_main_fp8_m1_gemm.o",
+        "v41_fp8/v41_main_fp8_m16_quant.o",
+        "v41_fp8/v41_main_fp8_m16_gemm.o",
+        "v41_fp8/v41_main_fp8_m80_quant.o",
+        "v41_fp8/v41_main_fp8_m80_gemm.o",
+        "v41_fp8/v41_main_fp8_m256_quant.o",
+        "v41_fp8/v41_main_fp8_m256_gemm.o",
+        "v41_fp8/v41_main_fp8_m1024_quant.o",
+        "v41_fp8/v41_main_fp8_m1024_gemm.o",
+        "v41_fp8/v41_main_fp8_m4096_quant.o",
+        "v41_fp8/v41_main_fp8_m4096_gemm.o",
+        "v41_fp8/v41_q_a_fp8_m1_quant.o",
+        "v41_fp8/v41_q_a_fp8_m1_gemm.o",
+        "v41_fp8/v41_q_a_fp8_m16_quant.o",
+        "v41_fp8/v41_q_a_fp8_m16_gemm.o",
+        "v41_fp8/v41_q_a_fp8_m80_quant.o",
+        "v41_fp8/v41_q_a_fp8_m80_gemm.o",
+        "v41_fp8/v41_q_a_fp8_m256_quant.o",
+        "v41_fp8/v41_q_a_fp8_m256_gemm.o",
+        "v41_fp8/v41_q_a_fp8_m1024_quant.o",
+        "v41_fp8/v41_q_a_fp8_m1024_gemm.o",
+        "v41_fp8/v41_q_a_fp8_m4096_quant.o",
+        "v41_fp8/v41_q_a_fp8_m4096_gemm.o",
+        "v41_fp8/v41_q_b_fp8_m1_quant.o",
+        "v41_fp8/v41_q_b_fp8_m1_gemm.o",
+        "v41_fp8/v41_q_b_fp8_m16_quant.o",
+        "v41_fp8/v41_q_b_fp8_m16_gemm.o",
+        "v41_fp8/v41_q_b_fp8_m80_quant.o",
+        "v41_fp8/v41_q_b_fp8_m80_gemm.o",
+        "v41_fp8/v41_q_b_fp8_m256_quant.o",
+        "v41_fp8/v41_q_b_fp8_m256_gemm.o",
+        "v41_fp8/v41_q_b_fp8_m1024_quant.o",
+        "v41_fp8/v41_q_b_fp8_m1024_gemm.o",
+        "v41_fp8/v41_q_b_fp8_m4096_quant.o",
+        "v41_fp8/v41_q_b_fp8_m4096_gemm.o",
+        "v41_fp8/v41_kv_fp8_m1_quant.o",
+        "v41_fp8/v41_kv_fp8_m1_gemm.o",
+        "v41_fp8/v41_kv_fp8_m16_quant.o",
+        "v41_fp8/v41_kv_fp8_m16_gemm.o",
+        "v41_fp8/v41_kv_fp8_m80_quant.o",
+        "v41_fp8/v41_kv_fp8_m80_gemm.o",
+        "v41_fp8/v41_kv_fp8_m256_quant.o",
+        "v41_fp8/v41_kv_fp8_m256_gemm.o",
+        "v41_fp8/v41_kv_fp8_m1024_quant.o",
+        "v41_fp8/v41_kv_fp8_m1024_gemm.o",
+        "v41_fp8/v41_kv_fp8_m4096_quant.o",
+        "v41_fp8/v41_kv_fp8_m4096_gemm.o",
+        "v41_fp8/v41_o_b_fp8_m1_quant.o",
+        "v41_fp8/v41_o_b_fp8_m1_gemm.o",
+        "v41_fp8/v41_o_b_fp8_m16_quant.o",
+        "v41_fp8/v41_o_b_fp8_m16_gemm.o",
+        "v41_fp8/v41_o_b_fp8_m80_quant.o",
+        "v41_fp8/v41_o_b_fp8_m80_gemm.o",
+        "v41_fp8/v41_o_b_fp8_m256_quant.o",
+        "v41_fp8/v41_o_b_fp8_m256_gemm.o",
+        "v41_fp8/v41_o_b_fp8_m1024_quant.o",
+        "v41_fp8/v41_o_b_fp8_m1024_gemm.o",
+        "v41_fp8/v41_o_b_fp8_m4096_quant.o",
+        "v41_fp8/v41_o_b_fp8_m4096_gemm.o",
+        "v41_fp8/v41_o_a_fp8_m1_quant.o",
+        "v41_fp8/v41_o_a_fp8_m1_gemm.o",
+        "v41_fp8/v41_o_a_fp8_m1_quant_rope.o",
+        "v41_fp8/v41_o_a_fp8_m16_quant.o",
+        "v41_fp8/v41_o_a_fp8_m16_gemm.o",
+        "v41_fp8/v41_o_a_fp8_m16_quant_rope.o",
+        "v41_fp8/v41_o_a_fp8_m80_quant.o",
+        "v41_fp8/v41_o_a_fp8_m80_gemm.o",
+        "v41_fp8/v41_o_a_fp8_m80_quant_rope.o",
+        "v41_fp8/v41_o_a_fp8_m256_quant.o",
+        "v41_fp8/v41_o_a_fp8_m256_gemm.o",
+        "v41_fp8/v41_o_a_fp8_m256_quant_rope.o",
+        "v41_fp8/v41_o_a_fp8_m1024_quant.o",
+        "v41_fp8/v41_o_a_fp8_m1024_gemm.o",
+        "v41_fp8/v41_o_a_fp8_m1024_quant_rope.o",
+        "v41_fp8/v41_o_a_fp8_m4096_quant.o",
+        "v41_fp8/v41_o_a_fp8_m4096_gemm.o",
+        "v41_fp8/v41_o_a_fp8_m4096_quant_rope.o",
+        "v41_fp8/v41_index_q_fp8_m1_quant.o",
+        "v41_fp8/v41_index_q_fp8_m1_gemm.o",
+        "v41_fp8/v41_index_q_fp8_m16_quant.o",
+        "v41_fp8/v41_index_q_fp8_m16_gemm.o",
+        "v41_fp8/v41_index_q_fp8_m80_quant.o",
+        "v41_fp8/v41_index_q_fp8_m80_gemm.o",
+        "v41_fp8/v41_index_q_fp8_m256_quant.o",
+        "v41_fp8/v41_index_q_fp8_m256_gemm.o",
+        "v41_fp8/v41_index_q_fp8_m1024_quant.o",
+        "v41_fp8/v41_index_q_fp8_m1024_gemm.o",
+        "v41_fp8/v41_index_q_fp8_m4096_quant.o",
+        "v41_fp8/v41_index_q_fp8_m4096_gemm.o",
+        "v41_fp8/v41_ffn_tp2_up_fp8_m1_quant.o",
+        "v41_fp8/v41_ffn_tp2_up_fp8_m1_gemm.o",
+        "v41_fp8/v41_ffn_tp2_up_fp8_m16_quant.o",
+        "v41_fp8/v41_ffn_tp2_up_fp8_m16_gemm.o",
+        "v41_fp8/v41_ffn_tp2_up_fp8_m80_quant.o",
+        "v41_fp8/v41_ffn_tp2_up_fp8_m80_gemm.o",
+        "v41_fp8/v41_ffn_tp2_up_fp8_m256_quant.o",
+        "v41_fp8/v41_ffn_tp2_up_fp8_m256_gemm.o",
+        "v41_fp8/v41_ffn_tp2_up_fp8_m1024_quant.o",
+        "v41_fp8/v41_ffn_tp2_up_fp8_m1024_gemm.o",
+        "v41_fp8/v41_ffn_tp2_up_fp8_m4096_quant.o",
+        "v41_fp8/v41_ffn_tp2_up_fp8_m4096_gemm.o",
+        "v41_fp8/v41_ffn_tp2_down_fp8_m1_quant.o",
+        "v41_fp8/v41_ffn_tp2_down_fp8_m1_gemm.o",
+        "v41_fp8/v41_ffn_tp2_down_fp8_m16_quant.o",
+        "v41_fp8/v41_ffn_tp2_down_fp8_m16_gemm.o",
+        "v41_fp8/v41_ffn_tp2_down_fp8_m80_quant.o",
+        "v41_fp8/v41_ffn_tp2_down_fp8_m80_gemm.o",
+        "v41_fp8/v41_ffn_tp2_down_fp8_m256_quant.o",
+        "v41_fp8/v41_ffn_tp2_down_fp8_m256_gemm.o",
+        "v41_fp8/v41_ffn_tp2_down_fp8_m1024_quant.o",
+        "v41_fp8/v41_ffn_tp2_down_fp8_m1024_gemm.o",
+        "v41_fp8/v41_ffn_tp2_down_fp8_m4096_quant.o",
+        "v41_fp8/v41_ffn_tp2_down_fp8_m4096_gemm.o",
+        "v41_fp8/v41_hc_project.o",
+        "v41_fp8/v41_hc_lagged.o",
+        "v41_index/v41_index_score.o",
+        "v41_router/v41_router_e128.o",
+        "v41_router/v41_router_e384.o",
+        "v41_attention/v41_attention.o",
+        "CMakeFiles/ds41rt_native.dir/src/ds41rt_native.cc.o",
+        "CMakeFiles/ds41rt_native.dir/src/xgrammar_adapter.cc.o",
+        "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_expert_pack.cu.o",
+        "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_route_reduce.cu.o",
+        "CMakeFiles/ds41rt_native.dir/cuda/kernels/engram.cu.o",
+        "/home/tj/.cache/ds41rt-upstream-20260916/v41_dspark_vocab_row_matched.o",
+        "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_hc.cu.o",
+        "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_router.cu.o",
+        "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_dspark_cache.cu.o",
+        "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_dspark_attention.cu.o",
+        "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_compressor.cu.o",
+        "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_vision.cu.o",
+        "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_kv.cu.o",
+        "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_sparse_attention.cu.o",
+        "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_index_scores.cu.o",
+        "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_index_topk.cu.o",
+        "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_candidate_blocks.cu.o",
+        "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_attention_ops.cu.o",
+        "CMakeFiles/ds41rt_native.dir/cuda/kernels/norm.cu.o",
+        "CMakeFiles/ds41rt_native.dir/cuda/kernels/mlp.cu.o",
+        "CMakeFiles/ds41rt_native.dir/cuda/kernels/residual.cu.o",
+        "CMakeFiles/ds41rt_native.dir/cuda/kernels/kv_cache.cu.o",
+        "CMakeFiles/ds41rt_native.dir/cuda/kernels/mla_indexing.cu.o",
+        "CMakeFiles/ds41rt_native.dir/cuda/kernels/router.cu.o",
+        "CMakeFiles/ds41rt_native.dir/cuda/kernels/linear.cu.o",
+        "CMakeFiles/ds41rt_native.dir/cuda/kernels/attention.cu.o",
+        "CMakeFiles/ds41rt_native.dir/cuda/kernels/embedding.cu.o",
+        "CMakeFiles/ds41rt_native.dir/cuda/kernels/sampling.cu.o",
+        "CMakeFiles/ds41rt_native.dir/cuda/kernels/nibbles.cu.o",
+        "CMakeFiles/ds41rt_native.dir/cuda/kernels/nvfp4_payload.cu.o",
+        "CMakeFiles/ds41rt_native.dir/cuda/kernels/ds4_flash_direct.cu.o",
+        "CMakeFiles/ds41rt_native.dir/cuda/kernels/packed_fp8_mla_exact.cu.o",
+        "CMakeFiles/ds41rt_native.dir/cuda/kernels/b12x_coordinator.cu.o",
+        "CMakeFiles/ds41rt_native.dir/src/v41_experts.cc.o",
+        "CMakeFiles/ds41rt_native.dir/src/v41_local_experts.cc.o",
+        "CMakeFiles/ds41rt_native.dir/src/v41_tp2_experts.cc.o",
+        "CMakeFiles/ds41rt_native.dir/src/v41_fp8.cc.o",
+        "CMakeFiles/ds41rt_native.dir/cuda/kernels/v41_fp8.cu.o",
+        "CMakeFiles/ds41rt_native.dir/src/v41_index_score.cc.o",
+        "CMakeFiles/ds41rt_native.dir/src/v41_router_scores.cc.o",
+        "CMakeFiles/ds41rt_native.dir/src/v41_attention_aot.cc.o",
+        "-L/usr/local/cuda-13.3/targets/x86_64-linux/lib/stubs",
+        "-L/usr/local/cuda-13.3/targets/x86_64-linux/lib",
+        "-Wl,-rpath,/home/tj/Developer/ds41rt/.venv/lib/python3.12/site-packages/nvidia_cutlass_dsl/cu13/lib:/usr/local/cuda-13.3/targets/x86_64-linux/lib",
+        "libds41rt_xgrammar.a",
+        "/usr/local/cuda-13.3/targets/x86_64-linux/lib/libcudart.so",
+        "/usr/local/cuda-13.3/targets/x86_64-linux/lib/libcublas.so",
+        "/usr/local/cuda-13.3/targets/x86_64-linux/lib/stubs/libcuda.so",
+        "/home/tj/Developer/ds41rt/.venv/lib/python3.12/site-packages/nvidia_cutlass_dsl/cu13/lib/libcute_dsl_runtime.so",
+        "/usr/lib/x86_64-linux-gnu/libibverbs.so",
+        "/usr/local/cuda-13.3/targets/x86_64-linux/lib/libcublasLt.so",
+        "/usr/local/cuda-13.3/targets/x86_64-linux/lib/libculibos.a",
+        "-ldl",
+        "/usr/lib/x86_64-linux-gnu/librt.a",
+        "-lcudadevrt",
+        "-lcudart_static",
+        "-lrt",
+        "-lpthread",
+        "-ldl"
+      ],
+      "cwd": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving",
+      "baseline_sha256": "8c6cccb1c3372567a1c49cc480a9cdf2b44d776a0a69cfa7c9d823caebaf0a4c",
+      "artifact_sha256": "9bf2383f516f24af6d402c45633667f9ea824acb33c0d2a4cfcaeaccb04431a9",
+      "compile": {
+        "command": [
+          "/usr/local/cuda-13.3/bin/nvcc",
+          "-DDS41RT_V41_VOCAB_ROW_EXPERIMENT=1",
+          "-forward-unknown-to-host-compiler",
+          "-DDS41RT_HAVE_V41_ATTENTION_AOT=1",
+          "-DDS41RT_HAVE_V41_HC_AOT=1",
+          "-DDS41RT_HAVE_V41_ROUTER_AOT=1",
+          "-DDS41RT_NATIVE_ENABLE_B12X_AOT=0",
+          "-DDS41RT_NATIVE_ENABLE_B12X_COORDINATOR_AOT=1",
+          "-DDS41RT_NATIVE_ENABLE_CUDA=1",
+          "-DDS41RT_NATIVE_ENABLE_DS4_FLASH_AOT=0",
+          "-DDS41RT_NATIVE_ENABLE_NCCL=0",
+          "-DDS41RT_NATIVE_ENABLE_RDMA=1",
+          "-DDS41RT_NATIVE_ENABLE_W8A16_AOT=0",
+          "-DDS41RT_NATIVE_ENABLE_XGRAMMAR=1",
+          "-DXGRAMMAR_ENABLE_CPPTRACE=0",
+          "-DXGRAMMAR_ENABLE_INTERNAL_CHECK=0",
+          "-Dds41rt_native_EXPORTS",
+          "-I/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_attention",
+          "-I/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_fp8",
+          "-I/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_index",
+          "-I/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_router",
+          "-I/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_experts",
+          "-I/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_local_experts",
+          "-I/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/v41_tp2_experts",
+          "-I/home/tj/Developer/ds41rt/native/include",
+          "-I/home/tj/Developer/ds41rt/native/../third_party/xgrammar/cpp",
+          "-I/home/tj/Developer/ds41rt/.venv/lib/python3.12/site-packages/flashinfer/data/include",
+          "-I/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving/b12x_coordinator_aot",
+          "-I/home/tj/Developer/ds41rt/native/../third_party/xgrammar/include",
+          "-isystem",
+          "/home/tj/Developer/ds41rt/native/../third_party/xgrammar/3rdparty/dlpack/include",
+          "-isystem",
+          "/home/tj/Developer/ds41rt/native/../third_party/xgrammar/3rdparty/picojson",
+          "-isystem",
+          "/usr/local/cuda-13.3/targets/x86_64-linux/include",
+          "-isystem",
+          "/usr/local/cuda-13.3/targets/x86_64-linux/include/cccl",
+          "-O3",
+          "-DNDEBUG",
+          "-std=c++17",
+          "--generate-code=arch=compute_120f,code=[compute_120f,sm_120f]",
+          "-Xcompiler=-fPIC",
+          "-MD",
+          "-MT",
+          "/home/tj/.cache/ds41rt-upstream-20260916/v41_dspark_vocab_row_matched.o",
+          "-MF",
+          "/home/tj/.cache/ds41rt-upstream-20260916/v41_dspark_vocab_row_matched.o.d",
+          "-x",
+          "cu",
+          "-c",
+          "/home/tj/Developer/ds41rt/native/cuda/kernels/v41_dspark.cu",
+          "-o",
+          "/home/tj/.cache/ds41rt-upstream-20260916/v41_dspark_vocab_row_matched.o"
+        ],
+        "cwd": "/home/tj/.cache/ds41rt-upstream-20260916/native-build-serving"
+      }
+    },
+    "two_gpu_test": "PASS rows=1 shard/full max_error=0 global greedy exact\nPASS rows=3 shard/full max_error=0 global greedy exact\nPASS rows=16 shard/full max_error=0 global greedy exact\nPASS rows=80 shard/full max_error=0 global greedy exact\nPASS rows=3 shard/full max_error=0 global greedy exact\nPASS rows=3 shard/full max_error=0 global greedy exact\nPASS rows=3 shard/full max_error=0 global greedy exact\nPASS GPU merge ties, boundary offsets, invalid candidates, and graph replay\nPASS graph replay, invalid shard/row bounds, and wrong-device rejection\n"
+  },
+  "decision": "Keep option off. Numerical and component gates pass, but matched-build short serving median is 96.42 baseline vs 95.20 candidate; no whole-model gain established. Proceed with existing head for release backend selection."
+}

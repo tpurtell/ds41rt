@@ -16,6 +16,45 @@ flowchart LR
     F --> G[Clean image builds, README, reports and release]
 ```
 
+## Native single-row vocabulary adapter
+
+The opt-in `DS41RT_V41_VOCAB_ROW_EXPERIMENT` implements the upstream
+single-row reduction strategy in native CUDA, retaining FP32 output and all
+existing pointer/device/workspace checks. Only width 5120 with one live row
+uses the new kernel; multirow vocabulary and dSpark Markov projections keep
+the original cuBLAS path. No scratch, persistent memory, or host synchronization
+is added. The option remains off pending serving acceptance.
+
+Synthetic and checkpoint `head.weight` checks pass for 64640/129280 vocabulary
+rows and live input rows 1/4/16, with normal/small/zero hidden states, graph
+replay and stable allocation. Checkpoint-weight single-row max error is
+3.34e-6, greedy winners match, and multirow outputs are bitwise identical.
+Checkpoint hidden states here are synthetic, not captured serving activations.
+Real-weight component medians are **448.2 → 402.9 µs per shard** and
+**889.9 → 803.7 µs for a full vocabulary**. Multirow cost is unchanged.
+
+The two-GPU shard/full and GPU winner-merge selftest passes, including graph
+replay, tie/boundary handling and invalid-device checks. Its obsolete invalid
+row count of 81 was corrected to 129: head handles already support 128 rows.
+The initial test failure was this stale bound, not a numerical mismatch.
+
+For serving A/B, reconstructing the baseline from its retained link inputs
+reproduced `libcandidate-index-sort.so` byte-for-byte. Only the vocabulary CUDA
+object was then replaced. [Native vocabulary evidence](sparkinfer-upstream-vocabulary-native-20260916.json)
+records numerical checks, two-GPU results and artifact identities. This
+controlled relink does not replace the clean release build requirement.
+
+Both serving screens passed all 27 requests. The first CUDA object used
+`sm_120`; a follow-up compiled using the baseline Ninja command's exact flags
+(`sm_120f`, with only the experiment define and output paths changed) also
+passed two-GPU checks and all 27 serving requests. Warm startup was 13.07 s.
+The matched-build weighted median was **96.42 baseline → 95.20 candidate TPS**
+(mean **95.51 → 94.22**). This does not establish a whole-model improvement.
+**Selection: retain the existing vocabulary head for release; keep the row
+adapter opt-in.** Its component savings are documented for future work without
+promoting an unproven serving change. The matching-build candidate is currently
+running; production build defaults and dependency pins are unchanged.
+
 ## Vocabulary projection applicability and component screen
 
 The upstream BF16 vocabulary change adds multirow support and prepared dispatch;

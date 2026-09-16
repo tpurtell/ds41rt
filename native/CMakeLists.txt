@@ -12,6 +12,7 @@ option(DS41RT_ENABLE_V41_LOCAL_EXPERT_AOT "Build full RTX backbone expert kernel
 option(DS41RT_ENABLE_V41_TP2_EXPERT_AOT "Build dual RTX TP2 encoder expert kernels" OFF)
 option(DS41RT_V41_TP2_COMPACT_EXPERIMENT "Use experimental native compact TP2 experts at capacities 1/16" OFF)
 option(DS41RT_V41_SPARK_COMPACT_EXPERIMENT "Use experimental compact Spark experts through two live rows" OFF)
+option(DS41RT_V41_VOCAB_ROW_EXPERIMENT "Use experimental single-row FP32 vocabulary projection" OFF)
 option(DS41RT_ENABLE_V41_EXPERT_AOT "Build native V4.1 expert AOT kernels" OFF)
 option(DS41RT_ENABLE_V41_NARROW_AOT "Use candidate V4.1 narrow projection scheduling" OFF)
 option(DS41RT_ENABLE_V41_HC_LAGGED_AOT "Build candidate native lagged mHC begin" OFF)
@@ -837,6 +838,9 @@ else()
 endif()
 if(DS41RT_ENABLE_CUDA)
   target_compile_definitions(ds41rt_native PRIVATE DS41RT_NATIVE_ENABLE_CUDA=1)
+  if(DS41RT_V41_VOCAB_ROW_EXPERIMENT)
+    target_compile_definitions(ds41rt_native PRIVATE DS41RT_V41_VOCAB_ROW_EXPERIMENT=1)
+  endif()
   target_link_libraries(ds41rt_native PUBLIC CUDA::cudart CUDA::cublas CUDA::cuda_driver)
   set_target_properties(ds41rt_native PROPERTIES
     CUDA_ARCHITECTURES "${DS41RT_CUDA_ARCHITECTURES}"
