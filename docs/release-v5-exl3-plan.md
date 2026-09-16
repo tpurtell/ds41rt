@@ -1013,3 +1013,21 @@ paired constructor: both FP32 rank outputs and BF16 peer sums are bitwise equal
 on two independent lanes at changing row counts 16/1/3/16/1. Release and test
 builds pass, and production serving is restored. This does not replace final
 four-configuration startup or full release qualification.
+
+## Four-tier native kernel compile checkpoint
+
+[Compile/export evidence](release-v5-exl3-four-tier-compile.json) adds a dedicated
+K2/K3/K4/K5 cooperative kernel with its own ABI and compile namespace. It uses
+the existing Trellis decoders and scheduler, with projection-specific runtime
+membership bounds for all four tiers. Existing two/three-tier kernel source
+and launch ABIs are unchanged. SparkInfer fork commit fd8f8a68 is pushed to
+master and the engine source lock is updated.
+
+On SM120, the 512-wide, M16 compile probe succeeds with 59,520 bytes of shared
+memory. The engine exporter also produces a four-tier six-expert M16 native
+package, route preparation, bridge slots and buffer metadata. This is compile
+evidence only: synthetic mixed-projection numerical checks, changed-input graph
+replay and SM121 qualification remain required. Uniform bitrate coverage also
+remains open. All release AOT packages must be rebuilt against the new source
+lock before final serving measurements; the previous package evidence retains
+its original source identity. Production serving is unchanged by this checkpoint.

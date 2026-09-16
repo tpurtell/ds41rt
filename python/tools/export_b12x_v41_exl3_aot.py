@@ -102,12 +102,13 @@ def export(output: Path, intermediate: int, experts: int, capacity: int,
     from b12x.moe._shared.kernels.w4a16.mixed_trellis import (
         compile_mixed_trellis, compile_mixed_trellis3, make_mixed_trellis_buffers,
     )
+    from b12x.moe._shared.kernels.w4a16.mixed_trellis4 import compile_mixed_trellis4
     from b12x.moe.fused_moe._impl import (
         _projection_mixed_direct_topk_routes, _projection_mixed_tile_config,
     )
 
-    if len(bits) not in (2, 3) or len(set(bits)) != len(bits) or any(b not in range(2, 6) for b in bits):
-        raise ValueError("export requires two or three distinct K2..K5 decoder tiers")
+    if len(bits) not in (2, 3, 4) or len(set(bits)) != len(bits) or any(b not in range(2, 6) for b in bits):
+        raise ValueError("export requires two to four distinct K2..K5 decoder tiers")
     if not 1 <= capacity <= 4096 or topk not in (3, 6) or experts < topk or experts > 384:
         raise ValueError("invalid V4.1 capacity or expert count")
     props = torch.cuda.get_device_properties(0)
@@ -117,7 +118,7 @@ def export(output: Path, intermediate: int, experts: int, capacity: int,
     if routing != "auto":
         direct = routing == "direct"
     if direct and len(bits) != 2:
-        raise ValueError("three-tier export requires packed routing")
+        raise ValueError("three/four-tier export requires packed routing")
     block_m = 8
     route_slots = capacity * topk if direct else route_pack_capacity(capacity * topk, block_m, experts, topk=topk)[1]
     route_blocks = route_slots if direct else (route_slots + block_m - 1) // block_m
@@ -132,8 +133,11 @@ def export(output: Path, intermediate: int, experts: int, capacity: int,
         route_ids_dtype=torch.int32)
     if len(bits) == 2:
         launch = compile_mixed_trellis(**options, direct_topk_routes=direct)
-    else:
+    elif len(bits) == 3:
         launch = compile_mixed_trellis3(**options, tier2_num_experts=experts, tier2_bits=bits[2])
+    else:
+        launch = compile_mixed_trellis4(**options, tier2_num_experts=experts, tier2_bits=bits[2],
+            tier3_num_experts=experts, tier3_bits=bits[3])
     output.mkdir(parents=True, exist_ok=True)
     objects = []
     for label, compiled in [("v41_exl3_core", launch.compiled), ("v41_exl3_sum", launch.topk_sum.compiled)]:

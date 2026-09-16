@@ -1,0 +1,374 @@
+{
+  "scope": "Compile/export checkpoint only; not numerical, graph-replay, Spark or serving qualification",
+  "sparkinfer_revision": "fd8f8a68a3fd674e6c8d7d462692beb687b5939f",
+  "compile_probe": {
+    "compiled": true,
+    "bits": [
+      2,
+      3,
+      4,
+      5
+    ],
+    "shared_memory_bytes": 59520
+  },
+  "native_export": {
+    "schema": "ds41rt.v41-exl3-aot.v1",
+    "sparkinfer_revision": "fd8f8a68a3fd674e6c8d7d462692beb687b5939f",
+    "gpu": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+    "compute": [
+      12,
+      0
+    ],
+    "sms": 188,
+    "hidden": 5120,
+    "intermediate": 512,
+    "experts": 6,
+    "top_k": 6,
+    "capacity": 16,
+    "output_dtype": "bf16",
+    "bits": [
+      2,
+      3,
+      4,
+      5
+    ],
+    "swiglu_limit": 10.0,
+    "direct": false,
+    "route_slots": 138,
+    "route_blocks": 18,
+    "tile": [
+      128,
+      128,
+      128,
+      128
+    ],
+    "blocks_per_sm": 1,
+    "shared_memory_bytes": 59520,
+    "buffers": {
+      "rotation_gate": {
+        "shape": [
+          96,
+          5120
+        ],
+        "dtype": "torch.float16",
+        "bytes": 983040,
+        "allocation": "rotation_gate",
+        "zero_on_create": false
+      },
+      "rotation_up": {
+        "shape": [
+          96,
+          5120
+        ],
+        "dtype": "torch.float16",
+        "bytes": 983040,
+        "allocation": "rotation_up",
+        "zero_on_create": false
+      },
+      "fc1": {
+        "shape": [
+          96,
+          1024
+        ],
+        "dtype": "torch.float16",
+        "bytes": 196608,
+        "allocation": "fc1",
+        "zero_on_create": false
+      },
+      "activated": {
+        "shape": [
+          96,
+          512
+        ],
+        "dtype": "torch.float16",
+        "bytes": 98304,
+        "allocation": "activated",
+        "zero_on_create": false
+      },
+      "fc2": {
+        "shape": [
+          96,
+          5120
+        ],
+        "dtype": "torch.float16",
+        "bytes": 983040,
+        "allocation": "rotation_gate",
+        "zero_on_create": false
+      },
+      "output": {
+        "shape": [
+          16,
+          5120
+        ],
+        "dtype": "torch.bfloat16",
+        "bytes": 163840,
+        "allocation": "output",
+        "zero_on_create": false
+      },
+      "packed_route_indices": {
+        "shape": [
+          138
+        ],
+        "dtype": "torch.int32",
+        "bytes": 552,
+        "allocation": "packed_route_indices",
+        "zero_on_create": false
+      },
+      "block_expert_ids": {
+        "shape": [
+          18
+        ],
+        "dtype": "torch.int32",
+        "bytes": 72,
+        "allocation": "block_expert_ids",
+        "zero_on_create": false
+      },
+      "packed_route_count": {
+        "shape": [
+          1
+        ],
+        "dtype": "torch.int32",
+        "bytes": 4,
+        "allocation": "packed_route_count",
+        "zero_on_create": false
+      },
+      "expert_offsets": {
+        "shape": [
+          7
+        ],
+        "dtype": "torch.int32",
+        "bytes": 28,
+        "allocation": "expert_offsets",
+        "zero_on_create": false
+      },
+      "expert_counts": {
+        "shape": [
+          6
+        ],
+        "dtype": "torch.int32",
+        "bytes": 24,
+        "allocation": "expert_counts",
+        "zero_on_create": false
+      },
+      "fc1_scratch": {
+        "shape": [
+          282624
+        ],
+        "dtype": "torch.float32",
+        "bytes": 1130496,
+        "allocation": "fc1_scratch",
+        "zero_on_create": false
+      },
+      "fc2_scratch": {
+        "shape": [
+          1413120
+        ],
+        "dtype": "torch.float32",
+        "bytes": 5652480,
+        "allocation": "fc2_scratch",
+        "zero_on_create": false
+      },
+      "workspace": {
+        "shape": [
+          754
+        ],
+        "dtype": "torch.int32",
+        "bytes": 3016,
+        "allocation": "workspace",
+        "zero_on_create": true
+      }
+    },
+    "objects": [
+      {
+        "label": "v41_exl3_core",
+        "wrapper": "cute_dsl_ds41rt_v41_exl3_core_wrapper",
+        "parameters": [
+          "ds41rt_v41_exl3_core_Kernel_Module_t *module",
+          "void *rotation_input_ptr",
+          "ds41rt_v41_exl3_core_Tensor_rotation_gate_t *rotation_gate",
+          "ds41rt_v41_exl3_core_Tensor_rotation_up_t *rotation_up",
+          "void *t0_w13_ptr",
+          "void *t0_w2_ptr",
+          "void *t0_w13_scales_ptr",
+          "void *t0_w2_scales_ptr",
+          "void *t0_w13_global_ptr",
+          "void *t0_w2_global_ptr",
+          "void *t1_w13_ptr",
+          "void *t1_w2_ptr",
+          "void *t1_w13_scales_ptr",
+          "void *t1_w2_scales_ptr",
+          "void *t1_w13_global_ptr",
+          "void *t1_w2_global_ptr",
+          "void *t2_w13_ptr",
+          "void *t2_w2_ptr",
+          "void *t2_w13_scales_ptr",
+          "void *t2_w2_scales_ptr",
+          "void *t2_w13_global_ptr",
+          "void *t2_w2_global_ptr",
+          "void *t3_w13_ptr",
+          "void *t3_w2_ptr",
+          "void *t3_w13_scales_ptr",
+          "void *t3_w2_scales_ptr",
+          "void *t3_w13_global_ptr",
+          "void *t3_w2_global_ptr",
+          "ds41rt_v41_exl3_core_Tensor_fc1_t *fc1",
+          "ds41rt_v41_exl3_core_Tensor_activated_t *activated",
+          "ds41rt_v41_exl3_core_Tensor_fc2_t *fc2",
+          "ds41rt_v41_exl3_core_Tensor_packed_route_indices_t *packed_route_indices",
+          "ds41rt_v41_exl3_core_Tensor_block_expert_ids_t *block_expert_ids",
+          "ds41rt_v41_exl3_core_Tensor_packed_route_count_t *packed_route_count",
+          "void *descriptor_map_ptr",
+          "void *topk_weights_ptr",
+          "ds41rt_v41_exl3_core_Tensor_fc1_scratch_t *fc1_scratch",
+          "ds41rt_v41_exl3_core_Tensor_fc2_scratch_t *fc2_scratch",
+          "ds41rt_v41_exl3_core_Tensor_workspace_t *workspace",
+          "void *intermediate_rotations_ptr",
+          "void *gate_suh_ptr",
+          "void *up_suh_ptr",
+          "void *trellis_lut_ptr",
+          "int32_t tier0_num_experts",
+          "int32_t tier1_num_experts",
+          "int32_t tier2_num_experts",
+          "int32_t tier3_num_experts",
+          "int32_t tier0_fc2_experts",
+          "int32_t tier1_fc2_experts",
+          "int32_t tier2_fc2_experts",
+          "int32_t tier3_fc2_experts",
+          "int32_t active_m",
+          "int32_t grid_x",
+          "cudaStream_t stream",
+          "int32_t tier0_gate_experts",
+          "int32_t tier1_gate_experts",
+          "int32_t tier2_gate_experts",
+          "int32_t tier3_gate_experts",
+          "int32_t tier0_up_experts",
+          "int32_t tier1_up_experts",
+          "int32_t tier2_up_experts",
+          "int32_t tier3_up_experts"
+        ],
+        "object_sha256": "d3b9a31c3cdb09d689a202a6996f0251fbe921750eae0113c718cfb10bca82b1",
+        "header_sha256": "160961bb15d14b126e939d04ffdea2f09e81ee8fe7467449303a283024f881da",
+        "pointer_slots": [
+          "rotation_input_ptr",
+          "rotation_gate",
+          "rotation_up",
+          "t0_w13_ptr",
+          "t0_w2_ptr",
+          "t0_w13_scales_ptr",
+          "t0_w2_scales_ptr",
+          "t0_w13_global_ptr",
+          "t0_w2_global_ptr",
+          "t1_w13_ptr",
+          "t1_w2_ptr",
+          "t1_w13_scales_ptr",
+          "t1_w2_scales_ptr",
+          "t1_w13_global_ptr",
+          "t1_w2_global_ptr",
+          "t2_w13_ptr",
+          "t2_w2_ptr",
+          "t2_w13_scales_ptr",
+          "t2_w2_scales_ptr",
+          "t2_w13_global_ptr",
+          "t2_w2_global_ptr",
+          "t3_w13_ptr",
+          "t3_w2_ptr",
+          "t3_w13_scales_ptr",
+          "t3_w2_scales_ptr",
+          "t3_w13_global_ptr",
+          "t3_w2_global_ptr",
+          "fc1",
+          "activated",
+          "fc2",
+          "packed_route_indices",
+          "block_expert_ids",
+          "packed_route_count",
+          "descriptor_map_ptr",
+          "topk_weights_ptr",
+          "fc1_scratch",
+          "fc2_scratch",
+          "workspace",
+          "intermediate_rotations_ptr",
+          "gate_suh_ptr",
+          "up_suh_ptr",
+          "trellis_lut_ptr"
+        ],
+        "scalar_slots": [
+          "tier0_num_experts",
+          "tier1_num_experts",
+          "tier2_num_experts",
+          "tier3_num_experts",
+          "tier0_fc2_experts",
+          "tier1_fc2_experts",
+          "tier2_fc2_experts",
+          "tier3_fc2_experts",
+          "active_m",
+          "grid_x",
+          "tier0_gate_experts",
+          "tier1_gate_experts",
+          "tier2_gate_experts",
+          "tier3_gate_experts",
+          "tier0_up_experts",
+          "tier1_up_experts",
+          "tier2_up_experts",
+          "tier3_up_experts"
+        ]
+      },
+      {
+        "label": "v41_exl3_sum",
+        "wrapper": "cute_dsl_ds41rt_v41_exl3_sum_wrapper",
+        "parameters": [
+          "ds41rt_v41_exl3_sum_Kernel_Module_t *module",
+          "void *fc2_ptr",
+          "void *output_ptr",
+          "void *topk_weights_ptr",
+          "void *route_expert_ids_ptr",
+          "void *expert_map_ptr",
+          "void *svh_ptr",
+          "int32_t weight_num_experts",
+          "int32_t route_num_experts",
+          "int32_t active_m",
+          "cudaStream_t stream"
+        ],
+        "object_sha256": "da62924530b89ed7896fe371e1e2569018aec13bc67dc1003bd36657d5af644c",
+        "header_sha256": "9dc14032efa85f722d0e1996b8da0364f5c53fcb55ad35850b8342c0ae216aa1",
+        "pointer_slots": [
+          "fc2_ptr",
+          "output_ptr",
+          "topk_weights_ptr",
+          "route_expert_ids_ptr",
+          "expert_map_ptr",
+          "svh_ptr"
+        ],
+        "scalar_slots": [
+          "weight_num_experts",
+          "route_num_experts",
+          "active_m"
+        ]
+      }
+    ],
+    "unique_execution_buffer_bytes": 9211504,
+    "requires_route_preparation": true,
+    "required_link_libraries": [
+      "cudart",
+      "cute_dsl_runtime"
+    ],
+    "trellis_lut": {
+      "file": "trellis_lut.bin",
+      "bytes": 4096,
+      "sha256": "cca11fe5744c9c93a34f4217f342fbc0f74ecc8a007c076582424a505fc9da5e"
+    },
+    "native_execution_verified": false,
+    "route_preparation": {
+      "manifest": "routes/v41_exl3_routes.json",
+      "sha256": "1876ba3ff0591a9c9aa74c361a985dd20db4005771a9864a6bf9c4cd0f8a21dc"
+    }
+  },
+  "remaining": [
+    "Synthetic mixed-projection K2/K3/K4/K5 numerical oracle",
+    "Changed-input graph replay and runtime counts",
+    "SM121 native export and numerical qualification",
+    "Uniform bitrate handling and complete generic-tier coverage",
+    "Rebuild all release packages under the new source lock",
+    "Kernel tuning, adaptive acceptance measurements and full v5 release gates"
+  ]
+}
