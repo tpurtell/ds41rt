@@ -11,8 +11,11 @@ ROOT = Path(__file__).resolve().parents[2]
 def test_preserved_release_corpus_and_quality_contract():
     corpus_path = ROOT / 'scripts/fixtures/release-semantic-corpus.json'
     corpus = json.loads(corpus_path.read_text())
-    assert len(corpus['weighted_case_ids']) == 8
-    assert sum(corpus['cases'][name]['weight'] for name in corpus['weighted_case_ids']) == 7
+    assert len(corpus['weighted_case_ids']) == 9
+    assert sum(corpus['cases'][name]['weight'] for name in corpus['weighted_case_ids']) == 8
+    reasoning = corpus['cases']['code-reasoning']
+    assert reasoning['prompt'] == corpus['cases']['code']['prompt']
+    assert reasoning['thinking'] == 'enabled' and reasoning['reasoning_effort'] == 'high'
     assert corpus['orchid']['requested_repetitions'] == 100
 
     source_root = ROOT.parent / 'glmrt-release'

@@ -17,3 +17,5 @@ def test_objective_errors_are_not_hidden_by_serving_success():
     assert not CHECK('math', '240 * 0.75 * 1.08 = 195.40')['objective_checks_passed']
     assert not CHECK('structured-json-schema', '{"incorrect": true}')['objective_checks_passed']
     assert not CHECK('code', '```python\ndef merge_intervals(:\n```')['objective_checks_passed']
+    assert CHECK('code-reasoning', '```python\ndef merge_intervals(:\n```') == CHECK(
+        'code', '```python\ndef merge_intervals(:\n```')

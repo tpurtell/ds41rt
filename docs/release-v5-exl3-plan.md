@@ -77,10 +77,19 @@ identities. Do not compile while collecting GPU performance measurements.
 
 - Headlines: one RTX, two RTX, and two-versus-one change for full and EXL3.
   Remove the old v3-change table.
-- Content-type decode: full and EXL3 tables.
+- Content-type decode: full and EXL3 tables. Extend the original eight categories
+  with `code-reasoning`: the same merge-intervals task with thinking enabled,
+  high reasoning effort, a 4096-token reasoning-plus-answer limit, and weight 1.
+  Keep non-thinking code as its own row. Retain reasoning and final answer in
+  raw evidence; validate code structure on the final answer. Count all generated
+  tokens and time from the first reasoning or answer delta, whichever comes
+  first. The new nine-category aggregate must not be compared to a historical
+  eight-category aggregate without recomputing matched cases.
 - dSpark acceptance by content type: full versus EXL3 with FP8 PLE, on one
   and two RTX cards. Collect alongside the planned performance runs, covering
-  counting, code, topic and the other measured content types. Report accepted
+  counting, code, code with high-effort reasoning, topic and the other measured
+  content types. Include reasoning and answer generation in the reasoning-code
+  acceptance cohort. Report accepted
   draft tokens / verified draft tokens (with counts), mean accepted draft tokens
   and emitted tokens per cycle, mean verification length, configured K/policy,
   and zero-acceptance rate. Pair these with TPS and draft/verification timings.

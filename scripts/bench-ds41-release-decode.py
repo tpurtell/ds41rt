@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the preserved eight-type and counting release decode workloads."""
+"""Run the nine-category and counting release decode workloads."""
 import argparse
 import hashlib
 import json
@@ -69,7 +69,7 @@ def main():
         tokenizer_sha256=hashlib.sha256(args.tokenizer.read_bytes()).hexdigest(),
         repeats=args.repeats, nonce_seed=args.nonce_seed, selected_cases=selected,
         include_orchid=args.include_orchid, include_counting=args.include_counting,
-        remote_reference=args.remote_reference, controls=dict(temperature=0, thinking='disabled'),
+        remote_reference=args.remote_reference, controls=dict(temperature=0, thinking='per-case; default disabled'),
         samples=[], repeat_summaries=[], passed=False,
     )
 
@@ -103,8 +103,10 @@ def main():
                     response_format = dict(type='json_schema', json_schema=dict(
                         name='file_edit', strict=True, schema=corpus['structured_edit_schema']))
             body = dict(model=args.model, messages=[dict(role='user', content=prompt)],
-                        thinking=dict(type='disabled'), temperature=0, max_tokens=max_tokens,
+                        thinking=dict(type=definition.get('thinking', 'disabled')), temperature=0, max_tokens=max_tokens,
                         stream=True, stream_options=dict(include_usage=True))
+            if definition.get('reasoning_effort'):
+                body['reasoning_effort'] = definition['reasoning_effort']
             if response_format:
                 body['response_format'] = response_format
             sample = dict(repeat=repeat + 1, case=case_id, category=definition.get('category', 'low-entropy'),
@@ -137,8 +139,10 @@ def main():
                 # The first user-content token is unique. A small hit may still
                 # cover the invariant chat-template prefix before user content.
                 sample['bounded_static_prefix_hit'] = (isinstance(sample['cached_tokens'], int) and 0 <= sample['cached_tokens'] <= 32)
+                sample['reasoning_present'] = bool(sample.get('reasoning', '').strip())
                 sample['serving_completed'] = bool(content.strip())
                 sample['passed'] = (sample['serving_completed']
+                    and (definition.get('thinking') != 'enabled' or sample['reasoning_present'])
                     and sample.get('quality_contract_passed', True)
                     and sample.get('objective_checks_passed') is not False
                     and (args.remote_reference or case_id == 'counting' or sample['bounded_static_prefix_hit']))
@@ -150,7 +154,7 @@ def main():
         weighted = [sample for sample in repeat_samples if sample['weight'] > 0 and 'finish_seconds' in sample]
         timed_tokens = sum(sample['weight'] * (sample['usage']['completion_tokens'] - 1) for sample in weighted)
         timed_seconds = sum(sample['weight'] *
-            (sample['finish_seconds'] - sample['first_content_seconds']) for sample in weighted)
+            (sample['finish_seconds'] - sample['first_output_seconds']) for sample in weighted)
         summary = dict(repeat=repeat + 1, weighted_cases=len(weighted),
                        serving_completed=sum(sample.get('serving_completed', False) for sample in weighted),
                        objective_checks_passed=sum(sample.get('objective_checks_passed') is True for sample in weighted),

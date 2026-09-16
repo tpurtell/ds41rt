@@ -8,6 +8,7 @@
   "quality_contract": "glmrt-semantic-decode-contract-v3",
   "weighted_case_ids": [
     "code",
+    "code-reasoning",
     "math",
     "fable",
     "hello",
@@ -86,6 +87,15 @@
       "max_tokens": 384,
       "weight": 1.0,
       "json_schema": false
+    },
+    "code-reasoning": {
+      "category": "code-with-reasoning",
+      "prompt": "Write a Python function merge_intervals(intervals) that merges overlapping integer intervals. Include type hints, a short docstring, and three assert-based examples. Return only one Python code block.",
+      "max_tokens": 4096,
+      "weight": 1.0,
+      "json_schema": false,
+      "thinking": "enabled",
+      "reasoning_effort": "high"
     }
   },
   "structured_edit_schema": {
@@ -124,7 +134,7 @@
   },
   "measurement_contract": {
     "temperature": 0,
-    "thinking": "disabled",
+    "thinking": "disabled unless a case explicitly enables it; code-reasoning uses high effort",
     "weighted_tps": "sum(weight * (completion_tokens - 1)) / sum(weight * post_first_token_seconds)",
     "excluded_from_weighted": [
       "count",
@@ -133,7 +143,8 @@
       "syntax-rust",
       "syntax-python"
     ],
-    "quality_failures": "Retain all outputs and failed checks; never silently exclude failures from throughput."
+    "quality_failures": "Retain all outputs and failed checks; never silently exclude failures from throughput.",
+    "timing": "Completion tokens include reasoning and final answer; post-first-token time starts at the first reasoning or answer delta."
   },
   "counting": {
     "category": "low-entropy",
@@ -146,5 +157,8 @@
     "supersedes": "orchid as the release low-entropy qualification; orchid retained as historical evidence"
   },
   "historical_fable_prompt": "Write a self-contained fable of exactly 150 words about two parrots who disagree about sharing credit. Output no title or preamble. Include the final one-sentence moral in the 150-word total. Before responding, silently revise the draft until the entire response is between 140 and 170 words.",
-  "throughput_validation": "named-objective-checks-v1; open-ended prose is unscored"
+  "throughput_validation": "named-objective-checks-v1; open-ended prose is unscored",
+  "extensions": {
+    "code-reasoning": "Same coding task with high-effort reasoning; ninth weighted category added for v5. Original eight case definitions retained."
+  }
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Measure the eight release decode types over exact retained base contexts."""
+"""Measure the nine release decode categories over exact retained base contexts."""
 
 from __future__ import annotations
 
@@ -85,7 +85,7 @@ def main() -> None:
         "contexts": contexts,
         "cases": cases,
         "repeats": args.repeats,
-        "controls": {"temperature": 0, "thinking": "disabled"},
+        "controls": {"temperature": 0, "thinking": "per-case; default disabled"},
         "tokenizer_sha256": sha256(args.tokenizer.read_bytes()),
         "context_sha256": sha256(source.encode()),
         "corpus_sha256": sha256(args.corpus.read_bytes()),
@@ -154,12 +154,14 @@ def main() -> None:
                 request = {
                     "model": "deepseek-ai/DeepSeek-V4.1-Flash",
                     "messages": messages,
-                    "thinking": {"type": "disabled"},
+                    "thinking": {"type": definition.get("thinking", "disabled")},
                     "temperature": 0,
                     "max_tokens": definition["max_tokens"],
                     "stream": True,
                     "stream_options": {"include_usage": True},
                 }
+                if definition.get("reasoning_effort"):
+                    request["reasoning_effort"] = definition["reasoning_effort"]
                 if definition["json_schema"]:
                     request["response_format"] = {
                         "type": "json_schema",
@@ -182,6 +184,8 @@ def main() -> None:
                 report["samples"].append(sample)
                 save()
                 result = compact_result(api["stream_case"](args.base_url, request))
+                if definition.get("thinking") == "enabled" and not result["reasoning"].strip():
+                    raise RuntimeError("requested reasoning was missing")
                 usage = result["usage"]
                 hit = usage["prompt_cache_hit_tokens"]
                 miss = usage["prompt_cache_miss_tokens"]
@@ -249,7 +253,7 @@ def main() -> None:
             row["weight"]
             * (
                 row["result"]["finish_seconds"]
-                - row["result"]["first_content_seconds"]
+                - row["result"]["first_output_seconds"]
             )
             for row in rows
         )

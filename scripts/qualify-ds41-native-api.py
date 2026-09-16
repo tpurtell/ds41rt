@@ -26,6 +26,7 @@ def open_request(base, body, api_key=None):
 def stream_case(base, body, cancel=False, api_key=None, on_first_content=None):
     start = time.perf_counter()
     events, text, first, finish, usage = [], '', None, None, None
+    reasoning, first_output = '', None
     done = False
     with open_request(base, body, api_key=api_key) as response:
         for line in response:
@@ -43,7 +44,11 @@ def stream_case(base, body, cancel=False, api_key=None, on_first_content=None):
             if event.get('usage'):
                 usage = event['usage']
             for choice in event.get('choices', []):
+                thought = choice.get('delta', {}).get('reasoning_content', '') or ''
                 delta = choice.get('delta', {}).get('content', '') or ''
+                if (thought or delta) and first_output is None:
+                    first_output = elapsed
+                reasoning += thought
                 if delta:
                     if first is None:
                         first = elapsed
@@ -55,11 +60,13 @@ def stream_case(base, body, cancel=False, api_key=None, on_first_content=None):
                 if choice.get('finish_reason'):
                     finish = elapsed
     if not (done and first is not None and finish is not None and usage):
-        raise IncompleteStreamError(dict(done=done, text=text, first_content_seconds=first,
+        raise IncompleteStreamError(dict(done=done, text=text, reasoning=reasoning, first_content_seconds=first,
                                          finish_seconds=finish, usage=usage, events=events))
-    # Includes EOS and HTTP overhead; excludes time through first content.
-    tps = (usage['completion_tokens'] - 1) / (finish - first) if finish > first else None
-    return dict(text=text, first_content_seconds=first, finish_seconds=finish,
+    # Completion tokens include reasoning. Time from first reasoning OR answer
+    # delta so reasoning tokens never get charged only to final-answer time.
+    tps = (usage['completion_tokens'] - 1) / (finish - first_output) if finish > first_output else None
+    return dict(text=text, reasoning=reasoning, first_output_seconds=first_output,
+                first_content_seconds=first, finish_seconds=finish,
                 observed_decode_tokens_per_second=tps, usage=usage, events=events)
 
 def main():
