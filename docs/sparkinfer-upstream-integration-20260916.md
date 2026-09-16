@@ -78,6 +78,44 @@ They may still require mechanical merge/import/test fixes when shared library
 surfaces change. Attention/projection parallelization across GPUs is deferred;
 retain the current ownership and expert parallelism in comparisons.
 
+## Repeated narrow-policy serving comparison (September 16)
+
+[Preserved requests, outputs, artifact identities and telemetry summary](sparkinfer-upstream-narrow-repeats-20260916.json)
+record three repetitions per freshly started server, baseline first and candidate
+second. Both use the same daemon, workers, K5 and nonce seed 91601. All 27
+requests and output hashes match between builds; all workload checks pass.
+These throughput workloads explicitly disable thinking and are not the final
+high-thinking tool evaluation.
+
+| Metric | mHC candidate, old projection policy | Narrow policy candidate |
+| --- | ---: | ---: |
+| Weighted TPS, repetition 1 | 97.31 | 99.43 |
+| Weighted TPS, repetition 2 | 96.12 | 100.98 |
+| Weighted TPS, repetition 3 | 92.02 | 96.29 |
+| Median weighted TPS | 96.12 | 99.43 |
+| Median code TPS | 157.30 | 157.70 |
+| Median topic TPS | 85.04 | 90.03 |
+| Median counting TPS | 201.25 | 195.18 |
+
+The earlier approximately 5% slowdown is not reproduced; this comparison is
+approximately +3.4% weighted, flat code, +5.9% topic and -3.0% counting. Runs
+are sequential rather than interleaved, and both builds vary across repetitions,
+so this is not proof of a stable serving speedup. Keep the experimental build
+option off by default pending broader serving acceptance; further one-case
+tracing to explain a supposedly reproducible slowdown is not justified by this
+result.
+
+Both GPUs retain 400 W limits and sampled active memory clocks of 13365 MHz.
+Active samples report zero clock-event reason bits; sampled maximum power is
+roughly 209 W or less. One-second telemetry cannot rule out shorter events.
+Raw telemetry remains alongside the reports in the integration cache.
+
+The next indexer comparison must preserve the native speculative overlay ABI.
+Upstream MXFP4 pages contain a data plane followed by scales within each page;
+our scorer accepts separate pool planes plus proposal data and metadata. Its
+bounded score grid and sorting changes therefore require a deliberate adapter,
+not direct substitution of the upstream paged scorer.
+
 ## Experimental single-row projection policy (September 16)
 
 [Stage and serving evidence](sparkinfer-upstream-narrow-policy-20260916.json)
