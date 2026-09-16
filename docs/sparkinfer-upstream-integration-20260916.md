@@ -78,6 +78,41 @@ They may still require mechanical merge/import/test fixes when shared library
 surfaces change. Attention/projection parallelization across GPUs is deferred;
 retain the current ownership and expert parallelism in comparisons.
 
+## Expert sharing changes the compact crossover (September 16)
+
+[GB10 and shared-route evidence](sparkinfer-upstream-expert-sharing-20260916.json)
+compares the real Spark worker library with the prepared native-arithmetic
+compact path on GB10 SM121, and the real compact/native libraries on RTX.
+All numerical and changed-input graph checks pass. Random routes and fully
+shared expert IDs bracket reuse; these are synthetic component screens.
+
+| Hardware / routes / rows | Native warm→compact, µs | Native cold→compact, µs |
+| --- | ---: | ---: |
+| Spark / one row | 138.8→83.5 | 211.9→191.4 |
+| Spark / random / 2 | 268.2→249.8 | 323.6→302.1 |
+| Spark / shared / 2 | 160.3→110.9 | 222.0→190.4 |
+| Spark / shared / 4 | 171.3→155.8 | 219.0→241.7 |
+| Spark / shared / 8 | 178.5→236.3 | 218.0→323.5 |
+| Spark / shared / 16 | 226.8→444.3 | 254.9→498.6 |
+| Spark / random / 16 | 1830.0→1816.3 | 1874.2→1871.9 |
+| RTX / shared / 2 | 92.2→34.9 | 128.5→55.3 |
+| RTX / shared / 4 | 96.3→49.2 | 129.0→65.5 |
+| RTX / shared / 8 | 100.3→82.1 | 133.0→110.8 |
+| RTX / shared / 16 | 115.1→173.5 | 148.0→197.6 |
+
+Cold samples follow a 256 MiB write with its time excluded. The compact direct
+path loses the native grouped kernel's reuse advantage on larger shared
+batches. A blanket capacity-16 replacement is therefore inappropriate.
+The next candidate should choose by live rows: compact through 2 on Spark
+and through 8 on RTX, retaining grouped execution above those bounds.
+These are experimental cutoffs, pending native and serving qualification.
+
+The Spark screen uses unpadded N576 prepared weights, while the worker stores
+padded N640 weights; a direct wire/native adapter must preserve that layout
+before adoption. Spark tools ran in the existing NGC 26.05 development image
+against a separate committed source checkout; worker binaries were unchanged.
+The coordinator was stopped during these component measurements.
+
 ## Native compact TP2 export and serving integration (September 16)
 
 The opt-in `DS41RT_V41_TP2_COMPACT_EXPERIMENT` build selects compact kernels

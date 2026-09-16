@@ -55,13 +55,14 @@ def main():
     p.add_argument('--output',type=Path,required=True)
     p.add_argument('--activation',choices=('silu_v41','silu'),action='append')
     p.add_argument('--device',type=int,default=0)
+    p.add_argument('--routing-pattern', choices=('random','shared'), default='random')
     p.add_argument('--direct-compact', action='store_true',
                    help='Exercise compact FP8 kernels directly, outside public backend selection')
     p.add_argument('--shared-native-scratch', action='store_true', help='Initialize capacities 1/16 in a shared arena, as serving does')
     p.add_argument('--candidate-native-lib', type=Path, help='Native compact TP2 library to compare with --native-lib')
     p.add_argument('--compact-native', action='store_true', help='Adapted compact native V4.1 routing and FP32 route output')
     p.add_argument('--cold-timing', action='store_true', help='Also measure after a 256 MiB device-buffer write')
-    p.add_argument('--native-lib', type=Path, help='Actual TP2 serving library baseline (N1152 only)')
+    p.add_argument('--native-lib', type=Path, help='Actual serving library baseline (Spark N576 or TP2 N1152)')
     p.add_argument('--compare-timing', action='store_true',
                    help='Balanced prepared-path graph comparison; not native ABI or serving timing')
     args=p.parse_args()
@@ -70,8 +71,8 @@ def main():
         args.activation = ['silu_v41', 'silu']
     if args.direct_compact and not args.compare_timing and args.activation != ['silu']:
         p.error('--direct-compact requires --activation silu')
-    if args.native_lib and (not args.compare_timing or args.intermediate != 1152):
-        p.error('--native-lib requires --compare-timing and --intermediate 1152')
+    if args.native_lib and not args.compare_timing:
+        p.error('--native-lib requires --compare-timing')
     if args.candidate_native_lib:
         args.compact_native = True
     if args.compact_native and not args.native_lib:
@@ -103,7 +104,7 @@ def main():
             source_format='fp4_e8m0_k32',swiglu_limit=10)
     if args.native_lib:
         from _v41_expert_native import Native, Info, library, P, U, check
-        lib = library(str(args.native_lib), tp2=True)
+        lib = library(str(args.native_lib), tp2=n == 1152)
         for name, types in {
             'ds41rt_v41_expert_input_quant_initialize': [C.POINTER(P)],
             'ds41rt_v41_expert_input_quantize_async': [P, P, P, U, P],
@@ -111,8 +112,9 @@ def main():
         }.items():
             fn = getattr(lib, name); fn.argtypes = types; fn.restype = C.c_int32
         quant = P(); check(lib.ds41rt_v41_expert_input_quant_initialize(C.byref(quant)))
+        padded_n = (n + 127) // 128 * 128
         native_weights = [torch.empty((e, size), device='cuda', dtype=torch.uint8)
-                          for size in (n*h, n*h//16, n*h//2, n*h//32)]
+                          for size in (padded_n*h, padded_n*h//16, padded_n*h//2, padded_n*h//32)]
         for expert in range(e):
             sources = [weights[name][expert] for name in ('w1', 'w3', 'w2')]
             sources += [scales[name][expert] for name in ('w1', 'w3', 'w2')]
@@ -123,24 +125,24 @@ def main():
         torch.cuda.synchronize()
         def make_native(selected_lib, capacity, wire, ids, routing):
             if not args.shared_native_scratch:
-                return Native(selected_lib, capacity, native_weights, wire, ids, routing, tp2=True)
+                return Native(selected_lib, capacity, native_weights, wire, ids, routing, tp2=n == 1152)
             assert capacity in (1, 16)
             infos = []
             for cap in (1,16):
                 info = Info(); check(selected_lib.ds41rt_v41_expert_info(cap,C.byref(info))); infos.append(info)
             arena = torch.empty(max(info.scratch_bytes for info in infos),device='cuda',dtype=torch.uint8)
-            variants = [Native(selected_lib, cap, native_weights, wire, ids, routing, tp2=True, storage=arena) for cap in (1,16)]
+            variants = [Native(selected_lib, cap, native_weights, wire, ids, routing, tp2=n == 1152, storage=arena) for cap in (1,16)]
             return variants[0 if capacity == 1 else 1]
-    report={'scope':__doc__,'command':sys.argv,'fork_revision':subprocess.check_output(['git','-C',str(args.b12x_root),'rev-parse','HEAD'],text=True).strip(),
+    report={'scope':__doc__,'command':sys.argv,'fork_revision':subprocess.check_output(['git','-c',f'safe.directory={args.b12x_root}','-C',str(args.b12x_root),'rev-parse','HEAD'],text=True).strip(),
             'script_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
             'device':str(torch.cuda.get_device_properties(args.device)),
             'geometry':{'experts':e,'hidden':h,'intermediate':n,'topk':6},'cases':[]}
     if args.native_lib:
-        report['native_library'] = {'path': str(args.native_lib), 'sha256': hashlib.sha256(args.native_lib.read_bytes()).hexdigest(), 'output': 'Native local FP32 routes summed and rounded once to BF16; excludes cross-device TP2 reduction'}
+        report['native_library'] = {'path': str(args.native_lib), 'sha256': hashlib.sha256(args.native_lib.read_bytes()).hexdigest(), 'output': 'Native local FP32 routes summed and rounded once to BF16; excludes cross-device TP reduction', 'role': 'rtx_tp2' if n == 1152 else 'spark'}
     if args.candidate_native_lib:
-        candidate_lib = library(str(args.candidate_native_lib), tp2=True)
+        candidate_lib = library(str(args.candidate_native_lib), tp2=n == 1152)
         report['candidate_native_library'] = {'path': str(args.candidate_native_lib), 'sha256': hashlib.sha256(args.candidate_native_lib.read_bytes()).hexdigest()}
-    report['fork_dirty']=subprocess.check_output(['git','-C',str(args.b12x_root),'status','--porcelain'],text=True)
+    report['fork_dirty']=subprocess.check_output(['git','-c',f'safe.directory={args.b12x_root}','-C',str(args.b12x_root),'status','--porcelain'],text=True)
     report['fork_source_sha256']={name:hashlib.sha256((args.b12x_root/name).read_bytes()).hexdigest() for name in ['b12x/moe/_shared/kernels/tiny_decode.py','b12x/moe/fused_moe/_impl.py','b12x/moe/fused_moe/_preparation.py','b12x/moe/_shared/kernels/reference.py','b12x/moe/_shared/kernels/w4a8_compact_micro.py','b12x/moe/_shared/kernels/w4a8_compact_projection.py','b12x/moe/_shared/kernels/w4a8_compact_activation.py','b12x/moe/_shared/kernels/w4a8_phase2.py']}
     report['reference_semantics']={'native':'V4.1 BF16 projection boundaries and routing before intermediate FP8 quantization','generic':'Declared W4A8-MX FP8 activation reference; tiny-decode actually consumes BF16 and accumulates BF16 atomically, so this is not its exact arithmetic oracle','compact':'FP8 input, BF16 FC1 and activation boundaries, FP8 intermediate, routing after FC2 before BF16 route output; FP32 top-k sum rounded to BF16'}
     def save():args.output.write_text(json.dumps(report,indent=2)+'\n')
@@ -149,6 +151,8 @@ def main():
         torch.manual_seed(42000+rows+n)
         original_x=(torch.randn(rows,h,device='cuda')*.5).bfloat16()
         original_ids=torch.rand(rows,e,device='cuda').topk(6,dim=1).indices.int()
+        if args.routing_pattern == 'shared':
+            original_ids = original_ids[:1].expand(rows,6).contiguous()
         routing=torch.rand(rows,6,device='cuda');routing=(routing/routing.sum(-1,keepdim=True)*1.5).float()
         expected=[reference(original_x,original_ids,routing,weights,scales),reference(original_x*-.5,(original_ids+1)%e,routing,weights,scales)]
         generic_expected=[moe_reference_w4a8_mx(xx,torch.cat([weights['w3'],weights['w1']],dim=1),torch.cat([scales['w3'],scales['w1']],dim=1),None,ones,weights['w2'],scales['w2'],None,ones,ii,routing,e,h,n,activation='silu',swiglu_limit=10) for xx,ii in [(original_x,original_ids),(original_x*-.5,(original_ids+1)%e)]]
@@ -170,7 +174,7 @@ def main():
                     native.run(rows)
                     check(lib.ds41rt_v41_finish_local_experts_async(native.output.data_ptr(), None, output.data_ptr(), rows, int(native.token_accumulation), torch.cuda.current_stream().cuda_stream))
                     return output
-                context = nullcontext(SimpleNamespace(run=run_native, implementation='native_tp2'))
+                context = nullcontext(SimpleNamespace(run=run_native, implementation='native_tp2' if n == 1152 else 'native_spark'))
             elif use_compact and args.candidate_native_lib:
                 candidate_wire = torch.empty((rows, 5280), device='cuda', dtype=torch.uint8)
                 candidate_native = make_native(candidate_lib, 1 if rows == 1 else 16 if rows <= 16 else 80, candidate_wire, ids, routing)
