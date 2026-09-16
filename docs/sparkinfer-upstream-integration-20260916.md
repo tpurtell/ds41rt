@@ -16,6 +16,45 @@ flowchart LR
     F --> G[Clean image builds, README, reports and release]
 ```
 
+## Shared experts and Engram/loading selection
+
+The real layer-0 shared-expert TP2 chain passes the full-width quantized oracle
+on both GPUs at capacities **1, 16, 80, 256, 1024 and 4096**, including changed
+inputs in captured graphs. The complete local up/gate → clamped SwiGLU →
+quantization → down chain has essentially the same warm cost. Representative
+RTX0 medians (published → candidate) are 27.6 → 28.7 µs at one row,
+32.8 → 32.8 at 16, 55.4 → 55.6 at 256, 86.3 → 86.6 at 1024, and
+493.7 → 501.8 at 4096. RTX1 shows the same broad pattern. These sequential
+component screens exclude inter-rank reduction and scheduling; small differences
+are not a claimed gain or a completed end-to-end prefill regression gate.
+**Keep the existing FP8 shared chain**; no additional shared-specific backend
+is justified by this screen. [Evidence](sparkinfer-upstream-shared-loading-20260916.json)
+contains both GPU timings, oracle errors, identities and loader test output.
+
+Upstream's final Engram `DiskTable` retains original E8M0 scale bytes optionally,
+but disk lookup is synchronous and its prefetch methods are no-ops. Our native
+[`EngramBatchStaging`](../rust/crates/ds41rt-loader/src/engram_staging.rs)
+already gathers the original eight scale bytes per row without expansion or
+requantization, sorts/deduplicates requests, and preserves token/head ordering.
+[`EngramGatherer`](../rust/crates/ds41rt-loader/src/engram_gather.rs) uses bounded
+background storage and cancellation; submission does not perform mapped reads.
+[`MappedRows`](../rust/crates/ds41rt-loader/src/mapped_rows.rs) bounds and coalesces
+prefetch pages while the gather worker handles actual page faults. Preserve
+this native asynchronous path. Eagerly retaining both full scale tables would
+read/retain **6,144,182,800 bytes (5.72 GiB)**; do not add that startup/memory cost
+without evidence that scale faults dominate. Existing timing traces expose
+queue/gather time and page-fault counters for that investigation.
+
+Upstream's `DirectWeightSession` owns Torch metadata/destinations and a direct
+reader or GDS executor; our native loader instead uses validated bounded
+`read_exact_at` ranges, shard-aware packing, and caller-owned staging. A port
+would replace a loader lifecycle, not merely select a faster kernel. Keep the
+native loader for this integration; no GDS or cold-start speedup is claimed.
+The native loader unit suite reports **70 passed, one optional official-tokenizer
+test ignored**. This verifies the exercised range/mapping/prefetch contracts,
+not cold storage performance or final long-context/vision acceptance. Final
+clean-build warm/cold startup and memory qualification remain release gates.
+
 ## Native single-row vocabulary adapter
 
 The opt-in `DS41RT_V41_VOCAB_ROW_EXPERIMENT` implements the upstream

@@ -3,6 +3,8 @@
 import argparse
 import ctypes as C
 import json
+import hashlib
+import statistics
 from pathlib import Path
 import torch
 from safetensors import safe_open
@@ -24,6 +26,7 @@ def main():
     parser.add_argument("--native-lib", required=True)
     parser.add_argument("--snapshot", type=Path, required=True)
     parser.add_argument("--rows", default="1,16", help="Comma-separated exported capacities")
+    parser.add_argument("--timing-output", type=Path, help="Record warm full-chain GPU timings after correctness gates")
     args = parser.parse_args()
     capacities = [int(value) for value in args.rows.split(",")]
     assert capacities and all(value in (1, 16, 80, 256, 1024, 4096) for value in capacities)
@@ -52,7 +55,7 @@ def main():
             key = f"layers.0.ffn.shared_experts.{name}.{suffix}"
             with safe_open(args.snapshot / index[key], framework="pt", device="cpu") as file:
                 raw[name, suffix] = file.get_tensor(key)
-    results = []
+    results, timings = [], []
     for rows in capacities:
         x = torch.randn(rows, 5120).mul_(0.5).bfloat16()
         rank_results, handles = [], []
@@ -96,6 +99,20 @@ def main():
                     graph.replay()
                     outputs.append(states["w2"][-1].float().cpu())
                 rank_results.append(outputs)
+                if args.timing_output:
+                    samples = []
+                    allocated = torch.cuda.memory_allocated(rank)
+                    for _ in range(6):
+                        start, end = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
+                        start.record()
+                        for _ in range(100):
+                            graph.replay()
+                        end.record()
+                        end.synchronize()
+                        samples.append(start.elapsed_time(end) * 10)
+                    assert torch.cuda.memory_allocated(rank) == allocated
+                    timings.append(dict(rows=rows, rank=rank, samples_us=samples,
+                                        median_us=statistics.median(samples)))
         assert handles[0][2] != handles[3][2] and handles[2][2] != handles[5][2]
         with torch.cuda.device(0):
             full = {name: raw[name, "weight"].cuda().float() * raw[name, "scale"].cuda().float().repeat_interleave(32, 0).repeat_interleave(32, 1) for name in ("w1", "w3", "w2")}
@@ -112,6 +129,12 @@ def main():
                 assert torch.isfinite(actual).all() and relative < 0.01 and cosine > 0.9999, (rows, changed, relative, cosine)
                 results.append(dict(rows=rows, changed=changed, relative_l2=relative, cosine=cosine))
     print(json.dumps(results, indent=2))
+    if args.timing_output:
+        args.timing_output.write_text(json.dumps(dict(
+            scope="Real layer-0 shared experts: per-rank up/gate, clamp-SwiGLU, quantization and down projection. Warm graphs; excludes inter-rank reduction and serving scheduler.",
+            native_lib=args.native_lib, native_sha256=hashlib.sha256(Path(args.native_lib).read_bytes()).hexdigest(),
+            script_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+            snapshot=str(args.snapshot), checks=results, timings=timings), indent=2) + '\n')
 
 
 if __name__ == "__main__":

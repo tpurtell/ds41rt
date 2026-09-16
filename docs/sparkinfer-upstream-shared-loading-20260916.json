@@ -1,0 +1,517 @@
+{
+  "scope": "Shared TP2 full local chain versus published library, plus Engram/loading applicability audit. Separate sequential processes; warm timings are component evidence, not serving speedup.",
+  "shared": {
+    "chain_baseline": {
+      "raw_sha256": "8ca003be1a5ab199abc78680b87796460b2f48debb206ce1a3a3e6b5dbcfc8dd",
+      "scope": "Real layer-0 shared experts: per-rank up/gate, clamp-SwiGLU, quantization and down projection. Warm graphs; excludes inter-rank reduction and serving scheduler.",
+      "native_lib": "/home/tj/.cache/ds41rt-upstream-20260916/libbaseline-full.so",
+      "native_sha256": "51f991cfe4c0cd84ac3931f82ff4d1fdb92c303e1dd1e60ed38be852fba1bcd1",
+      "script_sha256": "2f0cc114346d6c666ee6c39098470c92348d3ade85e03b33353045f9e3df88e6",
+      "snapshot": "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+      "checks": [
+        {
+          "rows": 1,
+          "changed": false,
+          "relative_l2": 0.002292113424141735,
+          "cosine": 0.9999973737965294
+        },
+        {
+          "rows": 1,
+          "changed": true,
+          "relative_l2": 0.0022958203540932496,
+          "cosine": 0.999997365035634
+        },
+        {
+          "rows": 16,
+          "changed": false,
+          "relative_l2": 0.002338941086060108,
+          "cosine": 0.9999972647274578
+        },
+        {
+          "rows": 16,
+          "changed": true,
+          "relative_l2": 0.002322898272580372,
+          "cosine": 0.9999973030124006
+        },
+        {
+          "rows": 80,
+          "changed": false,
+          "relative_l2": 0.002327691405084214,
+          "cosine": 0.9999972909320736
+        },
+        {
+          "rows": 80,
+          "changed": true,
+          "relative_l2": 0.002311514842747289,
+          "cosine": 0.9999973285749536
+        },
+        {
+          "rows": 256,
+          "changed": false,
+          "relative_l2": 0.0023223621594756732,
+          "cosine": 0.9999973033160203
+        },
+        {
+          "rows": 256,
+          "changed": true,
+          "relative_l2": 0.0023228150715904807,
+          "cosine": 0.9999973022689661
+        }
+      ],
+      "timings": [
+        {
+          "rows": 1,
+          "rank": 0,
+          "samples_us": [
+            27.92992115020752,
+            27.48863935470581,
+            27.70495891571045,
+            27.437119483947754,
+            27.655680179595947,
+            27.400319576263428
+          ],
+          "median_us": 27.57215976715088
+        },
+        {
+          "rows": 1,
+          "rank": 1,
+          "samples_us": [
+            26.68384075164795,
+            26.639680862426758,
+            26.64128065109253,
+            26.642560958862305,
+            26.633920669555664,
+            26.630399227142334
+          ],
+          "median_us": 26.640480756759644
+        },
+        {
+          "rows": 16,
+          "rank": 0,
+          "samples_us": [
+            32.830400466918945,
+            32.78815984725952,
+            32.79360055923462,
+            32.76992082595825,
+            32.792320251464844,
+            32.78975963592529
+          ],
+          "median_us": 32.79103994369507
+        },
+        {
+          "rows": 16,
+          "rank": 1,
+          "samples_us": [
+            32.81536102294922,
+            32.79616117477417,
+            32.78336048126221,
+            32.784318923950195,
+            32.77760028839111,
+            32.77728080749512
+          ],
+          "median_us": 32.7838397026062
+        },
+        {
+          "rows": 80,
+          "rank": 0,
+          "samples_us": [
+            34.85343933105469,
+            34.83295917510986,
+            34.828479290008545,
+            34.83295917510986,
+            34.84384059906006,
+            34.83392000198364
+          ],
+          "median_us": 34.83343958854675
+        },
+        {
+          "rows": 80,
+          "rank": 1,
+          "samples_us": [
+            34.857919216156006,
+            34.81695890426636,
+            34.82304096221924,
+            34.82656002044678,
+            34.82719898223877,
+            34.82656002044678
+          ],
+          "median_us": 34.82656002044678
+        },
+        {
+          "rows": 256,
+          "rank": 0,
+          "samples_us": [
+            55.43168067932129,
+            55.389437675476074,
+            55.44095993041992,
+            55.38400173187256,
+            55.31424045562744,
+            55.37919998168945
+          ],
+          "median_us": 55.386719703674316
+        },
+        {
+          "rows": 256,
+          "rank": 1,
+          "samples_us": [
+            55.10240077972412,
+            55.38144111633301,
+            55.04511833190918,
+            54.95232105255127,
+            55.06879806518555,
+            55.01408100128174
+          ],
+          "median_us": 55.05695819854736
+        }
+      ]
+    },
+    "chain_candidate": {
+      "raw_sha256": "9f5bd22ba106c060d3b8e37ef35426bfdc0d6a87629599adb679483b8afe8c36",
+      "scope": "Real layer-0 shared experts: per-rank up/gate, clamp-SwiGLU, quantization and down projection. Warm graphs; excludes inter-rank reduction and serving scheduler.",
+      "native_lib": "/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-index-sort.so",
+      "native_sha256": "8c6cccb1c3372567a1c49cc480a9cdf2b44d776a0a69cfa7c9d823caebaf0a4c",
+      "script_sha256": "2f0cc114346d6c666ee6c39098470c92348d3ade85e03b33353045f9e3df88e6",
+      "snapshot": "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+      "checks": [
+        {
+          "rows": 1,
+          "changed": false,
+          "relative_l2": 0.002292113424141735,
+          "cosine": 0.9999973737965294
+        },
+        {
+          "rows": 1,
+          "changed": true,
+          "relative_l2": 0.0022958203540932496,
+          "cosine": 0.999997365035634
+        },
+        {
+          "rows": 16,
+          "changed": false,
+          "relative_l2": 0.002338941086060108,
+          "cosine": 0.9999972647274578
+        },
+        {
+          "rows": 16,
+          "changed": true,
+          "relative_l2": 0.002322898272580372,
+          "cosine": 0.9999973030124006
+        },
+        {
+          "rows": 80,
+          "changed": false,
+          "relative_l2": 0.002327691405084214,
+          "cosine": 0.9999972909320736
+        },
+        {
+          "rows": 80,
+          "changed": true,
+          "relative_l2": 0.002311514842747289,
+          "cosine": 0.9999973285749536
+        },
+        {
+          "rows": 256,
+          "changed": false,
+          "relative_l2": 0.0023223621594756732,
+          "cosine": 0.9999973033160203
+        },
+        {
+          "rows": 256,
+          "changed": true,
+          "relative_l2": 0.0023228150715904807,
+          "cosine": 0.9999973022689661
+        }
+      ],
+      "timings": [
+        {
+          "rows": 1,
+          "rank": 0,
+          "samples_us": [
+            28.72096061706543,
+            28.671998977661133,
+            28.685119152069092,
+            28.67680072784424,
+            28.6678409576416,
+            28.68000030517578
+          ],
+          "median_us": 28.67840051651001
+        },
+        {
+          "rows": 1,
+          "rank": 1,
+          "samples_us": [
+            26.760001182556152,
+            26.639680862426758,
+            26.739840507507324,
+            26.67423963546753,
+            26.715199947357178,
+            26.701760292053223
+          ],
+          "median_us": 26.7084801197052
+        },
+        {
+          "rows": 16,
+          "rank": 0,
+          "samples_us": [
+            32.925119400024414,
+            32.86848068237305,
+            32.780160903930664,
+            32.81536102294922,
+            32.8166389465332,
+            32.807040214538574
+          ],
+          "median_us": 32.81599998474121
+        },
+        {
+          "rows": 16,
+          "rank": 1,
+          "samples_us": [
+            32.82111883163452,
+            32.78559923171997,
+            32.77440071105957,
+            32.77760028839111,
+            32.77600049972534,
+            32.77600049972534
+          ],
+          "median_us": 32.77680039405823
+        },
+        {
+          "rows": 80,
+          "rank": 0,
+          "samples_us": [
+            34.85759973526001,
+            34.84256029129028,
+            34.828479290008545,
+            34.82176065444946,
+            34.82399940490723,
+            34.825279712677
+          ],
+          "median_us": 34.82687950134277
+        },
+        {
+          "rows": 80,
+          "rank": 1,
+          "samples_us": [
+            34.86047983169556,
+            34.81760025024414,
+            34.82176065444946,
+            34.825279712677,
+            34.825279712677,
+            34.82624053955078
+          ],
+          "median_us": 34.825279712677
+        },
+        {
+          "rows": 256,
+          "rank": 0,
+          "samples_us": [
+            55.73887825012207,
+            55.72800159454346,
+            55.587520599365234,
+            55.519680976867676,
+            55.57024002075195,
+            55.664639472961426
+          ],
+          "median_us": 55.62608003616333
+        },
+        {
+          "rows": 256,
+          "rank": 1,
+          "samples_us": [
+            55.342721939086914,
+            55.279998779296875,
+            55.2342414855957,
+            55.25536060333252,
+            55.284481048583984,
+            55.203518867492676
+          ],
+          "median_us": 55.2676796913147
+        }
+      ]
+    },
+    "prefill_baseline": {
+      "raw_sha256": "8cbd4daf4be32ae9e80a7c822c58588d49b0b8abb820c062987723f9a397daa6",
+      "scope": "Real layer-0 shared experts: per-rank up/gate, clamp-SwiGLU, quantization and down projection. Warm graphs; excludes inter-rank reduction and serving scheduler.",
+      "native_lib": "/home/tj/.cache/ds41rt-upstream-20260916/libbaseline-full.so",
+      "native_sha256": "51f991cfe4c0cd84ac3931f82ff4d1fdb92c303e1dd1e60ed38be852fba1bcd1",
+      "script_sha256": "2f0cc114346d6c666ee6c39098470c92348d3ade85e03b33353045f9e3df88e6",
+      "snapshot": "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+      "checks": [
+        {
+          "rows": 1024,
+          "changed": false,
+          "relative_l2": 0.002320808175092563,
+          "cosine": 0.9999973069214563
+        },
+        {
+          "rows": 1024,
+          "changed": true,
+          "relative_l2": 0.0023190641785584237,
+          "cosine": 0.9999973109722289
+        },
+        {
+          "rows": 4096,
+          "changed": false,
+          "relative_l2": 0.002322306386090202,
+          "cosine": 0.9999973034511783
+        },
+        {
+          "rows": 4096,
+          "changed": true,
+          "relative_l2": 0.0023274796890873904,
+          "cosine": 0.9999972914295793
+        }
+      ],
+      "timings": [
+        {
+          "rows": 1024,
+          "rank": 0,
+          "samples_us": [
+            86.32255554199219,
+            86.19392395019531,
+            86.16127967834473,
+            86.41728401184082,
+            86.18368148803711,
+            86.39264106750488
+          ],
+          "median_us": 86.25823974609375
+        },
+        {
+          "rows": 1024,
+          "rank": 1,
+          "samples_us": [
+            84.15776252746582,
+            83.99776458740234,
+            83.97919654846191,
+            84.10240173339844,
+            84.14688110351562,
+            84.04255867004395
+          ],
+          "median_us": 84.07248020172119
+        },
+        {
+          "rows": 4096,
+          "rank": 0,
+          "samples_us": [
+            381.66175842285156,
+            383.19263458251953,
+            490.7708740234375,
+            581.4300918579102,
+            496.5964889526367,
+            532.3209762573242
+          ],
+          "median_us": 493.6836814880371
+        },
+        {
+          "rows": 4096,
+          "rank": 1,
+          "samples_us": [
+            370.8950424194336,
+            373.25889587402344,
+            460.8534240722656,
+            559.9900817871094,
+            472.6300811767578,
+            488.4486389160156
+          ],
+          "median_us": 466.7417526245117
+        }
+      ]
+    },
+    "prefill_candidate": {
+      "raw_sha256": "f94ca703eeb84fe64eae1f3791df0ba536caa63ae70ac87e5568e987f5195417",
+      "scope": "Real layer-0 shared experts: per-rank up/gate, clamp-SwiGLU, quantization and down projection. Warm graphs; excludes inter-rank reduction and serving scheduler.",
+      "native_lib": "/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-index-sort.so",
+      "native_sha256": "8c6cccb1c3372567a1c49cc480a9cdf2b44d776a0a69cfa7c9d823caebaf0a4c",
+      "script_sha256": "2f0cc114346d6c666ee6c39098470c92348d3ade85e03b33353045f9e3df88e6",
+      "snapshot": "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+      "checks": [
+        {
+          "rows": 1024,
+          "changed": false,
+          "relative_l2": 0.002320808175092563,
+          "cosine": 0.9999973069214563
+        },
+        {
+          "rows": 1024,
+          "changed": true,
+          "relative_l2": 0.0023190641785584237,
+          "cosine": 0.9999973109722289
+        },
+        {
+          "rows": 4096,
+          "changed": false,
+          "relative_l2": 0.002322306386090202,
+          "cosine": 0.9999973034511783
+        },
+        {
+          "rows": 4096,
+          "changed": true,
+          "relative_l2": 0.0023274796890873904,
+          "cosine": 0.9999972914295793
+        }
+      ],
+      "timings": [
+        {
+          "rows": 1024,
+          "rank": 0,
+          "samples_us": [
+            86.5385627746582,
+            86.50208473205566,
+            86.41792297363281,
+            86.5715217590332,
+            86.88032150268555,
+            86.91776275634766
+          ],
+          "median_us": 86.5550422668457
+        },
+        {
+          "rows": 1024,
+          "rank": 1,
+          "samples_us": [
+            84.44607734680176,
+            84.42079544067383,
+            84.52223777770996,
+            84.80640411376953,
+            84.92735862731934,
+            85.13983726501465
+          ],
+          "median_us": 84.66432094573975
+        },
+        {
+          "rows": 4096,
+          "rank": 0,
+          "samples_us": [
+            382.98912048339844,
+            384.5123291015625,
+            505.36609649658203,
+            581.9558334350586,
+            498.26847076416016,
+            539.6908950805664
+          ],
+          "median_us": 501.8172836303711
+        },
+        {
+          "rows": 4096,
+          "rank": 1,
+          "samples_us": [
+            372.84000396728516,
+            374.88033294677734,
+            471.95777893066406,
+            565.6137466430664,
+            473.3875274658203,
+            494.85313415527344
+          ],
+          "median_us": 472.6726531982422
+        }
+      ]
+    }
+  },
+  "loader_tests": "   Compiling ds41rt-loader v0.1.0 (/home/tj/Developer/ds41rt/rust/crates/ds41rt-loader)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.64s\n     Running unittests src/lib.rs (target/debug/deps/ds41rt_loader-472a08e0efb567ea)\n\nrunning 71 tests\ntest exl3_format::tests::explicit_k3_rank_local_geometry_scales_only_trellis_storage ... ok\ntest exl3_format::tests::exl3_catalog_rejects_trellis_misclassified_as_metadata ... ok\ntest exl3_format::tests::projection_mixed_expert_reports_each_integer_tier ... ok\ntest exl3_format::tests::exl3_catalog_rejects_mixed_publication_namespaces ... ok\ntest exl3_format::tests::flash_and_pro_experts_validate_with_equal_tp4_hadamard_slices ... ok\ntest tests::classifier_identifies_ds4_coordinator_tensor_families ... ok\ntest exl3_format::tests::exl3_catalog_requires_all_integrated_dspark_routed_blocks ... ok\ntest exl3_format::tests::flash_and_pro_rank_local_residency_has_no_widened_weight_copy ... ok\ntest tests::classifier_assigns_mtp_routed_experts_to_expert_placement ... ok\ntest mapped_rows::tests::unaligned_payload_gather_preserves_order_and_rejects_bad_batches ... ok\ntest tests::classifier_identifies_native_ds4_expert_scale ... ok\ntest exl3_format::tests::gptqmodel_publication_names_validate_for_base_and_dspark_blocks ... ok\ntest exl3_format::tests::legacy_schema_checks_only_the_k2_serving_layout ... ok\ntest exl3_format::tests::legacy_recipe_ids_do_not_trigger_calibration_audits ... ok\ntest tests::classifier_keeps_mtp_non_expert_tensors_on_the_mtp_role ... ok\ntest tests::classifier_identifies_routed_expert_scale ... ok\ntest tests::classifier_keeps_shared_expert_on_coordinator ... ok\ntest engram_prefetch::tests::background_prefetch_owns_mapping_and_advises_both_tables ... ok\ntest tests::classifier_maps_dspark_experts_and_envelope_separately ... ok\ntest tests::classifier_treats_exl3_trellis_as_weight_and_rotations_as_metadata ... ok\ntest exl3_format::tests::gptqmodel_schema_accepts_uniform_k2_and_k3_serving_layouts ... ok\ntest mapped_rows::tests::sparse_checkpoint_rows_past_two_gib_use_wide_offsets ... ok\ntest engram_prefetch::tests::official_size_catalog_maps_sparse_shard_and_rejects_eager_loading ... ok\ntest tests::compact_exl3_config_rejects_missing_or_mismatched_external_config ... ok\ntest tests::model_cache_path_uses_hf_layout ... ok\ntest tests::load_tensor_bytes_reads_exact_range ... ok\ntest tests::load_tensor_rows_rejects_out_of_bounds_window ... ok\ntest tests::native_fp4_contract_fails_closed_on_legacy_nvfp4_metadata ... ok\ntest tests::explicit_snapshot_revision_wins_over_main_ref ... ok\ntest tests::explicit_snapshot_revision_rejects_missing_or_traversing_selection ... ok\ntest tests::load_tensor_rows_reads_exact_2d_window ... ok\ntest tests::native_fp4_contract_maps_checkpoint_w3_then_w1_to_sparkinfer_w13 ... ok\ntest tests::load_plan_places_mtp_experts_on_sparks_and_mtp_envelope_on_coordinator ... ok\ntest tests::native_fp4_flash_tp4_windows_match_gpu_oracle_memory_geometry ... ok\ntest tests::compact_exl3_config_resolves_external_tensor_storage ... ok\ntest tests::native_fp4_pro_tp4_windows_preserve_equal_rank_demand ... ok\ntest tests::read_tensor_bytes_into_rejects_small_destination ... ok\ntest tests::flash_model_facts_are_read_from_deepseek_v4_config ... ok\ntest tests::native_attention_specs_match_flash_projection_and_compression_contract ... ok\ntest tests::read_tensor_row_prefix_into_rejects_invalid_prefix_width ... ok\ntest tests::read_tensor_bytes_into_uses_caller_buffer_prefix ... ok\ntest tests::read_tensor_row_window_into_compacts_middle_columns ... ok\ntest tests::read_tensor_rows_into_rejects_small_destination ... ok\ntest tests::read_tensor_row_prefix_into_compacts_leading_columns ... ok\ntest tests::read_tensor_rows_into_uses_caller_buffer_prefix ... ok\ntest tokenizer::tests::official_unicode_roundtrip_and_every_token_cut ... ignored, requires the pinned official tokenizer via DS41RT_UNICODE_MODEL\ntest tests::reads_single_file_safetensors_metadata_with_absolute_offsets ... ok\ntest v41_catalog::tests::rejects_same_byte_count_with_wrong_representation ... ok\ntest tests::snapshot_resolution_honors_main_ref_over_lexicographic_order ... ok\ntest tests::snapshot_resolution_rejects_missing_or_traversing_main_ref ... ok\ntest v41_image::tests::image_input_limits_reject_before_expansion ... ok\ntest tests::streaming_tokenizer_buffers_split_utf8_scalars ... ok\ntest tests::tokenizer_is_reused_after_the_snapshot_file_changes ... ok\ntest v41_config::tests::official_nested_architecture_has_distinct_dspark_and_ced_geometry ... ok\ntest v41_catalog::tests::tp4_staging_reads_columns_and_rows_beyond_two_gib ... ok\ntest engram_tokenizer::tests::compression_preserves_spaces_and_normalizes_accents ... ok\ntest tests::pro_model_facts_are_inferred_from_dimensions_not_repository_name ... ok\ntest tokenizer::tests::terminal_literal_replacement_and_partial_scalar_are_not_dropped ... ok\ntest tests::native_attention_catalog_validates_all_target_and_dspark_headers ... ok\ntest dspark_format::tests::flash_contract_is_three_native_blocks_with_five_proposals ... ok\ntest v41_config::tests::rejects_legacy_or_incomplete_architecture_instead_of_defaulting ... ok\ntest dspark_format::tests::contract_rejects_incomplete_exl3_routed_experts ... ok\ntest dspark_format::tests::flash_contract_accepts_exl3_routed_experts ... ok\ntest dspark_format::tests::contract_rejects_incomplete_or_unexpected_mtp_namespaces ... ok\ntest tests::native_attention_catalog_rejects_header_drift ... ok\ntest tokenizer::tests::terminal_utf8_matches_lossy_whole_decode_at_every_byte_boundary ... ok\ntest v41_catalog::tests::checkpoint_contract_keeps_native_types_and_local_draft_experts ... ok\ntest v41_image::tests::sixteen_bit_grayscale_is_clipped_before_rgb_resampling ... ok\ntest v41_catalog::expert_staging_tests::native_expert_staging_covers_all_tp_ranks_and_full_experts ... ok\ntest v41_image::tests::native_rgb_preparation_matches_pinned_reference_fixtures ... ok\ntest v41_image::tests::expanded_interleaved_images_have_exact_spans_and_context_accounting ... ok\n\ntest result: ok. 70 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 2.99s\n\n   Doc-tests ds41rt_loader\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n",
+  "engram_tests": "   Compiling cfg-if v1.0.4\n   Compiling memchr v2.8.2\n   Compiling typenum v1.20.1\n   Compiling simd-adler32 v0.3.10\n   Compiling adler2 v2.0.1\n   Compiling once_cell v1.21.4\n   Compiling hashbrown v0.17.1\n   Compiling bitflags v2.13.0\n   Compiling either v1.16.0\n   Compiling serde_json v1.0.150\n   Compiling equivalent v1.0.2\n   Compiling regex-syntax v0.8.11\n   Compiling itoa v1.0.18\n   Compiling rustix v1.1.4\n   Compiling esaxx-rs v0.1.10\n   Compiling minimal-lexical v0.2.1\n   Compiling bit-vec v0.8.0\n   Compiling base64 v0.13.1\n   Compiling pxfm v0.1.30\n   Compiling unicode-segmentation v1.13.3\n   Compiling byteorder-lite v0.1.0\n   Compiling quick-error v2.0.1\n   Compiling linux-raw-sys v0.12.1\n   Compiling static_assertions v1.1.0\n   Compiling color_quant v1.1.0\n   Compiling cpufeatures v0.2.17\n   Compiling smallvec v1.15.2\n   Compiling weezl v0.1.12\n   Compiling ryu v1.0.23\n   Compiling fastrand v2.4.1\n   Compiling daachorse v3.0.3\n   Compiling unicode_categories v0.1.1\n   Compiling bytemuck v1.25.2\n   Compiling log v0.4.33\n   Compiling pin-project-lite v0.2.17\n   Compiling gcd v2.3.0\n   Compiling syn v2.0.118\n   Compiling libc v0.2.186\n   Compiling serde_core v1.0.228\n   Compiling crossbeam-utils v0.8.21\n   Compiling zerocopy v0.8.52\n   Compiling num-traits v0.2.19\n   Compiling anyhow v1.0.103\n   Compiling zmij v1.0.21\n   Compiling crc32fast v1.5.1\n   Compiling castaway v0.2.4\n   Compiling macro_rules_attribute v0.2.2\n   Compiling miniz_oxide v0.9.1\n   Compiling miniz_oxide v0.8.9\n   Compiling fdeflate v0.3.7\n   Compiling tracing-core v0.1.36\n   Compiling itertools v0.14.0\n   Compiling bit-set v0.8.0\n   Compiling unicode-normalization-alignments v0.1.12\n   Compiling image-webp v0.2.4\n   Compiling gif v0.14.2\n   Compiling aho-corasick v1.1.4\n   Compiling nom v7.1.3\n   Compiling turbojpeg-sys v1.2.0\n   Compiling crossbeam-epoch v0.9.18\n   Compiling indexmap v2.14.0\n   Compiling flate2 v1.1.10\n   Compiling generic-array v0.14.7\n   Compiling crossbeam-deque v0.8.6\n   Compiling rayon-core v1.13.0\n   Compiling getrandom v0.3.4\n   Compiling getrandom v0.4.3\n   Compiling png v0.18.1\n   Compiling rand_core v0.9.5\n   Compiling crypto-common v0.1.7\n   Compiling block-buffer v0.10.4\n   Compiling digest v0.10.7\n   Compiling rayon v1.12.0\n   Compiling sha2 v0.10.9\n   Compiling regex-automata v0.4.14\n   Compiling tempfile v3.27.0\n   Compiling moxcms v0.8.1\n   Compiling darling_core v0.20.11\n   Compiling rayon-cond v0.4.0\n   Compiling ppv-lite86 v0.2.21\n   Compiling serde_derive v1.0.228\n   Compiling thiserror-impl v1.0.69\n   Compiling thiserror-impl v2.0.18\n   Compiling monostate-impl v0.1.18\n   Compiling tracing-attributes v0.1.31\n   Compiling rand_chacha v0.9.0\n   Compiling rand v0.9.4\n   Compiling monostate v0.1.18\n   Compiling thiserror v1.0.69\n   Compiling turbojpeg v1.5.1\n   Compiling tracing v0.1.44\n   Compiling thiserror v2.0.18\n   Compiling regex v1.12.4\n   Compiling fancy-regex v0.17.0\n   Compiling darling_macro v0.20.11\n   Compiling darling v0.20.11\n   Compiling derive_builder_core v0.20.2\n   Compiling derive_builder_macro v0.20.2\n   Compiling serde v1.0.228\n   Compiling image v0.25.10\n   Compiling derive_builder v0.20.2\n   Compiling compact_str v0.9.1\n   Compiling ahash v0.8.12\n   Compiling dary_heap v0.3.9\n   Compiling spm_precompiled v0.1.4\n   Compiling ds41rt-core v0.1.0 (/home/tj/Developer/ds41rt/rust/crates/ds41rt-core)\n   Compiling tokenizers v0.23.2\n   Compiling ds41rt-loader v0.1.0 (/home/tj/Developer/ds41rt/rust/crates/ds41rt-loader)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 10.40s\n     Running unittests src/lib.rs (target/debug/deps/ds41rt_loader-472a08e0efb567ea)\n\nrunning 3 tests\ntest engram_prefetch::tests::official_size_catalog_maps_sparse_shard_and_rejects_eager_loading ... ok\ntest engram_prefetch::tests::background_prefetch_owns_mapping_and_advises_both_tables ... ok\ntest engram_tokenizer::tests::compression_preserves_spaces_and_normalizes_accents ... ok\n\ntest result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 68 filtered out; finished in 0.00s\n\n",
+  "engram_scale_bytes": 6144182800,
+  "decisions": {
+    "shared": "Keep existing FP8 TP2 shared chain; no new shared-specific backend selected. Candidate correctness passes across capacities 1..4096.",
+    "engram": "Preserve original E8M0 bytes and bounded asynchronous native gathering. Do not port synchronous upstream disk lookup or eagerly pin all scales without a measured fault bottleneck.",
+    "loading": "Keep native bounded range/partition readers and loader; upstream Python/Torch direct-reader/GDS lifecycle is not a drop-in native loader. No cold-start/GDS speedup claimed. Final clean image startup qualification remains required."
+  }
+}
