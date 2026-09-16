@@ -257,13 +257,13 @@ pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Recei
         reserved_cache_bytes=?reserved_pool.cache_bytes, transport_bytes=?transport_bytes,
         setup_headroom_bytes=memory::distributed::EXPERT_SETUP_HEADROOM, "dual RTX bottom-up expert placement");
     eprintln!("loading bottom {expert_layers} expert layers as TP2");
-    let load_rank = |rank: usize| -> Result<_> {
-        let weights = if compressed {
-            RankWeights::load_exl3(devices[rank], &catalog, expert_layers, rank_budgets[rank], &exl3_directory)?
-        } else { RankWeights::load(devices[rank], &catalog, expert_layers, rank_budgets[rank])? };
-        Ok(Rc::new(weights))
+    let routed = if compressed {
+        RankWeights::load_exl3_pair(devices, &catalog, expert_layers, rank_budgets, &exl3_directory)?
+            .map(Rc::new)
+    } else {
+        [Rc::new(RankWeights::load(devices[0], &catalog, expert_layers, rank_budgets[0])?),
+         Rc::new(RankWeights::load(devices[1], &catalog, expert_layers, rank_budgets[1])?)]
     };
-    let routed = [load_rank(0)?, load_rank(1)?];
     let make_transport = || {
         let mut transport = devices[1].own(|| NativeTp4Wave::new(&lib,
             V41Tp4Roce::new(args.peers.clone().try_into().map_err(|_| anyhow::anyhow!("four Spark peers required"))?,

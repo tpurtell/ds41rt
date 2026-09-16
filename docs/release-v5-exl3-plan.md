@@ -991,3 +991,25 @@ at 128 tokens, so it is not a complete code-quality measurement. Its 22.187-seco
 owner startup was not collected under matched loading conditions. Production
 serving was restored after both checks. Final four-configuration startup and
 performance qualification remains required.
+
+## Consecutive TP2 slice loading
+
+[Paired-loading evidence](release-v5-exl3-paired-loading.json) tests loading both
+GPU slices of each EXL3 layer before advancing to the next layer. Partial ranks
+retain device-scoped ownership throughout construction and error cleanup.
+Packed tensors, memory budgets and execution kernels are unchanged.
+
+At the same 25-layer geometry, baseline owner startup takes 22.780, 22.658 and
+22.735 seconds; paired loading takes 21.684, 13.909 and 21.753 seconds. Baseline
+physical reads are 129.05, 125.10 and 127.82 decimal GB; paired reads are 111.24,
+19.39 and 113.52 GB. The high-I/O observations improve by about one second with
+11–18 GB fewer physical reads. The fast paired sample has much warmer file
+pages, so the aggregate median is not evidence of a universal speedup. Logical
+read volume remains about 246.6 GB and loading variability remains unresolved.
+
+The change is retained as a modest page-reuse improvement. All startup samples
+preserve the exact KV allocation. The TP2 B12x reference test now exercises the
+paired constructor: both FP32 rank outputs and BF16 peer sums are bitwise equal
+on two independent lanes at changing row counts 16/1/3/16/1. Release and test
+builds pass, and production serving is restored. This does not replace final
+four-configuration startup or full release qualification.

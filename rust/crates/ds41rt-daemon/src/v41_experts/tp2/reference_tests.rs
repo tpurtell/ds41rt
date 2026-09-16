@@ -113,22 +113,9 @@ fn exl3_tp2_rank_outputs_and_peer_sums_match_b12x() -> Result<()> {
     }
     let catalog =
         ds41rt_loader::read_official_v41_catalog(ds41rt_loader::OFFICIAL_V41_MODEL_ID, &snapshot)?;
-    let weights = [
-        Rc::new(RankWeights::load_exl3(
-            devices[0],
-            &catalog,
-            1,
-            4_000_000_000,
-            &package,
-        )?),
-        Rc::new(RankWeights::load_exl3(
-            devices[1],
-            &catalog,
-            1,
-            4_000_000_000,
-            &package,
-        )?),
-    ];
+    let weights = RankWeights::load_exl3_pair(
+        devices, &catalog, 1, [4_000_000_000; 2], &package,
+    )?.map(Rc::new);
     let inputs = (0..4)
         .map(|index| -> Result<_> {
             let device = devices[index % 2];

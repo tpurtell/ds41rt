@@ -86,6 +86,50 @@ impl<'a> RankWeights<'a> {
             weights: ManuallyDrop::new(weights),
         })
     }
+    /// Load the two slices of each layer consecutively so rank 1 can reuse
+    /// source pages read for rank 0 before advancing the file working set.
+    /// Keep partial ranks owned throughout: errors release each allocation
+    /// on its own device, including failures while loading the other rank.
+    pub fn load_exl3_pair(
+        devices: [Device<'a>; 2],
+        catalog: &ds41rt_loader::OfficialV41Catalog,
+        layers: usize,
+        budgets: [usize; 2],
+        directory: &Path,
+    ) -> Result<[Self; 2]> {
+        ensure!(
+            (1..=40).contains(&layers) && devices[0].id == 0 && devices[1].id == 1
+                && std::ptr::eq(devices[0].library, devices[1].library),
+            "invalid TP2 EXL3 rank pair"
+        );
+        let mut ranks = devices.map(|device| Self {
+            device,
+            weights: ManuallyDrop::new(RankStorage::Exl3 {
+                weights: Rc::new(Vec::with_capacity(layers)),
+                directory: directory.to_owned(),
+            }),
+        });
+        let mut remaining = budgets;
+        for layer in 0..layers {
+            for rank in 0..2 {
+                devices[rank].run(|| {
+                    let weight = Exl3Weights::load(
+                        devices[rank].library, catalog,
+                        ExpertLayer::BackboneTp2 { layer, rank }, remaining[rank],
+                    )?;
+                    remaining[rank] = remaining[rank]
+                        .checked_sub(weight.budget.resident_bytes)
+                        .ok_or_else(|| anyhow::anyhow!("TP2 EXL3 weights exceed budget"))?;
+                    let RankStorage::Exl3 { weights, .. } = &mut *ranks[rank].weights else {
+                        unreachable!("pair initialized with EXL3 storage")
+                    };
+                    Rc::get_mut(weights).expect("unpublished rank weights").push(weight);
+                    Ok(())
+                })?;
+            }
+        }
+        Ok(ranks)
+    }
     pub fn load(
         device: Device<'a>,
         catalog: &ds41rt_loader::OfficialV41Catalog,
