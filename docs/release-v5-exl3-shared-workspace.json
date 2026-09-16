@@ -1,0 +1,182 @@
+{
+  "scope": "RTX component verification: two resident backbone layers, each with all 384 compressed experts, TP4 rank 2; six routed expert IDs per B12x reference. Not production serving, cross-device reduction or throughput qualification.",
+  "passed": true,
+  "layers": [
+    0,
+    1
+  ],
+  "experts_resident_per_layer": 384,
+  "routed_experts_in_reference": 6,
+  "intermediate": 512,
+  "world": 4,
+  "rank": 2,
+  "lanes": 2,
+  "workspace_bytes_per_lane": 21050716,
+  "workspace_plan_matches_allocations": true,
+  "separate_lane_output_storage": true,
+  "row_counts": [
+    16,
+    3,
+    1,
+    16
+  ],
+  "alternating_layers_and_opposite_lane_order": true,
+  "changed_and_restored_input_graphs_after_other_layer": true,
+  "invalid_layer_rejected": true,
+  "output_dtype": "bf16",
+  "input_dtype": "bf16",
+  "references": [
+    {
+      "passed": true,
+      "scope": "native AOT versus B12x, six real checkpoint experts; not full-model qualification",
+      "output_dtype": "bf16",
+      "checkpoint_layer": "layers.0",
+      "topk": 6,
+      "native_info_verified": true,
+      "slice_start": 1280,
+      "sparkinfer_revision": "c024d14ce936ddfc2c863377d033d85e1787924b",
+      "compute": [
+        12,
+        0
+      ],
+      "intermediate": 512,
+      "direct": false,
+      "route_bridge_sha256": "f49c47b0ff99f2dcbf75104d4419a4d600392c8dd368eba1426985a1014712fe",
+      "snapshot_revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+      "projection_tiers": [
+        [
+          3,
+          4,
+          3
+        ],
+        [
+          3,
+          3,
+          3
+        ],
+        [
+          4,
+          4,
+          4
+        ],
+        [
+          3,
+          3,
+          3
+        ],
+        [
+          4,
+          4,
+          4
+        ],
+        [
+          3,
+          3,
+          3
+        ]
+      ],
+      "aot_manifest_sha256": "4e1443b4f22d5d71a70a56cc646302e591a45f2d247319a68f413613ceb41400",
+      "bridge_sha256": "2fecb1f0c27832a6d3e3a0a0dc09d42768acbc07335378dbd601397b03f473d6",
+      "checks": [
+        {
+          "rows": 1,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 3,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 15,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 16,
+          "bitwise_equal": true
+        }
+      ],
+      "graph_changed_inputs_and_routes": true,
+      "packed_metadata_poisoned_before_native": true
+    },
+    {
+      "passed": true,
+      "scope": "native AOT versus B12x, six real checkpoint experts; not full-model qualification",
+      "output_dtype": "bf16",
+      "checkpoint_layer": "layers.1",
+      "topk": 6,
+      "native_info_verified": true,
+      "slice_start": 1280,
+      "sparkinfer_revision": "c024d14ce936ddfc2c863377d033d85e1787924b",
+      "compute": [
+        12,
+        0
+      ],
+      "intermediate": 512,
+      "direct": false,
+      "route_bridge_sha256": "f49c47b0ff99f2dcbf75104d4419a4d600392c8dd368eba1426985a1014712fe",
+      "snapshot_revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+      "projection_tiers": [
+        [
+          4,
+          4,
+          4
+        ],
+        [
+          3,
+          3,
+          3
+        ],
+        [
+          3,
+          3,
+          3
+        ],
+        [
+          3,
+          3,
+          3
+        ],
+        [
+          3,
+          4,
+          4
+        ],
+        [
+          4,
+          4,
+          4
+        ]
+      ],
+      "aot_manifest_sha256": "4e1443b4f22d5d71a70a56cc646302e591a45f2d247319a68f413613ceb41400",
+      "bridge_sha256": "2fecb1f0c27832a6d3e3a0a0dc09d42768acbc07335378dbd601397b03f473d6",
+      "checks": [
+        {
+          "rows": 1,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 3,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 15,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 16,
+          "bitwise_equal": true
+        }
+      ],
+      "graph_changed_inputs_and_routes": true,
+      "packed_metadata_poisoned_before_native": true
+    }
+  ],
+  "export_fix": "Disable B12x disk compile cache during native export: deserialized executors lack compiler IR. Initial failure retained in evidence.",
+  "coordinator_restored": {
+    "image": "ghcr.io/tpurtell/ds41rt-coordinator:v4",
+    "health_http_status": 200,
+    "checked_at": "2026-09-16T15:09:23.611095+00:00"
+  },
+  "archive": "docs/evidence/v5-exl3-shared-workspace.tar.gz",
+  "archive_sha256": "2c69cfa5195568b0d120d881e0011236c650440e6c7601ff81851bb4c2682c20"
+}

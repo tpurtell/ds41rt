@@ -14,7 +14,9 @@ def main() -> None:
     parser.add_argument('--aot', type=Path, required=True)
     parser.add_argument('--snapshot', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--dspark-stage', type=int, choices=(0,1,2))
+    layer = parser.add_mutually_exclusive_group()
+    layer.add_argument('--dspark-stage', type=int, choices=(0,1,2))
+    layer.add_argument('--layer', type=int, choices=range(40), default=0)
     parser.add_argument('--slice-start', type=int, default=0)
     parser.add_argument('--fixture', type=Path)
     parser.add_argument('--fixture-format', choices=('bf16','fp8_k32'), default='bf16')
@@ -34,7 +36,7 @@ def main() -> None:
     topk = meta['top_k']
     graph_rows = min(3, capacity)
     assert topk == (3 if args.dspark_stage is not None else 6)
-    layer_prefix = f'mtp.{args.dspark_stage}' if args.dspark_stage is not None else 'layers.0'
+    layer_prefix = f'mtp.{args.dspark_stage}' if args.dspark_stage is not None else f'layers.{args.layer}'
     index = json.loads((args.snapshot/'model.safetensors.index.json').read_text())['weight_map']
     tensors = {}; bitmaps = {}
     for expert in range(experts):

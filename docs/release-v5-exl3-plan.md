@@ -352,3 +352,30 @@ loads the FP32 module and validates its ABI; the daemon compiles. This does not
 yet verify paired TP2 reduction or a complete serving request. Production backend
 selection, reusable per-lane workspace across layers, AOT packaging and the
 remaining model formats still need integration before release qualification.
+
+## Workspace reuse across resident layers
+
+Each EXL3 lane now owns one workspace and prebuilds a launch table for every
+resident layer. The lane retains shared ownership of all compressed weights;
+layer switches select the prepared pointers, projection counts and expert map.
+They do not allocate, resolve names, reload modules or wait for another lane.
+The planner counts each workspace allocation once, including the optional
+FP8-wire reconstruction buffer, separately from weights and CUDA module reserve.
+Layers in one execution owner must share device, TP rank and kernel geometry.
+
+[Two-layer/two-lane evidence](release-v5-exl3-shared-workspace.json) passes with
+all 384 experts resident for backbone layers 0 and 1, TP4 rank 2, on RTX. Both
+lanes use 21,050,716 bytes (20.1 MiB) each, exactly matching the workspace plan.
+Alternating layers in opposite lane orders matches the independent six-expert
+B12x references at 16/3/1/16 rows. Captured graphs remain correct after another
+layer uses the shared workspace, including changed zero input and restored
+input. The two lanes have distinct output allocations. This establishes storage
+reuse and component correctness, not end-to-end speed or cross-device reduction.
+The standard v4 coordinator was briefly stopped for residency headroom and was
+restored with HTTP 200 health afterward.
+
+The rebuild also exposed a native-export issue when B12x reused a disk-cached
+executor lacking compiler IR. Native exports now disable that cache; normal
+runtime cache behavior is unchanged. The initial failure and successful rebuild
+are retained in the evidence. Production serving selection and artifact packaging
+remain the next integration steps.

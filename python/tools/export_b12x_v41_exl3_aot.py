@@ -10,6 +10,7 @@ import argparse
 from dataclasses import fields
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 
@@ -86,6 +87,8 @@ def export(output: Path, intermediate: int, experts: int, capacity: int,
            bits: tuple[int, ...], routing: str, topk: int = 6, output_dtype: str = "bf16") -> dict:
     if output_dtype not in ("bf16", "fp32"):
         raise ValueError("EXL3 output must be bf16 or fp32")
+    # Disk-loaded B12x executors omit the compiler IR required by export_to_c.
+    os.environ["B12X_COMPILE_DISK_CACHE"] = "0"
     import torch
     from b12x.moe._shared.kernels.w4a16.host import route_pack_capacity
     from b12x.moe._shared.kernels.w4a16.mixed_trellis import (
