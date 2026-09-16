@@ -5,7 +5,15 @@ use libloading::Library;
 use std::{ffi::c_void, marker::PhantomData, path::Path, ptr::NonNull, rc::Rc};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum V41Exl3Layout {
+    Disjoint,
+    PairedFirst,
+    PairedLast,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct V41Exl3Info {
+    pub layout: V41Exl3Layout,
     /// Bytes per output element: BF16 (2) or FP32 (4).
     pub output_element_bytes: usize,
     pub hidden: usize,
@@ -51,6 +59,7 @@ impl V41Exl3Info {
             "invalid EXL3 pointer/scalar ABI"
         );
         Ok(Self {
+            layout: V41Exl3Layout::Disjoint,
             output_element_bytes: words[15] as usize,
             hidden: words[1] as usize,
             intermediate: words[2] as usize,
@@ -64,6 +73,37 @@ impl V41Exl3Info {
             sum_pointers: words[9] as usize,
             sum_scalars: words[10] as usize,
         })
+    }
+
+    fn from_paired_words(words: [u32; 18]) -> Result<Self> {
+        ensure!(
+            words[0] == 3
+                && words[2] == 640
+                && words[5] == 6
+                && words[6] == 2
+                && matches!(words[16], 1 | 2)
+                && words[17] == 4,
+            "invalid paired EXL3 native contract: {words:?}"
+        );
+        let mut original: [u32; 16] = words[..16].try_into().unwrap();
+        original[0] = 2;
+        let mut info = Self::from_words(original)?;
+        info.layout = if words[16] == 1 {
+            V41Exl3Layout::PairedFirst
+        } else {
+            V41Exl3Layout::PairedLast
+        };
+        Ok(info)
+    }
+
+    pub fn require_layout(&self, expected: V41Exl3Layout) -> Result<()> {
+        ensure!(
+            self.layout == expected,
+            "EXL3 native layout mismatch: loaded {:?}, expected {:?}",
+            self.layout,
+            expected
+        );
+        Ok(())
     }
 }
 
@@ -87,6 +127,16 @@ impl V41Exl3Kernel {
     /// keep that device current during launches and drop, and drain every stream
     /// and destroy graphs referencing this module before dropping it.
     pub unsafe fn load(path: impl AsRef<Path>) -> Result<Self> {
+        Self::load_with_layout(path, V41Exl3Layout::Disjoint)
+    }
+
+    /// # Safety
+    /// Same device/thread and lifetime requirements as `load`. The caller must
+    /// use the paired resident weights and four-row descriptor when requested.
+    pub unsafe fn load_with_layout(
+        path: impl AsRef<Path>,
+        expected: V41Exl3Layout,
+    ) -> Result<Self> {
         let library = Library::new(path.as_ref())?;
         let query =
             *library.get::<unsafe extern "C" fn(*mut u32, u32) -> i32>(b"ds41rt_exl3_info")?;
@@ -95,12 +145,24 @@ impl V41Exl3Kernel {
         let core = *library.get::<Launch>(b"ds41rt_exl3_core")?;
         let sum = *library.get::<Launch>(b"ds41rt_exl3_sum")?;
         let destroy = *library.get::<Destroy>(b"ds41rt_exl3_destroy")?;
-        let mut words = [0; 16];
-        ensure!(
-            query(words.as_mut_ptr(), 16) == 0,
-            "EXL3 native info query failed"
-        );
-        let info = V41Exl3Info::from_words(words)?;
+        let info = if let Ok(paired_query) =
+            library.get::<unsafe extern "C" fn(*mut u32, u32) -> i32>(b"ds41rt_exl3_paired_info")
+        {
+            let mut words = [0; 18];
+            ensure!(
+                paired_query(words.as_mut_ptr(), 18) == 0,
+                "paired EXL3 native info query failed"
+            );
+            V41Exl3Info::from_paired_words(words)?
+        } else {
+            let mut words = [0; 16];
+            ensure!(
+                query(words.as_mut_ptr(), 16) == 0,
+                "EXL3 native info query failed"
+            );
+            V41Exl3Info::from_words(words)?
+        };
+        info.require_layout(expected)?;
         let mut context = std::ptr::null_mut();
         let status = create(&mut context);
         ensure!(
@@ -259,6 +321,48 @@ mod info_tests {
         let reloaded = unsafe { V41Exl3Kernel::load(&path)? };
         assert_eq!(reloaded.info().tier_count, 4);
         Ok(())
+    }
+
+    #[test]
+    fn paired_native_info_requires_explicit_matching_layout() {
+        let valid = [3, 5120, 640, 6, 16, 6, 2, 32, 12, 7, 3, 3, 4, 0, 0, 2, 1, 4];
+        for (boundary, layout) in [
+            (1, V41Exl3Layout::PairedFirst),
+            (2, V41Exl3Layout::PairedLast),
+        ] {
+            let mut words = valid;
+            words[16] = boundary;
+            let info = V41Exl3Info::from_paired_words(words).unwrap();
+            assert!(info.require_layout(layout).is_ok());
+            assert!(info.require_layout(V41Exl3Layout::Disjoint).is_err());
+            assert!(info
+                .require_layout(if boundary == 1 {
+                    V41Exl3Layout::PairedLast
+                } else {
+                    V41Exl3Layout::PairedFirst
+                })
+                .is_err());
+        }
+        for (index, value) in [
+            (0, 2),
+            (2, 512),
+            (5, 3),
+            (6, 3),
+            (16, 0),
+            (16, 3),
+            (17, 3),
+            (11, 1),
+        ] {
+            let mut words = valid;
+            words[index] = value;
+            assert!(V41Exl3Info::from_paired_words(words).is_err());
+        }
+        let mut original: [u32; 16] = valid[..16].try_into().unwrap();
+        assert!(V41Exl3Info::from_words(original).is_err());
+        original[0] = 2;
+        let disjoint = V41Exl3Info::from_words(original).unwrap();
+        assert!(disjoint.require_layout(V41Exl3Layout::Disjoint).is_ok());
+        assert!(disjoint.require_layout(V41Exl3Layout::PairedFirst).is_err());
     }
 
     #[test]

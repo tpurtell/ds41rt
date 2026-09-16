@@ -185,7 +185,13 @@ impl V41Exl3Manifest {
         let hidden = config.hidden_size;
         let mut counts = vec![[0; 3]; tiers.len()];
         let stride = experts * tiers.len();
-        let mut descriptor = vec![-1; 3 * stride];
+        let descriptor_rows = if layout == V41Exl3Partition::PairedTp4 { 4 } else { 3 };
+        let mut descriptor = vec![-1; descriptor_rows * stride];
+        if layout == V41Exl3Partition::PairedTp4 {
+            // Per-batch local ownership, populated before paired kernel launch.
+            // Inactive and padded slots do not own the optional block.
+            descriptor[3 * stride..].fill(0);
+        }
         let mut locals = vec![[0; 3]; experts];
         for (expert, row) in projections.iter().enumerate() {
             for (projection, p) in row.iter().enumerate() {
@@ -367,6 +373,10 @@ mod tests {
                     if layout == V41Exl3Partition::PairedTp4 {
                         assert_eq!(plan.intermediate, 640);
                         assert_eq!(plan.intermediate_start, [0, 512, 1152, 1664][rank]);
+                        let descriptor = plan.buffers.iter().find(|b| b.name == "descriptor_map").unwrap();
+                        let stride = 384 * plan.tiers.len();
+                        assert_eq!(descriptor.initial_words.len(), 4 * stride);
+                        assert!(descriptor.initial_words[3 * stride..].iter().all(|&v| v == 0));
                     }
                     let mut spans = vec![Vec::new(); plan.buffers.len()];
                     for job in &plan.loads {

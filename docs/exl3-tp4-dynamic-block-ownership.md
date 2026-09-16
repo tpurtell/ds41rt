@@ -104,8 +104,9 @@ also exercise paired reads beyond 2 GiB, while residency tests check complete
 buffer coverage without overlapping destinations. This does not qualify GPU
 computation or loading performance.
 
-For actual backbone layer 30 in the published FP8-PLE EXL3 checkpoint, logical
-resident allocations are:
+For actual backbone layer 30 in the published FP8-PLE EXL3 checkpoint, the
+initial paired weight-layout inspection (before adding the runtime ownership
+row) recorded these logical resident allocations:
 
 | Spark rank | Disjoint bytes | Paired bytes | Added bytes |
 | --- | ---: | ---: | ---: |
@@ -120,6 +121,12 @@ scratch stays 18,432 bytes. These figures include resident metadata but exclude
 allocator alignment and execution workspace. They are a layer-specific budget,
 not a complete Spark memory total. Exact results are recorded in
 `release-v5-exl3-paired-residency.json`.
+
+The paired native contract now adds one zero-initialized int32 descriptor row:
+768 slots, or 3,072 bytes per rank for this two-tier checkpoint. Thus the
+current paired total for this layer is 1,560,099,856 bytes on every rank;
+the original disjoint allocation is unchanged. Ownership is populated into
+this preallocated row per batch, including zeroing inactive/padded slots.
 
 ### GPU work still required
 
@@ -175,6 +182,28 @@ paired/disjoint EXL3 layout in **both** directions before execution. Even an
 all-zero owner selection requires the paired flag; it must never silently run
 on a disjoint or NVFP4 worker. The original model retains its equal 576-channel
 TP4 split, ordinary expert IDs and existing request/response behavior.
+
+### Native artifact admission
+
+The exporter accepts an explicit `--paired-boundary first|last` for the
+two-tier, 640-channel, top-k-six candidate. Paired DSOs reject the old
+16-word `ds41rt_exl3_info` query and expose an 18-word
+`ds41rt_exl3_paired_info` contract: version 3, explicit first/last boundary,
+and four descriptor rows. Ordinary exports keep the original version-2 query.
+This prevents an older engine from silently loading a paired kernel as disjoint.
+
+Rust's existing `V41Exl3Kernel::load` still requires disjoint layout. The new
+`load_with_layout` compares the reported layout with the caller's explicit
+expectation before initializing the CUDA module. Malformed paired metadata,
+wrong boundaries, and paired/disjoint mismatches are rejected.
+
+Three native information tests passed in Rust. On GB10, disjoint, paired-first
+and paired-last DSOs exported, linked, answered the expected queries and
+completed CUDA create/destroy. Both paired exports used two blocks/SM at
+capacity 80. This checks artifact construction and initialization, not native
+compute launch correctness or performance. Evidence is in
+`release-v5-exl3-paired-export.json` and its archive. Worker launch integration
+and paired frame admission are still pending.
 
 The current resident layout and mixed kernel assume one intermediate width
 for every expert in a launch. Supporting this proposal requires a real

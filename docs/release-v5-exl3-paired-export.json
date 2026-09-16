@@ -1,0 +1,82 @@
+{
+  "scope": "Export, native information contract and module initialization only; no native compute launch",
+  "results": [
+    {
+      "boundary": null,
+      "info": [
+        2,
+        5120,
+        640,
+        6,
+        80,
+        6,
+        2,
+        32,
+        11,
+        6,
+        3,
+        3,
+        4,
+        0,
+        0,
+        2
+      ],
+      "old_query_status": 0,
+      "sha256": "5dc8fdfc8599a182f0b40c06a2ea67e513306e868c6f63860829a5c414bca33a",
+      "create_destroy": true
+    },
+    {
+      "boundary": "first",
+      "info": [
+        3,
+        5120,
+        640,
+        6,
+        80,
+        6,
+        2,
+        32,
+        11,
+        6,
+        3,
+        3,
+        4,
+        0,
+        0,
+        2,
+        1,
+        4
+      ],
+      "old_query_status": 1,
+      "sha256": "c24721b619f268d665cdccc7313077abecc6ef84ff2fc8071ffb8e3f1ce67c50",
+      "create_destroy": true
+    },
+    {
+      "boundary": "last",
+      "info": [
+        3,
+        5120,
+        640,
+        6,
+        80,
+        6,
+        2,
+        32,
+        11,
+        6,
+        3,
+        3,
+        4,
+        0,
+        0,
+        2,
+        2,
+        4
+      ],
+      "old_query_status": 1,
+      "sha256": "11056b1601d9f707f7ecd8018e7bbf5650c801e34b28d3a0b6f94fb499b505b3",
+      "create_destroy": true
+    }
+  ],
+  "passed": true
+}

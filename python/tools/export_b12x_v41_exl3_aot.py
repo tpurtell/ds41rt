@@ -84,16 +84,31 @@ def write_bridge(output: Path, manifest: dict) -> None:
         len(epilogue['pointer_slots']), len(epilogue['scalar_slots']),
         *manifest['bits'], *([0] * (4 - len(manifest['bits']))),
         2 if manifest['output_dtype'] == 'bf16' else 4]
-    lines += ['extern "C" int ds41rt_exl3_info(uint32_t* out, uint32_t words) {',
-        'if (!out || words != 16) return int(cudaErrorInvalidValue);',
-        'const uint32_t info[16] = {' + ','.join(map(str, info)) + '};',
-        'for (int i = 0; i < 16; ++i) out[i] = info[i]; return 0; }']
+    boundary = manifest.get('paired_boundary')
+    if boundary is None:
+        lines += ['extern "C" int ds41rt_exl3_info(uint32_t* out, uint32_t words) {',
+            'if (!out || words != 16) return int(cudaErrorInvalidValue);',
+            'const uint32_t info[16] = {' + ','.join(map(str, info)) + '};',
+            'for (int i = 0; i < 16; ++i) out[i] = info[i]; return 0; }']
+    else:
+        # Old consumers must fail instead of interpreting four-row descriptors
+        # as the original three-row/disjoint contract.
+        lines += ['extern "C" int ds41rt_exl3_info(uint32_t*, uint32_t) { return int(cudaErrorInvalidValue); }']
+        paired_info = [3, *info[1:], 1 if boundary == 'first' else 2, 4]
+        lines += ['extern "C" int ds41rt_exl3_paired_info(uint32_t* out, uint32_t words) {',
+            'if (!out || words != 18) return int(cudaErrorInvalidValue);',
+            'const uint32_t info[18] = {' + ','.join(map(str, paired_info)) + '};',
+            'for (int i = 0; i < 18; ++i) out[i] = info[i]; return 0; }']
     (output / 'v41_exl3_bridge.cc').write_text('\n'.join(lines) + '\n')
 
 
 def export(output: Path, intermediate: int, experts: int, capacity: int,
            bits: tuple[int, ...], routing: str, topk: int = 6, output_dtype: str = "bf16",
-           blocks_per_sm: int | None = None) -> dict:
+           blocks_per_sm: int | None = None, paired_boundary: str | None = None) -> dict:
+    if paired_boundary not in (None, "first", "last"):
+        raise ValueError("paired boundary must be first, last, or None")
+    if paired_boundary is not None and (intermediate != 640 or len(bits) != 2 or topk != 6):
+        raise ValueError("paired export requires width 640, two tiers and top-k 6")
     if output_dtype not in ("bf16", "fp32"):
         raise ValueError("EXL3 output must be bf16 or fp32")
     # Disk-loaded B12x executors omit the compiler IR required by export_to_c.
@@ -134,6 +149,8 @@ def export(output: Path, intermediate: int, experts: int, capacity: int,
         tier0_bits=bits[0], tier1_bits=bits[1], trellis_codebook="mcg", swiglu_limit=10.0,
         moe_block_size=block_m, rotation_input_dtype="bf16", full_rotation_output_dtype=output_dtype,
         route_ids_dtype=torch.int32)
+    if paired_boundary is not None:
+        options['paired_boundary'] = paired_boundary
     if len(bits) == 2:
         launch = compile_mixed_trellis(**options, direct_topk_routes=direct,
                                       force_blocks_per_sm=blocks_per_sm)
@@ -192,6 +209,8 @@ def export(output: Path, intermediate: int, experts: int, capacity: int,
         "trellis_lut": {"file": "trellis_lut.bin", "bytes": len(lut_bytes),
             "sha256": hashlib.sha256(lut_bytes).hexdigest()},
         "native_execution_verified": False}
+    if paired_boundary is not None:
+        manifest.update(paired_boundary=paired_boundary, descriptor_rows=4, native_info_version=3)
     write_bridge(output, manifest)
     if not direct:
         from export_b12x_v41_exl3_routes_aot import export as export_routes
@@ -219,8 +238,9 @@ def main() -> None:
     parser.add_argument("--topk", type=int, choices=(3, 6), default=6)
     parser.add_argument("--output-dtype", choices=("bf16", "fp32"), default="bf16")
     parser.add_argument("--blocks-per-sm", type=int, choices=(1, 2), help="Offline residency override; default uses B12x policy")
+    parser.add_argument("--paired-boundary", choices=("first", "last"), help="Candidate TP4 ownership-aware layout")
     args = parser.parse_args()
-    export(args.output, args.intermediate, args.experts, args.capacity, tuple(args.bits), args.routing, args.topk, args.output_dtype, args.blocks_per_sm)
+    export(args.output, args.intermediate, args.experts, args.capacity, tuple(args.bits), args.routing, args.topk, args.output_dtype, args.blocks_per_sm, args.paired_boundary)
 
 
 if __name__ == "__main__":
