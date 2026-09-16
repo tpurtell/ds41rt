@@ -1,0 +1,549 @@
+{
+  "scope": "Matched ABBA adaptive legacy versus placement-calibrated costs; same paired m80 two-block packages, binary and runtime; no debug tracing",
+  "arms": [
+    "legacy",
+    "calibrated",
+    "calibrated",
+    "legacy"
+  ],
+  "rtx_count": 2,
+  "rtx_expert_layers": 25,
+  "kv_pool_tokens": 14680064,
+  "draft_limit": 7,
+  "results": {
+    "code": {
+      "prompt_sha256": "731253f5e03b0e49616ab446098b9e9689c5fd7a9e15ca821f8f2018dfd7b595",
+      "rows": [
+        {
+          "concurrency": 1,
+          "legacy": {
+            "median_tps": 186.66054460612457,
+            "samples": [
+              186.08137495936526,
+              187.12366904098153,
+              186.4772459349669,
+              185.23943661418252,
+              186.84384327728225,
+              187.23779946500605
+            ],
+            "completion_tokens_min": 231,
+            "completion_tokens_max": 231,
+            "distinct_outputs": 1
+          },
+          "calibrated": {
+            "median_tps": 182.87528315411316,
+            "samples": [
+              181.8550013433942,
+              182.99227472117144,
+              183.76530288901336,
+              182.75858758646035,
+              181.18253745970102,
+              182.99197872176595
+            ],
+            "completion_tokens_min": 231,
+            "completion_tokens_max": 231,
+            "distinct_outputs": 1
+          },
+          "change_percent": -2.0278851430540645,
+          "same_output_diagnostic": {
+            "output_sha256": "c5460edd5d7f2b6da18d6376865d388e90901ced54e3cdd7ac98bad53d805717",
+            "groups": {
+              "legacy": {
+                "samples": [
+                  186.08137495936526,
+                  187.12366904098153,
+                  186.4772459349669,
+                  185.23943661418252,
+                  186.84384327728225,
+                  187.23779946500605
+                ],
+                "median_tps": 186.66054460612457
+              },
+              "calibrated": {
+                "samples": [
+                  181.8550013433942,
+                  182.99227472117144,
+                  183.76530288901336,
+                  182.75858758646035,
+                  181.18253745970102,
+                  182.99197872176595
+                ],
+                "median_tps": 182.87528315411316
+              }
+            },
+            "scope": "conditional diagnostic matching reasoning AND answer, not a replacement for all-sample performance"
+          }
+        },
+        {
+          "concurrency": 8,
+          "legacy": {
+            "median_tps": 775.2355484100901,
+            "samples": [
+              661.1369569541165,
+              775.9577422971356,
+              774.5133545230445,
+              663.7891354589732,
+              777.3739089482002,
+              782.2161992555366
+            ],
+            "completion_tokens_min": 207,
+            "completion_tokens_max": 231,
+            "distinct_outputs": 2
+          },
+          "calibrated": {
+            "median_tps": 777.292138313825,
+            "samples": [
+              671.865867467454,
+              774.0307251479079,
+              775.6804577819901,
+              805.22013033794,
+              780.9085095101477,
+              778.9038188456599
+            ],
+            "completion_tokens_min": 207,
+            "completion_tokens_max": 231,
+            "distinct_outputs": 2
+          },
+          "change_percent": 0.2652858099648103,
+          "same_output_diagnostic": {
+            "output_sha256": "2f7de1bf3ec974fbe93859b63875cd5e26aee93df071aa4b40681585cca13d51",
+            "groups": {
+              "legacy": {
+                "samples": [
+                  775.9577422971356,
+                  774.5133545230445,
+                  777.3739089482002,
+                  782.2161992555366
+                ],
+                "median_tps": 776.6658256226679
+              },
+              "calibrated": {
+                "samples": [
+                  774.0307251479079,
+                  775.6804577819901,
+                  805.22013033794,
+                  780.9085095101477,
+                  778.9038188456599
+                ],
+                "median_tps": 778.9038188456599
+              }
+            },
+            "scope": "conditional diagnostic matching reasoning AND answer, not a replacement for all-sample performance"
+          }
+        },
+        {
+          "concurrency": 16,
+          "legacy": {
+            "median_tps": 1303.4203876180316,
+            "samples": [
+              1297.5808034627523,
+              1299.1790640720799,
+              1314.0353826087592,
+              1303.2216428138795,
+              1303.6191324221836,
+              1344.5046714189327
+            ],
+            "completion_tokens_min": 207,
+            "completion_tokens_max": 207,
+            "distinct_outputs": 1
+          },
+          "calibrated": {
+            "median_tps": 1330.9548765972754,
+            "samples": [
+              1331.5530625659815,
+              1328.694059351445,
+              1354.9636725307055,
+              1331.3354937032998,
+              1330.574259491251,
+              1328.058245190194
+            ],
+            "completion_tokens_min": 207,
+            "completion_tokens_max": 207,
+            "distinct_outputs": 1
+          },
+          "change_percent": 2.112479537746248,
+          "same_output_diagnostic": {
+            "output_sha256": "2f7de1bf3ec974fbe93859b63875cd5e26aee93df071aa4b40681585cca13d51",
+            "groups": {
+              "legacy": {
+                "samples": [
+                  1297.5808034627523,
+                  1299.1790640720799,
+                  1314.0353826087592,
+                  1303.2216428138795,
+                  1303.6191324221836,
+                  1344.5046714189327
+                ],
+                "median_tps": 1303.4203876180316
+              },
+              "calibrated": {
+                "samples": [
+                  1331.5530625659815,
+                  1328.694059351445,
+                  1354.9636725307055,
+                  1331.3354937032998,
+                  1330.574259491251,
+                  1328.058245190194
+                ],
+                "median_tps": 1330.9548765972754
+              }
+            },
+            "scope": "conditional diagnostic matching reasoning AND answer, not a replacement for all-sample performance"
+          }
+        }
+      ]
+    },
+    "topic": {
+      "prompt_sha256": "6f0ed294b69f272c767d349251f7d1eb8297ff163e4b8a096a36386af6b1bbe4",
+      "rows": [
+        {
+          "concurrency": 1,
+          "legacy": {
+            "median_tps": 104.34100842528346,
+            "samples": [
+              104.27456759209008,
+              104.56553366822229,
+              104.85302982645699,
+              101.85628484501414,
+              102.00596683162027,
+              104.40744925847686
+            ],
+            "completion_tokens_min": 271,
+            "completion_tokens_max": 271,
+            "distinct_outputs": 1
+          },
+          "calibrated": {
+            "median_tps": 100.64348501520632,
+            "samples": [
+              100.03966074029412,
+              100.06418043016417,
+              100.36387651294875,
+              101.0656836224631,
+              100.9870010405564,
+              100.9230935174639
+            ],
+            "completion_tokens_min": 274,
+            "completion_tokens_max": 274,
+            "distinct_outputs": 1
+          },
+          "change_percent": -3.5436914650147977,
+          "same_output_diagnostic": {
+            "output_sha256": null,
+            "groups": {
+              "legacy": {
+                "samples": [],
+                "median_tps": null
+              },
+              "calibrated": {
+                "samples": [],
+                "median_tps": null
+              }
+            },
+            "scope": "conditional diagnostic matching reasoning AND answer, not a replacement for all-sample performance"
+          }
+        },
+        {
+          "concurrency": 8,
+          "legacy": {
+            "median_tps": 472.1204496335764,
+            "samples": [
+              485.0119424992446,
+              487.4181814519606,
+              457.65482714475354,
+              436.96624524076964,
+              462.583223583343,
+              481.6576756838099
+            ],
+            "completion_tokens_min": 243,
+            "completion_tokens_max": 283,
+            "distinct_outputs": 12
+          },
+          "calibrated": {
+            "median_tps": 490.0896997604533,
+            "samples": [
+              402.35947498932904,
+              497.5647668894863,
+              493.0313294623721,
+              438.28937774447843,
+              487.14807005853453,
+              496.3654226269454
+            ],
+            "completion_tokens_min": 260,
+            "completion_tokens_max": 290,
+            "distinct_outputs": 9
+          },
+          "change_percent": 3.8060732469485714,
+          "same_output_diagnostic": {
+            "output_sha256": null,
+            "groups": {
+              "legacy": {
+                "samples": [],
+                "median_tps": null
+              },
+              "calibrated": {
+                "samples": [],
+                "median_tps": null
+              }
+            },
+            "scope": "conditional diagnostic matching reasoning AND answer, not a replacement for all-sample performance"
+          }
+        },
+        {
+          "concurrency": 16,
+          "legacy": {
+            "median_tps": 769.3770485244663,
+            "samples": [
+              787.2623959767872,
+              773.9977370822858,
+              784.994892397669,
+              763.1538113892998,
+              762.4860692244943,
+              764.7563599666469
+            ],
+            "completion_tokens_min": 255,
+            "completion_tokens_max": 270,
+            "distinct_outputs": 6
+          },
+          "calibrated": {
+            "median_tps": 768.4232101130224,
+            "samples": [
+              772.6391154316198,
+              766.0235437939751,
+              759.2570517803272,
+              755.7936517956039,
+              770.8228764320696,
+              786.0707576551193
+            ],
+            "completion_tokens_min": 246,
+            "completion_tokens_max": 280,
+            "distinct_outputs": 10
+          },
+          "change_percent": -0.12397541794016975,
+          "same_output_diagnostic": {
+            "output_sha256": null,
+            "groups": {
+              "legacy": {
+                "samples": [],
+                "median_tps": null
+              },
+              "calibrated": {
+                "samples": [],
+                "median_tps": null
+              }
+            },
+            "scope": "conditional diagnostic matching reasoning AND answer, not a replacement for all-sample performance"
+          }
+        }
+      ]
+    },
+    "code-reasoning": {
+      "prompt_sha256": "731253f5e03b0e49616ab446098b9e9689c5fd7a9e15ca821f8f2018dfd7b595",
+      "rows": [
+        {
+          "concurrency": 1,
+          "legacy": {
+            "median_tps": 144.16014514334825,
+            "samples": [
+              144.4002932183098,
+              144.05807434737588,
+              143.8898038773354,
+              143.51379854142093,
+              144.43680718184322,
+              144.2622159393206
+            ],
+            "completion_tokens_min": 978,
+            "completion_tokens_max": 978,
+            "distinct_outputs": 1
+          },
+          "calibrated": {
+            "median_tps": 132.5106991313916,
+            "samples": [
+              133.41478917476374,
+              134.05332670923792,
+              134.32602603850154,
+              130.15715486084545,
+              131.60660908801944,
+              131.36487272682015
+            ],
+            "completion_tokens_min": 1529,
+            "completion_tokens_max": 1529,
+            "distinct_outputs": 1
+          },
+          "change_percent": -8.080906134197363,
+          "same_output_diagnostic": {
+            "output_sha256": null,
+            "groups": {
+              "legacy": {
+                "samples": [],
+                "median_tps": null
+              },
+              "calibrated": {
+                "samples": [],
+                "median_tps": null
+              }
+            },
+            "scope": "conditional diagnostic matching reasoning AND answer, not a replacement for all-sample performance"
+          }
+        },
+        {
+          "concurrency": 8,
+          "legacy": {
+            "median_tps": 618.1211483822401,
+            "samples": [
+              626.9870740441522,
+              629.7930304803562,
+              609.2552227203281,
+              602.8480186192369,
+              629.6150557810597,
+              585.4261789708545
+            ],
+            "completion_tokens_min": 653,
+            "completion_tokens_max": 1635,
+            "distinct_outputs": 15
+          },
+          "calibrated": {
+            "median_tps": 572.3827188309757,
+            "samples": [
+              575.1140846726468,
+              636.9452597745126,
+              583.7917508862972,
+              569.6513529893047,
+              496.4904158140358,
+              555.0408076794616
+            ],
+            "completion_tokens_min": 777,
+            "completion_tokens_max": 1645,
+            "distinct_outputs": 18
+          },
+          "change_percent": -7.399589816813745,
+          "same_output_diagnostic": {
+            "output_sha256": null,
+            "groups": {
+              "legacy": {
+                "samples": [],
+                "median_tps": null
+              },
+              "calibrated": {
+                "samples": [],
+                "median_tps": null
+              }
+            },
+            "scope": "conditional diagnostic matching reasoning AND answer, not a replacement for all-sample performance"
+          }
+        },
+        {
+          "concurrency": 16,
+          "legacy": {
+            "median_tps": 822.3439346571444,
+            "samples": [
+              814.1347253127221,
+              830.5531440015666,
+              911.2286020022248,
+              766.3872437582472,
+              715.6212352241674,
+              834.0602749038576
+            ],
+            "completion_tokens_min": 711,
+            "completion_tokens_max": 2858,
+            "distinct_outputs": 17
+          },
+          "calibrated": {
+            "median_tps": 949.1210988891455,
+            "samples": [
+              840.6440751257813,
+              951.3611591877506,
+              932.4255989209018,
+              967.9388257139219,
+              951.5147875564181,
+              946.8810385905406
+            ],
+            "completion_tokens_min": 825,
+            "completion_tokens_max": 1657,
+            "distinct_outputs": 15
+          },
+          "change_percent": 15.416562205795037,
+          "same_output_diagnostic": {
+            "output_sha256": null,
+            "groups": {
+              "legacy": {
+                "samples": [],
+                "median_tps": null
+              },
+              "calibrated": {
+                "samples": [],
+                "median_tps": null
+              }
+            },
+            "scope": "conditional diagnostic matching reasoning AND answer, not a replacement for all-sample performance"
+          }
+        }
+      ]
+    }
+  },
+  "mixed": [
+    {
+      "concurrency": 4,
+      "legacy": {
+        "median_tps": 188.75605415397013,
+        "samples": [
+          186.68553961275447,
+          190.13366771202055,
+          208.4476630365471,
+          187.37844059591967,
+          182.40999187709275,
+          195.04250522800334
+        ]
+      },
+      "calibrated": {
+        "median_tps": 190.5889628688282,
+        "samples": [
+          193.76253072171338,
+          169.36355530006696,
+          215.97752565134786,
+          187.415395015943,
+          174.79823640790775,
+          212.77433345672372
+        ]
+      },
+      "change_percent": 0.9710463185265361
+    },
+    {
+      "concurrency": 16,
+      "legacy": {
+        "median_tps": 308.4026212517713,
+        "samples": [
+          313.0612121714019,
+          316.4204093305203,
+          303.7564581732362,
+          307.92101255930663,
+          307.0562766546702,
+          308.88422994423587
+        ]
+      },
+      "calibrated": {
+        "median_tps": 312.7776068327822,
+        "samples": [
+          310.9016087613707,
+          323.89413371930146,
+          322.27453901566963,
+          307.89944822478407,
+          314.65360490419374,
+          309.62856608757613
+        ]
+      },
+      "change_percent": 1.4185954591609429
+    }
+  ],
+  "arm_directories": [
+    "/home/tj/.cache/ds41rt-v5-exl3/paired-adaptive-cost-comparison/0-legacy",
+    "/home/tj/.cache/ds41rt-v5-exl3/paired-adaptive-reasoning-repro/0-calibrated",
+    "/home/tj/.cache/ds41rt-v5-exl3/paired-adaptive-cost-comparison/2-calibrated",
+    "/home/tj/.cache/ds41rt-v5-exl3/paired-adaptive-cost-comparison/3-legacy"
+  ],
+  "aborted_attempt": {
+    "directory": "/home/tj/.cache/ds41rt-v5-exl3/paired-adaptive-cost-comparison/1-calibrated",
+    "reason": "Reasoning-code C8 exhausted 4096 tokens with no answer; old collector did not retain failed response. Completed code/topic and C1 records remain in original evidence but are not included in complete-arm medians. Replacement is the first complete fresh repetition, not selected by throughput."
+  },
+  "decision": "Do not promote this affine calibrated profile: matched-output code C1 loses 2.03%; improvements are not uniform. Keep it experimental pending forecast and prefix-selection analysis.",
+  "archive_note": "Includes all four complete arms, the original aborted attempt, controller logs/scripts, runtime profile, and a relocatable summarizer. The same-output diagnostic selects only common uniform batch outputs separately at each concurrency, by frequency, never speed. Failed attempt is retained separately and excluded from complete-arm medians."
+}

@@ -502,5 +502,53 @@ now distinguishes a completed reasoning-only stream from transport failure and
 preserves all responses in failed batches while keeping code checks failed.
 A fresh calibrated repetition passed all code/topic/reasoning C1/C8/C16 and
 mixed C4/C16 samples without reproducing the exhaustion. This does not erase
-the original incident or establish a cause. The remaining comparison arms and
-final serving-policy decision are pending; the reasoning budget is unchanged.
+the original incident or establish a cause. All four complete comparison arms are now available below; the reasoning
+budget is unchanged.
+
+
+### Adaptive cost profile: completed serving comparison
+
+**Keep the affine placement profile experimental.** The legacy/calibrated/
+calibrated/legacy comparison completed with three samples per arm, yielding six
+samples per mode at each point. Both modes use paired m80 two-block packages,
+25 RTX-resident expert layers, K7, a 14M-token pool, and info-level logging.
+The first complete fresh calibrated repetition replaces the aborted attempt
+in these medians; the original attempt remains in the evidence archive.
+
+| Workload | Concurrency | Legacy TPS | Calibrated TPS | Change |
+| --- | ---: | ---: | ---: | ---: |
+| Code | 1 | 186.66 | 182.88 | −2.03% |
+| Code | 8 | 775.24 | 777.29 | +0.27% |
+| Code | 16 | 1303.42 | 1330.95 | +2.11% |
+| Topic | 1 | 104.34 | 100.64 | −3.54% |
+| Topic | 8 | 472.12 | 490.09 | +3.81% |
+| Topic | 16 | 769.38 | 768.42 | −0.12% |
+| Reasoning code | 1 | 144.16 | 132.51 | −8.08% |
+| Reasoning code | 8 | 618.12 | 572.38 | −7.40% |
+| Reasoning code | 16 | 822.34 | 949.12 | +15.42% |
+| Mixed traffic | 4 | 188.76 | 190.59 | +0.97% |
+| Mixed traffic | 16 | 308.40 | 312.78 | +1.42% |
+
+Code C1 produces the identical 231-token answer in every arm, so output variation
+does not explain its loss. Reasoning C1 changes from 978 to 1,529 completion
+tokens, and concurrent reasoning outputs also vary; those throughput changes
+are serving observations, not isolated kernel speedups. No workload-specific
+or concurrency-specific switching is adopted from this small comparison.
+Single-RTX calibration is proceeding separately.
+
+Evidence: `release-v5-exl3-adaptive-serving-comparison.json` and its archive.
+The archived summarizer reproduces all reported metrics after relocation;
+all successful and aborted collection arms are retained. Same-output diagnostics
+match reasoning plus answer, select common outputs separately per concurrency
+by frequency, and do not replace the all-sample table.
+
+An offline `capped16` timing diagnostic allows a lower positive per-row slope
+above 16 rows while keeping total predicted cost monotonic. Using the existing
+traces, held-out median absolute error falls from 8.06% to 6.47% for code,
+7.49% to 7.26% for mixed, 8.11% to 6.17% for even-width topic, and 10.90% to
+7.79% for reasoning code. Reasoning p90 error worsens from 26.09% to 26.97%.
+This basis cannot be exported to the current runtime schema and is not enabled
+in serving. Forecast accuracy and prefix decisions still require analysis;
+improving an observed-route fit alone is insufficient. The archived filtered
+calibration traces reproduce all coefficients and evaluations exactly.
+Evidence: `release-v5-exl3-capped-cost-diagnostic.json`.

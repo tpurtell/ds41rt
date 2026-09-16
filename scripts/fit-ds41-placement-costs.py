@@ -4,6 +4,8 @@
 Fits odd draft widths and reports held-out even widths on code and mixed workloads.
 Additional explicitly segmented workloads, such as topic, are entirely held out.
 These use observed routes, not forecasts: route-forecast error is a separate gate.
+The capped16 diagnostic allows a lower positive row slope above 16; it is not
+exportable to the current runtime profile schema.
 """
 import argparse
 from collections import Counter, defaultdict
@@ -120,15 +122,15 @@ def fit(x, y):
 
 def expert_features(record, group, variant):
     n, rows = group['layers'], record['rows']
-    values = [n, n*rows, group['unique']]
-    if variant == 'hinge16':
+    values = [n, n*(min(rows, 16) if variant == 'capped16' else rows), group['unique']]
+    if variant in ('hinge16', 'capped16'):
         values.append(n*max(0, rows-16))
     return values
 
 
 def other_features(record, variant):
-    values = [1, record['rows'], record['requests']]
-    if variant == 'hinge16':
+    values = [1, min(record['rows'], 16) if variant == 'capped16' else record['rows'], record['requests']]
+    if variant in ('hinge16', 'capped16'):
         values.append(max(0, record['rows']-16))
     return values
 
@@ -165,7 +167,7 @@ def main():
     training = [r for r in warm if r['workload'] in training_workloads
                 and r['width'] % 2 == 1]
     variants = {}
-    for variant in ['affine', 'hinge16']:
+    for variant in ['affine', 'hinge16', 'capped16']:
         experts = {}
         for backend in sorted({b for r in training for b in r['groups']}):
             rows = [r for r in training if backend in r['groups']]

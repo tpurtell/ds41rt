@@ -89,3 +89,19 @@ def test_explicit_reasoning_segment_needs_no_code_report(tmp_path):
     (directory / 'segments.json').write_text(json.dumps([dict(workload='code-reasoning',begin=0,end=len(raw))]))
     records, _ = module.observations(directory)
     assert len(records) == 1 and records[0]['workload'] == 'code-reasoning'
+
+
+def test_capped_row_basis_can_reduce_slope_without_reducing_total_cost():
+    path = Path(__file__).parents[1] / 'fit-ds41-placement-costs.py'
+    spec = importlib.util.spec_from_file_location('placement_basis', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    values = []
+    for rows in [2, 8, 16, 17, 32, 64]:
+        record = dict(rows=rows, requests=1)
+        features = module.other_features(record, 'capped16')
+        assert features == [1, min(rows,16), 1, max(0,rows-16)]
+        values.append(sum(a*b for a,b in zip(features,[100,8,1,2])))
+        group = dict(layers=3, unique=18)
+        assert module.expert_features(record, group, 'capped16') == [3,3*min(rows,16),18,3*max(0,rows-16)]
+    assert all(a < b for a,b in zip(values,values[1:]))
