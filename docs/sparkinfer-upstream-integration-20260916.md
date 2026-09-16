@@ -78,6 +78,32 @@ They may still require mechanical merge/import/test fixes when shared library
 surfaces change. Attention/projection parallelization across GPUs is deferred;
 retain the current ownership and expert parallelism in comparisons.
 
+## Direct compact expert arithmetic at DS4.1 shapes (September 16)
+
+[Compact expert evidence](sparkinfer-upstream-expert-compact-20260916.json)
+qualifies upstream's direct compact FP8 kernels at E384/K5120/top6,
+N576 and N1152, with 1 and 16 rows on RTX SM120. The independent oracle
+unpacks original FP4 weights and models FP8 inputs, BF16 FC1/activation
+boundaries, FP8 intermediate values, routing after FC2, BF16 route outputs,
+and FP32 top-k summation rounded to BF16. This differs intentionally from
+our native routing-before-intermediate-quantization sequence.
+
+All four cases pass that arithmetic oracle: one-row outputs are exact;
+maximum relative L2 error for 16 rows is approximately 0.00086% at N576
+and 0.0061% at N1152. Changed inputs and expert IDs, poisoned output,
+identical-input graph replay, and unchanged allocation counters pass.
+Native-reference discrepancies remain around 3.5–4.2%, so the original
+native compatibility gate remains false and the diagnostic exits 1.
+These results explain the earlier reference discrepancy without relaxing
+that gate or treating the two arithmetic contracts as interchangeable.
+
+The public selector uses compact micro only for the N64 tail geometry and
+selects different backends at other capacities. The direct compact implementation
+also works at aligned N1152; the probe explicitly bypasses public selection to
+exercise it, including upstream's compiled top-k reduction. This is a candidate
+for native adaptation and a complete-cost comparison, not an enabled serving
+backend or a performance result. Actual Spark SM121 checks remain required.
+
 ## Tiny-decode clamp fix and numerical-contract clarification (September 16)
 
 [Fix evidence](sparkinfer-upstream-tiny-clamp-20260916.json) identifies the

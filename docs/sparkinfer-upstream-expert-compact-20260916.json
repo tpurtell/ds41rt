@@ -1,0 +1,277 @@
+{
+  "scope": "Independent compact arithmetic qualification on RTX SM120; not native ABI, Spark SM121, performance or serving acceptance.",
+  "expected_process_exit": 1,
+  "exit_reason": "Native compatibility gate remains false because routing placement differs; compact arithmetic gate passes.",
+  "cases": [
+    {
+      "raw_path": "/home/tj/.cache/ds41rt-upstream-20260916/expert-direct-compact-n576-final.json",
+      "sha256": "1e539ed7274242bf0426ddd30c2e556070ccafdb3b21281bbbd5600e5e9b4680",
+      "report": {
+        "scope": "Screen upstream expert numerics at DS41RT geometry before native adaptation.\n\nUses prepared GPU paths, not the serving native ABI. No serving speedup claim.\n",
+        "command": [
+          "python/tools/compare_v41_expert_upstream.py",
+          "--b12x-root",
+          "/home/tj/.cache/ds41rt-upstream-20260916/sparkinfer",
+          "--intermediate",
+          "576",
+          "--rows",
+          "1",
+          "16",
+          "--activation",
+          "silu",
+          "--direct-compact",
+          "--output",
+          "/home/tj/.cache/ds41rt-upstream-20260916/expert-direct-compact-n576-final.json"
+        ],
+        "fork_revision": "fadedecb841091a0c8678f3513409f4efdf54bf7",
+        "script_sha256": "2cbc8003199277a3caf76317dd29843a1290e11b73f21d1c146312a3f12f1f4f",
+        "device": "_CudaDeviceProperties(name='NVIDIA RTX PRO 6000 Blackwell Workstation Edition', major=12, minor=0, total_memory=97249MB, multi_processor_count=188, uuid=fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, pci_bus_id=17, pci_device_id=0, pci_domain_id=0, L2_cache_size=128MB)",
+        "geometry": {
+          "experts": 384,
+          "hidden": 5120,
+          "intermediate": 576,
+          "topk": 6
+        },
+        "cases": [
+          {
+            "rows": 1,
+            "activation": "silu",
+            "implementation": "direct_compact",
+            "checks": [
+              {
+                "identical_input_replay_exact": null,
+                "cycle": 0,
+                "relative_l2": 0.037419695407152176,
+                "cosine": 0.9992998838424683,
+                "native_reference_gate": false,
+                "own_reference_relative_l2": 0.016378866508603096,
+                "own_reference_cosine": 0.9998658895492554,
+                "compact_reference_relative_l2": 0.0,
+                "compact_reference_cosine": 1.0,
+                "compact_reference_gate": true
+              },
+              {
+                "identical_input_replay_exact": null,
+                "cycle": 1,
+                "relative_l2": 0.04230755940079689,
+                "cosine": 0.9991614818572998,
+                "native_reference_gate": false,
+                "own_reference_relative_l2": 0.010770311579108238,
+                "own_reference_cosine": 0.9999419450759888,
+                "compact_reference_relative_l2": 0.0,
+                "compact_reference_cosine": 1.0,
+                "compact_reference_gate": true
+              },
+              {
+                "identical_input_replay_exact": true,
+                "cycle": 2,
+                "relative_l2": 0.04230755940079689,
+                "cosine": 0.9991614818572998,
+                "native_reference_gate": false,
+                "own_reference_relative_l2": 0.010770311579108238,
+                "own_reference_cosine": 0.9999419450759888,
+                "compact_reference_relative_l2": 0.0,
+                "compact_reference_cosine": 1.0,
+                "compact_reference_gate": true
+              }
+            ]
+          },
+          {
+            "rows": 16,
+            "activation": "silu",
+            "implementation": "direct_compact",
+            "checks": [
+              {
+                "identical_input_replay_exact": null,
+                "cycle": 0,
+                "relative_l2": 0.03730826824903488,
+                "cosine": 0.9993038773536682,
+                "native_reference_gate": false,
+                "own_reference_relative_l2": 0.016346314921975136,
+                "own_reference_cosine": 0.9998664855957031,
+                "compact_reference_relative_l2": 8.505456207785755e-06,
+                "compact_reference_cosine": 1.0,
+                "compact_reference_gate": true
+              },
+              {
+                "identical_input_replay_exact": null,
+                "cycle": 1,
+                "relative_l2": 0.03829144313931465,
+                "cosine": 0.9992666244506836,
+                "native_reference_gate": false,
+                "own_reference_relative_l2": 0.016601476818323135,
+                "own_reference_cosine": 0.9998623728752136,
+                "compact_reference_relative_l2": 8.48251784191234e-06,
+                "compact_reference_cosine": 1.0,
+                "compact_reference_gate": true
+              },
+              {
+                "identical_input_replay_exact": true,
+                "cycle": 2,
+                "relative_l2": 0.03829144313931465,
+                "cosine": 0.9992666244506836,
+                "native_reference_gate": false,
+                "own_reference_relative_l2": 0.016601476818323135,
+                "own_reference_cosine": 0.9998623728752136,
+                "compact_reference_relative_l2": 8.48251784191234e-06,
+                "compact_reference_cosine": 1.0,
+                "compact_reference_gate": true
+              }
+            ]
+          }
+        ],
+        "fork_dirty": "",
+        "fork_source_sha256": {
+          "b12x/moe/_shared/kernels/tiny_decode.py": "bbf0b9dbd5d80229678f397098cc987f3b048dc7c7a11f9bbada7895e0b4fc53",
+          "b12x/moe/fused_moe/_impl.py": "a4c362f874ace2925e1ba127989874d443c64dfe931aff05ad856ba14d784594",
+          "b12x/moe/fused_moe/_preparation.py": "d23c61b2e27094a772bc3b1bee7c1ba2ea1e973750dc84250b1d05d0c360eab8",
+          "b12x/moe/_shared/kernels/reference.py": "d3e6e44ebba3e7c9566a6e6f76b982324713528f95cf96303aa3d2c73af866c1",
+          "b12x/moe/_shared/kernels/w4a8_compact_micro.py": "ec5a7e25a8ea73efa90d55e515957a322591e371dc9dbae789366620d15dcd0e",
+          "b12x/moe/_shared/kernels/w4a8_compact_projection.py": "d07bd4fbc6f7146cb7193c2d205c1473f2863fd6a9d1453ea12cd31d979ce4fc",
+          "b12x/moe/_shared/kernels/w4a8_compact_activation.py": "4e41b0c84db9d92be028fa26dc0a18b0df126fd715dfb7ebd2d73669d2d3116b",
+          "b12x/moe/_shared/kernels/w4a8_phase2.py": "44e5a9d132c029f5b041ed03f78fb5e791cfe8e838d61d89c97bc0fb96449ff6"
+        },
+        "reference_semantics": {
+          "native": "V4.1 BF16 projection boundaries and routing before intermediate FP8 quantization",
+          "generic": "Declared W4A8-MX FP8 activation reference; tiny-decode actually consumes BF16 and accumulates BF16 atomically, so this is not its exact arithmetic oracle",
+          "compact": "FP8 input, BF16 FC1 and activation boundaries, FP8 intermediate, routing after FC2 before BF16 route output; FP32 top-k sum rounded to BF16"
+        }
+      }
+    },
+    {
+      "raw_path": "/home/tj/.cache/ds41rt-upstream-20260916/expert-direct-compact-n1152-final.json",
+      "sha256": "0c0271d0851f3b49659d92f16481b480851febe127b5ec58a7ca51c920519b7c",
+      "report": {
+        "scope": "Screen upstream expert numerics at DS41RT geometry before native adaptation.\n\nUses prepared GPU paths, not the serving native ABI. No serving speedup claim.\n",
+        "command": [
+          "python/tools/compare_v41_expert_upstream.py",
+          "--b12x-root",
+          "/home/tj/.cache/ds41rt-upstream-20260916/sparkinfer",
+          "--intermediate",
+          "1152",
+          "--rows",
+          "1",
+          "16",
+          "--activation",
+          "silu",
+          "--direct-compact",
+          "--output",
+          "/home/tj/.cache/ds41rt-upstream-20260916/expert-direct-compact-n1152-final.json"
+        ],
+        "fork_revision": "fadedecb841091a0c8678f3513409f4efdf54bf7",
+        "script_sha256": "2cbc8003199277a3caf76317dd29843a1290e11b73f21d1c146312a3f12f1f4f",
+        "device": "_CudaDeviceProperties(name='NVIDIA RTX PRO 6000 Blackwell Workstation Edition', major=12, minor=0, total_memory=97249MB, multi_processor_count=188, uuid=fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, pci_bus_id=17, pci_device_id=0, pci_domain_id=0, L2_cache_size=128MB)",
+        "geometry": {
+          "experts": 384,
+          "hidden": 5120,
+          "intermediate": 1152,
+          "topk": 6
+        },
+        "cases": [
+          {
+            "rows": 1,
+            "activation": "silu",
+            "implementation": "direct_compact",
+            "checks": [
+              {
+                "identical_input_replay_exact": null,
+                "cycle": 0,
+                "relative_l2": 0.040142722427845,
+                "cosine": 0.9991940259933472,
+                "native_reference_gate": false,
+                "own_reference_relative_l2": 0.012634210288524628,
+                "own_reference_cosine": 0.9999202489852905,
+                "compact_reference_relative_l2": 0.0,
+                "compact_reference_cosine": 1.0000001192092896,
+                "compact_reference_gate": true
+              },
+              {
+                "identical_input_replay_exact": null,
+                "cycle": 1,
+                "relative_l2": 0.03499848023056984,
+                "cosine": 0.9993993043899536,
+                "native_reference_gate": false,
+                "own_reference_relative_l2": 0.015914546325802803,
+                "own_reference_cosine": 0.9998741745948792,
+                "compact_reference_relative_l2": 0.0,
+                "compact_reference_cosine": 1.0000001192092896,
+                "compact_reference_gate": true
+              },
+              {
+                "identical_input_replay_exact": true,
+                "cycle": 2,
+                "relative_l2": 0.03499848023056984,
+                "cosine": 0.9993993043899536,
+                "native_reference_gate": false,
+                "own_reference_relative_l2": 0.015914546325802803,
+                "own_reference_cosine": 0.9998741745948792,
+                "compact_reference_relative_l2": 0.0,
+                "compact_reference_cosine": 1.0000001192092896,
+                "compact_reference_gate": true
+              }
+            ]
+          },
+          {
+            "rows": 16,
+            "activation": "silu",
+            "implementation": "direct_compact",
+            "checks": [
+              {
+                "identical_input_replay_exact": null,
+                "cycle": 0,
+                "relative_l2": 0.03848721832036972,
+                "cosine": 0.9992592334747314,
+                "native_reference_gate": false,
+                "own_reference_relative_l2": 0.016799354925751686,
+                "own_reference_cosine": 0.9998588562011719,
+                "compact_reference_relative_l2": 4.265923780621961e-05,
+                "compact_reference_cosine": 0.9999998807907104,
+                "compact_reference_gate": true
+              },
+              {
+                "identical_input_replay_exact": null,
+                "cycle": 1,
+                "relative_l2": 0.03913664072751999,
+                "cosine": 0.9992355704307556,
+                "native_reference_gate": false,
+                "own_reference_relative_l2": 0.01739584282040596,
+                "own_reference_cosine": 0.9998487234115601,
+                "compact_reference_relative_l2": 6.0205755289644e-05,
+                "compact_reference_cosine": 1.0,
+                "compact_reference_gate": true
+              },
+              {
+                "identical_input_replay_exact": true,
+                "cycle": 2,
+                "relative_l2": 0.03913664072751999,
+                "cosine": 0.9992355704307556,
+                "native_reference_gate": false,
+                "own_reference_relative_l2": 0.01739584282040596,
+                "own_reference_cosine": 0.9998487234115601,
+                "compact_reference_relative_l2": 6.0205755289644e-05,
+                "compact_reference_cosine": 1.0,
+                "compact_reference_gate": true
+              }
+            ]
+          }
+        ],
+        "fork_dirty": "",
+        "fork_source_sha256": {
+          "b12x/moe/_shared/kernels/tiny_decode.py": "bbf0b9dbd5d80229678f397098cc987f3b048dc7c7a11f9bbada7895e0b4fc53",
+          "b12x/moe/fused_moe/_impl.py": "a4c362f874ace2925e1ba127989874d443c64dfe931aff05ad856ba14d784594",
+          "b12x/moe/fused_moe/_preparation.py": "d23c61b2e27094a772bc3b1bee7c1ba2ea1e973750dc84250b1d05d0c360eab8",
+          "b12x/moe/_shared/kernels/reference.py": "d3e6e44ebba3e7c9566a6e6f76b982324713528f95cf96303aa3d2c73af866c1",
+          "b12x/moe/_shared/kernels/w4a8_compact_micro.py": "ec5a7e25a8ea73efa90d55e515957a322591e371dc9dbae789366620d15dcd0e",
+          "b12x/moe/_shared/kernels/w4a8_compact_projection.py": "d07bd4fbc6f7146cb7193c2d205c1473f2863fd6a9d1453ea12cd31d979ce4fc",
+          "b12x/moe/_shared/kernels/w4a8_compact_activation.py": "4e41b0c84db9d92be028fa26dc0a18b0df126fd715dfb7ebd2d73669d2d3116b",
+          "b12x/moe/_shared/kernels/w4a8_phase2.py": "44e5a9d132c029f5b041ed03f78fb5e791cfe8e838d61d89c97bc0fb96449ff6"
+        },
+        "reference_semantics": {
+          "native": "V4.1 BF16 projection boundaries and routing before intermediate FP8 quantization",
+          "generic": "Declared W4A8-MX FP8 activation reference; tiny-decode actually consumes BF16 and accumulates BF16 atomically, so this is not its exact arithmetic oracle",
+          "compact": "FP8 input, BF16 FC1 and activation boundaries, FP8 intermediate, routing after FC2 before BF16 route output; FP32 top-k sum rounded to BF16"
+        }
+      }
+    }
+  ]
+}
