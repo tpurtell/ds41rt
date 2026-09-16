@@ -552,3 +552,23 @@ in serving. Forecast accuracy and prefix decisions still require analysis;
 improving an observed-route fit alone is insufficient. The archived filtered
 calibration traces reproduce all coefficients and evaluations exactly.
 Evidence: `release-v5-exl3-capped-cost-diagnostic.json`.
+
+
+### Separating route forecasts from timing error
+
+Reanalysis of the earlier **disjoint** dual-RTX EXL3 adaptive trace finds little
+average bias in forecast unique-expert counts: predicted/observed means range
+from 0.990 to 0.998 across RTX/Spark backends and code/topic C1/C8. Individual
+rounds still have 7.75–10.69% mean absolute relative error; near-unbiased averages
+do not imply exact route prediction. In the same trace the legacy formula
+predicts verification times 1.19–1.43 times the observed times on average.
+This separates count-forecast bias from timing-model bias in that older run.
+
+These observations do not diagnose the paired candidate's C1 regression:
+the kernels differ, and only selected prefixes are observed. Rejected prefix
+alternatives have no counterfactual timings in this trace. The next policy
+analysis must retain that distinction. No runtime change follows from this
+audit. `summarize-ds41-decode-profile.py` now validates forecast shapes and
+reports backend-specific count errors. Every pre-existing summary metric was
+reproduced unchanged; both input files match the published evidence archive
+byte for byte. Evidence: `release-v5-exl3-route-forecast-audit.json`.

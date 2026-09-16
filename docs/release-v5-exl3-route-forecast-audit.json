@@ -1,0 +1,208 @@
+{
+  "scope": "Historical disjoint EXL3 adaptive-route forecast audit, before paired ownership and m80 two-block changes. Not a current paired performance result.",
+  "source_base_commit": "74d1b88",
+  "sparkinfer_revision": "fd8f8a68a3fd674e6c8d7d462692beb687b5939f",
+  "configuration": {
+    "rtx_gpus": 2,
+    "sparks": 4,
+    "rtx_expert_layers": 25,
+    "kv_tokens": 14680064,
+    "draft_limit": 7,
+    "prefill_batch_tokens": 2048
+  },
+  "archive": "docs/evidence/v5-exl3-decode-profile.tar.gz",
+  "archive_sha256": "ed85619dc8764bdc3f65592595ea553981da3736163a62134355ba3db5bda36c",
+  "trace_sha256": "0417a8939fa2bc5660bb478c71897ca6b240909db76ce1fa10625abb9d40d426",
+  "results": [
+    {
+      "case": "code",
+      "concurrency": 1,
+      "rounds": 144,
+      "predicted_over_observed_verify": {
+        "count": 140,
+        "mean": 1.4307314646431126,
+        "median": 1.4478070257453624,
+        "min": 0.925899821707154,
+        "max": 1.6563581613031961
+      },
+      "route_forecasts": {
+        "rtx_tp2": {
+          "predicted_over_observed_unique": {
+            "count": 140,
+            "mean": 0.9940360587274988,
+            "median": 0.9920760697305864,
+            "min": 0.6666666666666666,
+            "max": 1.2630480167014613
+          },
+          "absolute_relative_error": {
+            "count": 140,
+            "mean": 0.10691145613072497,
+            "median": 0.08761329305135956,
+            "min": 0.005037783375314797,
+            "max": 0.33333333333333337
+          }
+        },
+        "spark_tp4": {
+          "predicted_over_observed_unique": {
+            "count": 140,
+            "mean": 0.9903860021049515,
+            "median": 0.9817073170731707,
+            "min": 0.6396039603960396,
+            "max": 1.2826666666666666
+          },
+          "absolute_relative_error": {
+            "count": 140,
+            "mean": 0.10048926555779052,
+            "median": 0.06164383561643838,
+            "min": 0.0,
+            "max": 0.3603960396039604
+          }
+        }
+      }
+    },
+    {
+      "case": "code",
+      "concurrency": 8,
+      "rounds": 252,
+      "predicted_over_observed_verify": {
+        "count": 245,
+        "mean": 1.2233579394125276,
+        "median": 1.2122196095995224,
+        "min": 0.6923627254870159,
+        "max": 1.6274931841010187
+      },
+      "route_forecasts": {
+        "rtx_tp2": {
+          "predicted_over_observed_unique": {
+            "count": 245,
+            "mean": 0.9978828406465848,
+            "median": 1.0159744408945688,
+            "min": 0.6639676113360324,
+            "max": 1.281512605042017
+          },
+          "absolute_relative_error": {
+            "count": 245,
+            "mean": 0.09554154456460157,
+            "median": 0.08469945355191255,
+            "min": 0.0,
+            "max": 0.33603238866396756
+          }
+        },
+        "spark_tp4": {
+          "predicted_over_observed_unique": {
+            "count": 245,
+            "mean": 0.9966031930018293,
+            "median": 1.0081799591002045,
+            "min": 0.6396039603960396,
+            "max": 1.2826666666666666
+          },
+          "absolute_relative_error": {
+            "count": 245,
+            "mean": 0.0983588078252734,
+            "median": 0.06707317073170727,
+            "min": 0.0,
+            "max": 0.3603960396039604
+          }
+        }
+      }
+    },
+    {
+      "case": "topic",
+      "concurrency": 1,
+      "rounds": 364,
+      "predicted_over_observed_verify": {
+        "count": 356,
+        "mean": 1.4105200571148655,
+        "median": 1.4264304170309303,
+        "min": 0.9037887896019496,
+        "max": 1.6214655703263665
+      },
+      "route_forecasts": {
+        "rtx_tp2": {
+          "predicted_over_observed_unique": {
+            "count": 356,
+            "mean": 0.9920789858237603,
+            "median": 0.9932659932659933,
+            "min": 0.8081023454157783,
+            "max": 1.2114537444933922
+          },
+          "absolute_relative_error": {
+            "count": 356,
+            "mean": 0.0775070142362845,
+            "median": 0.07421875,
+            "min": 0.0,
+            "max": 0.21145374449339216
+          }
+        },
+        "spark_tp4": {
+          "predicted_over_observed_unique": {
+            "count": 356,
+            "mean": 0.9909444865193794,
+            "median": 0.9921259842519685,
+            "min": 0.7007874015748031,
+            "max": 1.2764227642276422
+          },
+          "absolute_relative_error": {
+            "count": 356,
+            "mean": 0.10092180471052352,
+            "median": 0.08965517241379306,
+            "min": 0.0,
+            "max": 0.2992125984251969
+          }
+        }
+      }
+    },
+    {
+      "case": "topic",
+      "concurrency": 8,
+      "rounds": 707,
+      "predicted_over_observed_verify": {
+        "count": 692,
+        "mean": 1.1859538404518595,
+        "median": 1.1733779007702507,
+        "min": 0.6706331676789987,
+        "max": 1.5820825147347741
+      },
+      "route_forecasts": {
+        "rtx_tp2": {
+          "predicted_over_observed_unique": {
+            "count": 692,
+            "mean": 0.9959343314102634,
+            "median": 0.9923371647509579,
+            "min": 0.6768488745980707,
+            "max": 1.212253829321663
+          },
+          "absolute_relative_error": {
+            "count": 692,
+            "mean": 0.0796069433540198,
+            "median": 0.07301828455674614,
+            "min": 0.0,
+            "max": 0.32315112540192925
+          }
+        },
+        "spark_tp4": {
+          "predicted_over_observed_unique": {
+            "count": 692,
+            "mean": 0.9903715390906745,
+            "median": 0.9794871794871794,
+            "min": 0.6416861826697893,
+            "max": 1.325
+          },
+          "absolute_relative_error": {
+            "count": 692,
+            "mean": 0.09679146477888333,
+            "median": 0.08123495993450597,
+            "min": 0.0,
+            "max": 0.3583138173302107
+          }
+        }
+      }
+    }
+  ],
+  "limitations": [
+    "Includes warmup and concurrency drain; instrumented short-context code/topic only.",
+    "Ratios aggregate unique experts within each backend per round. They do not measure route-identity agreement.",
+    "Near-unbiased average counts still have 7.75\u201310.69% mean absolute round error.",
+    "Forecasts cover selected prefixes only, not counterfactual rejected prefixes. These traces cannot establish the best prefix policy for the new paired candidate."
+  ]
+}

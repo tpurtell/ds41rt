@@ -28,6 +28,10 @@ def main():
             fields = {k:float(v) if '.' in v else int(v)
                 for k,v in re.findall(r'\b(\w+)=([0-9]+(?:\.[0-9]+)?)',line)}
             if 'verification cost forecast ' in line:
+                unique = json.loads(re.search(r'forecast_unique=(\[[^\]]*\])', line)[1])
+                assert len(unique) == 40 and all(type(x) is int and x > 0 for x in unique)
+                fields['forecast_unique'] = unique
+                assert fields['batch'] not in forecasts, 'duplicate cost forecast'
                 forecasts[fields['batch']] = fields
             elif 'verification layer cost ' in line:
                 backend = re.search(r'routed_backend="([^"]+)"',line)[1]
@@ -41,8 +45,11 @@ def main():
                 entries = layers.pop(batch, [])
                 assert len(entries)==40 and sorted(e['layer'] for e in entries)==list(range(40)), (batch,len(entries))
                 forecast = forecasts.pop(batch, None)
+                if forecast is not None:
+                    assert forecast['rows'] == cost['rows'] and forecast['requests'] == cost['requests']
                 rounds.append(dict(fields, batch=batch, verifier_rows=cost['rows'],
-                    predicted_verify_us=None if forecast is None else forecast['predicted_verify_us'], layers=entries))
+                    predicted_verify_us=None if forecast is None else forecast['predicted_verify_us'],
+                    forecast_unique=None if forecast is None else forecast['forecast_unique'], layers=entries))
         assert rounds and not pending, 'incomplete measured round window'
         proposed = sum(r['proposed'] for r in rounds)
         accepted = sum(r['accepted'] for r in rounds)
@@ -52,6 +59,19 @@ def main():
             for layer in r['layers']:
                 backend_samples[layer['backend']].append(layer)
         ratios = [r['predicted_verify_us']/r['verify_us'] for r in rounds if r['predicted_verify_us'] is not None]
+        route_forecasts = {}
+        for backend in backend_samples:
+            samples = []
+            for round_ in rounds:
+                if round_['forecast_unique'] is None:
+                    continue
+                entries = [layer for layer in round_['layers'] if layer['backend'] == backend]
+                observed = sum(layer['distinct_experts'] for layer in entries)
+                predicted = sum(round_['forecast_unique'][layer['layer']] for layer in entries)
+                assert observed > 0
+                samples.append(predicted / observed)
+            route_forecasts[backend] = dict(predicted_over_observed_unique=stats(samples),
+                absolute_relative_error=stats([abs(value-1) for value in samples]))
         result = dict(case=window['case'], concurrency=window['concurrency'], rounds=len(rounds),
             verified_draft_tokens=proposed, accepted_draft_tokens=accepted,
             accepted_fraction=accepted/proposed if proposed else None,
@@ -60,6 +80,7 @@ def main():
             zero_acceptance_lane_rounds=sum(r['accepted']==0 for r in rounds),
             stages_us={key:stats([r[key] for r in rounds]) for key in ['draft_us','verify_us','total_us']},
             predicted_over_observed_verify=stats(ratios),
+            route_forecasts=route_forecasts,
             backends={backend:dict(layer_samples=len(rows),
                 stages_us={key:stats([r[key] for r in rows]) for key in ['produced_us','index_us','attention_us','experts_us','finish_us']},
                 rows=stats([r['rows'] for r in rows]), distinct_experts=stats([r['distinct_experts'] for r in rows]))
