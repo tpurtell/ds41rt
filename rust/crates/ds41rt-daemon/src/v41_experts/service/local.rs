@@ -31,7 +31,7 @@ pub(super) fn run(config: NativeExpertServiceConfig, listen: &str) -> Result<()>
     );
     let library = unsafe { NativeLibrary::load(&config.library) }?;
     let (weights, remaining) = load_weights(&library, &config)?;
-    let mut execution = weights[0].execution(config.capacity, remaining)?;
+    let mut execution = weights.execution(&library, &config, remaining)?;
     let mut exchange = HostExpertExchange::new(config.capacity)?;
     let mut row_indices = vec![0; config.capacity as usize];
     let listener = TcpListener::bind(listen)?;
@@ -88,10 +88,9 @@ pub(super) fn run(config: NativeExpertServiceConfig, listen: &str) -> Result<()>
             let mut execution_failed = false;
             let result = connections[index].poll(|view, mapped, emit| {
                 let request = V41BackboneRequest::parse(view.frame_bytes(), config.capacity)?;
-                let weight = (request.layer() as usize).checked_sub(config.first_layer)
-                    .and_then(|index| weights.get(index))
+                let layer = (request.layer() as usize).checked_sub(config.first_layer)
                     .context("requested expert layer is not resident on this Spark")?;
-                execution.bind_layer(weight)?;
+                execution.bind_layer(&weights, layer)?;
                 if let Some(slot) = mapped.response_slot {
                     let response = unsafe { execution.execute_mapped_request(&request,
                         config.rank as u64 + 1, &mut exchange, slot) };

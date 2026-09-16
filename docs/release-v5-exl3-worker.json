@@ -1,0 +1,238 @@
+{
+  "scope": "Production Spark worker backend selection and native request adapter. GPU request checks run on RTX and ARM64 GB10 using full resident shards and six routed IDs. Startup smoke uses one complete layer. Not actual RoCE inference traffic, full-model serving, all ranks/capacities or performance qualification.",
+  "checks": [
+    {
+      "host": "RTX",
+      "host_architecture": "x86_64",
+      "compute": [
+        12,
+        0
+      ],
+      "passed": true,
+      "capacity": 16,
+      "world": 4,
+      "rank": 2,
+      "resident_layer": 0,
+      "resident_experts": 384,
+      "routed_experts_in_reference": 6,
+      "intermediate": 512,
+      "workspace_bytes": 21299804,
+      "input_format": "fp8_k32",
+      "output_format": "bf16",
+      "rows": [
+        1,
+        3,
+        16,
+        1
+      ],
+      "mapped_output_matches_reference": true,
+      "mapped_prefix_and_tail_guards": true,
+      "short_slot_fallback": true,
+      "executor_and_layer_rejection": true,
+      "chunked_checksum_frames_match_reference": true,
+      "send_failure_does_not_poison_next_request": true,
+      "reference": {
+        "passed": true,
+        "scope": "native AOT versus B12x, six real checkpoint experts; not full-model qualification",
+        "output_dtype": "bf16",
+        "checkpoint_layer": "layers.0",
+        "topk": 6,
+        "native_info_verified": true,
+        "slice_start": 1280,
+        "sparkinfer_revision": "c024d14ce936ddfc2c863377d033d85e1787924b",
+        "compute": [
+          12,
+          0
+        ],
+        "intermediate": 512,
+        "direct": false,
+        "route_bridge_sha256": "f49c47b0ff99f2dcbf75104d4419a4d600392c8dd368eba1426985a1014712fe",
+        "snapshot_revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+        "projection_tiers": [
+          [
+            3,
+            4,
+            3
+          ],
+          [
+            3,
+            3,
+            3
+          ],
+          [
+            4,
+            4,
+            4
+          ],
+          [
+            3,
+            3,
+            3
+          ],
+          [
+            4,
+            4,
+            4
+          ],
+          [
+            3,
+            3,
+            3
+          ]
+        ],
+        "aot_manifest_sha256": "4e1443b4f22d5d71a70a56cc646302e591a45f2d247319a68f413613ceb41400",
+        "bridge_sha256": "2fecb1f0c27832a6d3e3a0a0dc09d42768acbc07335378dbd601397b03f473d6",
+        "checks": [
+          {
+            "rows": 1,
+            "bitwise_equal": true
+          },
+          {
+            "rows": 3,
+            "bitwise_equal": true
+          },
+          {
+            "rows": 15,
+            "bitwise_equal": true
+          },
+          {
+            "rows": 16,
+            "bitwise_equal": true
+          }
+        ],
+        "graph_changed_inputs_and_routes": true,
+        "packed_metadata_poisoned_before_native": true
+      }
+    },
+    {
+      "host": "ostrich GB10",
+      "host_architecture": "aarch64",
+      "compute": [
+        12,
+        1
+      ],
+      "passed": true,
+      "capacity": 16,
+      "world": 4,
+      "rank": 2,
+      "resident_layer": 0,
+      "resident_experts": 384,
+      "routed_experts_in_reference": 6,
+      "intermediate": 512,
+      "workspace_bytes": 8976796,
+      "input_format": "fp8_k32",
+      "output_format": "bf16",
+      "rows": [
+        1,
+        3,
+        16,
+        1
+      ],
+      "mapped_output_matches_reference": true,
+      "mapped_prefix_and_tail_guards": true,
+      "short_slot_fallback": true,
+      "executor_and_layer_rejection": true,
+      "chunked_checksum_frames_match_reference": true,
+      "send_failure_does_not_poison_next_request": true,
+      "reference": {
+        "passed": true,
+        "scope": "native AOT versus B12x, six real checkpoint experts; not full-model qualification",
+        "output_dtype": "bf16",
+        "checkpoint_layer": "layers.0",
+        "topk": 6,
+        "native_info_verified": true,
+        "slice_start": 1280,
+        "sparkinfer_revision": "c024d14ce936ddfc2c863377d033d85e1787924b",
+        "compute": [
+          12,
+          1
+        ],
+        "intermediate": 512,
+        "direct": false,
+        "route_bridge_sha256": "b73481c0546586ce8c300fc4cf1ddc8950811eade2fe59707edbf312095c9465",
+        "snapshot_revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+        "projection_tiers": [
+          [
+            3,
+            4,
+            3
+          ],
+          [
+            3,
+            3,
+            3
+          ],
+          [
+            4,
+            4,
+            4
+          ],
+          [
+            3,
+            3,
+            3
+          ],
+          [
+            4,
+            4,
+            4
+          ],
+          [
+            3,
+            3,
+            3
+          ]
+        ],
+        "aot_manifest_sha256": "66e38824d1cf3504a56f8071e6a6a9a14e455320333411ef0fb430c189c74a62",
+        "bridge_sha256": "fa903139cc39a073d5be32773fef38e9dba34c0655c509ae45d27ac98805df89",
+        "checks": [
+          {
+            "rows": 1,
+            "bitwise_equal": true
+          },
+          {
+            "rows": 3,
+            "bitwise_equal": true
+          },
+          {
+            "rows": 15,
+            "bitwise_equal": true
+          },
+          {
+            "rows": 16,
+            "bitwise_equal": true
+          }
+        ],
+        "graph_changed_inputs_and_routes": true,
+        "packed_metadata_poisoned_before_native": true
+      }
+    }
+  ],
+  "backend_selection": "EXL3 catalog selects compressed weights and Exl3Worker; original checkpoint retains existing ExpertExecution",
+  "artifact_directory": "--exl3-aot-dir override, otherwise <native-library-directory>/exl3/tp4-rank<R>/m<CAPACITY>",
+  "startup_smoke": {
+    "host": "ostrich",
+    "command": "expertd-native",
+    "checkpoint_revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+    "first_layer": 39,
+    "resident_layers": 1,
+    "rank": 2,
+    "capacity": 16,
+    "device_budget_bytes": 2147483648,
+    "listener": "127.0.0.1:33735",
+    "listener_evidence": "worker-spark-startup-sockets.txt",
+    "startup_order": "TCP bind follows compressed weights load and EXL3 execution initialization",
+    "inference_requests_sent": 0,
+    "container_removed": true,
+    "stop_exit_code": 137,
+    "stop_note": "Docker stopped the isolated PID-1 process after its timeout; not a graceful-shutdown qualification."
+  },
+  "native_linkage": "New wire decoder addon linked to published v4 native memory/transport library; separately exported EXL3 core, epilogue and route modules. Full release CMake/image packaging remains pending.",
+  "initial_test_correction": "Chunk-count assertion originally used normal header size for checksum frames; changed test frame budget to DEBUG_HEADER_LEN. No kernel/transport change was needed.",
+  "rtx_test_binary_sha256": "d5a81a8b461de336c12d3e404f5fffb24e345fdfb2d33786e4b84b63f127909d",
+  "spark_binary_sha256_record": "82388d345211bfefc028f5d3d3a0f562e64cff7dee546df6f9e67e51ef8fee8c  /home/tj/.cache/ds41rt-v5-exl3/rust-target/debug/deps/ds41rt-d99dc21befbfee1a\ne24a8d865a644159ffe0a887bc37b19959683df1024a6a23d44796d310a954c4  /home/tj/.cache/ds41rt-v5-exl3/rust-target/debug/ds41rt\n",
+  "standard_service_health_http_status": 200,
+  "verified_at": "2026-09-16T15:29:08.197319+00:00",
+  "archive": "docs/evidence/v5-exl3-worker.tar.gz",
+  "archive_sha256": "2fea76f69b96a155de91e12af2c36b5d8c9e1ccb05d0ebe261eb343f61a9e5e2"
+}

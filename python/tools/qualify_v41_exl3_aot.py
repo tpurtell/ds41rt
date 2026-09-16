@@ -19,6 +19,8 @@ def main() -> None:
     layer.add_argument('--layer', type=int, choices=range(40), default=0)
     parser.add_argument('--slice-start', type=int, default=0)
     parser.add_argument('--fixture', type=Path)
+    parser.add_argument('--fixture-canonical-routes', action='store_true',
+        help='Emit valid Spark wire routes, using zero weights instead of masked IDs')
     parser.add_argument('--fixture-format', choices=('bf16','fp8_k32'), default='bf16')
     args = parser.parse_args()
     import torch
@@ -163,6 +165,10 @@ def main() -> None:
         assert torch.equal(buffers.output[:graph_rows],expected)
         if args.fixture is not None:
             args.fixture.mkdir(parents=True,exist_ok=True)
+            if args.fixture_canonical_routes:
+                assert topk == 6
+                ids.copy_(torch.arange(experts,device=ids.device,dtype=ids.dtype).repeat(capacity,1).roll(1,dims=1))
+                weights[::2,1]=0
             fixture_input=x
             if args.fixture_format=='fp8_k32':
                 from qualify_v41_exl3_wire import quantize_wire
@@ -181,6 +187,7 @@ def main() -> None:
                 'width':width,'capacity':capacity,'topk':topk,'reference_experts':experts,
                 'direct':meta['direct'],'tile':meta['tile'],
                 'input_format':args.fixture_format,'output_dtype':meta['output_dtype'],
+                'canonical_routes':args.fixture_canonical_routes,
                 'snapshot_revision':args.snapshot.name,'artifacts':artifacts},indent=2)+'\n')
         args.output.write_text(json.dumps({'passed':True,'scope':'native AOT versus B12x, six real checkpoint experts; not full-model qualification',
             'output_dtype':meta['output_dtype'],'checkpoint_layer':layer_prefix,'topk':topk,'native_info_verified':info_verified,

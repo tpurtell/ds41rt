@@ -379,3 +379,40 @@ executor lacking compiler IR. Native exports now disable that cache; normal
 runtime cache behavior is unchanged. The initial failure and successful rebuild
 are retained in the evidence. Production serving selection and artifact packaging
 remain the next integration steps.
+
+## Spark worker backend integration
+
+`expertd-native` now selects compressed EXL3 residency/execution when the catalog
+identifies routed EXL3 weights. It plans resident storage and workspace before
+loading. Original checkpoints retain the existing expert backend. The worker
+uses `--exl3-aot-dir` when supplied, otherwise
+`<native-library-directory>/exl3/tp4-rank<R>/m<CAPACITY>`. Release artifact
+packaging is still pending; these checks use explicit native export directories.
+
+The EXL3 request adapter accepts the existing FP8 K32 wire representation and
+returns compact BF16 rank partials. Its epilogue can write directly into the
+transport's registered send allocation. Checksum or bounded-frame responses use
+the existing host chunk format. Layer selection, executor identity, row limits
+and representation are checked before compute; allocations remain at setup.
+
+[Worker evidence](release-v5-exl3-worker.json) passes on RTX/SM120 and ARM64
+GB10/SM121. Each uses all 384 resident layer-0 experts at TP4 rank 2, exercising
+six routed IDs against canonical B12x fixtures. Rows 1/3/16/1 match bitwise for
+mapped and chunked checksum responses, preserve prefix/tail guards, reject wrong
+layer/executor selections, and recover after a sink error on the next request.
+Tested capacity-16 workspace, including inputs and wire reconstruction, is
+21,299,804 bytes on RTX and 8,976,796 bytes on GB10. These are component allocation
+figures, not the final production capacity or throughput measurements.
+
+The actual ARM64 daemon also loaded EXL3 layer 39 and opened its listener through
+the production startup path. That isolated smoke test sent no RoCE inference
+requests and was removed afterward; standard v4 serving remains healthy. It used
+a new wire-decoder addon with the published v4 memory/transport library and
+separate EXL3 modules, not a fully rebuilt release image.
+
+Next integration work includes native build/image packaging, RoCE requests across
+all Spark ranks, RTX TP1/TP2 and dSpark backend selection, and FP4 PLE gathering.
+Decode/prefill dispatch must select suitable compiled batch capacities before
+performance qualification; the initial worker currently uses one configured
+capacity. Generic K2–K5 coverage, optimization, full-model quality, requested
+benchmark tables and the deferred top-1 comparison remain required for v5.

@@ -519,9 +519,9 @@ impl Drop for ExpertExecution<'_, '_> {
 
 /// Reusable host exchange for the TCP fallback; RDMA can consume device route views.
 pub(crate) struct HostExpertExchange {
-    ids: Vec<i32>,
-    routing: Vec<f32>,
-    partials: Vec<u8>,
+    pub(super) ids: Vec<i32>,
+    pub(super) routing: Vec<f32>,
+    pub(super) partials: Vec<u8>,
 }
 impl HostExpertExchange {
     pub fn new(capacity: u32) -> Result<Self> {

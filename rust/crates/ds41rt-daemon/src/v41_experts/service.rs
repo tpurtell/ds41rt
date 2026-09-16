@@ -1,5 +1,6 @@
 //! Native GPU resources and inference QPs share one owning thread.
 mod local;
+mod backend;
 
 use super::{ExpertLayer, ExpertWeights, HostExpertExchange};
 use anyhow::{ensure, Context, Result};
@@ -11,6 +12,7 @@ use std::{path::PathBuf, sync::mpsc, thread};
 pub(crate) async fn run(args: crate::cli::NativeExpertDaemonArgs) -> Result<()> {
     let config = NativeExpertServiceConfig {
         library: args.native_lib,
+        exl3_aot_dir: args.exl3_aot_dir,
         snapshot: args.snapshot,
         rank: args.rank as usize,
         first_layer: args.first_layer as usize,
@@ -25,6 +27,7 @@ pub(crate) async fn run(args: crate::cli::NativeExpertDaemonArgs) -> Result<()> 
 
 pub(crate) struct NativeExpertServiceConfig {
     pub library: PathBuf,
+    pub exl3_aot_dir: Option<PathBuf>,
     pub snapshot: PathBuf,
     pub rank: usize,
     pub first_layer: usize,
@@ -36,11 +39,12 @@ pub(crate) struct NativeExpertServiceConfig {
 fn load_weights<'a>(
     library: &'a NativeLibrary,
     config: &NativeExpertServiceConfig,
-) -> Result<(Vec<ExpertWeights<'a>>, usize)> {
+) -> Result<(backend::Weights<'a>, usize)> {
     let catalog = read_official_v41_catalog(OFFICIAL_V41_MODEL_ID, &config.snapshot)?;
+    ensure!(config.first_layer < 40, "native first layer must be 0..39");
+    if catalog.exl3().is_some() { return backend::load_exl3(library, &catalog, config); }
     let mut resident = 0usize;
     let mut staging = 0usize;
-    ensure!(config.first_layer < 40, "native first layer must be 0..39");
     for layer in config.first_layer..40 {
         let plan = ExpertWeights::plan(
             library,
@@ -95,5 +99,12 @@ fn load_weights<'a>(
         );
         weights.push(weight);
     }
-    Ok((weights, remaining))
+    Ok((backend::Weights::Full(weights), remaining))
+}
+
+impl NativeExpertServiceConfig {
+    fn exl3_directory(&self) -> PathBuf {
+        self.exl3_aot_dir.clone().unwrap_or_else(|| self.library.parent().unwrap_or(std::path::Path::new("."))
+            .join("exl3").join(format!("tp4-rank{}", self.rank)).join(format!("m{}", self.capacity)))
+    }
 }

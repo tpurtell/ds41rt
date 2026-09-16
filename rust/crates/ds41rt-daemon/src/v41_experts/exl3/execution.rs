@@ -142,6 +142,7 @@ struct LayerBinding {
     core: Table,
     sum: Table,
     expert_map: Ds41rtDeviceBuffer,
+    output_slot: usize,
 }
 
 pub(crate) struct Exl3Execution<'a> {
@@ -364,6 +365,11 @@ impl<'a> Exl3Execution<'a> {
                 core,
                 sum,
                 expert_map: weight.buffer("global_to_combined")?,
+                output_slot: meta.objects[1]
+                    .pointer_slots
+                    .iter()
+                    .position(|name| name == "output_ptr")
+                    .context("missing EXL3 output pointer slot")?,
             });
         }
         let mut route_pointers = [std::ptr::null_mut(); 7];
@@ -435,6 +441,13 @@ impl<'a> Exl3Execution<'a> {
         })
     }
 
+    pub(crate) fn capacity(&self) -> usize {
+        self.capacity
+    }
+    pub(crate) fn output_element_bytes(&self) -> usize {
+        self.output_element_bytes
+    }
+
     /// Allocated workspace payload per lane, independent of resident layer count.
     pub(crate) fn workspace_bytes(&self) -> usize {
         self._storage.iter().map(|b| b.buffer.bytes).sum::<usize>()
@@ -460,9 +473,23 @@ impl<'a> Exl3Execution<'a> {
     pub(crate) unsafe fn launch_layer(
         &mut self,
         layer: usize,
+        inputs: [Ds41rtDeviceBuffer; 3],
+        rows: usize,
+        stream: *mut c_void,
+    ) -> Result<Ds41rtDeviceBuffer> {
+        self.launch_layer_into(layer, inputs, rows, stream, self.output)
+    }
+
+    /// # Safety
+    /// Same contract as `launch_layer`; output is an exclusive, aligned GPU or
+    /// mapped-host allocation on this device, live through execution/graph replay.
+    pub(crate) unsafe fn launch_layer_into(
+        &mut self,
+        layer: usize,
         mut inputs: [Ds41rtDeviceBuffer; 3],
         rows: usize,
         stream: *mut c_void,
+        mut output: Ds41rtDeviceBuffer,
     ) -> Result<Ds41rtDeviceBuffer> {
         ensure!(
             rows > 0 && rows <= self.capacity,
@@ -485,6 +512,13 @@ impl<'a> Exl3Execution<'a> {
                 "EXL3 input buffer contract mismatch"
             );
         }
+        ensure!(
+            !output.ptr.is_null()
+                && output.ptr as usize % 16 == 0
+                && output.device_id == self.device
+                && output.bytes >= rows * 5120 * self.output_element_bytes,
+            "EXL3 output buffer contract mismatch"
+        );
         let binding = self
             .layers
             .get_mut(layer)
@@ -503,11 +537,11 @@ impl<'a> Exl3Execution<'a> {
         }
         binding.core.bind(&inputs, rows);
         binding.sum.bind(&inputs, rows);
+        binding.sum.pointers[binding.output_slot] = output.ptr;
         self.kernel
             .launch_core(&binding.core.pointers, &binding.core.scalars, stream)?;
         self.kernel
             .launch_sum(&binding.sum.pointers, &binding.sum.scalars, stream)?;
-        let mut output = self.output;
         output.bytes = rows * 5120 * self.output_element_bytes;
         Ok(output)
     }
