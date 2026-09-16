@@ -24,6 +24,9 @@ def verify(package: Path, revision: str | None = None, runtime: Path | None = No
         raise ValueError('EXL3 package/source revision mismatch')
     if role is not None and manifest['role'] != ('spark' if role == 'expert' else role):
         raise ValueError('EXL3 package/serving role mismatch')
+    paired = manifest.get('paired_tp4', False)
+    if not isinstance(paired, bool) or (paired and manifest['role'] != 'spark'):
+        raise ValueError('paired EXL3 package requires Spark role')
     expected = manifest['files']
     actual = {str(p.relative_to(package)) for p in package.rglob('*') if p.is_file()}
     if actual != set(expected) | {'manifest.json'}:
@@ -49,6 +52,17 @@ def verify(package: Path, revision: str | None = None, runtime: Path | None = No
         for key in ('capacity', 'intermediate', 'experts', 'top_k', 'output_dtype', 'bits'):
             if meta[key] != variant[key]:
                 raise ValueError(f'EXL3 variant metadata mismatch: {directory}/{key}')
+        boundary = meta.get('paired_boundary')
+        if paired:
+            rank_name = directory.split('/')[0]
+            boundaries = {'tp4-rank0': 'last', 'tp4-rank1': 'first', 'tp4-rank2': 'last', 'tp4-rank3': 'first'}
+            if (boundary != boundaries.get(rank_name) or boundary is None
+                    or variant.get('paired_boundary') != boundary
+                    or meta.get('descriptor_rows') != 4 or meta.get('native_info_version') != 3
+                    or meta['intermediate'] != 640 or len(meta['bits']) != 2 or meta['top_k'] != 6):
+                raise ValueError('paired EXL3 package boundary/contract mismatch')
+        elif boundary is not None or variant.get('paired_boundary') is not None:
+            raise ValueError('paired artifact in disjoint EXL3 package')
         if meta['sparkinfer_revision'] != manifest['sparkinfer_revision']:
             raise ValueError('EXL3 variant/source revision mismatch')
         required.update(f'{directory}/{name}' for name in
@@ -98,6 +112,9 @@ def install_package(source: Path, output: Path) -> None:
 
 def build(args: argparse.Namespace) -> None:
     validate_destination(args.output)
+    paired = getattr(args, 'paired_tp4', False)
+    if paired and (args.role != 'spark' or len(args.bits) != 2):
+        raise ValueError('paired TP4 package requires Spark role and two tiers')
     # Import the source-pinned compiler only for builds, never package checks.
     import _pinned_sparkinfer
     from export_b12x_v41_exl3_aot import export
@@ -118,6 +135,9 @@ def build(args: argparse.Namespace) -> None:
          ('rtx-tp2', 1152, 384, 6, 'fp32', ['rtx-tp2']),
          ('dspark', 2304, 128, 3, 'bf16', ['dspark'])]
     )
+    if paired:
+        profiles = [('paired-last', 640, 384, 6, 'bf16', ['tp4-rank0', 'tp4-rank2']),
+                    ('paired-first', 640, 384, 6, 'bf16', ['tp4-rank1', 'tp4-rank3'])]
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.build_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='.exl3-package-', dir=args.output.parent) as temporary:
@@ -126,7 +146,8 @@ def build(args: argparse.Namespace) -> None:
         for profile, width, experts, topk, dtype, destinations in profiles:
             for capacity in capacities:
                 raw = args.build_dir / profile / f'm{capacity}'
-                meta = export(raw, width, experts, capacity, tuple(args.bits), 'auto', topk, dtype)
+                options = {'paired_boundary': profile.removeprefix('paired-')} if paired else {}
+                meta = export(raw, width, experts, capacity, tuple(args.bits), 'auto', topk, dtype, **options)
                 core = raw / 'libds41rt_exl3.so'
                 subprocess.run([args.cxx, '-shared', '-fPIC', '-std=c++17',
                     f'-I{args.cuda_include}', str(raw / 'v41_exl3_bridge.cc'),
@@ -150,6 +171,8 @@ def build(args: argparse.Namespace) -> None:
                         shutil.copy2(raw / name, target)
                     variants.append({'directory': directory, **{key: meta[key] for key in
                         ('capacity', 'intermediate', 'experts', 'top_k', 'output_dtype', 'bits')}})
+                    if paired:
+                        variants[-1]['paired_boundary'] = meta['paired_boundary']
                 # Large prefill exports must not retain another capacity's arenas.
                 gc.collect()
                 torch.cuda.empty_cache()
@@ -161,6 +184,8 @@ def build(args: argparse.Namespace) -> None:
                     'variants': variants, 'files': files,
                     'runtime': {'library': 'libcute_dsl_runtime.so', 'sha256': digest(args.runtime),
                                 'provider': 'installed nvidia-cutlass-dsl CUDA runtime; release entrypoint sets its library path'}}
+        if paired:
+            manifest['paired_tp4'] = True
         (stage / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
         verify(stage, _pinned_sparkinfer.REVISION)
         install_package(stage, args.output)
@@ -172,6 +197,7 @@ def main() -> None:
     commands = parser.add_subparsers(dest='command', required=True)
     create = commands.add_parser('build')
     create.add_argument('--role', choices=('spark', 'coordinator'), required=True)
+    create.add_argument('--paired-tp4', action='store_true', help='Export explicit paired H128 ownership kernels for all four Spark ranks')
     create.add_argument('--capacities', default='1,16,80,256,1024,4096')
     create.add_argument('--bits', type=int, nargs='+', default=[3, 4])
     create.add_argument('--build-dir', type=Path, required=True)

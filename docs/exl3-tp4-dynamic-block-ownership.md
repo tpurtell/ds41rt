@@ -317,3 +317,14 @@ per-expert active extent and boundary-block selection inside the fused path.
 5. Integrate only after the complete path demonstrates a useful gain without
    a clear regression. Retune adaptive costs after choosing the kernel/layout.
    The final quant agreement and release qualification requirements still apply.
+
+### Paired package export
+
+`package_v41_exl3_aot.py build --role spark --paired-tp4` exports last-boundary
+kernels for ranks 0/2 and first-boundary kernels for ranks 1/3, all with physical
+width 640. Each capacity retains the pinned compiler's normal tile policy. The
+package records `paired_tp4: true` and each variant's boundary; verification
+checks rank orientation, width, tier count and descriptor ABI and rejects
+paired artifacts labelled as ordinary packages. CPU package tests pass; a full
+SM121 capacity export has been started, but compilation and live qualification
+are not yet established by those tests.

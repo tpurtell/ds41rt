@@ -11,6 +11,41 @@ spec.loader.exec_module(package)
 
 
 class PackageDestinationTests(unittest.TestCase):
+    def test_paired_boundary_contract_cannot_be_relabelled(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            directory = root / 'tp4-rank0/m80'
+            directory.mkdir(parents=True)
+            meta = dict(capacity=80, intermediate=640, experts=384, top_k=6,
+                        output_dtype='bf16', bits=[3, 4], sparkinfer_revision='test',
+                        requires_route_preparation=False, paired_boundary='last',
+                        descriptor_rows=4, native_info_version=3)
+            (directory / 'v41_exl3.json').write_text(json.dumps(meta))
+            for name in ('trellis_lut.bin', 'libds41rt_exl3.so'):
+                (directory / name).write_bytes(b'fixture')
+            variant = {key: meta[key] for key in
+                       ('capacity', 'intermediate', 'experts', 'top_k', 'output_dtype', 'bits', 'paired_boundary')}
+            variant['directory'] = 'tp4-rank0/m80'
+            files = {str(p.relative_to(root)): dict(bytes=p.stat().st_size, sha256=package.digest(p))
+                     for p in root.rglob('*') if p.is_file()}
+            manifest = dict(schema='ds41rt.exl3-package.v1', role='spark', paired_tp4=True,
+                            sparkinfer_revision='test', variants=[variant], files=files)
+            def write():
+                (root / 'manifest.json').write_text(json.dumps(manifest))
+            write()
+            package.verify(root)
+            for field, value in [('paired_tp4', False), ('role', 'coordinator')]:
+                original = manifest[field]
+                manifest[field] = value
+                write()
+                with self.assertRaises(ValueError):
+                    package.verify(root)
+                manifest[field] = original
+            variant['paired_boundary'] = 'first'
+            write()
+            with self.assertRaises(ValueError):
+                package.verify(root)
+
     def test_fresh_ninja_directory_tree(self):
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary) / 'exl3'
