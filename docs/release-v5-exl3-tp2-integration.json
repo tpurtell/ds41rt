@@ -1,0 +1,179 @@
+{
+  "scope": "TP2 compressed rank ownership, two independent lanes, opposite peer reductions and AOT context lifetime at capacities 1/16 with one full resident layer per rank. Not a full-model serving, TP2 stitched B12x oracle, dSpark or performance qualification.",
+  "passed": true,
+  "resident_bytes_by_rank": [
+    2789290000,
+    2789290000
+  ],
+  "resident_experts_per_rank": 384,
+  "layer": 0,
+  "workspace_bytes_per_gpu_per_lane": 33290256,
+  "row_sequence": [
+    16,
+    1,
+    16,
+    3,
+    1,
+    16
+  ],
+  "checks": [
+    "zero and nonzero finite outputs",
+    "opposite destination lane outputs bitwise identical",
+    "cooperative concurrent lanes",
+    "CUDA device restoration",
+    "surviving lane after other lane destruction",
+    "TP1 bitwise B12x/shared-sum regression"
+  ],
+  "cause_and_fix": {
+    "failure": "CUDA 720 at capacity 16 in the dual-rank owner",
+    "controls": [
+      "sequential lanes also failed",
+      "capacity 16 first also failed",
+      "single rank passed with host CUDA 13.3 and image CUDA 13.2 runtime",
+      "six-expert isolated TP2 rank0 exports passed native/B12x at capacities 1 and 16"
+    ],
+    "cause": "CuTe AOT keeps kernel handles in library globals; creating separate CUDA libraries for each lane/device overwrote those globals and left the last library configured for only the last GPU.",
+    "fix": "Reference-count one shared pair of CUDA core/epilogue libraries per loaded native module, configure each owning device during setup, unload only after the final context is released. Streams, workspaces and weights retain their existing owners; no module lock is added to launch."
+  },
+  "isolated_reference_checks": [
+    {
+      "passed": true,
+      "scope": "native AOT versus B12x, six real checkpoint experts; not full-model qualification",
+      "output_dtype": "fp32",
+      "checkpoint_layer": "layers.0",
+      "topk": 6,
+      "native_info_verified": true,
+      "slice_start": 0,
+      "sparkinfer_revision": "c024d14ce936ddfc2c863377d033d85e1787924b",
+      "compute": [
+        12,
+        0
+      ],
+      "intermediate": 1152,
+      "direct": false,
+      "route_bridge_sha256": "b820d9c837a1ce72708947e65af1566751bd27a1a7247b47a37760da0f60a75b",
+      "snapshot_revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+      "projection_tiers": [
+        [
+          3,
+          4,
+          3
+        ],
+        [
+          3,
+          3,
+          3
+        ],
+        [
+          4,
+          4,
+          4
+        ],
+        [
+          3,
+          3,
+          3
+        ],
+        [
+          4,
+          4,
+          4
+        ],
+        [
+          3,
+          3,
+          3
+        ]
+      ],
+      "aot_manifest_sha256": "e8bf60127ac9f140e14e6a732453e431d47880285d186816466f879103703b4f",
+      "bridge_sha256": "9924d822331a93d8946775007109eeda41649fefac8eca0c13246b42b1742f63",
+      "checks": [
+        {
+          "rows": 1,
+          "bitwise_equal": true
+        }
+      ],
+      "graph_changed_inputs_and_routes": true,
+      "packed_metadata_poisoned_before_native": true
+    },
+    {
+      "passed": true,
+      "scope": "native AOT versus B12x, six real checkpoint experts; not full-model qualification",
+      "output_dtype": "fp32",
+      "checkpoint_layer": "layers.0",
+      "topk": 6,
+      "native_info_verified": true,
+      "slice_start": 0,
+      "sparkinfer_revision": "c024d14ce936ddfc2c863377d033d85e1787924b",
+      "compute": [
+        12,
+        0
+      ],
+      "intermediate": 1152,
+      "direct": false,
+      "route_bridge_sha256": "ffc4c6f1076fcd3913a5edf830ba292829fd4cf8c2b8ea0a7f0edc2051b5683a",
+      "snapshot_revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+      "projection_tiers": [
+        [
+          3,
+          4,
+          3
+        ],
+        [
+          3,
+          3,
+          3
+        ],
+        [
+          4,
+          4,
+          4
+        ],
+        [
+          3,
+          3,
+          3
+        ],
+        [
+          4,
+          4,
+          4
+        ],
+        [
+          3,
+          3,
+          3
+        ]
+      ],
+      "aot_manifest_sha256": "d56402b9655430f942ba7751816bc75b290218b9b1c9939e50c5ce4010fc9dcc",
+      "bridge_sha256": "10f8a52230270cd90136d78c71a68b0b47812a09f43f5e994a1906b28445c35c",
+      "checks": [
+        {
+          "rows": 1,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 3,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 15,
+          "bitwise_equal": true
+        },
+        {
+          "rows": 16,
+          "bitwise_equal": true
+        }
+      ],
+      "graph_changed_inputs_and_routes": true,
+      "packed_metadata_poisoned_before_native": true
+    }
+  ],
+  "native_library_scope": "Wire addon linked to published v4 native library with rebuilt EXL3 modules; not a complete release image.",
+  "package_manifest_sha256": "a7c06b94c05fe3690678529a7da84bcc675a9b3a9bc56f7310d1cf561be0f732",
+  "snapshot_revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+  "archive": "docs/evidence/v5-exl3-tp2-integration.tar.gz",
+  "archive_sha256": "5adf6c412451799199324e2cb6b8e94a4383835b88cc02c9fa969e9b7986c1f2",
+  "verified_at": "2026-09-16T16:35:14.894204+00:00",
+  "coordinator_restored_health_http_status": 200
+}

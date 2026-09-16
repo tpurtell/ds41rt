@@ -508,3 +508,38 @@ still rejects short input. CPU-oracle route checks pass at capacities 16 and 102
 including empty/invalid routes, guards and changed graph inputs. This run uses the
 wire-decoder addon with the v4 native library and rebuilt EXL3 modules, not a clean
 release image. TP2 execution and complete serving remain unqualified.
+
+## TP2 serving integration and AOT module lifetime
+
+Dual-RTX startup now plans each rank's actual compressed weight budget and loads
+EXL3 rank owners when the catalog is compressed. Per-device execution owners
+select compiled capacities before launch and write FP32 token sums directly to
+the peer-reduction input, avoiding the legacy intermediate device copy. The
+existing peer completion, cancellation drain and shared-expert chain remain in
+use. Module workspace plans are checked before loading the encoder layers.
+Placement still covers the 20 encoder expert layers; expanding residency beyond
+that and tuning memory/workspace use remain later optimization work.
+
+[TP2 integration evidence](release-v5-exl3-tp2-integration.json) passes with one
+full layer per rank: 384 experts and 2,789,290,000 resident bytes on each GPU,
+33,290,256 expert execution/reduction workspace bytes per GPU per lane at capacity
+16. Two independent lanes pass zero/nonzero finite results, opposite destination
+bitwise agreement, the 16/1/16/3/1/16-row sequence, CUDA device restoration and
+continued use after destroying the other lane. This is not yet a stitched
+two-rank B12x numerical oracle or full-model serving qualification. Isolated
+six-expert rank-0 B12x comparisons pass at capacities 1 and 16; the TP1 bitwise
+reference/shared-sum test also passes after the wrapper change.
+
+The dual-rank test exposed CUDA error 720 at capacity 16. Sequential lanes and
+launching capacity 16 first still failed, while a single rank passed with both
+CUDA runtimes checked. CuTe AOT keeps kernel handles in globals inside each
+loaded module. Creating a new CUDA library for each lane/device replaced those
+handles and left the last library configured for only the last GPU. The bridge
+now reference-counts one shared core/epilogue module pair and configures owning
+devices during setup. The final context releases the modules. The setup/destruction
+mutex does not enter the launch path, and lane streams/scratch remain independent.
+
+The evidence still uses the v4 native library plus the wire addon and rebuilt
+EXL3 packages, not complete release images. Remaining integration includes the
+stitched TP2 reference check, dSpark selection, four-Spark RoCE inference, larger
+capacities and FP4 PLE gathering, followed by optimization and full qualification.

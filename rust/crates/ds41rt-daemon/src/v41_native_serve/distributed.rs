@@ -32,13 +32,24 @@ pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Recei
     let map = CachePlacement::encoder_decoder();
     let started = Instant::now();
     // Sum resident storage plus the largest transient loading excess.
-    let budgets = (0..20).map(|layer| ExpertWeights::plan(&lib, &catalog,
-        ExpertLayer::BackboneTp2 { layer, rank: 0 })).collect::<Result<Vec<_>>>()?;
-    let resident = budgets.iter().try_fold(0usize, |sum, b| sum.checked_add(b.resident_bytes)
-        .context("encoder resident budget overflow"))?;
-    let transient = budgets.iter().map(|b| Ok(b.peak_device_bytes()? - b.resident_bytes))
-        .collect::<Result<Vec<_>>>()?.into_iter().max().unwrap_or(0);
-    let rank_budget = resident.checked_add(transient).context("encoder load budget overflow")?;
+    let compressed = catalog.exl3().is_some();
+    let exl3_directory = args.native_lib.parent().context("native library directory missing")?.join("exl3/rtx-tp2");
+    if compressed {
+        let per_lane = crate::v41_experts::tp2::ExpertWave::exl3_device_bytes(&exl3_directory, capacity)?;
+        tracing::info!(per_gpu_per_lane_bytes=per_lane, capacity, "EXL3 TP2 expert workspace plan");
+    }
+    let rank_budgets = [0usize, 1].map(|rank| -> Result<usize> {
+        let budgets = (0..20).map(|layer| {
+            let selection = ExpertLayer::BackboneTp2 { layer, rank };
+            if compressed { crate::v41_experts::exl3::Exl3Weights::plan(&catalog, selection) }
+            else { ExpertWeights::plan(&lib, &catalog, selection) }
+        }).collect::<Result<Vec<_>>>()?;
+        let resident = budgets.iter().try_fold(0usize, |sum, b| sum.checked_add(b.resident_bytes)
+            .context("encoder resident budget overflow"))?;
+        let transient = budgets.iter().map(|b| Ok(b.peak_device_bytes()? - b.resident_bytes))
+            .collect::<Result<Vec<_>>>()?.into_iter().max().unwrap_or(0);
+        resident.checked_add(transient).context("encoder load budget overflow")
+    }).into_iter().collect::<Result<Vec<_>>>()?;
     let weights = BackboneLaneWeights::load_distributed(
         &lib,
         &catalog,
@@ -97,11 +108,13 @@ pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Recei
     })?;
     memory_checkpoint("head normalization weights")?;
     eprintln!("loading all 20 encoder expert layers as TP2");
-    let routed = [
-        Rc::new(RankWeights::load(devices[0], &catalog, 20, rank_budget)?),
-        Rc::new(RankWeights::load(devices[1], &catalog, 20, rank_budget)?),
-    ];
-    memory_checkpoint("encoder routed TP2 weights")?;
+    let load_rank = |rank: usize| -> Result<_> {
+        let weights = if compressed {
+            RankWeights::load_exl3(devices[rank], &catalog, 20, rank_budgets[rank], &exl3_directory)?
+        } else { RankWeights::load(devices[rank], &catalog, 20, rank_budgets[rank])? };
+        Ok(Rc::new(weights))
+    };
+    let routed = [load_rank(0)?, load_rank(1)?];
     let shared: [Rc<Vec<SharedWeights<'_>>>; 2] = [0, 1]
         .map(|r| {
             (0..40)
