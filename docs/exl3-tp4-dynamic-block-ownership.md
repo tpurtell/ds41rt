@@ -351,3 +351,15 @@ This checks stale state across m1/m16/m80, not every large-prefill transition.
 All four Sparks now have verified candidate packages and identical ARM binary
 hashes staged separately from their running services. Evidence:
 `release-v5-exl3-paired-worker-transitions.json`.
+
+### First live paired serving smoke
+
+The paired coordinator and all four Spark workers served code and topic requests
+at C1/C8/C16 successfully, including objective output checks and warm-cache
+assertions. The run retained 25 RTX expert layers, K7 and the 14M-token pool;
+coordinator readiness was 27.833 seconds. Initial ownership used packed weight
+bytes only, without calibrated row costs. Single-sample throughput was mixed
+and does not establish a performance benefit. Repeated matched comparisons,
+large-prefill and lifecycle qualification remain pending. Original services
+were restored. Raw requests/results and logs are archived alongside
+`release-v5-exl3-paired-serving-smoke.json`.

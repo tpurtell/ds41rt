@@ -1,0 +1,73 @@
+{
+  "scope": "First live paired TP4 serving smoke; single throughput sample per case/concurrency, not controlled performance qualification",
+  "passed": true,
+  "rtx_count": 2,
+  "rtx_expert_layers": 25,
+  "kv_pool_tokens": 14680064,
+  "draft_limit": 7,
+  "spark_ranks": 4,
+  "rows_capacity": 4096,
+  "initial_profile": "packed projection bytes only; per-row cost uncalibrated",
+  "startup_ready_ms": 27833,
+  "cases": {
+    "code": {
+      "passed": true,
+      "summaries": [
+        {
+          "concurrency": 1,
+          "samples": 1,
+          "median_aggregate_tps": 190.92887859791057,
+          "min_aggregate_tps": 190.92887859791057,
+          "max_aggregate_tps": 190.92887859791057
+        },
+        {
+          "concurrency": 8,
+          "samples": 1,
+          "median_aggregate_tps": 625.4471836648567,
+          "min_aggregate_tps": 625.4471836648567,
+          "max_aggregate_tps": 625.4471836648567
+        },
+        {
+          "concurrency": 16,
+          "samples": 1,
+          "median_aggregate_tps": 1306.4078118889925,
+          "min_aggregate_tps": 1306.4078118889925,
+          "max_aggregate_tps": 1306.4078118889925
+        }
+      ]
+    },
+    "topic": {
+      "passed": true,
+      "summaries": [
+        {
+          "concurrency": 1,
+          "samples": 1,
+          "median_aggregate_tps": 93.669115092898,
+          "min_aggregate_tps": 93.669115092898,
+          "max_aggregate_tps": 93.669115092898
+        },
+        {
+          "concurrency": 8,
+          "samples": 1,
+          "median_aggregate_tps": 405.99864901651887,
+          "min_aggregate_tps": 405.99864901651887,
+          "max_aggregate_tps": 405.99864901651887
+        },
+        {
+          "concurrency": 16,
+          "samples": 1,
+          "median_aggregate_tps": 671.8012027060752,
+          "min_aggregate_tps": 671.8012027060752,
+          "max_aggregate_tps": 671.8012027060752
+        }
+      ]
+    }
+  },
+  "all_original_services_restored": true,
+  "archive_sha256": "cc1cbb044468974785a4256d5d6c7a3b93c8c069cbe23174457228ea27d7e43c",
+  "pending": [
+    "matched repeated disjoint/paired performance comparison",
+    "cost calibration",
+    "large-prefill and lifecycle qualification"
+  ]
+}
