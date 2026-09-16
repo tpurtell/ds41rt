@@ -24,7 +24,7 @@ upstream integration; the published September 14 v3 is unchanged.
   branches and cold/exact 1.04M retrieval. Preserve pre-fix measurements.
 - [x] Build and launch the corrected revision through standard build.sh/run.sh
   and verify matching images on all four Spark workers.
-- [ ] Resolve and qualify the single-RTX mixed C16 memory exhaustion without
+- [x] Resolve and qualify the single-RTX mixed C16 memory exhaustion without
   reducing the configured KV pool; verify graph retention remains performant.
 - [ ] Refresh all one/two-RTX performance tables with matched prompts and three
   samples: target/dSpark content types, counting/code/topic concurrency, mixed

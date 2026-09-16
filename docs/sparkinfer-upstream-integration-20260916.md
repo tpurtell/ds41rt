@@ -23,7 +23,11 @@ graph retention without reducing KV capacity. The [single-RTX warm-history run](
 passes all three mixed sweeps with 329 MiB minimum free. Weighted decode is
 82.26 versus published v3's 76.72 TPS (+7.2%); mixed C16 is 206.04 versus
 196.46 TPS (+4.9%), with a 193.81–209.87 three-run range. Post-history 1.04M
-retrieval/vision, dual checks and final clean-image measurements remain pending.
+retrieval/vision and dual prefix/branch checks now pass in the
+[focused serving evidence](sparkinfer-upstream-query-inplace-focused-20260916.json).
+Single-card minimum free after long-context/vision is 269 MiB. The dual mixed
+pilot records 290.21 TPS at C16, below the earlier 303.91 pilot; it is one sweep,
+so the final three-sample clean-image matrix must establish performance.
 
 **Earlier release blocker:** single-RTX qualification reproduced CUDA out-of-memory
 after the second mixed C16 sweep. The original run reached 97,248 MiB used;
