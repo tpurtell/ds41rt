@@ -78,6 +78,41 @@ They may still require mechanical merge/import/test fixes when shared library
 surfaces change. Attention/projection parallelization across GPUs is deferred;
 retain the current ownership and expert parallelism in comparisons.
 
+## Older-library control and return to expert comparisons (September 16)
+
+[Older-library evidence](sparkinfer-upstream-legacy-cold-control-20260916.json)
+runs `libcandidate-legacy-attention.so` target-only on two fresh coordinators.
+This removes new attention, lagged mHC, narrow-projection scheduling and the
+bounded index sort. The exact same 2089-token cold fable request reports zero
+cached tokens in both runs, but generates different responses (148 versus 150
+completion tokens). Thus variability is present without those recent kernel
+integrations. The current daemon and candidate Spark workers remain common to
+both runs: this is **not** proof of identical behavior in the original published
+full stack, nor identification of the underlying numerical source.
+
+The preceding controls do not establish an index-sort regression. Stop using
+exact free-form response identity as its acceptance gate: native output/carry
+and independent-oracle tests already cover its changed arithmetic-free sorting
+contract on both GPUs. Keep the bounded sort in the combined candidate for
+final quality and throughput qualification. Its isolated saving is established;
+a stable end-to-end speedup is not, and a small serving regression remains
+unresolved within the observed run-to-run variation. Final release performance
+must judge the combined configuration on weighted/code/topic workloads.
+
+Return to the remaining expert comparison. Four focused upstream compact-W4A8
+GPU tests pass (9.63 seconds): frozen capacity with changing live rows for micro
+and dynamic paths, zero/tiny-block quantization, and grouped SwiGLU clamping.
+These fixtures use E16/K4096/N192 and validate upstream contracts only; they
+are not measurements of our E384/K5120 Spark N576 or RTX TP2 N1152 geometry.
+Our fork's native `silu_v41` path intentionally retains padded/fused layout and
+FP32 route-plane semantics; generic upstream compact paths require explicit
+weight-layout and intermediate-rounding comparison rather than changing the
+activation label in production. Next race those complete expert paths on the
+actual geometries, with conversion and reduction costs included.
+
+The current diagnostic server is the older-library target-only configuration.
+Production dependency promotion and release publication remain pending.
+
 ## Target-only and cold-request repeatability controls (September 16)
 
 [Target-only evidence](sparkinfer-upstream-index-target-repeatability-20260916.json)
