@@ -1,0 +1,299 @@
+{
+  "scope": "Matched ABBA paired m80 one/two-block serving comparison; 6 measured samples per configuration/point",
+  "arms": [
+    "one",
+    "two",
+    "two",
+    "one"
+  ],
+  "rtx_count": 2,
+  "rtx_expert_layers": 25,
+  "kv_pool_tokens": 14680064,
+  "draft_limit": 7,
+  "results": {
+    "code": {
+      "prompt_sha256": "dc5bd9c6c1587289bcb26a5d2604f4eb9f4f26523862c66edff4dc365884591f",
+      "rows": [
+        {
+          "concurrency": 8,
+          "one": {
+            "median_tps": 849.9335948488157,
+            "samples": [
+              631.0660648147735,
+              851.7104516883014,
+              862.7175610062936,
+              849.4878507748213,
+              726.650893753839,
+              850.3793389228101
+            ],
+            "completion_tokens_min": 205,
+            "completion_tokens_max": 214,
+            "distinct_outputs": 2
+          },
+          "two": {
+            "median_tps": 828.4889070337832,
+            "samples": [
+              761.2696337231819,
+              876.0015628550499,
+              873.8694413698415,
+              783.1083726977249,
+              782.7515007941566,
+              884.5419852423274
+            ],
+            "completion_tokens_min": 205,
+            "completion_tokens_max": 214,
+            "distinct_outputs": 2
+          },
+          "change_percent": -2.523101562875274,
+          "same_output_diagnostic": {
+            "output_sha256": "aea30d7d3de93624c30a56d11825a2469affb700c2a55b977d0fec727d31faba",
+            "groups": {
+              "one": {
+                "samples": [
+                  851.7104516883014,
+                  862.7175610062936,
+                  849.4878507748213,
+                  850.3793389228101
+                ],
+                "median_tps": 851.0448953055558
+              },
+              "two": {
+                "samples": [
+                  876.0015628550499,
+                  873.8694413698415,
+                  884.5419852423274
+                ],
+                "median_tps": 876.0015628550499
+              }
+            },
+            "scope": "conditional diagnostic, not a replacement for all-sample performance"
+          }
+        },
+        {
+          "concurrency": 16,
+          "one": {
+            "median_tps": 1399.0416890025963,
+            "samples": [
+              1405.8059370754447,
+              1407.1885868324484,
+              1402.3396889252635,
+              1392.054294333491,
+              1382.5477587983082,
+              1395.7436890799293
+            ],
+            "completion_tokens_min": 214,
+            "completion_tokens_max": 214,
+            "distinct_outputs": 1
+          },
+          "two": {
+            "median_tps": 1438.1308623077568,
+            "samples": [
+              1438.6448753549282,
+              1438.0458207472122,
+              1438.2159038683014,
+              1444.7944932871615,
+              1134.6861499225156,
+              1433.3610950599357
+            ],
+            "completion_tokens_min": 212,
+            "completion_tokens_max": 214,
+            "distinct_outputs": 2
+          },
+          "change_percent": 2.7939963199401063,
+          "same_output_diagnostic": {
+            "output_sha256": "aea30d7d3de93624c30a56d11825a2469affb700c2a55b977d0fec727d31faba",
+            "groups": {
+              "one": {
+                "samples": [
+                  1405.8059370754447,
+                  1407.1885868324484,
+                  1402.3396889252635,
+                  1392.054294333491,
+                  1382.5477587983082,
+                  1395.7436890799293
+                ],
+                "median_tps": 1399.0416890025963
+              },
+              "two": {
+                "samples": [
+                  1438.6448753549282,
+                  1438.0458207472122,
+                  1438.2159038683014,
+                  1444.7944932871615,
+                  1433.3610950599357
+                ],
+                "median_tps": 1438.2159038683014
+              }
+            },
+            "scope": "conditional diagnostic, not a replacement for all-sample performance"
+          }
+        }
+      ]
+    },
+    "topic": {
+      "prompt_sha256": "fa299c1625464bb9330582aa50b4bfdf0c3b0d0e9e446d3ec27d4c1d9cb880f0",
+      "rows": [
+        {
+          "concurrency": 8,
+          "one": {
+            "median_tps": 483.7315159523205,
+            "samples": [
+              466.5618401016364,
+              482.11812093845384,
+              485.34491096618706,
+              481.1819727974724,
+              492.37339396641056,
+              497.6385075835639
+            ],
+            "completion_tokens_min": 292,
+            "completion_tokens_max": 328,
+            "distinct_outputs": 5
+          },
+          "two": {
+            "median_tps": 484.62216034741977,
+            "samples": [
+              482.22147204679106,
+              483.08282496487595,
+              448.7207680814251,
+              486.3743790832738,
+              486.1614957299636,
+              490.374102549999
+            ],
+            "completion_tokens_min": 292,
+            "completion_tokens_max": 353,
+            "distinct_outputs": 6
+          },
+          "change_percent": 0.18411957164830017,
+          "same_output_diagnostic": {
+            "output_sha256": "c0ef5d796c9b9d1d4dc75545b68df82e161b29530ffefd16278c9b937fe8df41",
+            "groups": {
+              "one": {
+                "samples": [],
+                "median_tps": null
+              },
+              "two": {
+                "samples": [],
+                "median_tps": null
+              }
+            },
+            "scope": "conditional diagnostic, not a replacement for all-sample performance"
+          }
+        },
+        {
+          "concurrency": 16,
+          "one": {
+            "median_tps": 774.7524375953576,
+            "samples": [
+              761.4366154136289,
+              789.9422174979567,
+              788.9023607934246,
+              777.5101809967683,
+              673.2910164333764,
+              771.9946941939468
+            ],
+            "completion_tokens_min": 272,
+            "completion_tokens_max": 336,
+            "distinct_outputs": 8
+          },
+          "two": {
+            "median_tps": 794.3063179990608,
+            "samples": [
+              768.8866074607377,
+              783.4381323452038,
+              805.1745036529177,
+              781.3166830972102,
+              805.6821816605197,
+              807.4556650016528
+            ],
+            "completion_tokens_min": 288,
+            "completion_tokens_max": 303,
+            "distinct_outputs": 4
+          },
+          "change_percent": 2.52388756134716,
+          "same_output_diagnostic": {
+            "output_sha256": "c0ef5d796c9b9d1d4dc75545b68df82e161b29530ffefd16278c9b937fe8df41",
+            "groups": {
+              "one": {
+                "samples": [
+                  777.5101809967683
+                ],
+                "median_tps": 777.5101809967683
+              },
+              "two": {
+                "samples": [
+                  805.1745036529177,
+                  805.6821816605197,
+                  807.4556650016528
+                ],
+                "median_tps": 805.6821816605197
+              }
+            },
+            "scope": "conditional diagnostic, not a replacement for all-sample performance"
+          }
+        }
+      ]
+    }
+  },
+  "mixed": [
+    {
+      "concurrency": 4,
+      "one": {
+        "median_tps": 192.5156178505108,
+        "samples": [
+          189.82863328259816,
+          179.32746578191401,
+          195.20260241842348,
+          195.33734249052824,
+          186.91534959331497,
+          198.93992408862835
+        ]
+      },
+      "two": {
+        "median_tps": 190.70573082090198,
+        "samples": [
+          182.95279770434902,
+          179.82838003606304,
+          202.0008689935373,
+          198.45866393745496,
+          177.69152161906734,
+          199.04273783723463
+        ]
+      },
+      "change_percent": -0.9401247804290969
+    },
+    {
+      "concurrency": 16,
+      "one": {
+        "median_tps": 308.3618189509441,
+        "samples": [
+          305.2731014553569,
+          316.83686166923184,
+          294.3949206762278,
+          315.20365938616857,
+          311.4505364465313,
+          303.43494443378074
+        ]
+      },
+      "two": {
+        "median_tps": 317.0238347830225,
+        "samples": [
+          305.9710596158749,
+          334.0256858066008,
+          304.0900638952228,
+          328.07660995017005,
+          330.43378386569736,
+          304.109713113621
+        ]
+      },
+      "change_percent": 2.809042916385307
+    }
+  ],
+  "decision": "Retain two-block m80 as preferred paired candidate; paired mode remains opt-in",
+  "all_original_services_restored": true,
+  "archive_sha256": "8b6f533d5f593627233eed62d06859c7dab8a661fc00f41a7e8b9a28d48471df",
+  "limitations": [
+    "Generated outputs vary across some samples",
+    "Same-output subsets are diagnostic only, not replacements for raw medians",
+    "Ownership row costs and dSpark adaptive profile remain uncalibrated"
+  ]
+}

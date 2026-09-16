@@ -389,3 +389,17 @@ Six-expert cases benefited more from two blocks, but these were still m80
 executions, not measurements of the m1 serving policy. The next candidate uses
 two blocks only for paired m80. No serving-default change is justified yet.
 Evidence: `release-v5-exl3-paired-fixed-input.json` and its raw archive.
+
+### Paired m80 residency serving comparison
+
+The one→two→two→one block comparison changed only the four m80 libraries and
+manifests; all other capacity files were bitwise identical. With six measured
+samples per configuration, two-block C16 changes were code +2.79%, topic +2.52%
+and mixed traffic +2.81%. Topic C8 was +0.18%; mixed C4 was −0.94%. Raw code C8
+was −2.52%, with more alternate continuations in the two-block samples. A
+frequency-selected same-output diagnostic showed approximately +2.9% at code
+C8 (four versus three qualifying samples), but does not replace the raw result.
+Two-block m80 is retained as the preferred paired candidate, not a default
+release policy. Paired mode remains opt-in pending the remaining calibration
+and qualification. All original services were restored. Evidence:
+`release-v5-exl3-paired-residency-comparison.json` and the adjacent raw archive.
