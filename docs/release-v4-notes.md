@@ -12,6 +12,9 @@ one/two-RTX placement, four DGX Spark workers, and OpenAI-compatible API.
   work while preserving lane-owned execution and CUDA graph replay.
 - Bounded sorting of selected index positions improves locality without
   changing which positions are selected.
+- Decode retains bounded CUDA graph shapes across mixed traffic and batch
+  restarts, avoiding the persistent slowdown caused by repeated index and
+  cache-producer graph rebuilding.
 - FP8 sliding-window storage, bounded prefix replay, completed-turn snapshots,
   tool calling, structured output, and vision remain supported.
 - Standard launch controls remain available for RTX layout, concurrency,
@@ -25,6 +28,21 @@ retrieval, exact and partial cache reuse, concurrent branching, and cancellation
 The [three-run high-thinking tool evaluation](sparkinfer-upstream-tool-eval-20260916.md)
 completed all 264 scenarios with a mean of 157/176 points. The report states
 the benchmark output cap and preserves every partial and failed result.
+
+The clean dual-RTX decode portion is complete: weighted eight-type throughput
+increases from 79.33 to 97.55 tokens/s against v3 (+23.0%). C16 code increases
+from 1,181 to 1,296 aggregate tokens/s and topic from 596 to 749. C16 mixed
+traffic is approximately flat (309 to 305). These are three-sample,
+prompt-matched results at 400 W per RTX with stock memory clocks; the
+[raw evidence and comparisons](sparkinfer-upstream-v4-dual-decode-20260916.json)
+preserve ranges and individual cases.
+
+The full tool and vision campaigns used the clean candidate before the final
+graph-reuse correction. That correction changes graph lifetime, not kernel
+arithmetic; it separately passed prefix equivalence, all 16 divergent cache
+branches, a CUDA graph lifetime test, and cold/exact 1.04M-token retrieval.
+The [correction evidence](sparkinfer-upstream-index-graph-reuse-20260916.json)
+records the tested binaries explicitly.
 
 Release performance tables, image digests, and downloadable assets will be
 added after qualification finishes.
