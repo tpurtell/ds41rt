@@ -41,8 +41,17 @@ An isolated checkout under the integration cache now pins fork `4e31d0a1` and
 enables candidate attention, lagged mHC and narrow projection flags in the
 standard build recipes. Compact experts and row vocabulary remain off. Nested
 XGrammar dependencies were initialized and both vendor source locks verify.
-The normal `build.sh` clean build is running with separate `upstream-candidate`
-image tags, preserving existing v3 images. No production pin, fork master,
+The normal `build.sh` clean build completed with separate `upstream-candidate`
+image tags, preserving existing v3 images. The Spark inference image was
+distributed successfully to all four hosts. The source-archive manifest is
+`fa74a1c9289ff62ad09f91575f4912ac49e260b32e2e5677253deb5bdfb951c2`;
+`candidate-clean-build-archive.log` records completion. Standard `run.sh`
+preflight passed for two RTX GPUs and all four Spark images. Clean-image
+serving qualification is in progress. The standard launcher started a
+cache-disabled, target-only dual-RTX reference successfully (serving owners
+ready in 14.214 seconds). All six recorded reference requests returned their
+expected answers with zero cache hits. Cache-enabled candidate comparison,
+dSpark and the broader release checks remain pending. No production pin, fork master,
 or published image has been promoted. The source patch and identity are
 recorded in `release-candidate-source{.patch,-state.json}` in the integration
 cache; the builder also records and verifies its dirty-source manifest.
