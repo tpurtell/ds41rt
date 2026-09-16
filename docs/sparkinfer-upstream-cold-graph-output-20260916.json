@@ -730,10 +730,25 @@
     "dual_mixed_C16_tps": 286.53,
     "next_candidate": "same retention plus reuse of completed eager output on projection graph misses; not yet qualified"
   },
-  "performance_status": "matched single-RTX run in progress; no speedup claimed",
+  "performance_status": "Matched single-RTX warm-history run passed, but combined retention policy still regresses mixed C16; not accepted for release",
   "provenance_note": "Validation binary also contains experimental 24-shape layer and 16-shape producer retention, captured in archived patch. Retention policy is not accepted.",
   "archive": {
     "path": "docs/evidence/upstream-cold-graph-output-20260916.tar.gz",
     "sha256": "c1d51db36007bd0c3b73a8ca1f5c894cb7204ca9d1d8b82dbf593f8404c03201"
+  },
+  "performance": {
+    "single_endurance_passed": true,
+    "single_mixed_C16_samples_tps": [
+      175.02617178655782,
+      159.6941225390673,
+      155.71129517106436
+    ],
+    "single_mixed_C16_median_tps": 159.6941225390673,
+    "single_min_free_mib": 473.0,
+    "comparison_note": "159.69 TPS with cold-result reuse versus 156.38 with identical 24/16 retention; both below published v3 196.46 TPS. Workload/scheduling variation limits attribution.",
+    "archive": {
+      "path": "docs/evidence/upstream-cold-graph-performance-20260916.tar.gz",
+      "sha256": "c7eca7f0131db1f847ef56ce1982772c1842209ba0bba620ea1984d7da04a34d"
+    }
   }
 }

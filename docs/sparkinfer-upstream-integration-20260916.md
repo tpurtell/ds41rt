@@ -44,7 +44,11 @@ recording attention-query, router and shared-FFN graphs, avoiding an immediate
 second execution. The [real-weight parity check](sparkinfer-upstream-cold-graph-output-20260916.json)
 passes exact query and FFN comparisons across cold/warm execution and repeated
 recapture, plus cancellation/reuse and paired-encoder checks. This validation
-used the experimental retention policy; performance qualification is pending.
+used the experimental retention policy. Its completed single-RTX campaign
+passes endurance but reaches only 159.69 TPS mixed C16, versus 156.38 before
+and published v3's 196.46. This does not establish a useful performance recovery.
+A separate window/compressor cold-output follow-up has passed the real-weight
+production parity fixture and is being measured.
 The [failure evidence](sparkinfer-upstream-single-memory-20260916.json)
 preserves the failed streams and reproduction logs. The dual measurements
 below describe the earlier 512-entry candidate, not a completed release.
