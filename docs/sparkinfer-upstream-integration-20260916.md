@@ -1754,13 +1754,15 @@ per-kernel FLOPS or capacity alone.
 
 ## Execution and release gates
 
-The first three implementation gates are backed by the hashed baseline artifacts,
+The implementation gates are backed by the hashed baseline artifacts,
 merge `37ff0dbd` (parents `3882b935` and `92cd3800`), and the component/native
-qualification reports above. They do not imply final serving acceptance.
-The production fork pin remains `3882b935`; the integrated fork candidate is
-`4e31d0a1`. Placement-cost calibration is running against the candidate with
-attention, lagged mHC, narrow projection scheduling and bounded index sorting;
-compact experts and row vocabulary remain disabled.
+qualification reports above. Dev and the fork's master now select `4e31d0a1`.
+The final runtime source is frozen at `3924227`; its clean images are running
+the final one/two-RTX performance matrix. Attention, lagged mHC, narrow
+projection scheduling and bounded index sorting are enabled; compact experts
+and row vocabulary remain disabled. The [release checklist](release-v4-checklist.md)
+tracks the remaining performance, documentation and publication gates. Earlier
+experiment sections preserve their original pending decisions and measurements.
 
 - [x] Fetch the upstream snapshot, inspect selected native dependencies, and
   preview conflicts without changing the checked-out fork.
