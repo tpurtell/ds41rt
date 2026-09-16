@@ -363,3 +363,16 @@ and does not establish a performance benefit. Repeated matched comparisons,
 large-prefill and lifecycle qualification remain pending. Original services
 were restored. Raw requests/results and logs are archived alongside
 `release-v5-exl3-paired-serving-smoke.json`.
+
+### Matched live comparison
+
+A disjoint→paired→paired→disjoint comparison used identical binaries and pinned
+source, 25 RTX expert layers, K7, 14M KV, stock memory clocks and 400 W RTX limits.
+Each arm had a warmup and three measured samples per code/topic C1/C8/C16 point,
+giving six samples per layout. Median paired changes were code −2.50%/+2.39%/+0.62%
+and topic +4.19%/+3.62%/−1.89%. Code C16 produced identical continuations; other
+points sometimes differed in output and length, especially topic, so the results
+do not isolate kernel cost. Paired mode remains opt-in. Fixed-input timing using
+production tile policies and the same weight-byte planner costs is next. All
+original services were restored. Evidence and raw outputs:
+`release-v5-exl3-paired-comparison.json` and its adjacent archive.
