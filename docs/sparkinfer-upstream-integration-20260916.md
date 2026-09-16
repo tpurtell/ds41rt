@@ -45,9 +45,11 @@ The separate 2K retained-context run completes all 24 requests and cache checks
 at **96.22 weighted TPS**. It does not beat this run's separate zero-context
 row (96.97 TPS), and it has no matching published v3 baseline.
 
+Dual target-only qualification also passes all 27 responses. Weighted
+target-only throughput rises from **46.14 to 51.23 TPS (+11.0%)**, with counting
+at 53.83 TPS. This establishes a target-engine gain independently of dSpark.
 Raw samples, ranges and hashes are archived with those reports. Single-RTX
-measurements and target-only comparisons remain pending; this subset does not
-establish the full release gate.
+measurements remain pending; this subset does not establish the full release gate.
 
 ## Serving-history graph reuse correction
 

@@ -1,5 +1,5 @@
 {
-  "scope": "Completed dual-RTX direct, concurrent and retained-context decode portions of the clean v4 matrix; remaining layouts and prefill pending",
+  "scope": "Completed dual-RTX target-only, dSpark, concurrent and retained-context decode portions of the clean v4 matrix; prefill and 2K recorded separately, single-RTX pending",
   "engine_revision": "6f118818c18317b961789f5afc34bec21959c41c",
   "build_record": "sparkinfer-upstream-v4-build-20260916.json",
   "controls": {
@@ -242,7 +242,7 @@
   "baseline": "phase2-release-performance.json",
   "archive": {
     "path": "docs/evidence/upstream-v4-dual-decode-20260916.tar.gz",
-    "sha256": "4ca9eb98615157e60ede8f42b95108e8bfdb3ebeb8ce5de225a01be1692b9fdd"
+    "sha256": "489b117788552df7db4a8ae678f0a7c78168cbbc17fb19b946303434a34c2951"
   },
   "artifacts": [
     {
@@ -284,6 +284,21 @@
       "name": "dual-retained-decode.json",
       "bytes": 47113430,
       "sha256": "2689bd0db6095f28fa05e2f55b0993b1d3b350af3171ebd3ca9c05fe744b5c58"
+    },
+    {
+      "name": "dual-target-decode.json",
+      "bytes": 67618,
+      "sha256": "de772cb405bedab39d6dab58eddbdd839ca4717c71639980ef30527b4a7c0928"
+    },
+    {
+      "name": "dual-target-metadata.record",
+      "bytes": 4718,
+      "sha256": "cf711c180e11cc058c0435511308ce31026012101530d757a32da6329ed80632"
+    },
+    {
+      "name": "dual-target-gpu.csv",
+      "bytes": 24293,
+      "sha256": "efb2fddaeb1abaebd3da1367f240041764a175850a3aa0d4e742b968b366d7ff"
     }
   ],
   "comparison": {
@@ -500,7 +515,12 @@
         "v4": 84.07360330661416,
         "change_percent": 7.6694149439515025
       }
-    ]
+    ],
+    "weighted_target_decode": {
+      "v3": 46.13568479467954,
+      "v4": 51.231784658592126,
+      "change_percent": 11.0458962223972
+    }
   },
   "retained_decode": {
     "passed": true,
@@ -552,5 +572,66 @@
         "cache_valid": 24
       }
     ]
+  },
+  "target_decode": {
+    "passed": true,
+    "repeats": 3,
+    "median_weighted_tps": 51.231784658592126,
+    "cases": {
+      "code": {
+        "samples": 3,
+        "median_tps": 53.65587463250613,
+        "min_tps": 50.15872488253557,
+        "max_tps": 53.679186027878266
+      },
+      "counting": {
+        "samples": 3,
+        "median_tps": 53.825103941434044,
+        "min_tps": 49.15353361034927,
+        "max_tps": 53.84866071843238
+      },
+      "fable": {
+        "samples": 3,
+        "median_tps": 48.86829468531076,
+        "min_tps": 48.58343604998603,
+        "max_tps": 49.39509860616187
+      },
+      "hello": {
+        "samples": 3,
+        "median_tps": 49.30550383303274,
+        "min_tps": 48.96496846801097,
+        "max_tps": 49.663413902640166
+      },
+      "math": {
+        "samples": 3,
+        "median_tps": 52.71723076290295,
+        "min_tps": 47.580140167228095,
+        "max_tps": 53.0859073242754
+      },
+      "multilingual": {
+        "samples": 3,
+        "median_tps": 50.04394873285565,
+        "min_tps": 49.17628247780709,
+        "max_tps": 52.78634754091613
+      },
+      "structured-json": {
+        "samples": 3,
+        "median_tps": 51.54155501615428,
+        "min_tps": 49.79353189423215,
+        "max_tps": 51.85484856695759
+      },
+      "structured-json-schema": {
+        "samples": 3,
+        "median_tps": 52.55470333568659,
+        "min_tps": 50.024606350718194,
+        "max_tps": 52.59289113645202
+      },
+      "topic": {
+        "samples": 3,
+        "median_tps": 50.8993776467653,
+        "min_tps": 49.86690687484395,
+        "max_tps": 51.607757604754724
+      }
+    }
   }
 }
