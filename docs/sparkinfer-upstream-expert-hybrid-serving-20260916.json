@@ -294,7 +294,7 @@
       }
     }
   },
-  "decision": "Single-client throughput remains flat. One-sample concurrency results are mixed and the old C16 code first sample is known to be slow; repeated matched trials are required before selection. Experimental defaults remain off.",
+  "decision": "Combined correctness passes. Single-client throughput flat; concurrency results do not establish a robust broad improvement. Keep experiments off pending backend selection, with baseline serving restored.",
   "concurrency_screen": {
     "baseline": {
       "code": {
@@ -384,5 +384,96 @@
         ]
       }
     }
+  },
+  "concurrency_repeated": {
+    "baseline": {
+      "code": {
+        "raw_path": "/home/tj/.cache/ds41rt-upstream-20260916/hybrid-concurrency-repeat-baseline-code.json",
+        "sha256": "15dbe2ec302cbbd927fb3bc05430a5816590d060d772cd484ac5c8b00ad87ffa",
+        "passed": true,
+        "summaries": [
+          {
+            "concurrency": 2,
+            "samples": 3,
+            "median_aggregate_tps": 268.28853053762555,
+            "min_aggregate_tps": 214.79814529121876,
+            "max_aggregate_tps": 276.68673483917826
+          },
+          {
+            "concurrency": 16,
+            "samples": 3,
+            "median_aggregate_tps": 1291.60745474016,
+            "min_aggregate_tps": 1250.6711856974234,
+            "max_aggregate_tps": 1294.753877761602
+          }
+        ]
+      },
+      "topic": {
+        "raw_path": "/home/tj/.cache/ds41rt-upstream-20260916/hybrid-concurrency-repeat-baseline-topic.json",
+        "sha256": "7d1e2be3f402e345a5e8105ce520db36aefe555e879b196f81da4b0bcc691b4c",
+        "passed": true,
+        "summaries": [
+          {
+            "concurrency": 2,
+            "samples": 3,
+            "median_aggregate_tps": 139.77336612291057,
+            "min_aggregate_tps": 138.12168627689647,
+            "max_aggregate_tps": 141.90727949700468
+          },
+          {
+            "concurrency": 16,
+            "samples": 3,
+            "median_aggregate_tps": 710.4797499886276,
+            "min_aggregate_tps": 677.2109918735373,
+            "max_aggregate_tps": 723.6991120667507
+          }
+        ]
+      }
+    },
+    "hybrid": {
+      "code": {
+        "raw_path": "/home/tj/.cache/ds41rt-upstream-20260916/hybrid-concurrency-repeat-candidate-code.json",
+        "sha256": "5e850e041095cc8b8bbbba83faccc1abb7211802e7f63f3f378cb0c8d7565a2f",
+        "passed": true,
+        "summaries": [
+          {
+            "concurrency": 2,
+            "samples": 3,
+            "median_aggregate_tps": 281.7680117027679,
+            "min_aggregate_tps": 274.44421260389043,
+            "max_aggregate_tps": 283.5943468369026
+          },
+          {
+            "concurrency": 16,
+            "samples": 3,
+            "median_aggregate_tps": 1311.3287662380646,
+            "min_aggregate_tps": 1295.2992205953842,
+            "max_aggregate_tps": 1312.4478773850751
+          }
+        ]
+      },
+      "topic": {
+        "raw_path": "/home/tj/.cache/ds41rt-upstream-20260916/hybrid-concurrency-repeat-candidate-topic.json",
+        "sha256": "c85fce891bd0b899968194f8620e0e5646d57e367884d1779d03f827e6b7370c",
+        "passed": true,
+        "summaries": [
+          {
+            "concurrency": 2,
+            "samples": 3,
+            "median_aggregate_tps": 149.78114453812506,
+            "min_aggregate_tps": 149.46082769946702,
+            "max_aggregate_tps": 150.38896991515537
+          },
+          {
+            "concurrency": 16,
+            "samples": 3,
+            "median_aggregate_tps": 744.7078283421471,
+            "min_aggregate_tps": 717.4921701796084,
+            "max_aggregate_tps": 754.0086478882265
+          }
+        ]
+      }
+    },
+    "limitations": "Same requests and benchmark protocol; hybrid repeats followed previous serving screens, baseline repeats followed a coordinator/worker restart and built-in warmup. First samples are slower in baseline; small median differences are not conclusive gains."
   }
 }

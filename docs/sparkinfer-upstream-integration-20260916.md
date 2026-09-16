@@ -29,12 +29,29 @@ The initial concurrency screen also passed, but is mixed: code C2 was
 218.5 → 216.5 TPS, topic C2 148.1 → 157.6, and topic C16 700.3 → 654.8.
 Hybrid C16 code was 1245.1 TPS; comparing that against the old slow first
 sample would be misleading (the repeated baseline previously reached
-1299–1304 TPS). Repeated matched concurrency trials are running before any
+1299–1304 TPS). Repeated concurrency trials are recorded below before any
 backend-selection decision. Both compact experiment defaults remain off.
 [Serving evidence](sparkinfer-upstream-expert-hybrid-serving-20260916.json)
 records the component identities, raw artifacts and summaries. This closes
 the initial combined serving correctness screen, not final release quality
 or performance acceptance.
+
+Three-repeat concurrency follow-up passed in both arms. Median aggregate TPS:
+
+| Workload | Baseline | Hybrid |
+| --- | ---: | ---: |
+| Code C2 | 268.3 | 281.8 |
+| Code C16 | 1291.6 | 1311.3 |
+| Topic C2 | 139.8 | 149.8 |
+| Topic C16 | 710.5 | 744.7 |
+
+These suggest a modest concurrency benefit, but the hybrid repeats followed
+prior serving screens while the baseline repeats followed a restart and the
+benchmark's built-in warmup. Baseline first samples were slower, especially
+code C2. Do not attribute the entire median difference to the implementation.
+The original coordinator and workers are restored and running. Next resolve
+this warm-state comparison before selecting the combined hybrid, then close
+the remaining component audit and retune dSpark against selected kernels.
 
 ## Full hybrid Spark worker qualification
 
