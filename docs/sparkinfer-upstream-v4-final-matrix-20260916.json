@@ -1,0 +1,209 @@
+{
+  "scope": "Complete final-image performance matrix and restoration passed; release acceptance remains pending the focused short-prefill regression review.",
+  "engine_commit": "39242276302b24e6e07313152cc532e43d8ed6ca",
+  "source_manifest_sha256": "bf22e0f27f0368db99fbe43c966b3be771a14ead09f2d1428d872521d98b0394",
+  "binary_sha256": "666fdd1641991e316e85bf9ec41b1f33480b7ea72bd4fea312049809af7e1980",
+  "performance_matrix_passed": true,
+  "performance_accepted_for_publication": false,
+  "pending_review": "Single-RTX retained +1K/+2K prefills are 10\u201317% below v3; focused fresh-state v4/v3/v4 comparison in progress.",
+  "startup_seconds": {
+    "single": 60.661337055964395,
+    "dual": 52.70677486201748
+  },
+  "readiness_memory": {
+    "single": {
+      "launch_label": "single-dspark",
+      "gpus": [
+        {
+          "uuid": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0",
+          "used_mib": 94568.0,
+          "free_mib": 2683.0
+        }
+      ]
+    },
+    "dual": {
+      "launch_label": "dual-final",
+      "gpus": [
+        {
+          "uuid": "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0",
+          "used_mib": 95080.0,
+          "free_mib": 2171.0
+        },
+        {
+          "uuid": "GPU-95f8f212-9131-df99-fd53-7535965197d7",
+          "used_mib": 95320.0,
+          "free_mib": 1928.0
+        }
+      ]
+    }
+  },
+  "gpu_telemetry": {
+    "single-dspark": {
+      "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0": {
+        "samples": 2168,
+        "power_limit_watts": 400,
+        "minimum_free_mib": 99.0,
+        "peak_memory_mib": 97152.0,
+        "peak_power_watts": 415.37,
+        "peak_memory_clock_mhz": 13365.0,
+        "peak_temperature_celsius": 77.0
+      },
+      "GPU-95f8f212-9131-df99-fd53-7535965197d7": {
+        "samples": 2168,
+        "power_limit_watts": 400,
+        "minimum_free_mib": 97236.0,
+        "peak_memory_mib": 12.0,
+        "peak_power_watts": 22.13,
+        "peak_memory_clock_mhz": 405.0,
+        "peak_temperature_celsius": 57.0
+      }
+    },
+    "single-target": {
+      "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0": {
+        "samples": 103,
+        "power_limit_watts": 400,
+        "minimum_free_mib": 4483.0,
+        "peak_memory_mib": 92768.0,
+        "peak_power_watts": 231.66,
+        "peak_memory_clock_mhz": 13365.0,
+        "peak_temperature_celsius": 60.0
+      },
+      "GPU-95f8f212-9131-df99-fd53-7535965197d7": {
+        "samples": 103,
+        "power_limit_watts": 400,
+        "minimum_free_mib": 97236.0,
+        "peak_memory_mib": 12.0,
+        "peak_power_watts": 20.02,
+        "peak_memory_clock_mhz": 405.0,
+        "peak_temperature_celsius": 52.0
+      }
+    },
+    "single-retained_2k": {
+      "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0": {
+        "samples": 41,
+        "power_limit_watts": 400,
+        "minimum_free_mib": 99.0,
+        "peak_memory_mib": 97152.0,
+        "peak_power_watts": 246.32,
+        "peak_memory_clock_mhz": 13365.0,
+        "peak_temperature_celsius": 64.0
+      },
+      "GPU-95f8f212-9131-df99-fd53-7535965197d7": {
+        "samples": 41,
+        "power_limit_watts": 400,
+        "minimum_free_mib": 97236.0,
+        "peak_memory_mib": 12.0,
+        "peak_power_watts": 19.98,
+        "peak_memory_clock_mhz": 405.0,
+        "peak_temperature_celsius": 53.0
+      }
+    },
+    "dual-dspark": {
+      "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0": {
+        "samples": 1973,
+        "power_limit_watts": 400,
+        "minimum_free_mib": 1093.0,
+        "peak_memory_mib": 96158.0,
+        "peak_power_watts": 419.85,
+        "peak_memory_clock_mhz": 13365.0,
+        "peak_temperature_celsius": 71.0
+      },
+      "GPU-95f8f212-9131-df99-fd53-7535965197d7": {
+        "samples": 1973,
+        "power_limit_watts": 400,
+        "minimum_free_mib": 726.0,
+        "peak_memory_mib": 96522.0,
+        "peak_power_watts": 401.38,
+        "peak_memory_clock_mhz": 13365.0,
+        "peak_temperature_celsius": 88.0
+      }
+    },
+    "dual-target": {
+      "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0": {
+        "samples": 101,
+        "power_limit_watts": 400,
+        "minimum_free_mib": 2297.0,
+        "peak_memory_mib": 94954.0,
+        "peak_power_watts": 191.12,
+        "peak_memory_clock_mhz": 13365.0,
+        "peak_temperature_celsius": 57.0
+      },
+      "GPU-95f8f212-9131-df99-fd53-7535965197d7": {
+        "samples": 101,
+        "power_limit_watts": 400,
+        "minimum_free_mib": 10584.0,
+        "peak_memory_mib": 86664.0,
+        "peak_power_watts": 210.03,
+        "peak_memory_clock_mhz": 13365.0,
+        "peak_temperature_celsius": 67.0
+      }
+    },
+    "dual-retained_2k": {
+      "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0": {
+        "samples": 34,
+        "power_limit_watts": 400,
+        "minimum_free_mib": 1099.0,
+        "peak_memory_mib": 96152.0,
+        "peak_power_watts": 232.8,
+        "peak_memory_clock_mhz": 13365.0,
+        "peak_temperature_celsius": 63.0
+      },
+      "GPU-95f8f212-9131-df99-fd53-7535965197d7": {
+        "samples": 34,
+        "power_limit_watts": 400,
+        "minimum_free_mib": 726.0,
+        "peak_memory_mib": 96522.0,
+        "peak_power_watts": 252.3,
+        "peak_memory_clock_mhz": 13365.0,
+        "peak_temperature_celsius": 74.0
+      }
+    }
+  },
+  "deployment": {
+    "single": {
+      "global_pool_bytes": 16681077760,
+      "logical_pool_tokens": 18710016,
+      "runtime_headroom_bytes_per_gpu": 2147483648,
+      "private_tail_tokens": 32768,
+      "source_pages": [
+        36607,
+        36607,
+        36607,
+        73214
+      ],
+      "prompt_retention_entries": 24,
+      "completed_turn_retention_entries": 24,
+      "concurrency": 16,
+      "rtx_expert_layers": 5,
+      "rtx_expert_tp": 1,
+      "spark_first_layer": 0,
+      "spark_layers": 40,
+      "spark_budget_bytes_each": 107374182400
+    },
+    "dual": {
+      "global_pool_bytes": 13094420480,
+      "logical_pool_tokens": 14680064,
+      "runtime_headroom_bytes_per_gpu": 838860800,
+      "private_tail_tokens": 32768,
+      "source_pages": [
+        28736,
+        28736,
+        28736,
+        57472
+      ],
+      "prompt_retention_entries": 24,
+      "completed_turn_retention_entries": 24,
+      "concurrency": 16,
+      "rtx_expert_layers": 20,
+      "rtx_expert_tp": 2,
+      "spark_first_layer": 20,
+      "spark_layers": 20,
+      "spark_budget_bytes_each": 107374182400
+    }
+  },
+  "archive": {
+    "path": "docs/evidence/upstream-v4-final-matrix-20260916.tar.gz",
+    "bytes": 23133058,
+    "sha256": "dfe5da8f14c681be9e55b51347817bed2a0d50d8c6795603ad1a26611021f3dc"
+  }
+}
