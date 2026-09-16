@@ -30,6 +30,16 @@ for l,label in [('single','One-RTX'),('dual','Two-RTX')]:
  q=x[l]['prefill'];lookup={(c['base_context_tokens'],c['suffix_tokens']):c['median_effective_prefill_tokens_per_second'] for c in q['cells']}
  rows=[[str(b//1024)+'K' if b else '0',*[f'{lookup[b,z]:,.0f}' for z in q['suffixes']]] for b in q['bases']]
  section(f'{label} prefill matrix','Median effective tokens/s after one shape warmup, with three samples per cell and verified parent reuse.',['Retained base',*[f'+{z//1024}K' for z in q['suffixes']]],rows)
+fresh=json.loads((root/'docs/sparkinfer-upstream-short-prefill-focused-20260916.json').read_text())
+history=json.loads((root/'docs/sparkinfer-upstream-short-prefill-history-20260916.json').read_text())
+assert fresh['passed'] and history['passed']
+fresh_cells={(c['base_tokens'],c['suffix_tokens']):c for c in fresh['cells']}
+rows=[]
+for c in history['cells']:
+ z=fresh_cells[c['base_tokens'],c['suffix_tokens']]
+ rows.append([f"{c['base_tokens']//1024}K",f"+{c['suffix_tokens']//1024}K",f(z['v3-control']),f(z['v4-before']),f(z['v4-after']),f(c['v3_tps']),f(c['v4_tps']),pct(c['v4_tps'],c['v3_tps'])])
+section('Single-RTX short-prefill controls','Separate three-sample cells with identical prompt hashes. Fresh v4/v3/v4 deployments and matched direct/code/topic/counting plus three mixed sweeps do not reproduce the large historical short-prefill loss. The full matrix additionally follows long-context decode; these controls do not isolate that broader state effect or replace the matrix above.',
+ ['Base','Suffix','v3 fresh','v4 fresh A','v4 fresh B','v3 after decode history','v4 after decode history','History change'],rows)
 rows=[]
 retained={l:{r['context_tokens']:r for key in ['retained_decode','retained_decode_2k'] for r in x[l][key]['context_summaries']} for l in ['single','dual']}
 old_retained={l:{r['context_tokens']:r for r in old['layouts'][l]['retained_decode']['context_summaries']} for l in ['single','dual']}
