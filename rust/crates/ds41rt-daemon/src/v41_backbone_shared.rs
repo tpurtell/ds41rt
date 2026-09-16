@@ -321,11 +321,10 @@ impl BackboneSharedWave<'_, '_> {
         if let Err(error) = launched { self.synchronize()?; return Err(error); }
         self.stream.wait().await?;
         if cold {
+            // The eager execution above already completed these inputs. Capture
+            // records future launches without executing them; publish that result
+            // instead of running the same work again on every cache miss.
             unsafe { self.capture_ready(rows)?; }
-            let (graph, _) = self.graphs.get_shape(self.layer, self.weights, rows).unwrap();
-            let launched = unsafe { self.stream.library.cuda_graph_launch(graph, self.stream.raw) };
-            if let Err(error) = launched { self.synchronize()?; return Err(error); }
-            self.stream.wait().await?;
         }
         self.ready = Some(rows);
         self.origin = Some(input.binding());

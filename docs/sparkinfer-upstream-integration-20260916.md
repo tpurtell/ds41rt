@@ -34,8 +34,17 @@ three mixed sweeps with 465 MiB minimum free, without reducing KV capacity.
 However, single-card mixed C16 falls to 180.51 TPS versus published v3's
 196.46, and the dual mixed sweep falls from 303.91 to 281.05 TPS against the
 preceding unlimited-shape candidate. This policy is also **not accepted**.
-The next candidate retains 24 projection shapes and bounds window/compressor
-producer graphs to 16, keeping index retention at 512 and KV capacity unchanged.
+The subsequent 24-projection/16-producer policy also passes endurance with
+465 MiB minimum free, but mixed C16 drops further to a 156.38 TPS median on
+single RTX (three sweeps) and 286.53 TPS on dual RTX (one sweep). It is rejected.
+Index retention remains 512 and KV capacity is unchanged.
+
+A separate cold-path change reuses the already completed eager result after
+recording attention-query, router and shared-FFN graphs, avoiding an immediate
+second execution. The [real-weight parity check](sparkinfer-upstream-cold-graph-output-20260916.json)
+passes exact query and FFN comparisons across cold/warm execution and repeated
+recapture, plus cancellation/reuse and paired-encoder checks. This validation
+used the experimental retention policy; performance qualification is pending.
 The [failure evidence](sparkinfer-upstream-single-memory-20260916.json)
 preserves the failed streams and reproduction logs. The dual measurements
 below describe the earlier 512-entry candidate, not a completed release.

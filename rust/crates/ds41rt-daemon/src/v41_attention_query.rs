@@ -441,12 +441,9 @@ impl AttentionQueryWave<'_, '_> {
         let drained = self.stream.wait().await;
         queued.and(drained)?;
         if graph.is_none() {
+            // Eager output is complete; capture only records the next execution.
+            // Replaying now would duplicate work whenever a shape was evicted.
             unsafe { self.capture_ready(rows)?; }
-            let graph = self.graphs.get_shape(self.weights.layer, self.weights, rows)
-                .context("attention query graph missing")?.0;
-            let queued = unsafe { self.stream.library.cuda_graph_launch(graph, self.stream.raw) };
-            let drained = self.stream.wait().await;
-            queued.and(drained)?;
         }
         self.ready = Some(rows);
         self.tokens.extend_from_slice(tokens);

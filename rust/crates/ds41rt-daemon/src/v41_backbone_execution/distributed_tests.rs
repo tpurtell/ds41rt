@@ -247,6 +247,10 @@ fn real_layer_zero_executes_embedding_attention_tp4_and_mhc() -> Result<()> {
         unsafe {
             requests.begin_input(&batch, &mut embedding, &mut lane)?;
         }
+        runtime.block_on(unsafe { lane.check_queued_query() })?;
+        // Query parity creates fresh bindings; restore the block's matching one.
+        lane.restart()?;
+        unsafe { requests.begin_input(&batch, &mut embedding, &mut lane)?; }
         let start = Instant::now();
         let mut successor = None;
         if cycle == 1 {

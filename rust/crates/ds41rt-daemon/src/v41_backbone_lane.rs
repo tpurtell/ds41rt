@@ -180,7 +180,8 @@ impl LaneFfn<'_, '_, '_> {
             let reference = read(&[routed.ids, routed.routing, routed.expert_input])?;
             self.router.clear_graph()?;
             cancelled += cancel_once(unsafe { self.router.execute_ffn_cooperative(&self.input, image_mask) }).await as usize;
-            for _ in 0..2 {
+            for evict in [true, false, true, false] {
+                if evict { self.router.clear_graph()?; }
                 let routed = unsafe { self.router.execute_ffn_cooperative(&self.input, image_mask).await? };
                 assert_eq!(read(&[routed.ids, routed.routing, routed.expert_input])?, reference);
                 let mut ids = Vec::new();
@@ -193,7 +194,8 @@ impl LaneFfn<'_, '_, '_> {
         let reference = read(&[shared.values])?;
         shared_wave.clear_graph()?;
         cancelled += cancel_once(unsafe { shared_wave.execute_ffn_cooperative(&self.input) }).await as usize;
-        for _ in 0..2 {
+        for evict in [true, false, true, false] {
+            if evict { shared_wave.clear_graph()?; }
             let shared = unsafe { shared_wave.execute_ffn_cooperative(&self.input).await? };
             assert_eq!(read(&[shared.values])?, reference);
         }
@@ -471,6 +473,34 @@ impl<'w, 'a> BackboneLane<'w, 'a> {
         let result = unsafe { self.block.begin_prepared_attention_cooperative(&mut self.query).await? };
         self.phase = Phase::Query;
         Ok(result)
+    }
+    /// Test-only query parity. Caller reinitializes the block afterward because
+    /// each execution intentionally creates a fresh query binding.
+    #[cfg(test)]
+    pub async unsafe fn check_queued_query(&mut self) -> Result<()> {
+        let library = self.weights.library;
+        let read = |output: &AttentionQueryOutput<'_>| -> Result<Vec<Vec<u8>>> {
+            [output.hidden, output.raw_rank, output.normalized_rank,
+                output.projected, output.rotated, output.positions, output.frequencies]
+                .into_iter().map(|buffer| {
+                    let mut bytes = vec![0; buffer.bytes];
+                    library.copy_d2h(&mut bytes, buffer)?;
+                    Ok(bytes)
+                }).collect()
+        };
+        let output = self.query.output()?;
+        let tokens = output.tokens()?.to_vec();
+        let reference = read(&output)?;
+        for evict in [true, false, true, false] {
+            if evict { self.query.clear_graph()?; }
+            let output = unsafe {
+                self.query.execute_tokens_prepared_cooperative(&tokens, |_, _| Ok(())).await?
+            };
+            assert_eq!(read(&output)?, reference,
+                "cooperative query differs after eviction={evict}");
+        }
+        eprintln!("PASS query layer {}: exact cold, warm and recapture output parity", self.layer);
+        Ok(())
     }
     pub fn pending_engram(&self) -> Result<(usize, &[u64])> {
         ensure!(self.phase == Phase::Prepared, "backbone lane input not prepared");
