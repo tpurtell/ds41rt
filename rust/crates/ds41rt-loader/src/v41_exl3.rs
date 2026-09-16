@@ -3,7 +3,13 @@ use crate::{OfficialV41Config, SafetensorsTensorMetadata, OFFICIAL_V41_MODEL_ID}
 use anyhow::{ensure, Context, Result};
 use ds41rt_core::DType;
 use serde_json::Value;
-use std::{collections::{BTreeMap, BTreeSet}, fs::File, io::Read, ops::Range, path::Path};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs::File,
+    io::Read,
+    ops::Range,
+    path::Path,
+};
 
 pub const V41_EXL3_SCHEMA: &str = "ds41rt.v41-routed-exl3.v1";
 const MAX_MANIFEST_BYTES: u64 = 64 * 1024 * 1024;
@@ -13,6 +19,14 @@ pub enum V41Exl3ProjectionKind {
     Gate,
     Up,
     Down,
+}
+
+/// Explicit resident layout; paired storage requires ownership-aware execution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum V41Exl3Partition {
+    Disjoint,
+    PairedTp4,
 }
 
 /// One projection's on-disk contract, before conversion into native kernel tiles.
@@ -79,6 +93,15 @@ impl V41Exl3Projection {
     /// Partition complete H128 rotation blocks. Equal TP4 slices of 2304
     /// channels would split blocks, so the first two ranks own one extra block.
     pub fn intermediate_partition(&self, world: usize, rank: usize) -> Result<Range<usize>> {
+        self.intermediate_partition_with_layout(world, rank, V41Exl3Partition::Disjoint)
+    }
+
+    pub fn intermediate_partition_with_layout(
+        &self,
+        world: usize,
+        rank: usize,
+        layout: V41Exl3Partition,
+    ) -> Result<Range<usize>> {
         ensure!(
             matches!(world, 1 | 2 | 4) && rank < world,
             "invalid EXL3 TP rank/world"
@@ -91,6 +114,14 @@ impl V41Exl3Projection {
             intermediate % 128 == 0,
             "EXL3 intermediate axis is not H128 aligned"
         );
+        if layout == V41Exl3Partition::PairedTp4 {
+            ensure!(
+                world == 4 && intermediate == 2304,
+                "paired EXL3 layout requires TP4 with 2304 intermediate channels"
+            );
+            let blocks = &ds41rt_core::EXL3_TP4_RESIDENT_BLOCKS[rank];
+            return Ok(blocks.start * 128..blocks.end * 128);
+        }
         let blocks = intermediate / 128;
         ensure!(blocks >= world, "EXL3 partition would be empty");
         let count = blocks / world + usize::from(rank < blocks % world);
@@ -116,10 +147,14 @@ impl V41Exl3Manifest {
     }
 }
 
-pub(crate) fn decoder_family(projections: &BTreeMap<String, V41Exl3Projection>) -> Result<Vec<usize>> {
+pub(crate) fn decoder_family(
+    projections: &BTreeMap<String, V41Exl3Projection>,
+) -> Result<Vec<usize>> {
     let mut bits: BTreeSet<_> = projections.values().map(|p| p.bits).collect();
-    ensure!(!bits.is_empty() && bits.iter().all(|b| (2..=5).contains(b)),
-        "EXL3 decoder family must contain K2..K5 projections");
+    ensure!(
+        !bits.is_empty() && bits.iter().all(|b| (2..=5).contains(b)),
+        "EXL3 decoder family must contain K2..K5 projections"
+    );
     // Native mixed kernels retain an empty adjacent tier for uniform models.
     if bits.len() == 1 {
         let bit = *bits.first().unwrap();
@@ -314,7 +349,9 @@ mod tests {
             families.entry(prefix.into()).or_default().insert(p.bits);
         }
         assert_eq!(families.len(), 43);
-        assert!(families.values().all(|bits| bits.iter().copied().collect::<Vec<_>>() == [3, 4]));
+        assert!(families
+            .values()
+            .all(|bits| bits.iter().copied().collect::<Vec<_>>() == [3, 4]));
         let mut counts = BTreeMap::new();
         for p in manifest.projections.values() {
             *counts.entry(p.bits).or_insert(0usize) += 1;

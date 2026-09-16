@@ -1,6 +1,6 @@
 //! Compressed layer residency matching B12x projection-native Trellis storage.
 //! No weight dequantization or tier-wide temporary payload is required.
-use crate::{OfficialV41Catalog, V41Exl3Manifest};
+use crate::{OfficialV41Catalog, V41Exl3Manifest, V41Exl3Partition};
 use anyhow::{ensure, Context, Result};
 use serde::Serialize;
 
@@ -32,6 +32,8 @@ pub struct V41Exl3Residency {
     pub layer: V41Exl3Layer,
     pub world: usize,
     pub rank: usize,
+    pub layout: V41Exl3Partition,
+    pub intermediate_start: usize,
     pub experts: usize,
     pub intermediate: usize,
     pub tiers: Vec<usize>,
@@ -55,7 +57,12 @@ impl V41Exl3Residency {
         self.loads.iter().try_fold(0, |n, load| {
             Ok(n.max(
                 catalog
-                    .exl3_tensor_slice(&load.tensor, self.world, self.rank)?
+                    .exl3_tensor_slice_with_layout(
+                        &load.tensor,
+                        self.world,
+                        self.rank,
+                        self.layout,
+                    )?
                     .scratch_bytes(),
             ))
         })
@@ -77,10 +84,11 @@ impl V41Exl3Residency {
             .context("EXL3 load index out of range")?;
         if let Some(prefix) = load.tensor.strip_suffix(".trellis") {
             let mut mcg = [0u8; 4];
-            catalog.read_exl3_tensor_into(
+            catalog.read_exl3_tensor_into_with_layout(
                 &format!("{prefix}.mcg"),
                 self.world,
                 self.rank,
+                self.layout,
                 &mut mcg,
                 &mut [],
             )?;
@@ -89,8 +97,14 @@ impl V41Exl3Residency {
                 "unsupported EXL3 MCG multiplier for {prefix}"
             );
         }
-        let bytes =
-            catalog.read_exl3_tensor_into(&load.tensor, self.world, self.rank, staging, scratch)?;
+        let bytes = catalog.read_exl3_tensor_into_with_layout(
+            &load.tensor,
+            self.world,
+            self.rank,
+            self.layout,
+            staging,
+            scratch,
+        )?;
         ensure!(bytes == load.bytes, "EXL3 residency/read size mismatch");
         if !load.tensor.ends_with(".trellis") {
             ensure!(
@@ -111,6 +125,18 @@ impl V41Exl3Manifest {
         layer: V41Exl3Layer,
         world: usize,
         rank: usize,
+    ) -> Result<V41Exl3Residency> {
+        self.residency_with_layout(layer, world, rank, V41Exl3Partition::Disjoint)
+    }
+
+    /// Paired plans are for ownership-aware kernels only; existing serving uses
+    /// the disjoint wrapper above until transport and execution are qualified.
+    pub fn residency_with_layout(
+        &self,
+        layer: V41Exl3Layer,
+        world: usize,
+        rank: usize,
+        layout: V41Exl3Partition,
     ) -> Result<V41Exl3Residency> {
         let config = self.config.text();
         let (prefix, experts) = match layer {
@@ -153,7 +179,8 @@ impl V41Exl3Manifest {
         }
         // All layers retain the package's checkpoint-wide descriptor tier IDs.
         let tiers = self.decoder_tiers.clone();
-        let partition = projections[0][0].intermediate_partition(world, rank)?;
+        let partition =
+            projections[0][0].intermediate_partition_with_layout(world, rank, layout)?;
         let width = partition.end - partition.start;
         let hidden = config.hidden_size;
         let mut counts = vec![[0; 3]; tiers.len()];
@@ -163,11 +190,12 @@ impl V41Exl3Manifest {
         for (expert, row) in projections.iter().enumerate() {
             for (projection, p) in row.iter().enumerate() {
                 ensure!(
-                    p.intermediate_partition(world, rank)? == partition,
+                    p.intermediate_partition_with_layout(world, rank, layout)? == partition,
                     "inconsistent EXL3 intermediate partition"
                 );
-                let tier = tiers.binary_search(&p.bits)
-                    .map_err(|_| anyhow::anyhow!("projection decoder absent from checkpoint family"))?;
+                let tier = tiers.binary_search(&p.bits).map_err(|_| {
+                    anyhow::anyhow!("projection decoder absent from checkpoint family")
+                })?;
                 let local = counts[tier][projection];
                 ensure!(local < 512, "EXL3 descriptor local exceeds nine bits");
                 locals[expert][projection] = local;
@@ -215,8 +243,9 @@ impl V41Exl3Manifest {
         let mut loads = Vec::new();
         for (expert, row) in projections.iter().enumerate() {
             for (projection, p) in row.iter().enumerate() {
-                let tier = tiers.binary_search(&p.bits)
-                    .map_err(|_| anyhow::anyhow!("projection decoder absent from checkpoint family"))?;
+                let tier = tiers.binary_search(&p.bits).map_err(|_| {
+                    anyhow::anyhow!("projection decoder absent from checkpoint family")
+                })?;
                 let one = hidden * width * p.bits / 8;
                 let slot =
                     locals[expert][projection] + if projection == 1 { counts[tier][0] } else { 0 };
@@ -261,6 +290,8 @@ impl V41Exl3Manifest {
             layer,
             world,
             rank,
+            layout,
+            intermediate_start: partition.start,
             experts,
             intermediate: width,
             tiers,
@@ -320,13 +351,23 @@ mod tests {
     fn mixed_and_uniform_payload_destinations_cover_buffers_without_overlap() {
         for tiers in [&[2][..], &[3], &[4], &[5], &[3, 4], &[2, 3, 4, 5]] {
             let manifest = fixture(tiers);
-            for world in [1, 2, 4] {
+            for (world, layout) in [
+                (1, V41Exl3Partition::Disjoint),
+                (2, V41Exl3Partition::Disjoint),
+                (4, V41Exl3Partition::Disjoint),
+                (4, V41Exl3Partition::PairedTp4),
+            ] {
                 let mut total_width = 0;
                 for rank in 0..world {
                     let plan = manifest
-                        .residency(V41Exl3Layer::Backbone(0), world, rank)
+                        .residency_with_layout(V41Exl3Layer::Backbone(0), world, rank, layout)
                         .unwrap();
                     total_width += plan.intermediate;
+                    assert_eq!(plan.layout, layout);
+                    if layout == V41Exl3Partition::PairedTp4 {
+                        assert_eq!(plan.intermediate, 640);
+                        assert_eq!(plan.intermediate_start, [0, 512, 1152, 1664][rank]);
+                    }
                     let mut spans = vec![Vec::new(); plan.buffers.len()];
                     for job in &plan.loads {
                         for &(buffer, offset) in &job.destinations {
@@ -366,7 +407,14 @@ mod tests {
                         .sum();
                     assert_eq!(payload, expected);
                 }
-                assert_eq!(total_width, 2304);
+                assert_eq!(
+                    total_width,
+                    if layout == V41Exl3Partition::PairedTp4 {
+                        2560
+                    } else {
+                        2304
+                    }
+                );
             }
         }
     }
@@ -374,6 +422,28 @@ mod tests {
     #[test]
     fn missing_layer_and_bad_partitions_are_rejected() {
         let manifest = fixture(&[3, 4]);
+        for world in [1, 2, 3] {
+            assert!(manifest
+                .residency_with_layout(
+                    V41Exl3Layer::Backbone(0),
+                    world,
+                    0,
+                    V41Exl3Partition::PairedTp4,
+                )
+                .is_err());
+        }
+        assert!(manifest
+            .residency_with_layout(V41Exl3Layer::Backbone(0), 4, 4, V41Exl3Partition::PairedTp4,)
+            .is_err());
+        let mut malformed = fixture(&[3, 4]);
+        malformed
+            .projections
+            .get_mut("layers.0.ffn.experts.0.w1")
+            .unwrap()
+            .output_features = 2048;
+        assert!(malformed
+            .residency_with_layout(V41Exl3Layer::Backbone(0), 4, 0, V41Exl3Partition::PairedTp4,)
+            .is_err());
         assert!(manifest
             .residency(V41Exl3Layer::Backbone(40), 1, 0)
             .is_err());
@@ -393,23 +463,37 @@ mod tests {
                     manifest.projections.insert(p.name.clone(), p);
                 }
             }
-            manifest.decoder_tiers = crate::v41_exl3::decoder_family(&manifest.projections).unwrap();
+            manifest.decoder_tiers =
+                crate::v41_exl3::decoder_family(&manifest.projections).unwrap();
             for world in [1, 2, 4] {
                 for rank in 0..world {
                     for (layer, &bits) in family.iter().enumerate() {
-                        let plan = manifest.residency(V41Exl3Layer::Backbone(layer), world, rank).unwrap();
+                        let plan = manifest
+                            .residency(V41Exl3Layer::Backbone(layer), world, rank)
+                            .unwrap();
                         assert_eq!(plan.tiers, family);
                         for (tier, counts) in plan.projection_counts.iter().enumerate() {
                             assert_eq!(*counts, [if tier == layer { 384 } else { 0 }; 3]);
                         }
-                        let payload: usize = plan.buffers.iter().filter(|b| b.name.starts_with("tier"))
-                            .map(|b| b.bytes).sum();
+                        let payload: usize = plan
+                            .buffers
+                            .iter()
+                            .filter(|b| b.name.starts_with("tier"))
+                            .map(|b| b.bytes)
+                            .sum();
                         assert_eq!(payload, 384 * 3 * 5120 * plan.intermediate * bits / 8);
-                        let descriptor = plan.buffers.iter().find(|b| b.name == "descriptor_map").unwrap();
+                        let descriptor = plan
+                            .buffers
+                            .iter()
+                            .find(|b| b.name == "descriptor_map")
+                            .unwrap();
                         for projection in 0..3 {
                             for expert in 0..384 {
-                                assert_eq!(descriptor.initial_words[projection*384*family.len()+expert],
-                                    ((layer << 9) | expert) as i32);
+                                assert_eq!(
+                                    descriptor.initial_words
+                                        [projection * 384 * family.len() + expert],
+                                    ((layer << 9) | expert) as i32
+                                );
                             }
                         }
                     }
@@ -417,5 +501,4 @@ mod tests {
             }
         }
     }
-
 }

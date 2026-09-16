@@ -1,0 +1,78 @@
+{
+  "scope": "Published FP8-PLE EXL3 checkpoint, backbone layer 30; logical resident bytes, excluding allocator alignment and execution scratch. Not a serving measurement.",
+  "snapshot": "/home/tj/.cache/huggingface/hub/models--wrldsuksgo2mars--DeepSeek-V4.1-EXL3-K3.25-v1/snapshots/cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+  "ranks": [
+    {
+      "rank": 0,
+      "disjoint": {
+        "resident_bytes": 1560096784,
+        "staging_bytes": 1638400,
+        "scratch_bytes": 18432,
+        "intermediate": 640,
+        "intermediate_start": 0
+      },
+      "paired_tp4": {
+        "resident_bytes": 1560096784,
+        "staging_bytes": 1638400,
+        "scratch_bytes": 18432,
+        "intermediate": 640,
+        "intermediate_start": 0
+      },
+      "additional_resident_bytes": 0
+    },
+    {
+      "rank": 1,
+      "disjoint": {
+        "resident_bytes": 1560096784,
+        "staging_bytes": 1638400,
+        "scratch_bytes": 18432,
+        "intermediate": 640,
+        "intermediate_start": 640
+      },
+      "paired_tp4": {
+        "resident_bytes": 1560096784,
+        "staging_bytes": 1638400,
+        "scratch_bytes": 18432,
+        "intermediate": 640,
+        "intermediate_start": 512
+      },
+      "additional_resident_bytes": 0
+    },
+    {
+      "rank": 2,
+      "disjoint": {
+        "resident_bytes": 1252798480,
+        "staging_bytes": 1310720,
+        "scratch_bytes": 18432,
+        "intermediate": 512,
+        "intermediate_start": 1280
+      },
+      "paired_tp4": {
+        "resident_bytes": 1560096784,
+        "staging_bytes": 1638400,
+        "scratch_bytes": 18432,
+        "intermediate": 640,
+        "intermediate_start": 1152
+      },
+      "additional_resident_bytes": 307298304
+    },
+    {
+      "rank": 3,
+      "disjoint": {
+        "resident_bytes": 1252798480,
+        "staging_bytes": 1310720,
+        "scratch_bytes": 18432,
+        "intermediate": 512,
+        "intermediate_start": 1792
+      },
+      "paired_tp4": {
+        "resident_bytes": 1560096784,
+        "staging_bytes": 1638400,
+        "scratch_bytes": 18432,
+        "intermediate": 640,
+        "intermediate_start": 1664
+      },
+      "additional_resident_bytes": 307298304
+    }
+  ]
+}

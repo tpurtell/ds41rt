@@ -1,7 +1,8 @@
 # EXL3 TP4: balance whole rotation blocks per expert
 
-Proposed TP4 optimization. The CPU ownership planner is implemented and tested;
-loading, transport and fused GPU execution are not integrated. This is not a
+Proposed TP4 optimization. The CPU ownership planner and explicit paired loader
+layout are implemented and tested; serving transport and fused GPU execution
+are not integrated. This is not a
 release default and has no measured serving benefit yet.
 Keep H128 rotations local while distributing the two extra blocks of each
 18-block expert across the four Sparks. TP6 remains a separate goal.
@@ -89,9 +90,36 @@ from the router's pinned staging via `download_request`, then constructs the
 Spark request. `v41_backbone_lane.rs` invokes this for remote dispatch. This is
 the candidate histogram/planning insertion point without a new D2H operation.
 The request protocol needs an explicit ownership contract before wiring it in.
-`v41_exl3_staging.rs::tensor_slice` currently derives a fixed range from
-`intermediate_partition`; the paired ranges must be propagated through staging
-and residency budgeting together, not substituted only in the kernel.
+The loader's `V41Exl3Partition::PairedTp4` now propagates the paired ranges
+through projection slicing, staging reads, residency destinations and byte
+budgets. Existing APIs keep `Disjoint` as their behavior. Paired mode rejects
+other world sizes and intermediate dimensions; general K2–K5 disjoint support
+is unchanged. The inspection example accepts `--paired-tp4` alongside `--read`.
+
+Loader validation: 77 library tests passed, three environment-dependent tests
+were ignored. The published-checkpoint projection-read test was then explicitly
+run and passed: K3/K4 gate/up/down payloads, both rotations and MCG bytes match
+full-checkpoint slices for disjoint TP2/TP4 and paired TP4. Synthetic K2–K5 tests
+also exercise paired reads beyond 2 GiB, while residency tests check complete
+buffer coverage without overlapping destinations. This does not qualify GPU
+computation or loading performance.
+
+For actual backbone layer 30 in the published FP8-PLE EXL3 checkpoint, logical
+resident allocations are:
+
+| Spark rank | Disjoint bytes | Paired bytes | Added bytes |
+| --- | ---: | ---: | ---: |
+| 0 | 1,560,096,784 | 1,560,096,784 | 0 |
+| 1 | 1,560,096,784 | 1,560,096,784 | 0 |
+| 2 | 1,252,798,480 | 1,560,096,784 | 307,298,304 |
+| 3 | 1,252,798,480 | 1,560,096,784 | 307,298,304 |
+
+The additional allocation is 293.0625 MiB per smaller rank for this layer.
+Staging grows from 1,310,720 to 1,638,400 bytes on these ranks; minimum read
+scratch stays 18,432 bytes. These figures include resident metadata but exclude
+allocator alignment and execution workspace. They are a layer-specific budget,
+not a complete Spark memory total. Exact results are recorded in
+`release-v5-exl3-paired-residency.json`.
 
 ### GPU work still required
 

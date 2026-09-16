@@ -1,5 +1,5 @@
 //! Bounded direct reads of packed EXL3 tensors, retaining complete H128 blocks.
-use crate::{OfficialV41Catalog, V41Exl3Projection, V41Exl3ProjectionKind};
+use crate::{OfficialV41Catalog, V41Exl3Partition, V41Exl3Projection, V41Exl3ProjectionKind};
 use anyhow::{ensure, Context, Result};
 use std::{fs::File, os::unix::fs::FileExt};
 
@@ -24,13 +24,24 @@ impl V41Exl3TensorSlice {
     }
 }
 
+#[cfg(test)]
 fn tensor_slice(
     p: &V41Exl3Projection,
     suffix: &str,
     world: usize,
     rank: usize,
 ) -> Result<V41Exl3TensorSlice> {
-    let range = p.intermediate_partition(world, rank)?;
+    tensor_slice_with_layout(p, suffix, world, rank, V41Exl3Partition::Disjoint)
+}
+
+fn tensor_slice_with_layout(
+    p: &V41Exl3Projection,
+    suffix: &str,
+    world: usize,
+    rank: usize,
+    layout: V41Exl3Partition,
+) -> Result<V41Exl3TensorSlice> {
+    let range = p.intermediate_partition_with_layout(world, rank, layout)?;
     let width = range.end - range.start;
     let down = p.kind == V41Exl3ProjectionKind::Down;
     let contiguous = |full, start, bytes| V41Exl3TensorSlice {
@@ -73,6 +84,16 @@ impl OfficialV41Catalog {
         world: usize,
         rank: usize,
     ) -> Result<V41Exl3TensorSlice> {
+        self.exl3_tensor_slice_with_layout(name, world, rank, V41Exl3Partition::Disjoint)
+    }
+
+    pub fn exl3_tensor_slice_with_layout(
+        &self,
+        name: &str,
+        world: usize,
+        rank: usize,
+        layout: V41Exl3Partition,
+    ) -> Result<V41Exl3TensorSlice> {
         let manifest = self.exl3().context("checkpoint is not routed EXL3")?;
         let (prefix, suffix) = name.rsplit_once('.').context("missing EXL3 suffix")?;
         let projection = manifest
@@ -80,7 +101,7 @@ impl OfficialV41Catalog {
             .get(prefix)
             .context("unknown EXL3 projection")?;
         projection.validate_tensor(&self.tensor(name)?.metadata)?;
-        tensor_slice(projection, suffix, world, rank)
+        tensor_slice_with_layout(projection, suffix, world, rank, layout)
     }
 
     pub fn exl3_tensor_bytes(&self, name: &str, world: usize, rank: usize) -> Result<u64> {
@@ -99,7 +120,26 @@ impl OfficialV41Catalog {
         dst: &mut [u8],
         scratch: &mut [u8],
     ) -> Result<usize> {
-        let slice = self.exl3_tensor_slice(name, world, rank)?;
+        self.read_exl3_tensor_into_with_layout(
+            name,
+            world,
+            rank,
+            V41Exl3Partition::Disjoint,
+            dst,
+            scratch,
+        )
+    }
+
+    pub fn read_exl3_tensor_into_with_layout(
+        &self,
+        name: &str,
+        world: usize,
+        rank: usize,
+        layout: V41Exl3Partition,
+        dst: &mut [u8],
+        scratch: &mut [u8],
+    ) -> Result<usize> {
+        let slice = self.exl3_tensor_slice_with_layout(name, world, rank, layout)?;
         ensure!(dst.len() >= slice.bytes(), "EXL3 staging buffer too small");
         ensure!(
             scratch.len() >= slice.scratch_bytes(),
@@ -186,16 +226,23 @@ mod tests {
                             &mut vec![0; full.scratch_bytes()],
                         )
                         .unwrap();
-                    for world in [2, 4] {
+                    for (world, layout) in [
+                        (2, V41Exl3Partition::Disjoint),
+                        (4, V41Exl3Partition::Disjoint),
+                        (4, V41Exl3Partition::PairedTp4),
+                    ] {
                         let mut rebuilt = vec![0; expected.len()];
                         for rank in 0..world {
-                            let s = catalog.exl3_tensor_slice(&name, world, rank).unwrap();
+                            let s = catalog
+                                .exl3_tensor_slice_with_layout(&name, world, rank, layout)
+                                .unwrap();
                             let mut bytes = vec![0; s.bytes()];
                             catalog
-                                .read_exl3_tensor_into(
+                                .read_exl3_tensor_into_with_layout(
                                     &name,
                                     world,
                                     rank,
+                                    layout,
                                     &mut bytes,
                                     &mut vec![0; s.scratch_bytes() * 7],
                                 )
@@ -218,7 +265,7 @@ mod tests {
                 }
             }
         }
-        println!("K3/K4 gate/up/down packed tensors and rotations reconstruct exactly for TP2/TP4");
+        println!("K3/K4 gate/up/down packed tensors and rotations reconstruct exactly for disjoint TP2/TP4 and paired TP4");
     }
 
     #[test]
@@ -257,10 +304,16 @@ mod tests {
                         .collect();
                     file.set_len(offset + payload.len() as u64).unwrap();
                     file.write_all_at(&payload, offset).unwrap();
-                    for world in [1, 2, 4] {
+                    for (world, layout) in [
+                        (1, V41Exl3Partition::Disjoint),
+                        (2, V41Exl3Partition::Disjoint),
+                        (4, V41Exl3Partition::Disjoint),
+                        (4, V41Exl3Partition::PairedTp4),
+                    ] {
                         let mut reconstructed = vec![0u8; payload.len()];
                         for rank in 0..world {
-                            let s = tensor_slice(&p, suffix, world, rank).unwrap();
+                            let s =
+                                tensor_slice_with_layout(&p, suffix, world, rank, layout).unwrap();
                             let mut dst = vec![0xA5; s.bytes()];
                             let mut scratch = vec![0; s.scratch_bytes() * 3];
                             read_slice(&file, offset, s, &mut dst, &mut scratch).unwrap();
