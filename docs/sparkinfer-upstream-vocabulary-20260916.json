@@ -1,0 +1,326 @@
+{
+  "scope": "Bounded native/upstream vocabulary projection screen; not serving acceptance.",
+  "command": [
+    "python/tools/compare_v41_vocab_upstream.py",
+    "--b12x-root",
+    "/home/tj/.cache/ds41rt-upstream-20260916/sparkinfer",
+    "--native-lib",
+    "/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-index-sort.so",
+    "--output",
+    "/home/tj/.cache/ds41rt-upstream-20260916/vocab-upstream-screen.json"
+  ],
+  "revision": "4e31d0a10ea7ca24ac48d522fb65eaafbc27ad30",
+  "native_sha256": "8c6cccb1c3372567a1c49cc480a9cdf2b44d776a0a69cfa7c9d823caebaf0a4c",
+  "script_sha256": "b256d6688febe8f0c63d6c5cd9671bb2df4b80b5491a6b400655bd5db42ae0ed",
+  "gpu": "uuid, name, power.limit [W], clocks.current.memory [MHz]\nGPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, NVIDIA RTX PRO 6000 Blackwell Workstation Edition, 400.00 W, 405 MHz\nGPU-95f8f212-9131-df99-fd53-7535965197d7, NVIDIA RTX PRO 6000 Blackwell Workstation Edition, 400.00 W, 405 MHz\n",
+  "protocol": "Synthetic BF16 weights; native FP32 logits versus upstream row kernel instantiated with FP32 output. Upstream public BF16 rounding assessed separately. Balanced warm CUDA graphs.",
+  "cases": [
+    {
+      "vocab": 64640,
+      "rows": 1,
+      "checks": [
+        {
+          "input_std": 0.2,
+          "max_error": 3.725290298461914e-07,
+          "greedy_exact": true,
+          "bf16_logit_max_error": 0.0038988590240478516,
+          "bf16_greedy_exact": true
+        },
+        {
+          "input_std": 0.01,
+          "max_error": 1.4901161193847656e-08,
+          "greedy_exact": true,
+          "bf16_logit_max_error": 0.00012197345495223999,
+          "bf16_greedy_exact": true
+        },
+        {
+          "input_std": 0.0,
+          "max_error": 0.0,
+          "greedy_exact": true,
+          "bf16_logit_max_error": 0.0,
+          "bf16_greedy_exact": true
+        }
+      ],
+      "stable_replay_allocation": true,
+      "warm_us": {
+        "native": [
+          444.84352111816406,
+          444.5862579345703,
+          445.5091094970703,
+          447.35294342041016,
+          449.1417694091797,
+          449.3657684326172
+        ],
+        "upstream_fp32": [
+          402.3686218261719,
+          402.3263931274414,
+          402.3513412475586,
+          402.34081268310547,
+          402.40833282470703,
+          402.4208068847656
+        ]
+      },
+      "median_us": {
+        "native": 446.43102645874023,
+        "upstream_fp32": 402.35998153686523
+      }
+    },
+    {
+      "vocab": 64640,
+      "rows": 4,
+      "checks": [
+        {
+          "input_std": 0.2,
+          "max_error": 2.384185791015625e-07,
+          "greedy_exact": true,
+          "bf16_logit_max_error": 0.003880023956298828,
+          "bf16_greedy_exact": true
+        },
+        {
+          "input_std": 0.01,
+          "max_error": 1.4901161193847656e-08,
+          "greedy_exact": true,
+          "bf16_logit_max_error": 0.00016573071479797363,
+          "bf16_greedy_exact": true
+        },
+        {
+          "input_std": 0.0,
+          "max_error": 0.0,
+          "greedy_exact": true,
+          "bf16_logit_max_error": 0.0,
+          "bf16_greedy_exact": true
+        }
+      ],
+      "stable_replay_allocation": true,
+      "warm_us": {
+        "native": [
+          445.6371307373047,
+          480.4035186767578,
+          483.52672576904297,
+          481.8588638305664,
+          482.6380920410156,
+          482.2560119628906
+        ],
+        "upstream_fp32": [
+          1605.3836059570312,
+          1605.4598999023438,
+          1605.3439331054688,
+          1605.3990173339844,
+          1605.4386901855469,
+          1605.3065490722656
+        ]
+      },
+      "median_us": {
+        "native": 482.0574378967285,
+        "upstream_fp32": 1605.3913116455078
+      }
+    },
+    {
+      "vocab": 64640,
+      "rows": 16,
+      "checks": [
+        {
+          "input_std": 0.2,
+          "max_error": 3.5762786865234375e-07,
+          "greedy_exact": true,
+          "bf16_logit_max_error": 0.003901362419128418,
+          "bf16_greedy_exact": false
+        },
+        {
+          "input_std": 0.01,
+          "max_error": 1.4901161193847656e-08,
+          "greedy_exact": true,
+          "bf16_logit_max_error": 0.0002340748906135559,
+          "bf16_greedy_exact": true
+        },
+        {
+          "input_std": 0.0,
+          "max_error": 0.0,
+          "greedy_exact": true,
+          "bf16_logit_max_error": 0.0,
+          "bf16_greedy_exact": true
+        }
+      ],
+      "stable_replay_allocation": true,
+      "warm_us": {
+        "native": [
+          1592.3353576660156,
+          1600.9797668457031,
+          1603.5011291503906,
+          1604.7689819335938,
+          1605.8837890625,
+          1607.9986572265625
+        ],
+        "upstream_fp32": [
+          6416.2548828125,
+          6416.2469482421875,
+          6416.2005615234375,
+          6416.4056396484375,
+          6416.14990234375,
+          6416.4154052734375
+        ]
+      },
+      "median_us": {
+        "native": 1604.1350555419922,
+        "upstream_fp32": 6416.250915527344
+      }
+    },
+    {
+      "vocab": 129280,
+      "rows": 1,
+      "checks": [
+        {
+          "input_std": 0.2,
+          "max_error": 4.172325134277344e-07,
+          "greedy_exact": true,
+          "bf16_logit_max_error": 0.003896474838256836,
+          "bf16_greedy_exact": true
+        },
+        {
+          "input_std": 0.01,
+          "max_error": 1.862645149230957e-08,
+          "greedy_exact": true,
+          "bf16_logit_max_error": 0.000170193612575531,
+          "bf16_greedy_exact": true
+        },
+        {
+          "input_std": 0.0,
+          "max_error": 0.0,
+          "greedy_exact": true,
+          "bf16_logit_max_error": 0.0,
+          "bf16_greedy_exact": true
+        }
+      ],
+      "stable_replay_allocation": true,
+      "warm_us": {
+        "native": [
+          879.9372863769531,
+          890.3810882568359,
+          889.7714996337891,
+          889.6393585205078,
+          890.3561401367188,
+          889.8284912109375
+        ],
+        "upstream_fp32": [
+          803.2857513427734,
+          803.2729339599609,
+          803.2745361328125,
+          803.3424377441406,
+          803.2093048095703,
+          803.3123016357422
+        ]
+      },
+      "median_us": {
+        "native": 889.7999954223633,
+        "upstream_fp32": 803.280143737793
+      }
+    },
+    {
+      "vocab": 129280,
+      "rows": 4,
+      "checks": [
+        {
+          "input_std": 0.2,
+          "max_error": 3.5762786865234375e-07,
+          "greedy_exact": true,
+          "bf16_logit_max_error": 0.003888726234436035,
+          "bf16_greedy_exact": true
+        },
+        {
+          "input_std": 0.01,
+          "max_error": 1.4901161193847656e-08,
+          "greedy_exact": true,
+          "bf16_logit_max_error": 0.00023671984672546387,
+          "bf16_greedy_exact": true
+        },
+        {
+          "input_std": 0.0,
+          "max_error": 0.0,
+          "greedy_exact": true,
+          "bf16_logit_max_error": 0.0,
+          "bf16_greedy_exact": true
+        }
+      ],
+      "stable_replay_allocation": true,
+      "warm_us": {
+        "native": [
+          968.3920288085938,
+          978.0908966064453,
+          978.3564758300781,
+          978.0921936035156,
+          978.0899047851562,
+          979.6236419677734
+        ],
+        "upstream_fp32": [
+          3208.7930297851562,
+          3208.7200927734375,
+          3208.7509155273438,
+          3208.6569213867188,
+          3208.6907958984375,
+          3208.7191772460938
+        ]
+      },
+      "median_us": {
+        "native": 978.0915451049805,
+        "upstream_fp32": 3208.7196350097656
+      }
+    },
+    {
+      "vocab": 129280,
+      "rows": 16,
+      "checks": [
+        {
+          "input_std": 0.2,
+          "max_error": 3.5762786865234375e-07,
+          "greedy_exact": true,
+          "bf16_logit_max_error": 0.00390470027923584,
+          "bf16_greedy_exact": true
+        },
+        {
+          "input_std": 0.01,
+          "max_error": 1.4901161193847656e-08,
+          "greedy_exact": true,
+          "bf16_logit_max_error": 0.00024078786373138428,
+          "bf16_greedy_exact": true
+        },
+        {
+          "input_std": 0.0,
+          "max_error": 0.0,
+          "greedy_exact": true,
+          "bf16_logit_max_error": 0.0,
+          "bf16_greedy_exact": true
+        }
+      ],
+      "stable_replay_allocation": true,
+      "warm_us": {
+        "native": [
+          3216.575927734375,
+          3231.3458251953125,
+          3236.4199829101562,
+          3238.8766479492188,
+          3242.9931640625,
+          3251.3381958007812
+        ],
+        "upstream_fp32": [
+          12832.205810546875,
+          12832.186279296875,
+          12832.1533203125,
+          12832.15087890625,
+          12832.156982421875,
+          12832.25341796875
+        ]
+      },
+      "median_us": {
+        "native": 3237.6483154296875,
+        "upstream_fp32": 12832.171630859375
+      }
+    }
+  ],
+  "raw_sha256": "410c7eb82230fc8a10c864a843cfb25212529a78704c6cbee13b18bc2a47fe1b",
+  "limitations": [
+    "Synthetic weights and inputs; checkpoint/head hidden-state qualification remains required.",
+    "Direct upstream Triton kernel instantiated with FP32 output; upstream public prepared output is BF16.",
+    "Upstream defaults to Torch for multirow calls; forced row-kernel measurements bound adaptation scope and are not a claim about upstream default multirow performance.",
+    "Warm single-GPU component timings, no serving speedup claim."
+  ]
+}

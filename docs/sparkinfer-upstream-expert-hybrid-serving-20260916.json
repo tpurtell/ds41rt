@@ -294,7 +294,7 @@
       }
     }
   },
-  "decision": "Combined correctness passes. Single-client throughput flat; concurrency results do not establish a robust broad improvement. Keep experiments off pending backend selection, with baseline serving restored.",
+  "decision": "Keep hybrid opt-in. Warm code C16 is effectively flat (~1309 vs ~1311 TPS); C2 ~278 vs ~282 has overlapping samples. Topic remains faster in hybrid medians but all 54 paired prose outputs differ; no robust broad gain established. Continue remaining upstream component evaluation.",
   "concurrency_screen": {
     "baseline": {
       "code": {
@@ -475,5 +475,53 @@
       }
     },
     "limitations": "Same requests and benchmark protocol; hybrid repeats followed previous serving screens, baseline repeats followed a coordinator/worker restart and built-in warmup. First samples are slower in baseline; small median differences are not conclusive gains."
+  },
+  "warmed_baseline_control": {
+    "code": {
+      "raw_path": "/home/tj/.cache/ds41rt-upstream-20260916/hybrid-concurrency-warm-baseline-code.json",
+      "sha256": "ce3b6f42196986c543462c4db55fd6b0dedd3741df03324f9f0969f907932ee2",
+      "summaries": [
+        {
+          "concurrency": 2,
+          "samples": 3,
+          "median_aggregate_tps": 278.27119946192096,
+          "min_aggregate_tps": 272.34423868702146,
+          "max_aggregate_tps": 280.99604142662497
+        },
+        {
+          "concurrency": 16,
+          "samples": 3,
+          "median_aggregate_tps": 1308.677039710692,
+          "min_aggregate_tps": 1308.46594870779,
+          "max_aggregate_tps": 1313.1190092314785
+        }
+      ],
+      "passed": true,
+      "identical_outputs_to_hybrid": 54,
+      "paired_outputs": 54
+    },
+    "topic": {
+      "raw_path": "/home/tj/.cache/ds41rt-upstream-20260916/hybrid-concurrency-warm-baseline-topic.json",
+      "sha256": "95313d0da9a40b46e58e3a4368b03f9989c755906be3c41ab4271cc90dcbfef9",
+      "summaries": [
+        {
+          "concurrency": 2,
+          "samples": 3,
+          "median_aggregate_tps": 142.40594008262812,
+          "min_aggregate_tps": 141.92359278962533,
+          "max_aggregate_tps": 142.5388197603436
+        },
+        {
+          "concurrency": 16,
+          "samples": 3,
+          "median_aggregate_tps": 692.7269950542077,
+          "min_aggregate_tps": 683.2073629969884,
+          "max_aggregate_tps": 757.2489675527074
+        }
+      ],
+      "passed": true,
+      "identical_outputs_to_hybrid": 0,
+      "paired_outputs": 54
+    }
   }
 }

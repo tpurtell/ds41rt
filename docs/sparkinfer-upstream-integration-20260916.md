@@ -16,6 +16,58 @@ flowchart LR
     F --> G[Clean image builds, README, reports and release]
 ```
 
+## Vocabulary projection applicability and component screen
+
+The upstream BF16 vocabulary change adds multirow support and prepared dispatch;
+its default selects the row-reduction Triton kernel only for capacity one and
+Torch otherwise. The PCIe argmax kernel's numerical code is unchanged in this
+delta (its launcher cache moved to `program_cache`). Our native vocabulary head
+uses BF16 resident weights with pedantic FP32 accumulation and FP32 logits,
+including two independent 64640-row shards and GPU-side winner reduction.
+
+The [vocabulary probe](../python/tools/compare_v41_vocab_upstream.py) instantiates
+upstream's row kernel with **FP32 output** to preserve our boundary. Synthetic
+normal, small and zero inputs pass selected-column independent FP32 references,
+full-logit comparison, changed-input graph replay and stable replay allocation.
+All FP32 greedy winners match. Merely rounding these logits to BF16 changes a
+greedy winner in one synthetic 16-row shard case; the public BF16 boundary is
+therefore not a drop-in replacement.
+
+| Vocabulary rows | Input rows | Native, µs | Upstream row kernel with FP32 output, µs |
+| --- | ---: | ---: | ---: |
+| 64640 | 1 | 446.4 | 402.4 |
+| 64640 | 4 | 482.1 | 1605.4 |
+| 64640 | 16 | 1604.1 | 6416.3 |
+| 129280 | 1 | 889.8 | 803.3 |
+| 129280 | 4 | 978.1 | 3208.7 |
+| 129280 | 16 | 3237.6 | 12832.2 |
+
+These are balanced warm graph component measurements on RTX0, not serving
+throughput. Forced multirow measurements bound the possible adaptation; they
+do not represent upstream's default multirow backend. A **single-row-only,
+FP32-output native adapter** is worth a bounded comparison. Keep GEMM for
+multirow calls. Real checkpoint weights, actual hidden states, graph/lane
+integration and serving acceptance remain pending before adopting it.
+[Raw vocabulary evidence](sparkinfer-upstream-vocabulary-20260916.json) records
+all six cases and artifact identities.
+
+## Hybrid selection after warm-state control
+
+A second three-repeat baseline run after warming gives code **278.3 TPS at C2**
+and **1308.7 at C16**, versus hybrid **281.8 / 1311.3**. All 54 paired code
+outputs match exactly; sample ranges overlap. This removes most of the apparent
+code gain from the first comparison. Warm baseline topic is **142.4 / 692.7**
+versus hybrid **149.8 / 744.7**, but all 54 paired prose outputs differ and C16
+sample ranges overlap. All objective checks pass in both arms.
+
+Keep both hybrid experiment switches **off by default**: the native microkernel
+gains are real, but a useful broad serving gain has not been established.
+Retain the opt-in implementation and evidence for future tuning; do not spend
+release qualification on promoting it now. Continue the remaining upstream
+component evaluation and then tune dSpark against selected kernels. The
+coordinator was stopped after this control to free GPUs for vocabulary probes;
+the original Spark worker containers remain running.
+
 ## Combined hybrid experts: first serving screen
 
 The combined RTX/Spark hybrid passed all 27 short decode requests, using
