@@ -856,3 +856,27 @@ audit also confirms that the current exporter/core handles two or three distinct
 K2–K5 tiers; the four-tier K2/K3/K4/K5 specialization remains an implementation
 gap. Neither that gap nor the remaining optimization and release gates is closed
 by this allocation change.
+
+## Capacity sharing across the other expert owners
+
+[Owner-sharing evidence](release-v5-exl3-owner-capacity-sharing.json) extends the
+same allocation scheme to local TP1, each dSpark stage/lane, and Spark workers.
+Constructors verify their actual allocation payload against the planner. No
+capacity selection, kernel geometry or cross-lane synchronization changes here.
+
+For the current TP1 capacities 1/16/80/4096, execution storage falls from
+1,069,671,880 to 994,673,268 bytes per lane, saving 143 MiB across two lanes.
+For dSpark capacities 1/16/80/256, execution storage falls from 115,782,752 to
+53,645,428 bytes per stage per lane, saving 356 MiB across three stages and two
+lanes. Unchanged owner inputs/outputs are excluded from these execution figures.
+The qualified native ARM TP4 rank-2 worker (512-wide expert slice) drops from
+941,376,128 to 705,070,468 total workspace bytes at capacity 4096, saving 225 MiB.
+
+TP1 passes private-buffer parity and changed-input graph replay on both GPUs
+through all six exported capacities, plus its local shared-expert sum reference.
+dSpark passes all three stage references on both GPUs, complete K5/K7 chains,
+independent lanes, cancellation/reuse and runtime prefix restoration. The native
+Spark worker passes all capacity boundaries through 4096 rows against B12x,
+including mapped/chunked responses, guards and error recovery. Existing services
+are restored. These are memory and correctness results; loading and throughput
+still need measurement with the final placement and optimized kernels.

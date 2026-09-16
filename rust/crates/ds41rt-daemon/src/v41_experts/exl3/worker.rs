@@ -1,7 +1,7 @@
 //! Spark request adapter: preserve the compact BF16 wire response and write
 //! directly into registered send storage when the transport permits it.
 use super::{
-    execution::{Exl3Execution, Exl3InputFormat},
+    execution::{Exl3Execution, Exl3InputFormat, Exl3Workspace},
     Exl3Weights,
 };
 use crate::{
@@ -41,17 +41,11 @@ impl<'a> Exl3Worker<'a> {
     }
 
     pub(crate) fn plan(directory: &Path, capacity: u32) -> Result<usize> {
-        Self::capacities(capacity)?.into_iter().try_fold(
-            capacity as usize * (5280 + 6 * 8),
-            |bytes, c| {
-                bytes
-                    .checked_add(Exl3Execution::plan(
-                        &directory.join(format!("m{c}")),
-                        Exl3InputFormat::Fp8K32,
-                    )?)
-                    .context("EXL3 worker workspace budget overflow")
-            },
-        )
+        let directories: Vec<_> = Self::capacities(capacity)?.into_iter()
+            .map(|c| directory.join(format!("m{c}"))).collect();
+        Exl3Workspace::plan(&directories, Exl3InputFormat::Fp8K32)?
+            .checked_add(capacity as usize * (5280 + 6 * 8))
+            .context("EXL3 worker workspace budget overflow")
     }
 
     pub(crate) fn new(
@@ -84,13 +78,17 @@ impl<'a> Exl3Worker<'a> {
             "EXL3 worker workspace exceeds device budget"
         );
         let mut executions = Vec::new();
-        for c in Self::capacities(capacity)? {
+        let capacities = Self::capacities(capacity)?;
+        let directories: Vec<_> = capacities.iter().map(|c| directory.join(format!("m{c}"))).collect();
+        let arena = Exl3Workspace::new(library, &directories)?;
+        for c in capacities {
             let execution = unsafe {
-                Exl3Execution::with_input_format(
+                Exl3Execution::with_shared_workspace(
                     library,
                     weights.clone(),
                     &directory.join(format!("m{c}")),
                     Exl3InputFormat::Fp8K32,
+                    Some(arena.clone()),
                 )?
             };
             ensure!(
@@ -110,6 +108,7 @@ impl<'a> Exl3Worker<'a> {
                 .map(|e| e.workspace_bytes())
                 .sum::<usize>()
                 + inputs.iter().map(|b| b.buffer.bytes).sum::<usize>()
+                + arena.bytes()
                 == budget,
             "EXL3 worker workspace plan mismatch"
         );

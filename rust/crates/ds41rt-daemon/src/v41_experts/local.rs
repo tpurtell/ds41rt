@@ -1,6 +1,6 @@
 //! One lane's local routed-expert scratch; both lanes share immutable weights.
 use super::exl3::{
-    execution::{Exl3Execution, Exl3InputFormat},
+    execution::{Exl3Execution, Exl3InputFormat, Exl3Workspace},
     Exl3Weights,
 };
 use super::{DeviceAllocation, ExpertLayer, ExpertWeights, LoadStream};
@@ -116,16 +116,11 @@ impl<'a> LocalExpertWave<'a> {
         })
     }
     pub fn exl3_device_bytes(directory: &Path, capacity: u32) -> Result<usize> {
-        Self::capacities(capacity)?
-            .into_iter()
-            .try_fold(capacity as usize * 10240, |total, c| {
-                total
-                    .checked_add(Exl3Execution::plan(
-                        &directory.join(format!("m{c}")),
-                        Exl3InputFormat::Fp8K32,
-                    )?)
-                    .context("local EXL3 workspace overflow")
-            })
+        let directories: Vec<_> = Self::capacities(capacity)?.into_iter()
+            .map(|c| directory.join(format!("m{c}"))).collect();
+        Exl3Workspace::plan(&directories, Exl3InputFormat::Fp8K32)?
+            .checked_add(capacity as usize * 10240)
+            .context("local EXL3 workspace overflow")
     }
     /// Trusted native package; all modules are bound before request processing.
     pub unsafe fn new_exl3(
@@ -156,13 +151,17 @@ impl<'a> LocalExpertWave<'a> {
             raw: library.cuda_stream_create()?,
         };
         let mut states = Vec::new();
-        for c in Self::capacities(capacity)? {
+        let capacities = Self::capacities(capacity)?;
+        let directories: Vec<_> = capacities.iter().map(|c| directory.join(format!("m{c}"))).collect();
+        let arena = Exl3Workspace::new(library, &directories)?;
+        for c in capacities {
             let state = unsafe {
-                Exl3Execution::with_input_format(
+                Exl3Execution::with_shared_workspace(
                     library,
                     weights.clone(),
                     &directory.join(format!("m{c}")),
                     Exl3InputFormat::Fp8K32,
+                    Some(arena.clone()),
                 )?
             };
             ensure!(
@@ -171,6 +170,9 @@ impl<'a> LocalExpertWave<'a> {
             );
             states.push(state);
         }
+        ensure!(arena.bytes() + states.iter().map(|state| state.workspace_bytes()).sum::<usize>()
+            + capacity as usize * 10240 == Self::exl3_device_bytes(directory, capacity)?,
+            "local EXL3 shared workspace plan mismatch");
         Ok(Self {
             stream,
             backend: Backend::Exl3 {

@@ -1,0 +1,51 @@
+{
+  "passed": true,
+  "source_base_commit": "fd11499",
+  "scope": "Extend exclusive capacity scratch sharing to local TP1, dSpark stage owners, and Spark workers. Allocation and numerical/graph qualification; no throughput claim.",
+  "allocations": {
+    "tp1_current_capacities": {
+      "capacities": [
+        1,
+        16,
+        80,
+        4096
+      ],
+      "before_execution_bytes_per_lane": 1069671880,
+      "after_execution_bytes_per_lane": 994673268,
+      "saved_bytes_two_lanes": 149997224
+    },
+    "dspark": {
+      "capacities": [
+        1,
+        16,
+        80,
+        256
+      ],
+      "before_execution_bytes_per_stage_per_lane": 115782752,
+      "after_execution_bytes_per_stage_per_lane": 53645428,
+      "saved_bytes_three_stages_two_lanes": 372823944
+    },
+    "spark_tp4_rank2": {
+      "capacity": 4096,
+      "before_worker_workspace_bytes": 941376128,
+      "after_worker_workspace_bytes": 705070468,
+      "saved_bytes": 236305660
+    }
+  },
+  "checks": [
+    "TP1 both GPUs: six capacity specializations match private execution and changed-input graph replay",
+    "local TP1 independent lanes and shared-expert sum match reference",
+    "all three dSpark stages, both GPUs and two lanes match B12x at capacities 1/16/80/256",
+    "complete K5/K7 draft chains match single-GPU output with cancellation and reuse",
+    "distributed draft runtime restores prefixes and releases/re-admits requests",
+    "native ARM Spark worker matches B12x across live rows 1/3/16/17/80/81/256/257/1024/1025/4096/1 with mapped/chunked output, guards, rejection and recovery",
+    "actual allocation totals match constructor budgets"
+  ],
+  "memory_scope": "TP1 and dSpark numbers count execution scratch, LUTs and wire conversion where applicable; unchanged owner inputs/outputs are excluded. Spark total includes its request input allocations. Kernels, capacity policy and lane independence are unchanged.",
+  "throughput_qualified": false,
+  "clean_images_built": false,
+  "production_restored_health_http_status": 200,
+  "verified_at": "2026-09-16T18:17:03.452180+00:00",
+  "archive": "docs/evidence/v5-exl3-owner-capacity-sharing.tar.gz",
+  "archive_sha256": "9eceaa359d074a181b438fdd84852a4dd2c532d8de91e3a0d898d2a4474b4c00"
+}

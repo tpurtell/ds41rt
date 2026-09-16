@@ -82,6 +82,9 @@ pub(crate) struct Exl3Workspace<'a> {
     dtypes: BTreeMap<String, String>,
 }
 impl<'a> Exl3Workspace<'a> {
+    pub(crate) fn bytes(&self) -> usize {
+        self.allocations.values().map(|allocation| allocation.buffer.bytes).sum()
+    }
     fn layout(directories: &[PathBuf]) -> Result<BTreeMap<String, (usize, String)>> {
         ensure!(!directories.is_empty(), "empty EXL3 capacity workspace");
         let mut layout: BTreeMap<String, (usize, String)> = BTreeMap::new();

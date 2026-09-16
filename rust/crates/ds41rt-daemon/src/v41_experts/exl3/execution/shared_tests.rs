@@ -18,13 +18,14 @@ fn shared_capacity_scratch_matches_private_and_graph_replay() -> Result<()> {
     let catalog = ds41rt_loader::read_official_v41_catalog(
         ds41rt_loader::OFFICIAL_V41_MODEL_ID, Path::new(&std::env::var("DS41RT_SNAPSHOT")?))?;
     let root = PathBuf::from(std::env::var("DS41RT_EXL3_AOT")?);
+    let tp1 = std::env::var_os("DS41RT_EXL3_TEST_TP1").is_some();
     let capacities = [1usize, 16, 80, 256, 1024, 4096];
     let directories: Vec<_> = capacities.iter().map(|c| root.join(format!("m{c}"))).collect();
     let format = Exl3InputFormat::Fp8K32;
     for device in 0..2 {
         library.cuda_set_device(device)?;
         let weights = Rc::new(vec![Exl3Weights::load(&library, &catalog,
-            ExpertLayer::BackboneTp2 { layer: 0, rank: device as usize }, 4_000_000_000)?]);
+            if tp1 { ExpertLayer::BackboneFull { layer: 0 } } else { ExpertLayer::BackboneTp2 { layer: 0, rank: device as usize } }, 7_000_000_000)?]);
         let arena = Exl3Workspace::new(&library, &directories)?;
         let mut states = directories.iter().map(|path| unsafe {
             Exl3Execution::with_shared_workspace(&library, weights.clone(), path, format, Some(arena.clone()))

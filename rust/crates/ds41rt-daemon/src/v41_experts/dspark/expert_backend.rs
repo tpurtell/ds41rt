@@ -2,7 +2,7 @@
 use super::{DsparkRouter, DsparkSharedFfn, DsparkWeights};
 use crate::v41_experts::exl3::execution::Exl3InputFormat;
 use crate::v41_experts::{
-    exl3::{execution::Exl3Execution, Exl3Weights},
+    exl3::{execution::{Exl3Execution, Exl3Workspace}, Exl3Weights},
     ExpertExecution,
 };
 use crate::v41_memory::{DeviceAllocation, LoadStream};
@@ -81,17 +81,11 @@ impl<'w, 'a> CompressedDraftExperts<'w, 'a> {
             .collect())
     }
     pub fn device_bytes(directory: &Path, capacity: u32) -> Result<usize> {
-        Self::capacities(capacity)?.into_iter().try_fold(
-            capacity as usize * (10240 * 3 + 12 * 2),
-            |bytes, c| {
-                bytes
-                    .checked_add(Exl3Execution::plan(
-                        &directory.join(format!("m{c}")),
-                        Exl3InputFormat::Bf16,
-                    )?)
-                    .context("EXL3 draft workspace overflow")
-            },
-        )
+        let directories: Vec<_> = Self::capacities(capacity)?.into_iter()
+            .map(|c| directory.join(format!("m{c}"))).collect();
+        Exl3Workspace::plan(&directories, Exl3InputFormat::Bf16)?
+            .checked_add(capacity as usize * (10240 * 3 + 12 * 2))
+            .context("EXL3 draft workspace overflow")
     }
     pub unsafe fn new(
         owner: &'w DsparkWeights<'a>,
@@ -118,9 +112,13 @@ impl<'w, 'a> CompressedDraftExperts<'w, 'a> {
             raw: library.cuda_stream_create()?,
         };
         let mut states = Vec::new();
-        for c in Self::capacities(capacity)? {
+        let capacities = Self::capacities(capacity)?;
+        let directories: Vec<_> = capacities.iter().map(|c| directory.join(format!("m{c}"))).collect();
+        let arena = Exl3Workspace::new(library, &directories)?;
+        for c in capacities {
             let state = unsafe {
-                Exl3Execution::new(library, weights.clone(), &directory.join(format!("m{c}")))?
+                Exl3Execution::with_shared_workspace(library, weights.clone(), &directory.join(format!("m{c}")),
+                    Exl3InputFormat::Bf16, Some(arena.clone()))?
             };
             ensure!(
                 state.capacity() == c as usize && state.output_element_bytes() == 2,
@@ -128,6 +126,9 @@ impl<'w, 'a> CompressedDraftExperts<'w, 'a> {
             );
             states.push(state);
         }
+        ensure!(arena.bytes() + states.iter().map(|state| state.workspace_bytes()).sum::<usize>()
+            + capacity as usize * (10240 * 3 + 12 * 2) == Self::device_bytes(directory, capacity)?,
+            "EXL3 draft shared workspace plan mismatch");
         Ok(Self {
             stream,
             states,
