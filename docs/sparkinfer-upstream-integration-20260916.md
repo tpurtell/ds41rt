@@ -16,6 +16,37 @@ flowchart LR
     F --> G[Clean image builds, README, reports and release]
 ```
 
+## Adaptive serving decision and clean-build preparation
+
+The uninstrumented dual-RTX K7 comparison passed every code/topic concurrency,
+weighted-corpus and mixed-traffic check. Three-repeat medians:
+
+| Workload | Legacy costs | Refit costs |
+| --- | ---: | ---: |
+| Weighted decode, TPS | 88.68 | 88.97 |
+| Code C1, TPS | 162.33 | 159.81 |
+| Code C16, aggregate TPS | 1190.49 | 1176.37 |
+| Topic C8, aggregate TPS | 408.29 | 444.03 |
+| Topic C16, aggregate TPS | 701.18 | 707.97 |
+
+The one-batch mixed screen was 168.17 → 168.73 TPS at C4 and
+284.60 → 275.62 at C16. These do not establish a broad serving gain from the
+refit. **Retain legacy adaptive costs for dual RTX**, preserving the existing
+single-RTX embedded profile. The new fit stays available as an explicit profile.
+Do not compare these weighted numbers directly with earlier K5 screens: both
+arms here use nonce seed 91607 and K7. [Comparison evidence](sparkinfer-upstream-adaptive-serving-20260916.json)
+records all concurrency points, checks, raw hashes and exact launch arguments.
+
+An isolated checkout under the integration cache now pins fork `4e31d0a1` and
+enables candidate attention, lagged mHC and narrow projection flags in the
+standard build recipes. Compact experts and row vocabulary remain off. Nested
+XGrammar dependencies were initialized and both vendor source locks verify.
+The normal `build.sh` clean build is running with separate `upstream-candidate`
+image tags, preserving existing v3 images. No production pin, fork master,
+or published image has been promoted. The source patch and identity are
+recorded in `release-candidate-source{.patch,-state.json}` in the integration
+cache; the builder also records and verifies its dirty-source manifest.
+
 ## Placement-cost refit on selected upstream kernels
 
 Fixed K1–K7 code and mixed calibration completed at C2/C4/C8/C16. All client

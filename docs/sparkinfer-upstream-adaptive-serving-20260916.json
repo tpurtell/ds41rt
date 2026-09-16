@@ -1,0 +1,518 @@
+{
+  "scope": "Uninstrumented adaptive K7 legacy versus fitted affine profile on the same selected upstream native library, original Spark workers, 14M pool and twenty RTX encoder layers. Arms run sequentially; three repeats for concurrency and weighted, one mixed batch per C.",
+  "arms": {
+    "legacy": {
+      "metadata": {
+        "scope": "Uninstrumented dual RTX adaptive K7 comparison; fixed prompts and native library, cost profile differs",
+        "native_sha256": "8c6cccb1c3372567a1c49cc480a9cdf2b44d776a0a69cfa7c9d823caebaf0a4c",
+        "daemon_sha256": "82ed41b4a5cdb7e11823e424019e54c7e22a2e0fa8fe3a4d6a330c3fd52b1326",
+        "profile": "legacy",
+        "profile_sha256": null,
+        "commands": [
+          {
+            "command": [
+              "/home/tj/Developer/ds41rt/.venv/bin/python",
+              "/home/tj/Developer/ds41rt/scripts/bench-ds41-concurrent-api.py",
+              "--base-url",
+              "http://127.0.0.1:8000",
+              "--output",
+              "/home/tj/.cache/ds41rt-upstream-20260916/adaptive-upstream-legacy-rtx2-k7/code.json",
+              "--case",
+              "code",
+              "--concurrency",
+              "1",
+              "2",
+              "4",
+              "8",
+              "16",
+              "--repeats",
+              "3",
+              "--label",
+              "upstream-adaptive-compare",
+              "--nonce",
+              "91607"
+            ],
+            "exit_code": 0
+          },
+          {
+            "command": [
+              "/home/tj/Developer/ds41rt/.venv/bin/python",
+              "/home/tj/Developer/ds41rt/scripts/bench-ds41-concurrent-api.py",
+              "--base-url",
+              "http://127.0.0.1:8000",
+              "--output",
+              "/home/tj/.cache/ds41rt-upstream-20260916/adaptive-upstream-legacy-rtx2-k7/topic.json",
+              "--case",
+              "topic",
+              "--concurrency",
+              "1",
+              "2",
+              "4",
+              "8",
+              "16",
+              "--repeats",
+              "3",
+              "--label",
+              "upstream-adaptive-compare",
+              "--nonce",
+              "91607"
+            ],
+            "exit_code": 0
+          },
+          {
+            "command": [
+              "/home/tj/Developer/ds41rt/.venv/bin/python",
+              "/home/tj/Developer/ds41rt/scripts/bench-ds41-release-decode.py",
+              "--base-url",
+              "http://127.0.0.1:8000",
+              "--tokenizer",
+              "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+              "--label",
+              "upstream-adaptive-compare",
+              "--repeats",
+              "3",
+              "--nonce-seed",
+              "91607",
+              "--output",
+              "/home/tj/.cache/ds41rt-upstream-20260916/adaptive-upstream-legacy-rtx2-k7/weighted.json"
+            ],
+            "exit_code": 0
+          },
+          {
+            "command": [
+              "/home/tj/Developer/ds41rt/.venv/bin/python",
+              "/home/tj/Developer/ds41rt/scripts/bench-ds41-adaptive-mixed.py",
+              "--base-url",
+              "http://127.0.0.1:8000",
+              "--tokenizer",
+              "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+              "--nonce-seed",
+              "91607",
+              "--output",
+              "/home/tj/.cache/ds41rt-upstream-20260916/adaptive-upstream-legacy-rtx2-k7/mixed.json",
+              "--concurrency",
+              "1",
+              "4",
+              "16",
+              "--skip-lifecycle"
+            ],
+            "exit_code": 0
+          }
+        ],
+        "server_exit_code": 0
+      },
+      "run_script": "#!/bin/bash\nset -eu\ncd /home/tj/Developer/ds41rt\nexec env DS41RT_ADAPTIVE_COST_PROFILE=legacy DS41RT_NATIVE_LIB=/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-index-sort.so LD_LIBRARY_PATH=/home/tj/.local/share/uv/python/cpython-3.12.3-linux-x86_64-gnu/lib DS41RT_PYTHON=/home/tj/Developer/ds41rt/.venv/bin/python RUST_LOG=info CUDA_VISIBLE_DEVICES=0,1 rust/target/release/ds41rt serve-native --snapshot /home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277 --native-lib /home/tj/.cache/ds41rt-upstream-20260916/libcandidate-index-sort.so --peers 10.55.0.1:19441,10.55.0.2:19441,10.55.0.3:19441,10.55.0.4:19441 --rtx-gpus 2 --listen 0.0.0.0:8000 --prefill-batch-tokens 2048 --concurrency 16 --prefix-cache-entries 24 --max-context-tokens 1048576 --max-output-tokens 393216 --dspark --dspark-draft-limit 7\n",
+      "workloads": {
+        "code": {
+          "raw_path": "/home/tj/.cache/ds41rt-upstream-20260916/adaptive-upstream-legacy-rtx2-k7/code.json",
+          "sha256": "94a9b3988150e26b52ea0d67cd2074978d819486ab5bdd32a8fbd957fc9d56ef",
+          "passed": true,
+          "summaries": [
+            {
+              "concurrency": 1,
+              "samples": 3,
+              "median_aggregate_tps": 162.3294316740162,
+              "min_aggregate_tps": 160.4098343935528,
+              "max_aggregate_tps": 163.23724939866617
+            },
+            {
+              "concurrency": 2,
+              "samples": 3,
+              "median_aggregate_tps": 264.1840124735476,
+              "min_aggregate_tps": 202.2696518167575,
+              "max_aggregate_tps": 268.15774949768206
+            },
+            {
+              "concurrency": 4,
+              "samples": 3,
+              "median_aggregate_tps": 445.5097080708802,
+              "min_aggregate_tps": 437.2670136769,
+              "max_aggregate_tps": 454.80692583334843
+            },
+            {
+              "concurrency": 8,
+              "samples": 3,
+              "median_aggregate_tps": 756.8281954788121,
+              "min_aggregate_tps": 729.3871600624026,
+              "max_aggregate_tps": 763.8071347231137
+            },
+            {
+              "concurrency": 16,
+              "samples": 3,
+              "median_aggregate_tps": 1190.4925949341052,
+              "min_aggregate_tps": 1049.5387174445082,
+              "max_aggregate_tps": 1194.0840577266094
+            }
+          ]
+        },
+        "topic": {
+          "raw_path": "/home/tj/.cache/ds41rt-upstream-20260916/adaptive-upstream-legacy-rtx2-k7/topic.json",
+          "sha256": "903af0836bed98de8666729e2fa583e6061b1012120e08f8c0ee15e3dab3d294",
+          "passed": true,
+          "summaries": [
+            {
+              "concurrency": 1,
+              "samples": 3,
+              "median_aggregate_tps": 93.57456430868272,
+              "min_aggregate_tps": 93.3748214986503,
+              "max_aggregate_tps": 93.61734457962082
+            },
+            {
+              "concurrency": 2,
+              "samples": 3,
+              "median_aggregate_tps": 154.3588312236789,
+              "min_aggregate_tps": 149.02683523151327,
+              "max_aggregate_tps": 159.20398668900427
+            },
+            {
+              "concurrency": 4,
+              "samples": 3,
+              "median_aggregate_tps": 276.66123669391084,
+              "min_aggregate_tps": 272.3408662498763,
+              "max_aggregate_tps": 276.6857200424863
+            },
+            {
+              "concurrency": 8,
+              "samples": 3,
+              "median_aggregate_tps": 408.29327742008525,
+              "min_aggregate_tps": 405.50521883099356,
+              "max_aggregate_tps": 416.7264363363243
+            },
+            {
+              "concurrency": 16,
+              "samples": 3,
+              "median_aggregate_tps": 701.183908123687,
+              "min_aggregate_tps": 688.7932136250139,
+              "max_aggregate_tps": 702.2663097336124
+            }
+          ]
+        },
+        "weighted": {
+          "raw_path": "/home/tj/.cache/ds41rt-upstream-20260916/adaptive-upstream-legacy-rtx2-k7/weighted.json",
+          "sha256": "17266ed5392eb242908f89646cd52c7aa7a2ddc7d4c390906e80c051ea618fb8",
+          "passed": true,
+          "requests": 24,
+          "repeat_summaries": [
+            {
+              "repeat": 1,
+              "weighted_cases": 8,
+              "serving_completed": 8,
+              "objective_checks_passed": 4,
+              "objective_checks_assessed": 4,
+              "weighted_observed_decode_tokens_per_second": 89.73027596621667,
+              "partial_weighted_observed_decode_tokens_per_second": 89.73027596621667,
+              "complete_weighted_corpus": true,
+              "all_samples_passed": true
+            },
+            {
+              "repeat": 2,
+              "weighted_cases": 8,
+              "serving_completed": 8,
+              "objective_checks_passed": 4,
+              "objective_checks_assessed": 4,
+              "weighted_observed_decode_tokens_per_second": 88.66330347576064,
+              "partial_weighted_observed_decode_tokens_per_second": 88.66330347576064,
+              "complete_weighted_corpus": true,
+              "all_samples_passed": true
+            },
+            {
+              "repeat": 3,
+              "weighted_cases": 8,
+              "serving_completed": 8,
+              "objective_checks_passed": 4,
+              "objective_checks_assessed": 4,
+              "weighted_observed_decode_tokens_per_second": 88.68033099828764,
+              "partial_weighted_observed_decode_tokens_per_second": 88.68033099828764,
+              "complete_weighted_corpus": true,
+              "all_samples_passed": true
+            }
+          ],
+          "median_weighted_tps": 88.68033099828764,
+          "mean_weighted_tps": 89.02463681342165
+        },
+        "mixed": {
+          "raw_path": "/home/tj/.cache/ds41rt-upstream-20260916/adaptive-upstream-legacy-rtx2-k7/mixed.json",
+          "sha256": "b2192465a79c96daceec0fac660f247b944dd1c0cbe0c744a7ade06c7126df7a",
+          "passed": true,
+          "batches": [
+            {
+              "concurrency": 1,
+              "aggregate_tps": 157.05730137813933,
+              "span_definition": "earliest first content through last finish, including admission gaps"
+            },
+            {
+              "concurrency": 4,
+              "aggregate_tps": 168.17486339766495,
+              "span_definition": "earliest first content through last finish, including admission gaps"
+            },
+            {
+              "concurrency": 16,
+              "aggregate_tps": 284.59984474035656,
+              "span_definition": "earliest first content through last finish, including admission gaps"
+            }
+          ]
+        }
+      }
+    },
+    "placement": {
+      "metadata": {
+        "scope": "Uninstrumented dual RTX adaptive K7 comparison; fixed prompts and native library, cost profile differs",
+        "native_sha256": "8c6cccb1c3372567a1c49cc480a9cdf2b44d776a0a69cfa7c9d823caebaf0a4c",
+        "daemon_sha256": "82ed41b4a5cdb7e11823e424019e54c7e22a2e0fa8fe3a4d6a330c3fd52b1326",
+        "profile": "/home/tj/.cache/ds41rt-upstream-20260916/upstream-cost-profile-affine.json",
+        "profile_sha256": "52814656f92a16a4f8bc7db552fd6ab391d91ce85abe48497d73fec70346e2a1",
+        "commands": [
+          {
+            "command": [
+              "/home/tj/Developer/ds41rt/.venv/bin/python",
+              "/home/tj/Developer/ds41rt/scripts/bench-ds41-concurrent-api.py",
+              "--base-url",
+              "http://127.0.0.1:8000",
+              "--output",
+              "/home/tj/.cache/ds41rt-upstream-20260916/adaptive-upstream-placement-rtx2-k7/code.json",
+              "--case",
+              "code",
+              "--concurrency",
+              "1",
+              "2",
+              "4",
+              "8",
+              "16",
+              "--repeats",
+              "3",
+              "--label",
+              "upstream-adaptive-compare",
+              "--nonce",
+              "91607"
+            ],
+            "exit_code": 0
+          },
+          {
+            "command": [
+              "/home/tj/Developer/ds41rt/.venv/bin/python",
+              "/home/tj/Developer/ds41rt/scripts/bench-ds41-concurrent-api.py",
+              "--base-url",
+              "http://127.0.0.1:8000",
+              "--output",
+              "/home/tj/.cache/ds41rt-upstream-20260916/adaptive-upstream-placement-rtx2-k7/topic.json",
+              "--case",
+              "topic",
+              "--concurrency",
+              "1",
+              "2",
+              "4",
+              "8",
+              "16",
+              "--repeats",
+              "3",
+              "--label",
+              "upstream-adaptive-compare",
+              "--nonce",
+              "91607"
+            ],
+            "exit_code": 0
+          },
+          {
+            "command": [
+              "/home/tj/Developer/ds41rt/.venv/bin/python",
+              "/home/tj/Developer/ds41rt/scripts/bench-ds41-release-decode.py",
+              "--base-url",
+              "http://127.0.0.1:8000",
+              "--tokenizer",
+              "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+              "--label",
+              "upstream-adaptive-compare",
+              "--repeats",
+              "3",
+              "--nonce-seed",
+              "91607",
+              "--output",
+              "/home/tj/.cache/ds41rt-upstream-20260916/adaptive-upstream-placement-rtx2-k7/weighted.json"
+            ],
+            "exit_code": 0
+          },
+          {
+            "command": [
+              "/home/tj/Developer/ds41rt/.venv/bin/python",
+              "/home/tj/Developer/ds41rt/scripts/bench-ds41-adaptive-mixed.py",
+              "--base-url",
+              "http://127.0.0.1:8000",
+              "--tokenizer",
+              "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+              "--nonce-seed",
+              "91607",
+              "--output",
+              "/home/tj/.cache/ds41rt-upstream-20260916/adaptive-upstream-placement-rtx2-k7/mixed.json",
+              "--concurrency",
+              "1",
+              "4",
+              "16",
+              "--skip-lifecycle"
+            ],
+            "exit_code": 0
+          }
+        ],
+        "server_exit_code": 0
+      },
+      "run_script": "#!/bin/bash\nset -eu\ncd /home/tj/Developer/ds41rt\nexec env DS41RT_ADAPTIVE_COST_PROFILE=/home/tj/.cache/ds41rt-upstream-20260916/upstream-cost-profile-affine.json DS41RT_NATIVE_LIB=/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-index-sort.so LD_LIBRARY_PATH=/home/tj/.local/share/uv/python/cpython-3.12.3-linux-x86_64-gnu/lib DS41RT_PYTHON=/home/tj/Developer/ds41rt/.venv/bin/python RUST_LOG=info CUDA_VISIBLE_DEVICES=0,1 rust/target/release/ds41rt serve-native --snapshot /home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277 --native-lib /home/tj/.cache/ds41rt-upstream-20260916/libcandidate-index-sort.so --peers 10.55.0.1:19441,10.55.0.2:19441,10.55.0.3:19441,10.55.0.4:19441 --rtx-gpus 2 --listen 0.0.0.0:8000 --prefill-batch-tokens 2048 --concurrency 16 --prefix-cache-entries 24 --max-context-tokens 1048576 --max-output-tokens 393216 --dspark --dspark-draft-limit 7\n",
+      "workloads": {
+        "code": {
+          "raw_path": "/home/tj/.cache/ds41rt-upstream-20260916/adaptive-upstream-placement-rtx2-k7/code.json",
+          "sha256": "3bab82904dcb23ff5a54527db4395d4e7fdb64c6d8c3a3785d6647b828200825",
+          "passed": true,
+          "summaries": [
+            {
+              "concurrency": 1,
+              "samples": 3,
+              "median_aggregate_tps": 159.81358442569515,
+              "min_aggregate_tps": 156.80456710056498,
+              "max_aggregate_tps": 159.87828904690898
+            },
+            {
+              "concurrency": 2,
+              "samples": 3,
+              "median_aggregate_tps": 264.01647818221494,
+              "min_aggregate_tps": 204.2002397910223,
+              "max_aggregate_tps": 267.06396507196007
+            },
+            {
+              "concurrency": 4,
+              "samples": 3,
+              "median_aggregate_tps": 447.3597225389457,
+              "min_aggregate_tps": 427.8525762136032,
+              "max_aggregate_tps": 449.005818889483
+            },
+            {
+              "concurrency": 8,
+              "samples": 3,
+              "median_aggregate_tps": 761.4049101606635,
+              "min_aggregate_tps": 720.851215635262,
+              "max_aggregate_tps": 764.5655862477024
+            },
+            {
+              "concurrency": 16,
+              "samples": 3,
+              "median_aggregate_tps": 1176.3727455811713,
+              "min_aggregate_tps": 1054.6624416490802,
+              "max_aggregate_tps": 1189.7705941817999
+            }
+          ]
+        },
+        "topic": {
+          "raw_path": "/home/tj/.cache/ds41rt-upstream-20260916/adaptive-upstream-placement-rtx2-k7/topic.json",
+          "sha256": "aebe18a562d12586d595a1ec9ab172d2db45f2f4e0dbe94cd37b0aed297737dd",
+          "passed": true,
+          "summaries": [
+            {
+              "concurrency": 1,
+              "samples": 3,
+              "median_aggregate_tps": 92.46579584169756,
+              "min_aggregate_tps": 90.8846845098916,
+              "max_aggregate_tps": 92.62441284862922
+            },
+            {
+              "concurrency": 2,
+              "samples": 3,
+              "median_aggregate_tps": 149.74964312244572,
+              "min_aggregate_tps": 148.4316856090361,
+              "max_aggregate_tps": 158.01796539538194
+            },
+            {
+              "concurrency": 4,
+              "samples": 3,
+              "median_aggregate_tps": 275.0251043143058,
+              "min_aggregate_tps": 269.75186108206833,
+              "max_aggregate_tps": 275.2093540322674
+            },
+            {
+              "concurrency": 8,
+              "samples": 3,
+              "median_aggregate_tps": 444.0330464340591,
+              "min_aggregate_tps": 435.8865043058109,
+              "max_aggregate_tps": 446.1404477777239
+            },
+            {
+              "concurrency": 16,
+              "samples": 3,
+              "median_aggregate_tps": 707.9667073716213,
+              "min_aggregate_tps": 701.3501922366166,
+              "max_aggregate_tps": 723.0053321762273
+            }
+          ]
+        },
+        "weighted": {
+          "raw_path": "/home/tj/.cache/ds41rt-upstream-20260916/adaptive-upstream-placement-rtx2-k7/weighted.json",
+          "sha256": "05417af78bba43aa7d6d42508d2fd340a8b732790c101cb557ccb72897a3c53d",
+          "passed": true,
+          "requests": 24,
+          "repeat_summaries": [
+            {
+              "repeat": 1,
+              "weighted_cases": 8,
+              "serving_completed": 8,
+              "objective_checks_passed": 4,
+              "objective_checks_assessed": 4,
+              "weighted_observed_decode_tokens_per_second": 88.97263836992086,
+              "partial_weighted_observed_decode_tokens_per_second": 88.97263836992086,
+              "complete_weighted_corpus": true,
+              "all_samples_passed": true
+            },
+            {
+              "repeat": 2,
+              "weighted_cases": 8,
+              "serving_completed": 8,
+              "objective_checks_passed": 4,
+              "objective_checks_assessed": 4,
+              "weighted_observed_decode_tokens_per_second": 88.8833771522574,
+              "partial_weighted_observed_decode_tokens_per_second": 88.8833771522574,
+              "complete_weighted_corpus": true,
+              "all_samples_passed": true
+            },
+            {
+              "repeat": 3,
+              "weighted_cases": 8,
+              "serving_completed": 8,
+              "objective_checks_passed": 4,
+              "objective_checks_assessed": 4,
+              "weighted_observed_decode_tokens_per_second": 89.90294162963757,
+              "partial_weighted_observed_decode_tokens_per_second": 89.90294162963757,
+              "complete_weighted_corpus": true,
+              "all_samples_passed": true
+            }
+          ],
+          "median_weighted_tps": 88.97263836992086,
+          "mean_weighted_tps": 89.25298571727194
+        },
+        "mixed": {
+          "raw_path": "/home/tj/.cache/ds41rt-upstream-20260916/adaptive-upstream-placement-rtx2-k7/mixed.json",
+          "sha256": "a6cc4b9fee0668d3e63234d0ab10fc5f95f928d790e180cfcc4223ea0c2a4ebc",
+          "passed": true,
+          "batches": [
+            {
+              "concurrency": 1,
+              "aggregate_tps": 155.57969074967792,
+              "span_definition": "earliest first content through last finish, including admission gaps"
+            },
+            {
+              "concurrency": 4,
+              "aggregate_tps": 168.72881032141004,
+              "span_definition": "earliest first content through last finish, including admission gaps"
+            },
+            {
+              "concurrency": 16,
+              "aggregate_tps": 275.61991315185105,
+              "span_definition": "earliest first content through last finish, including admission gaps"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "decision": "Keep legacy dual-RTX adaptive costs. The fitted model predicts observed costs better but this serving screen does not establish a broad gain: weighted +0.3%, code C16 -1.2%, mixed C16 -3.2%. Single-RTX embedded profile unchanged. Optional fitted profile retained.",
+  "clean_build_preparation": {
+    "base_revision": "83808905f007bf4bd608b929385fa325320c654c",
+    "fork_revision": "4e31d0a10ea7ca24ac48d522fb65eaafbc27ad30",
+    "patch_sha256": "78473112e9113a6a849e5a3d83726d81785c5f4a92b950f2998bf7d4a7ccd893",
+    "scope": "Isolated clean-build candidate, independent image tags; not a published release."
+  }
+}
