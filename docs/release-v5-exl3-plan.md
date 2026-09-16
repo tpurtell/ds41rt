@@ -1031,3 +1031,27 @@ replay and SM121 qualification remain required. Uniform bitrate coverage also
 remains open. All release AOT packages must be rebuilt against the new source
 lock before final serving measurements; the previous package evidence retains
 its original source identity. Production serving is unchanged by this checkpoint.
+
+## Four-tier numerical and graph checks on RTX and Spark
+
+[Native reference evidence](release-v5-exl3-four-tier-reference.json) now verifies
+K2/K3/K4/K5 dispatch on both SM120 and SM121 at hidden size 5120, intermediate
+width 512, capacity 16 and six experts/top-k six. Homogeneous experts are
+compared with separate single-tier B12x grids. For mixed projections, every
+expert uses three distinct bitrates, alternating K2/K3/K4 and K3/K4/K5 with
+rotated gate/up/down assignments. Each expert is evaluated separately by the
+existing three-tier grid and its output added to the reference. These references
+share the underlying decoder implementation but do not use the new four-tier
+dispatch.
+
+All cases pass at live rows 16/1/3/16. Graph replay after changing activations
+and route ordering matches fresh eager execution bitwise on both devices.
+The maximum relative L2 difference from the independently scheduled reference
+is 0.000065, below the 0.004 threshold. Native route preparation and the exported
+C bridge are exercised, including the aliased execution-buffer layout.
+
+This closes the initial numerical gate, not complete generic serving support.
+Wider RTX geometries, larger capacities, uniform bitrates and nonconsecutive
+tier preparation still need coverage. Release AOT packages must be rebuilt for
+the current source pin before final serving and performance qualification.
+The original Spark worker and production coordinator were restored.
