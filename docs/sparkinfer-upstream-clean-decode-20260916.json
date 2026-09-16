@@ -271,6 +271,205 @@
           "percent_change": -0.48114143381587926
         }
       ]
+    },
+    "retained": {
+      "same_requests": true,
+      "context_sha256": "9fd051edae59a6b4263a690fbdd70816c78c9671a50d6976903b51b4386593b0",
+      "completed_and_cache_valid": 120,
+      "baseline": [
+        {
+          "context_tokens": 0,
+          "samples": 24,
+          "weighted_observed_decode_tokens_per_second": 93.58378458151165,
+          "serving_completed": 24,
+          "cache_valid": 24
+        },
+        {
+          "context_tokens": 32768,
+          "samples": 24,
+          "weighted_observed_decode_tokens_per_second": 85.82285352402761,
+          "serving_completed": 24,
+          "cache_valid": 24
+        },
+        {
+          "context_tokens": 65536,
+          "samples": 24,
+          "weighted_observed_decode_tokens_per_second": 86.8192071046167,
+          "serving_completed": 24,
+          "cache_valid": 24
+        },
+        {
+          "context_tokens": 131072,
+          "samples": 24,
+          "weighted_observed_decode_tokens_per_second": 84.19861449089427,
+          "serving_completed": 24,
+          "cache_valid": 24
+        },
+        {
+          "context_tokens": 262144,
+          "samples": 24,
+          "weighted_observed_decode_tokens_per_second": 78.0849448753665,
+          "serving_completed": 24,
+          "cache_valid": 24
+        }
+      ],
+      "candidate": [
+        {
+          "context_tokens": 0,
+          "samples": 24,
+          "weighted_observed_decode_tokens_per_second": 82.17458441173146,
+          "serving_completed": 24,
+          "cache_valid": 24
+        },
+        {
+          "context_tokens": 32768,
+          "samples": 24,
+          "weighted_observed_decode_tokens_per_second": 82.08337696174394,
+          "serving_completed": 24,
+          "cache_valid": 24
+        },
+        {
+          "context_tokens": 65536,
+          "samples": 24,
+          "weighted_observed_decode_tokens_per_second": 88.28123354419247,
+          "serving_completed": 24,
+          "cache_valid": 24
+        },
+        {
+          "context_tokens": 131072,
+          "samples": 24,
+          "weighted_observed_decode_tokens_per_second": 84.76935386988193,
+          "serving_completed": 24,
+          "cache_valid": 24
+        },
+        {
+          "context_tokens": 262144,
+          "samples": 24,
+          "weighted_observed_decode_tokens_per_second": 81.71662031958009,
+          "serving_completed": 24,
+          "cache_valid": 24
+        }
+      ],
+      "raw_candidate": "/home/tj/.cache/ds41rt-upstream-20260916/clean-performance/dual-retained-decode.json",
+      "raw_candidate_sha256": "dd50bd46849732b23b1c5d5d9c26289c81ad49b6d767b6ab01c4c13828cff883"
+    },
+    "mixed": {
+      "concurrency": [
+        {
+          "concurrency": 1,
+          "baseline": {
+            "samples": [
+              151.25680247103253,
+              154.20895466311416,
+              150.20637212831525
+            ],
+            "median": 151.25680247103253
+          },
+          "candidate": {
+            "samples": [
+              150.1836038966783,
+              147.90869552206922,
+              143.09761547841487
+            ],
+            "median": 147.90869552206922
+          },
+          "percent_change": -2.21352487575196
+        },
+        {
+          "concurrency": 2,
+          "baseline": {
+            "samples": [
+              123.43813649420011,
+              141.5351978830491,
+              143.3964027811921
+            ],
+            "median": 141.5351978830491
+          },
+          "candidate": {
+            "samples": [
+              123.3140548776787,
+              122.04205963061827,
+              116.24939868344642
+            ],
+            "median": 122.04205963061827
+          },
+          "percent_change": -13.772643514822413
+        },
+        {
+          "concurrency": 4,
+          "baseline": {
+            "samples": [
+              192.51145795173034,
+              173.78088929859652,
+              181.73792726568666
+            ],
+            "median": 181.73792726568666
+          },
+          "candidate": {
+            "samples": [
+              154.46860916295427,
+              160.61800937357756,
+              152.57200201734207
+            ],
+            "median": 154.46860916295427
+          },
+          "percent_change": -15.004748052874394
+        },
+        {
+          "concurrency": 8,
+          "baseline": {
+            "samples": [
+              216.1613318649542,
+              203.0477219927709,
+              195.3906816903377
+            ],
+            "median": 203.0477219927709
+          },
+          "candidate": {
+            "samples": [
+              187.28313172869045,
+              189.44577733905703,
+              182.22143055622027
+            ],
+            "median": 187.28313172869045
+          },
+          "percent_change": -7.763982825988913
+        },
+        {
+          "concurrency": 16,
+          "baseline": {
+            "samples": [
+              300.62757569315886,
+              309.0626574278938,
+              311.27911932547727
+            ],
+            "median": 309.0626574278938
+          },
+          "candidate": {
+            "samples": [
+              264.8343084429665,
+              287.11313777912966,
+              283.6817953229743
+            ],
+            "median": 283.6817953229743
+          },
+          "percent_change": -8.212206002545287
+        }
+      ],
+      "raw_candidate": [
+        {
+          "path": "/home/tj/.cache/ds41rt-upstream-20260916/clean-performance/dual-mixed-1.json",
+          "sha256": "60aebe103307822b0453425f1e4e4a7fecb5b87dbb7529b52b99a260e1c4369b"
+        },
+        {
+          "path": "/home/tj/.cache/ds41rt-upstream-20260916/clean-performance/dual-mixed-2.json",
+          "sha256": "b7dd13f96531f4da2aff63c9fbb1143d23e0a8feb1715c47ac681fcc32def52f"
+        },
+        {
+          "path": "/home/tj/.cache/ds41rt-upstream-20260916/clean-performance/dual-mixed-3.json",
+          "sha256": "94820359015773f84b01319aee3ff68ca8d2f3a04cf15ec8e80e290ab2b9c001"
+        }
+      ]
     }
   }
 }

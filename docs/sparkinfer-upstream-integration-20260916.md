@@ -30,8 +30,19 @@ The differing token paths can change draft acceptance and expert sharing, so
 these are serving outcomes rather than an isolated kernel latency comparison.
 All output checks passed. The [interim comparison](sparkinfer-upstream-clean-decode-20260916.json)
 retains all three samples, output-length summaries, and raw artifact hashes.
-Counting, mixed traffic, retained decode, prefill and single-RTX collection
-remain in progress or pending. Review the complete matrix before acceptance.
+All 120 retained-context samples pass completion and exact-cache accounting,
+with requests byte-for-byte equal to the published run. Weighted TPS at
+0/32K/64K/128K/256K is now 82.17/82.08/88.28/84.77/81.72, versus
+93.58/85.82/86.82/84.20/78.08. The 256K row improves 4.7%, while zero base
+falls 12.2%. Three mixed repetitions produce medians
+147.91/122.04/154.47/187.28/283.68 at C1/C2/C4/C8/C16; the published C16
+median is 309.06. These regressions remain release concerns.
+
+Prefill and the separate 2K retained-context row are running next. A clean-image
+K5 legacy/refit cost comparison is queued behind the complete dual matrix,
+using the same prompts and restoring the standard coordinator afterward.
+Single-RTX and target-only measurements remain pending. Review the complete
+matrix and the controlled comparison before acceptance.
 
 ## Selected implementation on dev
 
