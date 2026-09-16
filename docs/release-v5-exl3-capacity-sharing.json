@@ -1,0 +1,52 @@
+{
+  "passed": true,
+  "source_base_commit": "855149d",
+  "scope": "TP2 capacity scratch allocation sharing, exact private-buffer parity, captured graphs and independent lanes. Not throughput or end-to-end serving qualification.",
+  "capacities": [
+    1,
+    16,
+    80,
+    256,
+    1024,
+    4096
+  ],
+  "gpus_tested": [
+    0,
+    1
+  ],
+  "expert_weight_bytes_per_gpu": 2789290000,
+  "execution_bytes_per_gpu_per_lane": {
+    "before": 1193949440,
+    "after": 837925380,
+    "saved": 356024060
+  },
+  "two_lanes_saved_bytes_per_gpu": 712048120,
+  "total_two_gpu_saved_bytes": 1424096240,
+  "serving_capacity_2048_tp2_workspace_per_gpu_per_lane": {
+    "before": 1508522240,
+    "after": 1152498180
+  },
+  "allocation_policy": "One data arena per GPU per lane, each owner sized to the maximum required across planned capacities; initialized synchronization counters and LUT/wire allocations remain private. Specializations sharing an arena never overlap.",
+  "checks": [
+    "real layer 0 TP2 weights on both GPUs",
+    "all six capacities match separate allocation execution bitwise",
+    "descending and ascending graph replay after other capacities overwrite arena",
+    "zero and restored graph inputs",
+    "actual allocation payload equals planner",
+    "two lanes execute concurrently and survive peer-lane destruction",
+    "FP32 rank outputs and BF16 peer sums match independent B12x references at live rows 16/1/3/16/1"
+  ],
+  "other_backends": "TP1, Spark and dSpark still use separate capacity buffers in this change.",
+  "performance_qualified": false,
+  "remaining": [
+    "extend sharing to other exclusive capacity families",
+    "generic four-tier K2/K3/K4/K5 core support",
+    "kernel tuning and bottom-up RTX residency",
+    "post-optimization adaptive profiles and content acceptance",
+    "all requested release benchmarks and quality/quant checks",
+    "clean v5 images and publication"
+  ],
+  "archive": "docs/evidence/v5-exl3-capacity-sharing.tar.gz",
+  "archive_sha256": "1610f1a53ac0cbadda5f67a1542808095be913a143998aa6ce60452508a2ab3c",
+  "verified_at": "2026-09-16T18:10:54.196409+00:00"
+}

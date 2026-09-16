@@ -6,7 +6,7 @@ use anyhow::{ensure, Context, Result};
 use ds41rt_ffi::{Ds41rtDeviceBuffer, NativeLibrary, V41Exl3Kernel, V41Exl3Routes};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use std::{collections::BTreeMap, ffi::c_void, path::Path, rc::Rc};
+use std::{collections::BTreeMap, ffi::c_void, path::{Path, PathBuf}, rc::Rc};
 
 #[derive(Deserialize)]
 struct Buffer {
@@ -72,6 +72,51 @@ impl Manifest {
                 .context("EXL3 workspace budget overflow")?;
         }
         Ok(bytes)
+    }
+}
+
+/// Mutually exclusive capacity specializations in one lane may reuse data
+/// scratch. Persistent synchronization state remains private to each kernel.
+pub(crate) struct Exl3Workspace<'a> {
+    allocations: BTreeMap<String, DeviceAllocation<'a>>,
+    dtypes: BTreeMap<String, String>,
+}
+impl<'a> Exl3Workspace<'a> {
+    fn layout(directories: &[PathBuf]) -> Result<BTreeMap<String, (usize, String)>> {
+        ensure!(!directories.is_empty(), "empty EXL3 capacity workspace");
+        let mut layout: BTreeMap<String, (usize, String)> = BTreeMap::new();
+        for directory in directories {
+            let meta: Manifest = serde_json::from_slice(&std::fs::read(directory.join("v41_exl3.json"))?)?;
+            for (name, spec) in meta.buffers {
+                if name != spec.allocation || spec.zero_on_create { continue; }
+                let entry = layout.entry(name).or_insert((0, spec.dtype.clone()));
+                ensure!(entry.1 == spec.dtype, "EXL3 shared scratch dtype mismatch");
+                entry.0 = entry.0.max(spec.bytes.max(16));
+            }
+        }
+        Ok(layout)
+    }
+    /// Total allocation payload for all specializations sharing one lane arena.
+    pub(crate) fn plan(directories: &[PathBuf], format: Exl3InputFormat) -> Result<usize> {
+        let mut bytes = Self::layout(directories)?.values().try_fold(0usize, |n, spec|
+            n.checked_add(spec.0).context("EXL3 shared workspace overflow"))?;
+        for directory in directories {
+            let meta: Manifest = serde_json::from_slice(&std::fs::read(directory.join("v41_exl3.json"))?)?;
+            let shared = meta.buffers.iter().filter(|(name, spec)| **name == spec.allocation && !spec.zero_on_create)
+                .map(|(_, spec)| spec.bytes.max(16)).sum::<usize>();
+            bytes = bytes.checked_add(meta.workspace_bytes(format)? - shared)
+                .context("EXL3 shared workspace overflow")?;
+        }
+        Ok(bytes)
+    }
+    pub(crate) fn new(library: &'a NativeLibrary, directories: &[PathBuf]) -> Result<Rc<Self>> {
+        let mut allocations = BTreeMap::new();
+        let mut dtypes = BTreeMap::new();
+        for (name, (bytes, dtype)) in Self::layout(directories)? {
+            allocations.insert(name.clone(), DeviceAllocation::new(library, bytes)?);
+            dtypes.insert(name, dtype);
+        }
+        Ok(Rc::new(Self { allocations, dtypes }))
     }
 }
 
@@ -150,6 +195,7 @@ pub(crate) struct Exl3Execution<'a> {
     routes: Option<V41Exl3Routes>,
     wire: Option<(ds41rt_ffi::V41Exl3Wire<'a>, DeviceAllocation<'a>)>,
     _storage: Vec<DeviceAllocation<'a>>,
+    _shared_workspace: Option<Rc<Exl3Workspace<'a>>>,
     // Keep every prebound pointer alive through the last graph replay.
     _weights: Rc<Vec<Exl3Weights<'a>>>,
     layers: Vec<LayerBinding>,
@@ -193,6 +239,19 @@ impl<'a> Exl3Execution<'a> {
         weights: Rc<Vec<Exl3Weights<'a>>>,
         directory: &Path,
         format: Exl3InputFormat,
+    ) -> Result<Self> {
+        Self::with_shared_workspace(library, weights, directory, format, None)
+    }
+
+    /// # Safety
+    /// Executions sharing this workspace must never overlap, including graph
+    /// replays. Use separate arenas for independently scheduled lanes/devices.
+    pub(crate) unsafe fn with_shared_workspace(
+        library: &'a NativeLibrary,
+        weights: Rc<Vec<Exl3Weights<'a>>>,
+        directory: &Path,
+        format: Exl3InputFormat,
+        shared: Option<Rc<Exl3Workspace<'a>>>,
     ) -> Result<Self> {
         let meta: Manifest =
             serde_json::from_slice(&std::fs::read(directory.join("v41_exl3.json"))?)?;
@@ -262,6 +321,13 @@ impl<'a> Exl3Execution<'a> {
         let mut pointers = BTreeMap::new();
         for (name, spec) in &meta.buffers {
             if name != &spec.allocation {
+                continue;
+            }
+            if let Some(arena) = shared.as_ref().filter(|_| !spec.zero_on_create) {
+                let buffer = arena.allocations.get(name).context("missing shared EXL3 scratch")?.buffer;
+                ensure!(buffer.device_id == device && buffer.bytes >= spec.bytes
+                    && arena.dtypes.get(name) == Some(&spec.dtype), "invalid shared EXL3 scratch");
+                pointers.insert(name.clone(), buffer);
                 continue;
             }
             let allocation = DeviceAllocation::new(library, spec.bytes.max(16))?;
@@ -427,6 +493,7 @@ impl<'a> Exl3Execution<'a> {
             routes,
             wire,
             _storage: storage,
+            _shared_workspace: shared,
             _weights: weights,
             layers,
             route_pointers,
@@ -447,7 +514,7 @@ impl<'a> Exl3Execution<'a> {
         self.output_element_bytes
     }
 
-    /// Allocated workspace payload per lane, independent of resident layer count.
+    /// Privately allocated payload; shared arenas are counted once by their planner.
     pub(crate) fn workspace_bytes(&self) -> usize {
         self._storage.iter().map(|b| b.buffer.bytes).sum::<usize>()
             + self.wire.as_ref().map_or(0, |(_, b)| b.buffer.bytes)
@@ -546,6 +613,10 @@ impl<'a> Exl3Execution<'a> {
         Ok(output)
     }
 }
+
+#[cfg(test)]
+#[path = "execution/shared_tests.rs"]
+mod shared_tests;
 
 #[cfg(test)]
 mod tests {

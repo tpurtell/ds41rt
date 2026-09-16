@@ -1,6 +1,6 @@
 //! One lane's preallocated peer-copy and TP2 reduction chain.
 use super::exl3::{
-    execution::{Exl3Execution, Exl3InputFormat},
+    execution::{Exl3Execution, Exl3InputFormat, Exl3Workspace},
     Exl3Weights,
 };
 use super::{ExpertLayer, ExpertWeights};
@@ -157,17 +157,11 @@ impl<'a> ExpertWave<'a> {
             .ok_or_else(|| anyhow::anyhow!("TP2 expert workspace overflow"))
     }
     pub fn exl3_device_bytes(directory: &Path, capacity: u32) -> Result<usize> {
-        RankWave::kernel_capacities(capacity)?.into_iter().try_fold(
-            PeerReduction::device_bytes(capacity)? + capacity as usize * 5120 * 4,
-            |bytes, c| {
-                bytes
-                    .checked_add(Exl3Execution::plan(
-                        &directory.join(format!("m{c}")),
-                        Exl3InputFormat::Fp8K32,
-                    )?)
-                    .ok_or_else(|| anyhow::anyhow!("TP2 EXL3 workspace overflow"))
-            },
-        )
+        let directories: Vec<_> = RankWave::kernel_capacities(capacity)?.into_iter()
+            .map(|c| directory.join(format!("m{c}"))).collect();
+        Exl3Workspace::plan(&directories, Exl3InputFormat::Fp8K32)?
+            .checked_add(PeerReduction::device_bytes(capacity)? + capacity as usize * 5120 * 4)
+            .ok_or_else(|| anyhow::anyhow!("TP2 EXL3 workspace overflow"))
     }
     pub fn new(weights: [Rc<RankWeights<'a>>; 2], capacity: u32) -> Result<Self> {
         ensure!(
@@ -328,15 +322,19 @@ impl<'a> RankWave<'a> {
         {
             let stream = Stream::new(device)?;
             let states = device.own(|| {
-                Self::kernel_capacities(capacity)?
+                let capacities = Self::kernel_capacities(capacity)?;
+                let directories: Vec<_> = capacities.iter().map(|c| directory.join(format!("m{c}"))).collect();
+                let arena = Exl3Workspace::new(device.library, &directories)?;
+                capacities
                     .into_iter()
                     .map(|c| {
                         let state = unsafe {
-                            Exl3Execution::with_input_format(
+                            Exl3Execution::with_shared_workspace(
                                 device.library,
                                 compressed.clone(),
                                 &directory.join(format!("m{c}")),
                                 Exl3InputFormat::Fp8K32,
+                                Some(arena.clone()),
                             )?
                         };
                         ensure!(

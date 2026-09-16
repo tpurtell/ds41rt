@@ -828,3 +828,31 @@ calibration and acceptance by content type. The requested performance tables,
 three thinking-enabled tool campaigns per quant variant, deferred top-1
 comparison, conditional default choice, clean packaging and v5 publication
 remain required. Performance benchmarks continue to use FP8 PLE only.
+
+## TP2 capacity scratch sharing
+
+[Capacity-sharing evidence](release-v5-exl3-capacity-sharing.json) verifies one
+data-scratch arena per GPU per decode lane across the six precompiled EXL3
+capacities. Each named allocation takes the maximum size needed by any capacity;
+the kernel synchronization counters remain private. Separate lanes and GPUs
+retain separate arenas. Kernel geometry, launches and math are unchanged.
+
+Execution allocation payload falls from 1,193,949,440 to 837,925,380 bytes per
+lane per GPU, saving 356,024,060 bytes. With two lanes this releases 712,048,120
+bytes (679 MiB) on each RTX. Including the existing TP2 reduction/output buffers,
+the 2048-token serving plan falls from 1,508,522,240 to 1,152,498,180 bytes per
+lane per GPU. These are verified allocation/planner figures, not an end-to-end
+memory headline or a throughput result.
+
+Both GPUs pass exact comparison with separately allocated execution at capacities
+1/16/80/256/1024/4096, followed by ascending/descending graph replay after other
+capacities overwrite the arena and after inputs change to zero and back. The
+existing B12x references still match both FP32 rank outputs and BF16 peer sums.
+Two independent lanes pass concurrent execution at capacity 4096 and remain
+valid after one lane is destroyed. The existing coordinator is restored healthy.
+
+TP1, Spark and dSpark capacity sharing remain follow-up work. The generic tier
+audit also confirms that the current exporter/core handles two or three distinct
+K2–K5 tiers; the four-tier K2/K3/K4/K5 specialization remains an implementation
+gap. Neither that gap nor the remaining optimization and release gates is closed
+by this allocation change.
