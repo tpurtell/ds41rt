@@ -32,7 +32,7 @@
     "path": "docs/evidence/upstream-single-memory-failure-20260916.tar.gz",
     "sha256": "b86dcd5dab7b36bb866e843571052e78ae46735ce8201f74b0be870047fc5212"
   },
-  "next_step": "Evaluate 24 projection shapes and 16 producer shapes with the same KV pool; release remains blocked pending performance and sustained-memory qualification",
+  "next_step": "Post-history 1.04M needle and vision; dual qualification; clean build and final matrix",
   "graph_memory_trace": {
     "allocation_deltas_are_not_exact_residency": true,
     "minimum_free_mib": 2.25,
@@ -138,5 +138,6 @@
   "retention_trials_archive": {
     "path": "docs/evidence/upstream-graph-retention-trials-20260916.tar.gz",
     "sha256": "540777c714bd3acf266b27a14d84f510be2dd6d28e6c6853ed80714331b3702d"
-  }
+  },
+  "current_candidate": "In-place query RoPE saves 512 MiB; full-retention single warm history passes at 206.04 TPS mixed C16 and 329 MiB minimum free. See sparkinfer-upstream-query-inplace-serving-20260916.json."
 }

@@ -15,6 +15,8 @@ one/two-RTX placement, four DGX Spark workers, and OpenAI-compatible API.
 - Decode retains bounded CUDA graph shapes across mixed traffic and batch
   restarts, avoiding the persistent slowdown caused by repeated index and
   cache-producer graph rebuilding.
+- In-place query RoPE removes 512 MiB of redundant workspace across the default
+  two serving lanes, preserving KV capacity and resident expert placement.
 - FP8 sliding-window storage, bounded prefix replay, completed-turn snapshots,
   tool calling, structured output, and vision remain supported.
 - Standard launch controls remain available for RTX layout, concurrency,
@@ -29,13 +31,13 @@ The [three-run high-thinking tool evaluation](sparkinfer-upstream-tool-eval-2026
 completed all 264 scenarios with a mean of 157/176 points. The report states
 the benchmark output cap and preserves every partial and failed result.
 
-The clean dual-RTX decode portion is complete: weighted eight-type throughput
-increases from 79.33 to 97.55 tokens/s against v3 (+23.0%). C16 code increases
+The earlier clean dual-RTX candidate increased weighted eight-type throughput
+from 79.33 to 97.55 tokens/s against v3 (+23.0%). C16 code increases
 from 1,181 to 1,296 aggregate tokens/s and topic from 596 to 749. C16 mixed
 traffic is approximately flat (309 to 305). These are three-sample,
 prompt-matched results at 400 W per RTX with stock memory clocks; the
 [raw evidence and comparisons](sparkinfer-upstream-v4-dual-decode-20260916.json)
-preserve ranges and individual cases.
+preserve ranges and individual cases. Final-image measurements remain pending.
 
 The three tool campaigns and vision checks used the clean candidate before the final
 graph-reuse correction. That correction changes graph lifetime, not kernel

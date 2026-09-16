@@ -1,0 +1,264 @@
+{
+  "scope": "Single-RTX in-place query candidate with original full graph retention; not final clean-image release measurements",
+  "assessment": {
+    "passed": true,
+    "mixed_C16_samples_tps": [
+      206.03701400004064,
+      209.86719109475553,
+      193.8104076511029
+    ],
+    "mixed_C16_median_tps": 206.03701400004064,
+    "minimum_free_mib": 329.0
+  },
+  "decode": {
+    "passed": true,
+    "repeats": 3,
+    "median_weighted_tps": 82.26322586002759,
+    "cases": {
+      "code": {
+        "samples": 3,
+        "median_tps": 132.11757230052453,
+        "min_tps": 131.8258644300744,
+        "max_tps": 137.6599591350681
+      },
+      "counting": {
+        "samples": 3,
+        "median_tps": 162.29811631459847,
+        "min_tps": 154.74843892316895,
+        "max_tps": 162.5071316337546
+      },
+      "fable": {
+        "samples": 3,
+        "median_tps": 58.08053290209049,
+        "min_tps": 56.132158047381886,
+        "max_tps": 58.51865239589002
+      },
+      "hello": {
+        "samples": 3,
+        "median_tps": 70.33066885193793,
+        "min_tps": 67.01778089064389,
+        "max_tps": 74.55515415458716
+      },
+      "math": {
+        "samples": 3,
+        "median_tps": 126.2045463973773,
+        "min_tps": 114.36101097235544,
+        "max_tps": 140.69472178509392
+      },
+      "multilingual": {
+        "samples": 3,
+        "median_tps": 75.10964559283799,
+        "min_tps": 70.10501263395031,
+        "max_tps": 75.63396801758493
+      },
+      "structured-json": {
+        "samples": 3,
+        "median_tps": 100.8604746163345,
+        "min_tps": 95.19879422416948,
+        "max_tps": 103.29125090182544
+      },
+      "structured-json-schema": {
+        "samples": 3,
+        "median_tps": 104.5204408431584,
+        "min_tps": 97.62019418492214,
+        "max_tps": 110.65810797659995
+      },
+      "topic": {
+        "samples": 3,
+        "median_tps": 75.13123894538582,
+        "min_tps": 75.09343726625751,
+        "max_tps": 81.18998578860693
+      }
+    }
+  },
+  "mixed": {
+    "passed": true,
+    "repeats": 3,
+    "summaries": [
+      {
+        "concurrency": 1,
+        "samples": 3,
+        "median_aggregate_tps": 109.13273724731495,
+        "min_aggregate_tps": 108.09492757661893,
+        "max_aggregate_tps": 130.72305248231285
+      },
+      {
+        "concurrency": 2,
+        "samples": 3,
+        "median_aggregate_tps": 106.62213400065644,
+        "min_aggregate_tps": 100.35373417580725,
+        "max_aggregate_tps": 115.62682433484925
+      },
+      {
+        "concurrency": 4,
+        "samples": 3,
+        "median_aggregate_tps": 141.29871603167197,
+        "min_aggregate_tps": 136.91983947094718,
+        "max_aggregate_tps": 170.90864437929713
+      },
+      {
+        "concurrency": 8,
+        "samples": 3,
+        "median_aggregate_tps": 160.33521611097987,
+        "min_aggregate_tps": 152.52413213071105,
+        "max_aggregate_tps": 179.80750697662276
+      },
+      {
+        "concurrency": 16,
+        "samples": 3,
+        "median_aggregate_tps": 206.03701400004064,
+        "min_aggregate_tps": 193.8104076511029,
+        "max_aggregate_tps": 209.86719109475553
+      }
+    ]
+  },
+  "concurrency": {
+    "code": {
+      "passed": true,
+      "prompt": "phase2-release-final 20260914. Write a Python function merge_intervals(intervals) that merges overlapping integer intervals. Include type hints, a short docstring, and three assert-based examples. Return only one Python code block.",
+      "repeats": 3,
+      "summaries": [
+        {
+          "concurrency": 1,
+          "samples": 3,
+          "median_aggregate_tps": 134.35819230496665,
+          "min_aggregate_tps": 134.30990397475213,
+          "max_aggregate_tps": 134.84738731041793
+        },
+        {
+          "concurrency": 2,
+          "samples": 3,
+          "median_aggregate_tps": 214.61589219592986,
+          "min_aggregate_tps": 174.21966460898443,
+          "max_aggregate_tps": 216.15566619318687
+        },
+        {
+          "concurrency": 4,
+          "samples": 3,
+          "median_aggregate_tps": 375.9482983391811,
+          "min_aggregate_tps": 372.05149664192913,
+          "max_aggregate_tps": 376.2358245367859
+        },
+        {
+          "concurrency": 8,
+          "samples": 3,
+          "median_aggregate_tps": 626.1392698569924,
+          "min_aggregate_tps": 604.6964087304076,
+          "max_aggregate_tps": 627.2361848975486
+        },
+        {
+          "concurrency": 16,
+          "samples": 3,
+          "median_aggregate_tps": 1039.626193748383,
+          "min_aggregate_tps": 1001.4984056167061,
+          "max_aggregate_tps": 1044.6602748151568
+        }
+      ]
+    },
+    "topic": {
+      "passed": true,
+      "prompt": "phase2-release-final 20260914. Explain virtual memory to a junior programmer in five concise bullet points, including paging, page faults, and the role of the TLB.",
+      "repeats": 3,
+      "summaries": [
+        {
+          "concurrency": 1,
+          "samples": 3,
+          "median_aggregate_tps": 74.09354735267101,
+          "min_aggregate_tps": 74.0554465835594,
+          "max_aggregate_tps": 74.50134364939859
+        },
+        {
+          "concurrency": 2,
+          "samples": 3,
+          "median_aggregate_tps": 122.15118520567448,
+          "min_aggregate_tps": 121.46311982227722,
+          "max_aggregate_tps": 125.14205461069133
+        },
+        {
+          "concurrency": 4,
+          "samples": 3,
+          "median_aggregate_tps": 214.49000451480129,
+          "min_aggregate_tps": 213.497926860048,
+          "max_aggregate_tps": 216.09695172903574
+        },
+        {
+          "concurrency": 8,
+          "samples": 3,
+          "median_aggregate_tps": 352.1908516152192,
+          "min_aggregate_tps": 341.35433405200143,
+          "max_aggregate_tps": 361.69191810586415
+        },
+        {
+          "concurrency": 16,
+          "samples": 3,
+          "median_aggregate_tps": 564.1114801896811,
+          "min_aggregate_tps": 561.3799932224313,
+          "max_aggregate_tps": 573.010201909245
+        }
+      ]
+    },
+    "counting": {
+      "passed": true,
+      "prompt": "phase2-release-final 20260914. Count from 1 to 200, separated by commas. Output only the sequence.",
+      "repeats": 3,
+      "summaries": [
+        {
+          "concurrency": 1,
+          "samples": 3,
+          "median_aggregate_tps": 158.93647155459365,
+          "min_aggregate_tps": 158.2935524356971,
+          "max_aggregate_tps": 159.68381174339612
+        },
+        {
+          "concurrency": 2,
+          "samples": 3,
+          "median_aggregate_tps": 255.48587085240482,
+          "min_aggregate_tps": 255.3395946148444,
+          "max_aggregate_tps": 255.6815074858109
+        },
+        {
+          "concurrency": 4,
+          "samples": 3,
+          "median_aggregate_tps": 446.22060492927574,
+          "min_aggregate_tps": 440.10050924589706,
+          "max_aggregate_tps": 458.85000249666206
+        },
+        {
+          "concurrency": 8,
+          "samples": 3,
+          "median_aggregate_tps": 740.8959115121066,
+          "min_aggregate_tps": 723.0914086696438,
+          "max_aggregate_tps": 741.2546714566173
+        },
+        {
+          "concurrency": 16,
+          "samples": 3,
+          "median_aggregate_tps": 1259.1683349205377,
+          "min_aggregate_tps": 1229.432749292256,
+          "max_aggregate_tps": 1261.3048633705093
+        }
+      ]
+    }
+  },
+  "comparison_to_v3": {
+    "weighted_decode": {
+      "before": 76.72363060161219,
+      "after": 82.26322586002759,
+      "percent_change": 7.220194371639921
+    },
+    "mixed_C16": {
+      "before": 196.4570197052965,
+      "after": 206.03701400004064,
+      "percent_change": 4.876381769974425
+    }
+  },
+  "global_kv_bytes": 16681077760,
+  "logical_pool_tokens": 18710016,
+  "private_tail_tokens": 32768,
+  "saved_workspace_bytes": 536870912,
+  "remaining": "Post-history long-context and vision, dual checks, final clean build and complete performance matrix",
+  "archive": {
+    "path": "docs/evidence/upstream-query-inplace-serving-20260916.tar.gz",
+    "sha256": "1c417b4baddec35716cf4ed766477e7e92634abce6c76da0a75dff12ab82968b"
+  }
+}

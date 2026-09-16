@@ -18,7 +18,14 @@ flowchart LR
 
 ## Corrected clean v4 decode results
 
-**Release blocker:** single-RTX qualification reproduced CUDA out-of-memory
+**Current candidate:** in-place query RoPE saves 512 MiB and restores full
+graph retention without reducing KV capacity. The [single-RTX warm-history run](sparkinfer-upstream-query-inplace-serving-20260916.json)
+passes all three mixed sweeps with 329 MiB minimum free. Weighted decode is
+82.26 versus published v3's 76.72 TPS (+7.2%); mixed C16 is 206.04 versus
+196.46 TPS (+4.9%), with a 193.81–209.87 three-run range. Post-history 1.04M
+retrieval/vision, dual checks and final clean-image measurements remain pending.
+
+**Earlier release blocker:** single-RTX qualification reproduced CUDA out-of-memory
 after the second mixed C16 sweep. The original run reached 97,248 MiB used;
 the captured reproduction had 27 MiB free and reported compact reduction
 CUDA status 2. Accumulated graph residency exceeds the single-card runtime
