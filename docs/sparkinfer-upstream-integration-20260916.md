@@ -16,6 +16,27 @@ flowchart LR
     F --> G[Clean image builds, README, reports and release]
 ```
 
+## Placement-cost refit on selected upstream kernels
+
+Fixed K1–K7 code and mixed calibration completed at C2/C4/C8/C16. All client
+checks passed. The parser validated **9319 complete verification rounds**;
+9125 remain after shape warmup filtering. Odd widths supply 5457 training
+rounds; even widths provide 3668 held-out rounds. The observations separate
+`rtx_tp2_shared2` from `spark_tp4_shared2` and retain a per-round non-expert term.
+
+The affine profile reduces held-out median absolute relative prediction error
+from **16.21% to 4.66% for code**, and **10.81% to 8.74% for mixed**. P90 errors
+fall from 26.77% to 15.75% and 26.83% to 20.22%, respectively. The hinge-at-16
+variant offers negligible mixed improvement and worse code error, so the
+simpler affine profile is selected for the next serving experiment.
+
+[Fit report and trace provenance](sparkinfer-upstream-adaptive-cost-fit-20260916.json)
+and [experimental dual-RTX profile](sparkinfer-upstream-adaptive-cost-profile-20260916.json)
+record all coefficients and identities. These are instrumented, short-context,
+observed-route timings; they exclude route-forecast error and are **not release
+throughput numbers**. The fit does not change runtime defaults. An uninstrumented
+K7 legacy-versus-placement serving comparison is the next acceptance gate.
+
 ## Shared experts and Engram/loading selection
 
 The real layer-0 shared-expert TP2 chain passes the full-width quantized oracle
@@ -1427,17 +1448,25 @@ per-kernel FLOPS or capacity alone.
 
 ## Execution and release gates
 
+The first three implementation gates are backed by the hashed baseline artifacts,
+merge `37ff0dbd` (parents `3882b935` and `92cd3800`), and the component/native
+qualification reports above. They do not imply final serving acceptance.
+The production fork pin remains `3882b935`; the integrated fork candidate is
+`4e31d0a1`. Placement-cost calibration is running against the candidate with
+attention, lagged mHC, narrow projection scheduling and bounded index sorting;
+compact experts and row vocabulary remain disabled.
+
 - [x] Fetch the upstream snapshot, inspect selected native dependencies, and
   preview conflicts without changing the checked-out fork.
 - [x] Write this initial component analysis before attempting integration.
-- [ ] Freeze the baseline source, images, model/checkpoint identity, serving
+- [x] Freeze the baseline source, images, model/checkpoint identity, serving
   arguments, residency, pool size, lane capacities and software versions.
   Reestablish official-FP4 serving and collect representative baseline evidence.
   Use the existing v3 reports for historical context, not as matched new runs.
-- [ ] Resolve the ancestry-preserving merge in an isolated worktree. Keep the
+- [x] Resolve the ancestry-preserving merge in an isolated worktree. Keep the
   main fork usable until acceptance. Audit local AOT and runtime invariants;
   build and run focused CPU/API and GPU correctness tests on selected paths.
-- [ ] Prioritize measured hot paths: compressed attention and projection
+- [x] Prioritize measured hot paths: compressed attention and projection
   chains, then mHC/indexer and expert candidates. Profile unresolved plateaus;
   retain promising structural candidates long enough to diagnose failures.
 - [ ] Integrate measured winners, reprofile serving, and refit adaptive draft

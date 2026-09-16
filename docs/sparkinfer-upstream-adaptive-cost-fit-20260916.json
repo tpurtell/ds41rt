@@ -1,0 +1,688 @@
+{
+  "scope": "Fit exploratory placement-aware costs from fixed-prefix serving traces.\n\nFits odd draft widths and reports held-out even widths on code and mixed workloads.\nThese use observed routes, not forecasts: route-forecast error is a separate gate.\n",
+  "trace_sha256": {
+    "cost-upstream-rtx2-k1": "bd63ce52b37a99d483aa9927471812cb0337ff63755ddf150df5db05ef494529",
+    "cost-upstream-rtx2-k2": "20cb56feca1365aca979f55a572ca6357ef8d88d519ea4188c74c7c78e38bd59",
+    "cost-upstream-rtx2-k3": "35b8dafd2268a1114c552f15ff4b3112fa44b7b5ebaac7664f0578ca6022fb79",
+    "cost-upstream-rtx2-k4": "85b39aa892488552f270243dacde11d535c0417c1e8721faf55484526ee9105b",
+    "cost-upstream-rtx2-k5": "53d1a9bb39696d24594e7630c5aa4b5503d7331303fa618dbd120df4cf4d221a",
+    "cost-upstream-rtx2-k6": "6c48dd4bf4cf5d8123642b576acf1bc180b2f5f98d5b0f30d0c6eae6e58227db",
+    "cost-upstream-rtx2-k7": "9b4ce68fa1eeffd746d7f35eba2920f4bb90c740314eefe2e9182f5897ebe114"
+  },
+  "rounds": 9319,
+  "warm_rounds": 9125,
+  "training_rounds": 5457,
+  "training_workload": "both",
+  "variants": {
+    "affine": {
+      "experts": {
+        "rtx_tp2_shared2": [
+          180.23813007121115,
+          3.8576308616417494,
+          6.591232411058328
+        ],
+        "spark_tp4_shared2": [
+          0.0,
+          10.777657716754781,
+          34.12645858309033
+        ]
+      },
+      "other": {
+        "2": [
+          10994.815247076207,
+          349.2116351038806,
+          0.0
+        ]
+      },
+      "evaluations": {
+        "rtx2_code_even_holdout": {
+          "training": false,
+          "candidate": {
+            "rounds": 1383,
+            "median_absolute_relative_error": 0.0466133946838029,
+            "p90_absolute_relative_error": 0.15754847841632916,
+            "median_signed_relative_error": 0.04222429170300665
+          },
+          "old": {
+            "rounds": 1383,
+            "median_absolute_relative_error": 0.16205543648054643,
+            "p90_absolute_relative_error": 0.26770232180422204,
+            "median_signed_relative_error": 0.16182163465050034
+          }
+        },
+        "rtx2_code_odd": {
+          "training": true,
+          "candidate": {
+            "rounds": 2128,
+            "median_absolute_relative_error": 0.05184968313854912,
+            "p90_absolute_relative_error": 0.14836333396033513,
+            "median_signed_relative_error": 0.017444685775372344
+          },
+          "old": {
+            "rounds": 2128,
+            "median_absolute_relative_error": 0.14351168402942127,
+            "p90_absolute_relative_error": 0.2650495659167479,
+            "median_signed_relative_error": 0.14284458159490748
+          }
+        },
+        "rtx2_mixed_even_holdout": {
+          "training": false,
+          "candidate": {
+            "rounds": 2285,
+            "median_absolute_relative_error": 0.08740398924668695,
+            "p90_absolute_relative_error": 0.2022473866529947,
+            "median_signed_relative_error": 0.002625707441356532
+          },
+          "old": {
+            "rounds": 2285,
+            "median_absolute_relative_error": 0.10810590068355448,
+            "p90_absolute_relative_error": 0.26827664998702583,
+            "median_signed_relative_error": 0.040661464671773215
+          }
+        },
+        "rtx2_mixed_odd": {
+          "training": true,
+          "candidate": {
+            "rounds": 3329,
+            "median_absolute_relative_error": 0.08344248893112471,
+            "p90_absolute_relative_error": 0.2048303199370983,
+            "median_signed_relative_error": -0.014562907442896308
+          },
+          "old": {
+            "rounds": 3329,
+            "median_absolute_relative_error": 0.1131328402729539,
+            "p90_absolute_relative_error": 0.26542630659073324,
+            "median_signed_relative_error": 0.052081381733021036
+          }
+        }
+      }
+    },
+    "hinge16": {
+      "experts": {
+        "rtx_tp2_shared2": [
+          180.23813007121115,
+          3.857630861641748,
+          6.5912324110583285,
+          0.0
+        ],
+        "spark_tp4_shared2": [
+          0.0,
+          8.853887201467192,
+          34.53249238433175,
+          2.908051419965544
+        ]
+      },
+      "other": {
+        "2": [
+          11224.44099684262,
+          312.35816917397676,
+          6.752420050398074,
+          98.50965124432692
+        ]
+      },
+      "evaluations": {
+        "rtx2_code_even_holdout": {
+          "training": false,
+          "candidate": {
+            "rounds": 1383,
+            "median_absolute_relative_error": 0.0478139077740081,
+            "p90_absolute_relative_error": 0.17189299035942743,
+            "median_signed_relative_error": 0.036578504210371024
+          },
+          "old": {
+            "rounds": 1383,
+            "median_absolute_relative_error": 0.16205543648054643,
+            "p90_absolute_relative_error": 0.26770232180422204,
+            "median_signed_relative_error": 0.16182163465050034
+          }
+        },
+        "rtx2_code_odd": {
+          "training": true,
+          "candidate": {
+            "rounds": 2128,
+            "median_absolute_relative_error": 0.05764740538839448,
+            "p90_absolute_relative_error": 0.16752831814005822,
+            "median_signed_relative_error": 0.00891333474654956
+          },
+          "old": {
+            "rounds": 2128,
+            "median_absolute_relative_error": 0.14351168402942127,
+            "p90_absolute_relative_error": 0.2650495659167479,
+            "median_signed_relative_error": 0.14284458159490748
+          }
+        },
+        "rtx2_mixed_even_holdout": {
+          "training": false,
+          "candidate": {
+            "rounds": 2285,
+            "median_absolute_relative_error": 0.08704010446248404,
+            "p90_absolute_relative_error": 0.20160752551292427,
+            "median_signed_relative_error": 0.0017175028505014476
+          },
+          "old": {
+            "rounds": 2285,
+            "median_absolute_relative_error": 0.10810590068355448,
+            "p90_absolute_relative_error": 0.26827664998702583,
+            "median_signed_relative_error": 0.040661464671773215
+          }
+        },
+        "rtx2_mixed_odd": {
+          "training": true,
+          "candidate": {
+            "rounds": 3329,
+            "median_absolute_relative_error": 0.08126411184865218,
+            "p90_absolute_relative_error": 0.2032182789454371,
+            "median_signed_relative_error": -0.013717926166435166
+          },
+          "old": {
+            "rounds": 3329,
+            "median_absolute_relative_error": 0.1131328402729539,
+            "p90_absolute_relative_error": 0.26542630659073324,
+            "median_signed_relative_error": 0.052081381733021036
+          }
+        }
+      }
+    }
+  },
+  "limitations": "Observed expert routes; no history prediction error included. Odd widths train; even widths are held out. Workload selection is explicit. Elapsed timing includes instrumentation and concurrent scheduling. Short-context corpus only; not a serving-default qualification.",
+  "provenance": {
+    "cost-upstream-rtx2-k1": {
+      "metadata": {
+        "scope": "Instrumented fixed-width calibration; not performance qualification",
+        "draft_limit": 1,
+        "native_sha256": "8c6cccb1c3372567a1c49cc480a9cdf2b44d776a0a69cfa7c9d823caebaf0a4c",
+        "daemon_sha256": "82ed41b4a5cdb7e11823e424019e54c7e22a2e0fa8fe3a4d6a330c3fd52b1326",
+        "commands": [
+          {
+            "command": [
+              "/home/tj/Developer/ds41rt/.venv/bin/python",
+              "/home/tj/Developer/ds41rt/scripts/bench-ds41-concurrent-api.py",
+              "--base-url",
+              "http://127.0.0.1:8000",
+              "--output",
+              "/home/tj/.cache/ds41rt-upstream-20260916/cost-upstream-rtx2-k1/code.json",
+              "--case",
+              "code",
+              "--concurrency",
+              "2",
+              "4",
+              "8",
+              "16",
+              "--repeats",
+              "1",
+              "--label",
+              "upstream-cost-calibration",
+              "--nonce",
+              "91605"
+            ],
+            "exit_code": 0
+          },
+          {
+            "command": [
+              "/home/tj/Developer/ds41rt/.venv/bin/python",
+              "/home/tj/Developer/ds41rt/scripts/bench-ds41-adaptive-mixed.py",
+              "--base-url",
+              "http://127.0.0.1:8000",
+              "--tokenizer",
+              "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+              "--nonce-seed",
+              "91605",
+              "--output",
+              "/home/tj/.cache/ds41rt-upstream-20260916/cost-upstream-rtx2-k1/mixed.json",
+              "--concurrency",
+              "2",
+              "4",
+              "8",
+              "16",
+              "--skip-lifecycle"
+            ],
+            "exit_code": 0
+          }
+        ],
+        "server_exit_code": 0
+      },
+      "run_script": "#!/bin/bash\nset -eu\ncd /home/tj/Developer/ds41rt\nexec env DS41RT_NATIVE_LIB=/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-index-sort.so LD_LIBRARY_PATH=/home/tj/.local/share/uv/python/cpython-3.12.3-linux-x86_64-gnu/lib DS41RT_PYTHON=/home/tj/Developer/ds41rt/.venv/bin/python RUST_LOG=info,ds41rt::cost_model=debug,ds41rt::timing=debug CUDA_VISIBLE_DEVICES=0,1 rust/target/release/ds41rt serve-native --snapshot /home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277 --native-lib /home/tj/.cache/ds41rt-upstream-20260916/libcandidate-index-sort.so --peers 10.55.0.1:19441,10.55.0.2:19441,10.55.0.3:19441,10.55.0.4:19441 --rtx-gpus 2 --listen 0.0.0.0:8000 --prefill-batch-tokens 2048 --concurrency 16 --prefix-cache-entries 24 --max-context-tokens 1048576 --max-output-tokens 393216 --dspark --dspark-fixed --dspark-draft-limit 1\n",
+      "segments": [
+        {
+          "workload": "code",
+          "begin": 4131,
+          "end": 32018921
+        },
+        {
+          "workload": "mixed",
+          "begin": 32018921,
+          "end": 71052775
+        }
+      ],
+      "code_sha256": "302dfaaa3691678d7e9b09437d14e4ba874aa8227f871a0d6bbbc2837ee7c100",
+      "mixed_sha256": "999b534fec4c17cecfceec53d525f29eb158d6330ce2cde2b02ca138effe4979"
+    },
+    "cost-upstream-rtx2-k2": {
+      "metadata": {
+        "scope": "Instrumented fixed-width calibration; not performance qualification",
+        "draft_limit": 2,
+        "native_sha256": "8c6cccb1c3372567a1c49cc480a9cdf2b44d776a0a69cfa7c9d823caebaf0a4c",
+        "daemon_sha256": "82ed41b4a5cdb7e11823e424019e54c7e22a2e0fa8fe3a4d6a330c3fd52b1326",
+        "commands": [
+          {
+            "command": [
+              "/home/tj/Developer/ds41rt/.venv/bin/python",
+              "/home/tj/Developer/ds41rt/scripts/bench-ds41-concurrent-api.py",
+              "--base-url",
+              "http://127.0.0.1:8000",
+              "--output",
+              "/home/tj/.cache/ds41rt-upstream-20260916/cost-upstream-rtx2-k2/code.json",
+              "--case",
+              "code",
+              "--concurrency",
+              "2",
+              "4",
+              "8",
+              "16",
+              "--repeats",
+              "1",
+              "--label",
+              "upstream-cost-calibration",
+              "--nonce",
+              "91605"
+            ],
+            "exit_code": 0
+          },
+          {
+            "command": [
+              "/home/tj/Developer/ds41rt/.venv/bin/python",
+              "/home/tj/Developer/ds41rt/scripts/bench-ds41-adaptive-mixed.py",
+              "--base-url",
+              "http://127.0.0.1:8000",
+              "--tokenizer",
+              "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+              "--nonce-seed",
+              "91605",
+              "--output",
+              "/home/tj/.cache/ds41rt-upstream-20260916/cost-upstream-rtx2-k2/mixed.json",
+              "--concurrency",
+              "2",
+              "4",
+              "8",
+              "16",
+              "--skip-lifecycle"
+            ],
+            "exit_code": 0
+          }
+        ],
+        "server_exit_code": 0
+      },
+      "run_script": "#!/bin/bash\nset -eu\ncd /home/tj/Developer/ds41rt\nexec env DS41RT_NATIVE_LIB=/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-index-sort.so LD_LIBRARY_PATH=/home/tj/.local/share/uv/python/cpython-3.12.3-linux-x86_64-gnu/lib DS41RT_PYTHON=/home/tj/Developer/ds41rt/.venv/bin/python RUST_LOG=info,ds41rt::cost_model=debug,ds41rt::timing=debug CUDA_VISIBLE_DEVICES=0,1 rust/target/release/ds41rt serve-native --snapshot /home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277 --native-lib /home/tj/.cache/ds41rt-upstream-20260916/libcandidate-index-sort.so --peers 10.55.0.1:19441,10.55.0.2:19441,10.55.0.3:19441,10.55.0.4:19441 --rtx-gpus 2 --listen 0.0.0.0:8000 --prefill-batch-tokens 2048 --concurrency 16 --prefix-cache-entries 24 --max-context-tokens 1048576 --max-output-tokens 393216 --dspark --dspark-fixed --dspark-draft-limit 2\n",
+      "segments": [
+        {
+          "workload": "code",
+          "begin": 4131,
+          "end": 22084522
+        },
+        {
+          "workload": "mixed",
+          "begin": 22084522,
+          "end": 50896961
+        }
+      ],
+      "code_sha256": "dfc9563fbc9c29450a36789f8799501f9853b7c5f7d19a1c2cea0692e933df22",
+      "mixed_sha256": "739f288f7d4e9811f8b42a712ea16710370527fd6748e03721519db51c11192b"
+    },
+    "cost-upstream-rtx2-k3": {
+      "metadata": {
+        "scope": "Instrumented fixed-width calibration; not performance qualification",
+        "draft_limit": 3,
+        "native_sha256": "8c6cccb1c3372567a1c49cc480a9cdf2b44d776a0a69cfa7c9d823caebaf0a4c",
+        "daemon_sha256": "82ed41b4a5cdb7e11823e424019e54c7e22a2e0fa8fe3a4d6a330c3fd52b1326",
+        "commands": [
+          {
+            "command": [
+              "/home/tj/Developer/ds41rt/.venv/bin/python",
+              "/home/tj/Developer/ds41rt/scripts/bench-ds41-concurrent-api.py",
+              "--base-url",
+              "http://127.0.0.1:8000",
+              "--output",
+              "/home/tj/.cache/ds41rt-upstream-20260916/cost-upstream-rtx2-k3/code.json",
+              "--case",
+              "code",
+              "--concurrency",
+              "2",
+              "4",
+              "8",
+              "16",
+              "--repeats",
+              "1",
+              "--label",
+              "upstream-cost-calibration",
+              "--nonce",
+              "91605"
+            ],
+            "exit_code": 0
+          },
+          {
+            "command": [
+              "/home/tj/Developer/ds41rt/.venv/bin/python",
+              "/home/tj/Developer/ds41rt/scripts/bench-ds41-adaptive-mixed.py",
+              "--base-url",
+              "http://127.0.0.1:8000",
+              "--tokenizer",
+              "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+              "--nonce-seed",
+              "91605",
+              "--output",
+              "/home/tj/.cache/ds41rt-upstream-20260916/cost-upstream-rtx2-k3/mixed.json",
+              "--concurrency",
+              "2",
+              "4",
+              "8",
+              "16",
+              "--skip-lifecycle"
+            ],
+            "exit_code": 0
+          }
+        ],
+        "server_exit_code": 0
+      },
+      "run_script": "#!/bin/bash\nset -eu\ncd /home/tj/Developer/ds41rt\nexec env DS41RT_NATIVE_LIB=/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-index-sort.so LD_LIBRARY_PATH=/home/tj/.local/share/uv/python/cpython-3.12.3-linux-x86_64-gnu/lib DS41RT_PYTHON=/home/tj/Developer/ds41rt/.venv/bin/python RUST_LOG=info,ds41rt::cost_model=debug,ds41rt::timing=debug CUDA_VISIBLE_DEVICES=0,1 rust/target/release/ds41rt serve-native --snapshot /home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277 --native-lib /home/tj/.cache/ds41rt-upstream-20260916/libcandidate-index-sort.so --peers 10.55.0.1:19441,10.55.0.2:19441,10.55.0.3:19441,10.55.0.4:19441 --rtx-gpus 2 --listen 0.0.0.0:8000 --prefill-batch-tokens 2048 --concurrency 16 --prefix-cache-entries 24 --max-context-tokens 1048576 --max-output-tokens 393216 --dspark --dspark-fixed --dspark-draft-limit 3\n",
+      "segments": [
+        {
+          "workload": "code",
+          "begin": 4131,
+          "end": 16847998
+        },
+        {
+          "workload": "mixed",
+          "begin": 16847998,
+          "end": 42066896
+        }
+      ],
+      "code_sha256": "8ffbaf34390d1984ac503cff74e0cb3f62ce9cc31b5c1e6c3bda363d43c2ae6b",
+      "mixed_sha256": "68634e5d65b860d874716efb892d183a96e41deadaec9c877d5746a3ecc607a0"
+    },
+    "cost-upstream-rtx2-k4": {
+      "metadata": {
+        "scope": "Instrumented fixed-width calibration; not performance qualification",
+        "draft_limit": 4,
+        "native_sha256": "8c6cccb1c3372567a1c49cc480a9cdf2b44d776a0a69cfa7c9d823caebaf0a4c",
+        "daemon_sha256": "82ed41b4a5cdb7e11823e424019e54c7e22a2e0fa8fe3a4d6a330c3fd52b1326",
+        "commands": [
+          {
+            "command": [
+              "/home/tj/Developer/ds41rt/.venv/bin/python",
+              "/home/tj/Developer/ds41rt/scripts/bench-ds41-concurrent-api.py",
+              "--base-url",
+              "http://127.0.0.1:8000",
+              "--output",
+              "/home/tj/.cache/ds41rt-upstream-20260916/cost-upstream-rtx2-k4/code.json",
+              "--case",
+              "code",
+              "--concurrency",
+              "2",
+              "4",
+              "8",
+              "16",
+              "--repeats",
+              "1",
+              "--label",
+              "upstream-cost-calibration",
+              "--nonce",
+              "91605"
+            ],
+            "exit_code": 0
+          },
+          {
+            "command": [
+              "/home/tj/Developer/ds41rt/.venv/bin/python",
+              "/home/tj/Developer/ds41rt/scripts/bench-ds41-adaptive-mixed.py",
+              "--base-url",
+              "http://127.0.0.1:8000",
+              "--tokenizer",
+              "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+              "--nonce-seed",
+              "91605",
+              "--output",
+              "/home/tj/.cache/ds41rt-upstream-20260916/cost-upstream-rtx2-k4/mixed.json",
+              "--concurrency",
+              "2",
+              "4",
+              "8",
+              "16",
+              "--skip-lifecycle"
+            ],
+            "exit_code": 0
+          }
+        ],
+        "server_exit_code": 0
+      },
+      "run_script": "#!/bin/bash\nset -eu\ncd /home/tj/Developer/ds41rt\nexec env DS41RT_NATIVE_LIB=/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-index-sort.so LD_LIBRARY_PATH=/home/tj/.local/share/uv/python/cpython-3.12.3-linux-x86_64-gnu/lib DS41RT_PYTHON=/home/tj/Developer/ds41rt/.venv/bin/python RUST_LOG=info,ds41rt::cost_model=debug,ds41rt::timing=debug CUDA_VISIBLE_DEVICES=0,1 rust/target/release/ds41rt serve-native --snapshot /home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277 --native-lib /home/tj/.cache/ds41rt-upstream-20260916/libcandidate-index-sort.so --peers 10.55.0.1:19441,10.55.0.2:19441,10.55.0.3:19441,10.55.0.4:19441 --rtx-gpus 2 --listen 0.0.0.0:8000 --prefill-batch-tokens 2048 --concurrency 16 --prefix-cache-entries 24 --max-context-tokens 1048576 --max-output-tokens 393216 --dspark --dspark-fixed --dspark-draft-limit 4\n",
+      "segments": [
+        {
+          "workload": "code",
+          "begin": 4131,
+          "end": 13872771
+        },
+        {
+          "workload": "mixed",
+          "begin": 13872771,
+          "end": 38106885
+        }
+      ],
+      "code_sha256": "856c23d2fbf2e7b593b9d165eef5839ecb2d22edf6792c480dc398e091112b09",
+      "mixed_sha256": "b5dcf4ce792f533edb005a7e427853975879bd500aff1a32fc8a1e2f565c7d8e"
+    },
+    "cost-upstream-rtx2-k5": {
+      "metadata": {
+        "scope": "Instrumented fixed-width calibration; not performance qualification",
+        "draft_limit": 5,
+        "native_sha256": "8c6cccb1c3372567a1c49cc480a9cdf2b44d776a0a69cfa7c9d823caebaf0a4c",
+        "daemon_sha256": "82ed41b4a5cdb7e11823e424019e54c7e22a2e0fa8fe3a4d6a330c3fd52b1326",
+        "commands": [
+          {
+            "command": [
+              "/home/tj/Developer/ds41rt/.venv/bin/python",
+              "/home/tj/Developer/ds41rt/scripts/bench-ds41-concurrent-api.py",
+              "--base-url",
+              "http://127.0.0.1:8000",
+              "--output",
+              "/home/tj/.cache/ds41rt-upstream-20260916/cost-upstream-rtx2-k5/code.json",
+              "--case",
+              "code",
+              "--concurrency",
+              "2",
+              "4",
+              "8",
+              "16",
+              "--repeats",
+              "1",
+              "--label",
+              "upstream-cost-calibration",
+              "--nonce",
+              "91605"
+            ],
+            "exit_code": 0
+          },
+          {
+            "command": [
+              "/home/tj/Developer/ds41rt/.venv/bin/python",
+              "/home/tj/Developer/ds41rt/scripts/bench-ds41-adaptive-mixed.py",
+              "--base-url",
+              "http://127.0.0.1:8000",
+              "--tokenizer",
+              "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+              "--nonce-seed",
+              "91605",
+              "--output",
+              "/home/tj/.cache/ds41rt-upstream-20260916/cost-upstream-rtx2-k5/mixed.json",
+              "--concurrency",
+              "2",
+              "4",
+              "8",
+              "16",
+              "--skip-lifecycle"
+            ],
+            "exit_code": 0
+          }
+        ],
+        "server_exit_code": 0
+      },
+      "run_script": "#!/bin/bash\nset -eu\ncd /home/tj/Developer/ds41rt\nexec env DS41RT_NATIVE_LIB=/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-index-sort.so LD_LIBRARY_PATH=/home/tj/.local/share/uv/python/cpython-3.12.3-linux-x86_64-gnu/lib DS41RT_PYTHON=/home/tj/Developer/ds41rt/.venv/bin/python RUST_LOG=info,ds41rt::cost_model=debug,ds41rt::timing=debug CUDA_VISIBLE_DEVICES=0,1 rust/target/release/ds41rt serve-native --snapshot /home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277 --native-lib /home/tj/.cache/ds41rt-upstream-20260916/libcandidate-index-sort.so --peers 10.55.0.1:19441,10.55.0.2:19441,10.55.0.3:19441,10.55.0.4:19441 --rtx-gpus 2 --listen 0.0.0.0:8000 --prefill-batch-tokens 2048 --concurrency 16 --prefix-cache-entries 24 --max-context-tokens 1048576 --max-output-tokens 393216 --dspark --dspark-fixed --dspark-draft-limit 5\n",
+      "segments": [
+        {
+          "workload": "code",
+          "begin": 4131,
+          "end": 12688980
+        },
+        {
+          "workload": "mixed",
+          "begin": 12688980,
+          "end": 37462277
+        }
+      ],
+      "code_sha256": "63c2b40d7a23d1fcd2a9000310dc10a3cd3cff51dd6903a7f59606c195e78ead",
+      "mixed_sha256": "84fb6e5dccdafc2001f4c52fe0781554727b0f6ff5f453561af1a06f4d9e9583"
+    },
+    "cost-upstream-rtx2-k6": {
+      "metadata": {
+        "scope": "Instrumented fixed-width calibration; not performance qualification",
+        "draft_limit": 6,
+        "native_sha256": "8c6cccb1c3372567a1c49cc480a9cdf2b44d776a0a69cfa7c9d823caebaf0a4c",
+        "daemon_sha256": "82ed41b4a5cdb7e11823e424019e54c7e22a2e0fa8fe3a4d6a330c3fd52b1326",
+        "commands": [
+          {
+            "command": [
+              "/home/tj/Developer/ds41rt/.venv/bin/python",
+              "/home/tj/Developer/ds41rt/scripts/bench-ds41-concurrent-api.py",
+              "--base-url",
+              "http://127.0.0.1:8000",
+              "--output",
+              "/home/tj/.cache/ds41rt-upstream-20260916/cost-upstream-rtx2-k6/code.json",
+              "--case",
+              "code",
+              "--concurrency",
+              "2",
+              "4",
+              "8",
+              "16",
+              "--repeats",
+              "1",
+              "--label",
+              "upstream-cost-calibration",
+              "--nonce",
+              "91605"
+            ],
+            "exit_code": 0
+          },
+          {
+            "command": [
+              "/home/tj/Developer/ds41rt/.venv/bin/python",
+              "/home/tj/Developer/ds41rt/scripts/bench-ds41-adaptive-mixed.py",
+              "--base-url",
+              "http://127.0.0.1:8000",
+              "--tokenizer",
+              "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+              "--nonce-seed",
+              "91605",
+              "--output",
+              "/home/tj/.cache/ds41rt-upstream-20260916/cost-upstream-rtx2-k6/mixed.json",
+              "--concurrency",
+              "2",
+              "4",
+              "8",
+              "16",
+              "--skip-lifecycle"
+            ],
+            "exit_code": 0
+          }
+        ],
+        "server_exit_code": 0
+      },
+      "run_script": "#!/bin/bash\nset -eu\ncd /home/tj/Developer/ds41rt\nexec env DS41RT_NATIVE_LIB=/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-index-sort.so LD_LIBRARY_PATH=/home/tj/.local/share/uv/python/cpython-3.12.3-linux-x86_64-gnu/lib DS41RT_PYTHON=/home/tj/Developer/ds41rt/.venv/bin/python RUST_LOG=info,ds41rt::cost_model=debug,ds41rt::timing=debug CUDA_VISIBLE_DEVICES=0,1 rust/target/release/ds41rt serve-native --snapshot /home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277 --native-lib /home/tj/.cache/ds41rt-upstream-20260916/libcandidate-index-sort.so --peers 10.55.0.1:19441,10.55.0.2:19441,10.55.0.3:19441,10.55.0.4:19441 --rtx-gpus 2 --listen 0.0.0.0:8000 --prefill-batch-tokens 2048 --concurrency 16 --prefix-cache-entries 24 --max-context-tokens 1048576 --max-output-tokens 393216 --dspark --dspark-fixed --dspark-draft-limit 6\n",
+      "segments": [
+        {
+          "workload": "code",
+          "begin": 4784,
+          "end": 11472419
+        },
+        {
+          "workload": "mixed",
+          "begin": 11472419,
+          "end": 37113403
+        }
+      ],
+      "code_sha256": "925268cc64e0afced1f6ea1a1883e379c39a31843ac177784a50e7a973426c6f",
+      "mixed_sha256": "9e762ca3c2863b30c7a74f7da38d3f59786bf63becf35377c5263b9f146eafe4"
+    },
+    "cost-upstream-rtx2-k7": {
+      "metadata": {
+        "scope": "Instrumented fixed-width calibration; not performance qualification",
+        "draft_limit": 7,
+        "native_sha256": "8c6cccb1c3372567a1c49cc480a9cdf2b44d776a0a69cfa7c9d823caebaf0a4c",
+        "daemon_sha256": "82ed41b4a5cdb7e11823e424019e54c7e22a2e0fa8fe3a4d6a330c3fd52b1326",
+        "commands": [
+          {
+            "command": [
+              "/home/tj/Developer/ds41rt/.venv/bin/python",
+              "/home/tj/Developer/ds41rt/scripts/bench-ds41-concurrent-api.py",
+              "--base-url",
+              "http://127.0.0.1:8000",
+              "--output",
+              "/home/tj/.cache/ds41rt-upstream-20260916/cost-upstream-rtx2-k7/code.json",
+              "--case",
+              "code",
+              "--concurrency",
+              "2",
+              "4",
+              "8",
+              "16",
+              "--repeats",
+              "1",
+              "--label",
+              "upstream-cost-calibration",
+              "--nonce",
+              "91605"
+            ],
+            "exit_code": 0
+          },
+          {
+            "command": [
+              "/home/tj/Developer/ds41rt/.venv/bin/python",
+              "/home/tj/Developer/ds41rt/scripts/bench-ds41-adaptive-mixed.py",
+              "--base-url",
+              "http://127.0.0.1:8000",
+              "--tokenizer",
+              "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+              "--nonce-seed",
+              "91605",
+              "--output",
+              "/home/tj/.cache/ds41rt-upstream-20260916/cost-upstream-rtx2-k7/mixed.json",
+              "--concurrency",
+              "2",
+              "4",
+              "8",
+              "16",
+              "--skip-lifecycle"
+            ],
+            "exit_code": 0
+          }
+        ],
+        "server_exit_code": 0
+      },
+      "run_script": "#!/bin/bash\nset -eu\ncd /home/tj/Developer/ds41rt\nexec env DS41RT_NATIVE_LIB=/home/tj/.cache/ds41rt-upstream-20260916/libcandidate-index-sort.so LD_LIBRARY_PATH=/home/tj/.local/share/uv/python/cpython-3.12.3-linux-x86_64-gnu/lib DS41RT_PYTHON=/home/tj/Developer/ds41rt/.venv/bin/python RUST_LOG=info,ds41rt::cost_model=debug,ds41rt::timing=debug CUDA_VISIBLE_DEVICES=0,1 rust/target/release/ds41rt serve-native --snapshot /home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277 --native-lib /home/tj/.cache/ds41rt-upstream-20260916/libcandidate-index-sort.so --peers 10.55.0.1:19441,10.55.0.2:19441,10.55.0.3:19441,10.55.0.4:19441 --rtx-gpus 2 --listen 0.0.0.0:8000 --prefill-batch-tokens 2048 --concurrency 16 --prefix-cache-entries 24 --max-context-tokens 1048576 --max-output-tokens 393216 --dspark --dspark-fixed --dspark-draft-limit 7\n",
+      "segments": [
+        {
+          "workload": "code",
+          "begin": 4784,
+          "end": 10949146
+        },
+        {
+          "workload": "mixed",
+          "begin": 10949146,
+          "end": 36243288
+        }
+      ],
+      "code_sha256": "7a753ea938a240689a82b01f2ffcb93b8ebe36b143990433bee572fe91673d27",
+      "mixed_sha256": "0883539e19067c0128ea2ebee64703c64291fa0db78ef9117d335be543140976"
+    }
+  },
+  "selection": "Affine: simpler model with lower held-out code median and p90 error; hinge16 provides negligible mixed improvement. Serving acceptance pending."
+}
