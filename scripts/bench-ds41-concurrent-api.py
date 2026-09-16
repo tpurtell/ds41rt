@@ -32,19 +32,37 @@ def run(i):
  b=api['payload'](prompt,True);b['max_tokens']=definition['max_tokens']
  b['thinking']={'type':definition.get('thinking','disabled')}
  if definition.get('reasoning_effort'):b['reasoning_effort']=definition['reasoning_effort']
- start=time.perf_counter();r=api['stream_case'](args.base_url,b)
- if definition.get('thinking')=='enabled':assert r['reasoning'].strip(),'missing requested reasoning'
- r.pop('events',None)
- return dict(start=start,result=r,output_checks=validate(r))
-warmup=run(0)['result'];reference=[warmup['text'],{k:warmup['usage'][k] for k in ['prompt_tokens','completion_tokens','total_tokens']}]
+ start=time.perf_counter();r=None
+ try:
+  r=api['stream_case'](args.base_url,b)
+  if definition.get('thinking')=='enabled':assert r['reasoning'].strip(),'missing requested reasoning'
+  r.pop('events',None)
+  return dict(start=start,result=r,output_checks=validate(r),passed=True)
+ except Exception as error:
+  return dict(start=start,result=r if r is not None else getattr(error,'record',None),
+              error=repr(error),passed=False)
+def fail(phase,rows,error):
+ args.output.write_text(json.dumps(dict(passed=False,phase=phase,error=str(error),
+  case=args.case,prompt=prompt,thinking=definition.get('thinking','disabled'),
+  reasoning_effort=definition.get('reasoning_effort'),max_tokens=definition['max_tokens'],
+  corpus_sha256=hashlib.sha256(corpus_path.read_bytes()).hexdigest(),
+  completed_records=records,failed_batch=rows),indent=2)+'\n')
+ raise SystemExit(f'{phase} failed; all responses retained in {args.output}')
+warmup_row=run(0)
+if not warmup_row['passed']:fail('warmup',[warmup_row],warmup_row['error'])
+warmup=warmup_row['result'];reference=[warmup['text'],{k:warmup['usage'][k] for k in ['prompt_tokens','completion_tokens','total_tokens']}]
 warmup_checks=validate(warmup)
 for c in args.concurrency:
  for repeat in range(args.repeats):
   with concurrent.futures.ThreadPoolExecutor(max_workers=c) as pool:rows=list(pool.map(run,range(c)))
-  for row in rows:
-   usage=row['result']['usage'];pair=[row['result']['text'],{k:usage[k] for k in ['prompt_tokens','completion_tokens','total_tokens']}]
-   if args.case=='counting':assert pair==reference,(c,repeat,'counting output changed')
-   assert usage['prompt_cache_hit_tokens']==usage['prompt_tokens'],(c,repeat,'prompt was not warm')
+  phase=f'C{c} repeat {repeat+1}'
+  if not all(row['passed'] for row in rows):fail(phase,rows,'response or output check failed')
+  try:
+   for row in rows:
+    usage=row['result']['usage'];pair=[row['result']['text'],{k:usage[k] for k in ['prompt_tokens','completion_tokens','total_tokens']}]
+    if args.case=='counting':assert pair==reference,(c,repeat,'counting output changed')
+    assert usage['prompt_cache_hit_tokens']==usage['prompt_tokens'],(c,repeat,'prompt was not warm')
+  except Exception as error:fail(phase,rows,error)
   # Inclusive span from earliest reasoning/answer delta to finish, including admission gaps.
   begin=min(r['start']+r['result']['first_output_seconds'] for r in rows)
   end=max(r['start']+r['result']['finish_seconds'] for r in rows)

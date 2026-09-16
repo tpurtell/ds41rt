@@ -26,7 +26,7 @@ def open_request(base, body, api_key=None):
 def stream_case(base, body, cancel=False, api_key=None, on_first_content=None):
     start = time.perf_counter()
     events, text, first, finish, usage = [], '', None, None, None
-    reasoning, first_output = '', None
+    reasoning, first_output, finish_reason = '', None, None
     done = False
     with open_request(base, body, api_key=api_key) as response:
         for line in response:
@@ -59,14 +59,16 @@ def stream_case(base, body, cancel=False, api_key=None, on_first_content=None):
                         return dict(cancelled_after_content=True, first_content_seconds=first, text=text)
                 if choice.get('finish_reason'):
                     finish = elapsed
-    if not (done and first is not None and finish is not None and usage):
+                    finish_reason = choice['finish_reason']
+    if not (done and first_output is not None and finish is not None and usage):
         raise IncompleteStreamError(dict(done=done, text=text, reasoning=reasoning, first_content_seconds=first,
+                                         first_output_seconds=first_output, finish_reason=finish_reason,
                                          finish_seconds=finish, usage=usage, events=events))
     # Completion tokens include reasoning. Time from first reasoning OR answer
     # delta so reasoning tokens never get charged only to final-answer time.
     tps = (usage['completion_tokens'] - 1) / (finish - first_output) if finish > first_output else None
     return dict(text=text, reasoning=reasoning, first_output_seconds=first_output,
-                first_content_seconds=first, finish_seconds=finish,
+                first_content_seconds=first, finish_seconds=finish, finish_reason=finish_reason,
                 observed_decode_tokens_per_second=tps, usage=usage, events=events)
 
 def main():
