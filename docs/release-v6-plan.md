@@ -790,3 +790,29 @@ Evidence: `~/.cache/ds41rt-v6-attention-perf/` contains both exact launch comman
 server logs, per-request SSE measurements, scripts and `summary.json`. Normal
 v5 serving was restored after the experiment. TP2 projection and dSpark still
 require independent implementation/evaluation.
+
+### Capture the split-attention continuation
+
+The dual owner now retains bounded per-layer projection/FFN continuation graphs,
+keyed by the consumer storage/weight identity and row count. Warm replay refreshes
+positions and host block state, then launches the graph after the gather on the
+same owner stream. Cold tails warm, drain, restore unpublished block state,
+capture, and replay before exposing FFN output. Cancellation drains both halves;
+graph destruction occurs before consumer storage can be released. The full-head
+path is unchanged, and no cross-lane dependency is introduced.
+
+The optimized build passes, and full-model C2/C4 counting output parity plus
+cancellation/replacement checks pass. Three warm code/topic measurements at C1/C4
+also match the previous full-head response texts and completion-token counts.
+Compared with the preceding uncaptured TP2 run, per-request median decode rates
+changed: code C1 159.4 -> 161.5, code C4 109.7 -> 111.6, topic C1 90.2 -> 91.3,
+topic C4 63.5 -> 64.9 tokens/s (roughly +1–2%). These separate short runs do not
+establish a small gain beyond noise. They remain roughly 4–7% below the earlier
+full-head arm, so TP2 attention remains off by default. The launch overhead was
+not the complete explanation; peer-input/publication/gather costs and longer
+retained-context attention still need investigation before a final judgment.
+
+Evidence: `~/.cache/ds41rt-v6-tail-capture/` contains the exact launch, concurrency
+results, performance requests/SSE results, server log and summary;
+`~/.cache/ds41rt-v6-heads32/tail-capture-build.log` records the build. Normal
+serving was restored after the experiment.

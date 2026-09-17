@@ -125,11 +125,7 @@ impl<'s, 'w, 'a> PendingLaneFfn<'s, 'w, 'a> {
             let mut tail = AttentionTail { projection: &mut lane.projection, block: &mut lane.block,
                 binding: query.binding()?, tokens: query.tokens()? };
             if let Some(dual)=lane.dual_sparse.as_mut() {
-                use crate::v41_sparse_attention::AttentionGraphTail;
-                unsafe { dual.complete_owned_then(|attention,stream| {
-                    tail.prepare(stream)?;
-                    tail.enqueue(&attention,stream)
-                }).await?; }
+                unsafe { dual.complete_owned_tail(&mut tail).await?; }
             } else {
                 unsafe { lane.sparse.as_mut().context("attention wave absent")?.finish_prepare(Some(&mut tail)).await?; }
             }
