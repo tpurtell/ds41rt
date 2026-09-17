@@ -1197,3 +1197,30 @@ Evidence: `~/.cache/ds41rt-v6-heads32/dspark-tp2-checkpoint-hardware.log`; durab
 test: `v41_experts::dspark::tp2::checkpoint_tests::cuda_dspark_tp2_checkpoint_experts_and_graph`.
 The normal v5 server was stopped for GPU memory and restored after the test.
 Whole-chain integration and independent lane/cancellation validation remain.
+
+### dSpark TP2 transformer integration and numerical investigation
+
+The draft transformer can now construct TP2 routed-expert stages. Attention,
+shared experts and other draft projections remain on RTX1. The loader admits
+both GPUs before reading weights; per-stage/per-lane workspace and distributed
+chain budgets include peer allocations. The new backend uses the existing
+three-stage capture path, so a captured transformer graph contains both ranks
+without adding host waits or cross-lane dependencies. No serving flag/default
+is enabled yet.
+
+The K7 same-backend control passes exact tokens/logits/confidence for sequential
+execution versus two concurrently executing lanes at C1/C3/C8/C16/C3, including
+cold execution, graph replay, changed seed/cache/order, cancellation, reuse and
+device restoration. Evidence: `~/.cache/ds41rt-v6-heads32/dspark-tp2-lanes-hardware.log`.
+
+Comparison to full experts is NOT yet qualified. C1 is exact; at C3, logits
+have relative RMS 0.000002067 and maximum absolute difference 0.00038147.
+At C8 one lane has relative RMS 0.00008805, maximum logit difference 0.03756,
+maximum probability change 0.00049077 and worst-row total variation 0.001909.
+Token IDs still match at that point, but the 0.001 total-variation diagnostic
+bound fails, before C16 is reached. The sequential/concurrent TP2 control points
+toward a numerical split effect rather than lane scheduling; stage-level
+comparison and acceptance measurement remain necessary. The diagnostic test
+continues to fail rather than asserting full-reference equivalence. Evidence:
+`dspark-tp2-chain-hardware.log` in the same directory. Normal v5 serving was
+restored after each test. No serving speed or acceptance claim follows.

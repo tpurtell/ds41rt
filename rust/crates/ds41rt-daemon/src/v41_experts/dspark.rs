@@ -105,6 +105,7 @@ impl DsparkBudget {
 }
 
 enum ExpertStages<'a> {
+    Tp2([Rc<tp2::Weights<'a>>;2]),
     Full([ExpertWeights<'a>; 3]),
     Exl3 { weights: Rc<Vec<Exl3Weights<'a>>>, directory: PathBuf },
 }
@@ -120,10 +121,11 @@ pub(crate) struct DsparkWeights<'library> {
 }
 impl<'library> DsparkWeights<'library> {
     fn full_expert(&self, stage: usize) -> Option<&ExpertWeights<'library>> {
-        match &self.experts { ExpertStages::Full(weights) => weights.get(stage), ExpertStages::Exl3 { .. } => None }
+        match &self.experts { ExpertStages::Full(weights) => weights.get(stage), ExpertStages::Exl3 { .. } | ExpertStages::Tp2(_) => None }
     }
     fn expert_bytes(&self, capacity: u32) -> Result<usize> {
         match &self.experts {
+            ExpertStages::Tp2(_) => Ok(tp2::RoutedWave::device_bytes(self.library,capacity)?[1]),
             ExpertStages::Full(weights) => weights[0].execution_budget(capacity)?.total(),
             ExpertStages::Exl3 { directory, .. } => CompressedDraftExperts::device_bytes(directory, capacity),
         }
@@ -131,11 +133,18 @@ impl<'library> DsparkWeights<'library> {
     fn expert_wave(&self, stage: usize, capacity: u32) -> Result<DraftExperts<'_, 'library>> {
         ensure!(stage < 3, "invalid dSpark expert stage");
         match &self.experts {
+            ExpertStages::Tp2(weights) => Ok(DraftExperts::Tp2(tp2::RoutedWave::new(self,weights.clone(),stage,capacity)?)),
             ExpertStages::Full(weights) => Ok(DraftExperts::Full(weights[stage].execution(capacity, self.expert_bytes(capacity)?)?)),
             ExpertStages::Exl3 { weights, directory } => Ok(DraftExperts::Exl3(unsafe {
                 CompressedDraftExperts::new(self, weights.clone(), directory, stage, capacity)?
             })),
         }
+    }
+    pub fn peer_chain_bytes(&self,requests:u32)->Result<usize> {
+        if matches!(self.experts,ExpertStages::Tp2(_)) {
+            let capacity=DsparkAttentionWave::projection_capacity_with_width(requests,self.draft_width)?;
+            tp2::RoutedWave::device_bytes(self.library,capacity)?[0].checked_mul(3).context("draft TP2 peer chain overflow")
+        } else {Ok(0)}
     }
     pub fn draft_width(&self) -> usize { self.draft_width }
     fn auxiliary_names(catalog: &OfficialV41Catalog) -> Vec<String> {
@@ -224,6 +233,32 @@ impl<'library> DsparkWeights<'library> {
         Self::load_with_width(library, catalog, draft_capacity, 1, draft_budget, pinned_staging_bytes, width, exl3_directory)
     }
 
+    /// Native routed-expert TP2; attention/shared/projections stay on RTX1.
+    /// Both ranks are admitted before loading any checkpoint payload.
+    pub fn load_tp2_with_width(library:&'library NativeLibrary,catalog:&OfficialV41Catalog,
+        capacity:u32,waves:usize,budgets:[usize;2],pinned_staging_bytes:usize,width:usize)->Result<Self> {
+        ensure!(catalog.exl3().is_none(),"TP2 dSpark requires native expert weights");
+        ensure!(library.cuda_get_device()?==1,"TP2 dSpark transformer belongs on RTX1");
+        let devices=[crate::v41_memory::device::Device {library,id:0},crate::v41_memory::device::Device {library,id:1}];
+        let mut budget=Self::plan_with_width(library,catalog,capacity,width,None)?;
+        let mut resident=[0usize;2];let mut staging=[0usize;2];
+        for rank in 0..2 { for stage in 0..3 {
+            let plan=devices[rank].run(||ExpertWeights::plan(library,catalog,ExpertLayer::DsparkTp2 {stage,rank}))?;
+            resident[rank]=resident[rank].checked_add(plan.resident_bytes).context("draft TP2 residency overflow")?;
+            staging[rank]=staging[rank].max(plan.device_staging_bytes);
+        }}
+        let workspace=tp2::RoutedWave::device_bytes(library,capacity)?;
+        budget.expert_resident_bytes=resident[1];
+        budget.load_staging_bytes=budget.load_staging_bytes.max(staging[1]);
+        budget.execution_bytes_per_wave=workspace[1].checked_mul(3).context("draft TP2 workspace overflow")?;
+        let root_peak=budget.peak_device_bytes(waves)?;
+        let peer_peak=resident[0].checked_add(staging[0].max(workspace[0].checked_mul(3*waves).context("draft TP2 peer wave overflow")?)).context("draft TP2 peer budget overflow")?;
+        ensure!(peer_peak<=budgets[0] && root_peak<=budgets[1],
+            "draft TP2 needs GPU0/GPU1 bytes {peer_peak}/{root_peak}, budgets are {}/{}",budgets[0],budgets[1]);
+        let weights=tp2::Weights::load_pair(devices,catalog,budgets)?;
+        Self::load_with_experts(library,catalog,capacity,waves,budgets[1],pinned_staging_bytes,width,None,Some((weights,budget)))
+    }
+
     /// Admit all three stages and the requested expert wave workspaces before
     /// reading payloads; this does not allocate the wave workspaces themselves.
     pub fn load(
@@ -239,7 +274,12 @@ impl<'library> DsparkWeights<'library> {
     fn load_with_width(library: &'library NativeLibrary, catalog: &OfficialV41Catalog,
         capacity: u32, waves: usize, device_budget: usize, pinned_staging_bytes: usize,
         width: usize, exl3_directory: Option<&Path>) -> Result<Self> {
-        let budget = Self::plan_with_width(library, catalog, capacity, width, exl3_directory)?;
+        Self::load_with_experts(library,catalog,capacity,waves,device_budget,pinned_staging_bytes,width,exl3_directory,None)
+    }
+    fn load_with_experts(library: &'library NativeLibrary, catalog: &OfficialV41Catalog,
+        capacity:u32,waves:usize,device_budget:usize,pinned_staging_bytes:usize,width:usize,
+        exl3_directory:Option<&Path>,tp2:Option<([Rc<tp2::Weights<'library>>;2],DsparkBudget)>)->Result<Self> {
+        let budget = if let Some((_,budget))=&tp2 {*budget} else {Self::plan_with_width(library, catalog, capacity, width, exl3_directory)?};
         ensure!(
             budget.peak_device_bytes(waves)? <= device_budget,
             "dSpark RTX residency and expert waves exceed device budget"
@@ -249,7 +289,10 @@ impl<'library> DsparkWeights<'library> {
             "dSpark auxiliary pinned staging must be 1 byte through 64 MiB"
         );
         let mut resident = 0usize;
-        let experts = if catalog.exl3().is_some() {
+        let experts = if let Some((weights,_))=tp2 {
+            resident=weights[1].resident_bytes();
+            ExpertStages::Tp2(weights)
+        } else if catalog.exl3().is_some() {
             let mut weights = Vec::with_capacity(3);
             for stage in 0..3 {
                 let weight = Exl3Weights::load(library, catalog, ExpertLayer::Dspark { stage },

@@ -4,6 +4,53 @@ mod pair;
 #[cfg(test)]
 mod checkpoint_tests;
 
+pub(super) use rank::Weights;
+use super::{DsparkRouter, DsparkSharedFfn, DsparkWeights};
+use crate::v41_memory::device::{Allocation, Device, Stream};
+use anyhow::{ensure, Result};
+use ds41rt_ffi::{Ds41rtDeviceBuffer, NativeLibrary};
+use std::{ffi::c_void, rc::Rc};
+
+/// One stage in one lane. The containing chain owns its external capture stream.
+pub(super) struct RoutedWave<'w, 'a> {
+    stream: Stream<'a>,
+    pair: pair::Pair<'a>,
+    inputs: [Allocation<'a>;3],
+    shared: Allocation<'a>,
+    owner: &'w DsparkWeights<'a>,
+    stage: usize,
+    capacity: u32,
+}
+impl<'w,'a> RoutedWave<'w,'a> {
+    pub fn device_bytes(library:&NativeLibrary,capacity:u32)->Result<[usize;2]> {
+        let mut bytes=pair::Pair::device_bytes(library,capacity)?;
+        bytes[1]+=capacity as usize*(10240*2+12*2);
+        Ok(bytes)
+    }
+    pub fn new(owner:&'w DsparkWeights<'a>,weights:[Rc<Weights<'a>>;2],stage:usize,capacity:u32)->Result<Self> {
+        ensure!(stage<3 && owner.library.cuda_get_device()?==1,"draft TP2 transformer must reside on RTX1");
+        let device=Device {library:owner.library,id:1};
+        Ok(Self {stream:Stream::new(device)?,pair:pair::Pair::new(weights,capacity)?,
+            inputs:[Allocation::new(device,capacity as usize*10240)?,Allocation::new(device,capacity as usize*12)?,Allocation::new(device,capacity as usize*12)?],
+            shared:Allocation::new(device,capacity as usize*10240)?,owner,stage,capacity})
+    }
+    pub fn stream(&self)->*mut c_void {self.stream.raw}
+    pub fn synchronize(&self)->Result<()> {let root=self.stream.drain();let peer=self.pair.drain_peer();root.and(peer)}
+    pub fn inputs(&self)->[Ds41rtDeviceBuffer;3] {self.inputs.each_ref().map(|a|a.buffer)}
+    pub fn output(&self)->Ds41rtDeviceBuffer {self.pair.output()}
+    /// Caller retains/drains external stream and destroys captured graphs first.
+    pub unsafe fn enqueue(&mut self,router:&mut DsparkRouter<'_, '_>,shared:&mut DsparkSharedFfn<'_, '_>,rows:u32,stream:*mut c_void)->Result<()> {
+        ensure!(rows>0 && rows<=self.capacity && router.matches_stage(self.owner,self.stage)
+            && shared.matches_stage(self.owner,self.stage),"draft TP2 FFN stage or extent differs");
+        let inputs=self.inputs();
+        unsafe {
+            router.enqueue(inputs,rows as usize,stream)?;
+            shared.enqueue(inputs[0],self.shared.buffer,rows,stream)?;
+            self.pair.enqueue(self.stage,rows,inputs,Some(self.shared.buffer),stream)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::v41_memory::device::{Allocation,Device,Stream};

@@ -3,7 +3,14 @@ use crate::v41_dspark_cache::WindowChunk;
 
 #[test]
 #[ignore = "requires DS41RT_NATIVE_LIB, DS41RT_SNAPSHOT and two CUDA GPUs"]
-fn distributed_dspark_chain_matches_full_head() -> Result<()> {
+fn distributed_dspark_chain_matches_full_head() -> Result<()> { check_chain(false,true) }
+#[test]
+#[ignore = "requires native checkpoint, TP2 draft kernels and two CUDA GPUs"]
+fn distributed_dspark_tp2_chain_matches_full_experts() -> Result<()> { check_chain(true,true) }
+#[test]
+#[ignore = "requires native checkpoint, TP2 draft kernels and two CUDA GPUs"]
+fn distributed_dspark_tp2_chain_independent_lanes() -> Result<()> { check_chain(true,false) }
+fn check_chain(tp2:bool,full_reference:bool) -> Result<()> {
     let lib = unsafe { ds41rt_ffi::NativeLibrary::load(std::env::var("DS41RT_NATIVE_LIB")?)? };
     let catalog = ds41rt_loader::read_official_v41_catalog(ds41rt_loader::OFFICIAL_V41_MODEL_ID,
         std::path::Path::new(&std::env::var("DS41RT_SNAPSHOT")?))?;
@@ -19,12 +26,52 @@ fn distributed_dspark_chain_matches_full_head() -> Result<()> {
     let width = std::env::var("DS41RT_DSPARK_TEST_WIDTH").unwrap_or_else(|_| "5".into()).parse::<usize>()?;
     ensure!([5, 7].contains(&width), "draft qualification requires width 5 or 7");
     let capacity = crate::v41_experts::dspark::DsparkAttentionWave::projection_capacity_with_width(16, width)?;
-    let weights = devices[1].own(|| DsparkWeights::load_with_width(&lib, &catalog, capacity,
-        1, 32usize << 30, 16 << 20, width, exl3_directory.as_deref()))?;
+    let weights = devices[1].own(|| if tp2 {
+        DsparkWeights::load_tp2_with_width(&lib,&catalog,capacity,2,[32usize<<30;2],16<<20,width)
+    } else {DsparkWeights::load_with_width(&lib, &catalog, capacity,
+        1, 32usize << 30, 16 << 20, width, exl3_directory.as_deref())})?;
+    let full_experts=if tp2 && full_reference {Some(devices[1].own(||DsparkWeights::load_with_width(&lib,&catalog,capacity,
+        1,32usize<<30,16<<20,width,None))?)} else {None};
+    let reference_weights=full_experts.as_deref().unwrap_or(&weights);
+    let compare=|actual:&[u8],expected:&[u8],part:usize|->bool {
+        if !tp2 || !full_reference || part==0 {return actual==expected;}
+        if actual.len()!=expected.len() {return false;}
+        let mut squared=0f64;let mut norm=0f64;let mut maximum=(0f32,0f32,0f32,0usize);let mut failed=0;
+        for (index,(a,b)) in actual.chunks_exact(4).zip(expected.chunks_exact(4)).enumerate() {
+            let a=f32::from_ne_bytes(a.try_into().unwrap());let b=f32::from_ne_bytes(b.try_into().unwrap());
+            if !a.is_finite()||!b.is_finite() {return false;}
+            let delta=(a-b).abs();squared+=f64::from(delta).powi(2);norm+=f64::from(b).powi(2);
+            if delta>maximum.0 {maximum=(delta,a,b,index);}
+            // Logits near zero need an absolute bound: BF16 transformer
+            // rounding is propagated through the FP32 vocabulary projection.
+            let absolute=if part==1 {1e-3} else {1e-4};
+            if delta>absolute+1e-3*b.abs() {failed+=1;}
+        }
+        eprintln!("TP2 draft comparison part={part} values={} relative_rms={} max_delta_actual_expected_index={maximum:?} outside_tolerance={failed}",actual.len()/4,(squared/norm.max(1e-30)).sqrt());
+        if part==1 {
+            // Draft quality depends on the distribution, not relative error of
+            // individual near-zero logits. Require stable sampling probabilities
+            // as well as an RMS guard; token IDs are checked exactly separately.
+            let mut max_tv=0f64;let mut max_probability_delta=0f64;
+            for (a,b) in actual.chunks_exact(129280*4).zip(expected.chunks_exact(129280*4)) {
+                let decode=|v:&[u8]|v.chunks_exact(4).map(|x|f64::from(f32::from_ne_bytes(x.try_into().unwrap()))).collect::<Vec<_>>();
+                let mut a=decode(a);let mut b=decode(b);
+                for values in [&mut a,&mut b] {
+                    let maximum=values.iter().copied().fold(f64::NEG_INFINITY,f64::max);
+                    let mut sum=0.;for value in values.iter_mut() {*value=(*value-maximum).exp();sum+=*value;}
+                    for value in values.iter_mut() {*value/=sum;}
+                }
+                let mut tv=0.;for (a,b) in a.into_iter().zip(b) {let delta=(a-b).abs();tv+=delta;max_probability_delta=max_probability_delta.max(delta);}
+                max_tv=max_tv.max(tv*0.5);
+            }
+            eprintln!("TP2 draft distribution max_total_variation={max_tv} max_probability_delta={max_probability_delta}");
+            max_tv<=1e-3 && max_probability_delta<=1e-3 && (squared/norm.max(1e-30)).sqrt()<1e-3
+        } else { failed==0 && (squared/norm.max(1e-30)).sqrt()<1e-4 }
+    };
     let budgets = devices[1].run(|| DistributedDsparkChain::device_bytes(&weights, 16, 64640))?;
     let mut lanes = [DistributedDsparkChain::new(devices, &weights, &embedding, [&shards[0], &shards[1]], 16, budgets)?,
         DistributedDsparkChain::new(devices, &weights, &embedding, [&shards[0], &shards[1]], 16, budgets)?];
-    let mut reference = devices[1].own(|| weights.draft(&embedding, &full, 16, weights.draft_bytes(16)?))?;
+    let mut reference = devices[1].own(|| reference_weights.draft(&embedding, &full, 16, reference_weights.draft_bytes(16)?))?;
     let mut windows = devices[1].own(|| (0..3).map(|_| DsparkWindow::new(&lib, 16, 80,
         DsparkWindow::device_bytes(16, 80)?)).collect::<Result<Vec<_>>>())?;
     let leases = devices[1].run(|| windows.iter_mut().map(|window| (0..16).map(|slot|
@@ -96,21 +143,21 @@ fn distributed_dspark_chain_matches_full_head() -> Result<()> {
                     let (tokens, confidence) = value.unwrap();
                     let token_bytes: Vec<_> = tokens.into_iter().flat_map(u32::to_ne_bytes).collect();
                     let confidence_bytes: Vec<_> = confidence.into_iter().flat_map(f32::to_ne_bytes).collect();
-                    ensure!(token_bytes == expected[lane][0] && confidence_bytes == expected[lane][2],
+                    ensure!(compare(&token_bytes,&expected[lane][0],0) && compare(&confidence_bytes,&expected[lane][2],2),
                         "compact polled draft output differs");
                 }
             }
             for (lane, chain) in lanes.iter().enumerate() {
                 let actual = download(chain.output()?)?;
                 for part in 0..3 {
-                    ensure!(actual[part] == expected[lane][part],
+                    ensure!(compare(&actual[part],&expected[lane][part],part),
                         "distributed draft differs cycle={cycle} count={count} lane={lane} replay={replay} part={part}");
                     if part > 0 { ensure!(actual[part].chunks_exact(4).all(|v|
                         f32::from_ne_bytes(v.try_into().unwrap()).is_finite()), "nonfinite distributed draft output"); }
                 }
             }
         }
-        eprintln!("PASS complete distributed draft width={width} requests={count}: exact tokens/logits/confidence, peer embedding, two lanes, changed cache/seed/order, cold/replay");
+        eprintln!("PASS complete distributed draft tp2={tp2} width={width} requests={count}: tokens/logits/confidence checked, peer embedding, two lanes, changed cache/seed/order, cold/replay");
     }
     use std::{future::Future, task::{Context, Poll, Waker}};
     let bindings: Vec<Vec<_>> = (0..3).map(|stage| (0..3).map(|row| (leases[stage][row], 9)).collect()).collect();

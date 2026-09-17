@@ -6,7 +6,7 @@ use ds41rt_ffi::{Ds41rtDeviceBuffer, NativeLibrary, V41ExpertKernel, V41ExpertLa
 use ds41rt_loader::OfficialV41Catalog;
 use std::{ffi::c_void, rc::Rc};
 
-pub(super) struct Weights<'a> {
+pub(crate) struct Weights<'a> {
     pub device: Device<'a>,
     stages: DeviceOwner<'a, Vec<ExpertWeights<'a>>>,
 }

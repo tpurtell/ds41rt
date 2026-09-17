@@ -18,6 +18,7 @@ impl<'w, 'a> DistributedDsparkChain<'w, 'a> {
     pub fn device(&self) -> Device<'a> { self.chain.device }
     pub fn device_bytes(weights: &DsparkWeights<'a>, requests: u32, split: usize) -> Result<[usize; 2]> {
         let mut bytes = DistributedDsparkTerminal::device_bytes_with_width(requests as usize, split, weights.draft_width)?;
+        bytes[0] = bytes[0].checked_add(weights.peer_chain_bytes(requests)?).context("distributed draft peer budget overflow")?;
         bytes[1] = bytes[1].checked_add(weights.chain_bytes(requests)?).context("distributed draft budget overflow")?;
         Ok(bytes)
     }

@@ -11,6 +11,7 @@ use ds41rt_ffi::{Ds41rtDeviceBuffer, V41Bf16Add};
 use std::{ffi::c_void, path::Path, rc::Rc};
 
 pub(super) enum DraftExperts<'w, 'a> {
+    Tp2(super::tp2::RoutedWave<'w, 'a>),
     Full(ExpertExecution<'w, 'a>),
     Exl3(CompressedDraftExperts<'w, 'a>),
 }
@@ -18,24 +19,28 @@ impl DraftExperts<'_, '_> {
     pub fn stream(&self) -> *mut c_void {
         match self {
             Self::Full(v) => v.stream(),
+            Self::Tp2(v) => v.stream(),
             Self::Exl3(v) => v.stream.raw,
         }
     }
     pub fn synchronize(&self) -> Result<()> {
         match self {
             Self::Full(v) => v.synchronize(),
+            Self::Tp2(v) => v.synchronize(),
             Self::Exl3(v) => unsafe { v.stream.library.cuda_stream_synchronize(v.stream.raw) },
         }
     }
     pub fn inputs(&self) -> [Ds41rtDeviceBuffer; 3] {
         match self {
             Self::Full(v) => v.inputs(),
+            Self::Tp2(v) => v.inputs(),
             Self::Exl3(v) => v.inputs.each_ref().map(|b| b.buffer),
         }
     }
     pub fn output(&self) -> Option<Ds41rtDeviceBuffer> {
         match self {
             Self::Full(v) => v.output(),
+            Self::Tp2(v) => Some(v.output()),
             Self::Exl3(v) => Some(v.output.buffer),
         }
     }
@@ -48,6 +53,7 @@ impl DraftExperts<'_, '_> {
     ) -> Result<()> {
         match self {
             Self::Full(v) => unsafe { v.enqueue_draft_ffn_on(router, shared, rows, stream) },
+            Self::Tp2(v) => unsafe { v.enqueue(router, shared, rows, stream) },
             Self::Exl3(v) => unsafe { v.enqueue(router, shared, rows, stream) },
         }
     }
