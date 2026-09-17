@@ -26,6 +26,11 @@ Command-line values override ds41rt.config for this launch.
   --max-output-tokens N         output limit (default 393216)
   --prefill-batch-tokens N      prefill step, 80..4096 (default 2048)
   --dspark | --no-dspark        enable or disable native dSpark
+  --tp2-attention               split attention heads; replicate KV (default off)
+  --tp2-query-projection        split query-B projection (default off)
+  --tp2-output-projection       split output-B projection (default off)
+  --tp2-dspark-experts          split native draft routed experts (default off)
+  --no-tp2-<option>             disable the corresponding configured TP2 option
   --restart                     replace the current release deployment
   --dry-run                     validate without changing services
 EOF
@@ -53,6 +58,14 @@ while [[ $# -gt 0 ]]; do
     --prefill-batch-tokens) overrides[PREFILL_BATCH_TOKENS]="${2:?$1 requires N}"; shift 2 ;;
     --dspark) overrides[DSPARK]=on; shift ;;
     --no-dspark) overrides[DSPARK]=off; shift ;;
+    --tp2-attention) overrides[TP2_ATTENTION]=on; shift ;;
+    --no-tp2-attention) overrides[TP2_ATTENTION]=off; shift ;;
+    --tp2-query-projection) overrides[TP2_QUERY_PROJECTION]=on; shift ;;
+    --no-tp2-query-projection) overrides[TP2_QUERY_PROJECTION]=off; shift ;;
+    --tp2-output-projection) overrides[TP2_OUTPUT_PROJECTION]=on; shift ;;
+    --no-tp2-output-projection) overrides[TP2_OUTPUT_PROJECTION]=off; shift ;;
+    --tp2-dspark-experts) overrides[TP2_DSPARK_EXPERTS]=on; shift ;;
+    --no-tp2-dspark-experts) overrides[TP2_DSPARK_EXPERTS]=off; shift ;;
     --restart) restart=1; shift ;;
     --dry-run) dry_run=1; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -62,6 +75,7 @@ done
 
 release_load_config "$config"
 for name in "${!overrides[@]}"; do printf -v "$name" '%s' "${overrides[$name]}"; done
+release_validate_tp2_options
 [[ -z "$HTTP_QUEUE_DEPTH" || ( "$HTTP_QUEUE_DEPTH" =~ ^[1-9][0-9]*$ && "$HTTP_QUEUE_DEPTH" -le 4096 ) ]] || release_die "HTTP_QUEUE_DEPTH must be in 1..4096"
 [[ "$HTTP_QUEUE_WAIT_MS" =~ ^[0-9]+$ ]] || release_die "HTTP_QUEUE_WAIT_MS must be non-negative"
 [[ "$HOST_CACHE_BYTES" == auto || "$HOST_CACHE_BYTES" =~ ^[0-9]+([.][0-9]{1,6})?(B|MB|GB|MiB|GiB)?$ ]] || release_die "HOST_CACHE_BYTES must be auto, 0, or a byte size"
@@ -86,6 +100,8 @@ release_resolve_coordinator_gpu_identity
 snapshot_rel="hub/models--${RELEASE_MODEL_ID//\//--}/snapshots/$RELEASE_MODEL_REVISION"
 model_is_exl3="$(jq -r '.quantization_config.quant_method == "exl3"' "$hf_home/$snapshot_rel/config.json")"
 coordinator="$RELEASE_COORDINATOR_CONTAINER_NAME"
+[[ "$TP2_DSPARK_EXPERTS" != on || "$DSPARK" == on ]] || release_die "TP2_DSPARK_EXPERTS requires dSpark"
+[[ "$TP2_DSPARK_EXPERTS" != on || "$model_is_exl3" != true ]] || release_die "TP2_DSPARK_EXPERTS requires native expert weights"
 
 reclaim_args=()
 if ((restart)) && docker container inspect "$coordinator" >/dev/null 2>&1; then
@@ -106,6 +122,9 @@ gpu_selection="$(python3 "$repo_root/scripts/select-release-gpus.py" \
   --memory-reservation "$MEMORY_RESERVATION" \
   "${reclaim_args[@]}")"
 RELEASE_RTX_GPUS="$(jq -r '.count' <<<"$gpu_selection")"
+if release_tp2_enabled; then
+  ((RELEASE_RTX_GPUS == 2)) || release_die "TP2 options require two selected RTX GPUs; use --rtx-gpus 2"
+fi
 mapfile -t release_gpu_uuids < <(jq -r '.gpus[].uuid' <<<"$gpu_selection")
 mapfile -t release_gpu_indices < <(jq -r '.gpus[].index' <<<"$gpu_selection")
 mapfile -t release_gpu_pci < <(jq -r '.gpus[].pci' <<<"$gpu_selection")
@@ -158,13 +177,14 @@ elif ((PREFILL_BATCH_TOKENS <= 256)); then expert_capacity=256
 elif ((PREFILL_BATCH_TOKENS <= 1024)); then expert_capacity=1024
 fi
 peers="${lanes[0]}:$EXPERT_PORT,${lanes[1]}:$EXPERT_PORT,${lanes[2]}:$EXPERT_PORT,${lanes[3]}:$EXPERT_PORT"
-fingerprint="$(printf '%s\n' "$engine_commit" "$RELEASE_MODEL_ID" "$RELEASE_MODEL_REVISION" "$ADDR" "$RELEASE_RTX_GPUS" "$gpu_uuid_csv" "$gpu_pci_csv" "$CONCURRENCY" "${HTTP_QUEUE_DEPTH:-$CONCURRENCY}" "$HTTP_QUEUE_WAIT_MS" "$HOST_CACHE_BYTES" "$RTX_EXPERT_LAYERS" "$KV_POOL_SIZE" "$MEMORY_RESERVATION" "$PREFIX_CACHE_ENTRIES" "$MAX_CONTEXT_TOKENS" "$MAX_OUTPUT_TOKENS" "$PREFILL_BATCH_TOKENS" "$DSPARK" "$SPARK_DEVICE_BUDGET_BYTES" "$spark_first_layer" "$peers" "$spark_exl3_identity" | sha256sum | awk '{print $1}')"
+fingerprint="$(printf '%s\n' "$engine_commit" "$RELEASE_MODEL_ID" "$RELEASE_MODEL_REVISION" "$ADDR" "$RELEASE_RTX_GPUS" "$gpu_uuid_csv" "$gpu_pci_csv" "$CONCURRENCY" "${HTTP_QUEUE_DEPTH:-$CONCURRENCY}" "$HTTP_QUEUE_WAIT_MS" "$HOST_CACHE_BYTES" "$RTX_EXPERT_LAYERS" "$KV_POOL_SIZE" "$MEMORY_RESERVATION" "$PREFIX_CACHE_ENTRIES" "$MAX_CONTEXT_TOKENS" "$MAX_OUTPUT_TOKENS" "$PREFILL_BATCH_TOKENS" "$DSPARK" "$TP2_ATTENTION" "$TP2_QUERY_PROJECTION" "$TP2_OUTPUT_PROJECTION" "$TP2_DSPARK_EXPERTS" "$SPARK_DEVICE_BUDGET_BYTES" "$spark_first_layer" "$peers" "$spark_exl3_identity" | sha256sum | awk '{print $1}')"
 spark_prefix="$RELEASE_SPARK_CONTAINER_PREFIX"
 
 if ((dry_run)); then
   echo "Dry-run checks passed for native V4.1; no services changed."
   echo "  RTX layout: $RELEASE_RTX_GPUS GPU(s), host indices $gpu_index_csv"
   echo "  physical GPUs: $gpu_uuid_csv"
+  echo "  TP2 attention/query/output/draft experts: $TP2_ATTENTION/$TP2_QUERY_PROJECTION/$TP2_OUTPUT_PROJECTION/$TP2_DSPARK_EXPERTS"
   echo "  Spark first routed layer: $spark_first_layer"
   [[ -z "$spark_exl3_identity" ]] || echo "  Spark EXL3 package: $spark_exl3_identity"
   exit 0
@@ -204,6 +224,10 @@ args+=(--http-queue-depth "${HTTP_QUEUE_DEPTH:-$CONCURRENCY}" --http-queue-wait-
 [[ -z "$KV_POOL_SIZE" ]] || args+=(--kv-pool-size "$KV_POOL_SIZE")
 [[ -z "$MEMORY_RESERVATION" ]] || args+=(--memory-reservation "$MEMORY_RESERVATION")
 [[ "$DSPARK" != on ]] || args+=(--dspark)
+[[ "$TP2_ATTENTION" != on ]] || args+=(--tp2-attention)
+[[ "$TP2_QUERY_PROJECTION" != on ]] || args+=(--tp2-query-projection)
+[[ "$TP2_OUTPUT_PROJECTION" != on ]] || args+=(--tp2-output-projection)
+[[ "$TP2_DSPARK_EXPERTS" != on ]] || args+=(--tp2-dspark-experts)
 [[ "$spark_exl3_identity" != paired:* ]] || args+=(--exl3-paired-tp4)
 [[ -z "$placement_directory" ]] || args+=(--placement-directory "$placement_directory")
 docker run -d --name "$coordinator" --restart no --gpus "$gpu_request" --network host --ipc host --ulimit memlock=-1:-1 --device=/dev/infiniband \

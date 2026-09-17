@@ -1438,3 +1438,14 @@ artifact hashes, exact launcher command, deployment records, committed placement
 server logs, smoke responses and the guarded performance command manifest.
 Single-RTX clean launch, final performance tables, packaged EXL3 compatibility,
 remaining draft-component assessment and publication remain release gates.
+
+### Standard-launcher controls for optional parallelism
+
+`run.sh` now forwards `--tp2-attention`, `--tp2-query-projection`,
+`--tp2-output-projection` and `--tp2-dspark-experts` independently. Corresponding
+`TP2_*` recipe keys default to `off`; `--no-tp2-…` overrides a configured option.
+The deployment fingerprint includes every switch. Preflight rejects enabled
+TP2 with a single selected GPU, and draft expert TP2 without dSpark or with EXL3
+weights. This changes launcher access, not runtime defaults or the candidate
+binary measured above. Process-boundary tests verify each flag, all flags,
+defaults, CLI overrides and invalid configuration values.

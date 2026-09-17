@@ -23,7 +23,7 @@ else:
 '''
 
 class PlacementHandoffTest(unittest.TestCase):
-    def run_startup(self, gpus, plan):
+    def run_startup(self, gpus, plan, options=()):
         source=(ROOT/'run.sh').read_text()
         block=source[source.index('placement_directory='):source.index('api_url=')]
         with tempfile.TemporaryDirectory() as directory:
@@ -50,6 +50,10 @@ HOST_CACHE_BYTES=auto
 KV_POOL_SIZE=
 MEMORY_RESERVATION=
 DSPARK=on
+TP2_ATTENTION=off
+TP2_QUERY_PROJECTION=off
+TP2_OUTPUT_PROJECTION=off
+TP2_DSPARK_EXPERTS=off
 spark_exl3_identity=
 gpu_request=device=uuid0,uuid1
 gpu_uuid_csv=uuid0,uuid1
@@ -64,6 +68,7 @@ EXPERT_PORT=19441
 expert_capacity=4096
 spark_first_layer=0
 '''
+            setup+=''.join(f'\nTP2_{option}=on\n' for option in options)
             result=subprocess.run(['bash','-c',setup+block,'test',str(gpus)],env=env,cwd=ROOT,capture_output=True,text=True,timeout=10)
             events=[json.loads(line) for line in (root/'events').read_text().splitlines()]
             return result,events
@@ -84,6 +89,34 @@ spark_first_layer=0
                 ready=[i for i,(tool,args) in enumerate(events) if tool=='ssh' and any('timeout 1' in a for a in args)]
                 self.assertEqual(len(ready),4)
                 self.assertGreater(ack[0],max(ready))
+
+    def test_cli_tp2_overrides_and_invalid_config(self):
+        source=(ROOT/'run.sh').read_text()
+        block=source[source.index('config="$repo_root/ds41rt.config"'):source.index('for tool in docker ssh')]
+        setup='repo_root="$1"; shift; source "$repo_root/scripts/release-common.sh"\n'
+        finish='\nprintf "%s\\n" "$TP2_ATTENTION" "$TP2_QUERY_PROJECTION" "$TP2_OUTPUT_PROJECTION" "$TP2_DSPARK_EXPERTS"\n'
+        with tempfile.TemporaryDirectory() as directory:
+            config=Path(directory)/'recipe.config'
+            config.write_text((ROOT/'ds41rt.config').read_text()+'\nTP2_ATTENTION=on\nTP2_DSPARK_EXPERTS=on\n')
+            args=['bash','-c',setup+block+finish,'test',str(ROOT),'--config',str(config)]
+            result=subprocess.run(args+['--no-tp2-attention','--tp2-query-projection','--no-tp2-dspark-experts'],capture_output=True,text=True,cwd=ROOT)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertEqual(result.stdout.splitlines(),['off','on','off','off'])
+            config.write_text((ROOT/'ds41rt.config').read_text()+'\nTP2_OUTPUT_PROJECTION=invalid\n')
+            result=subprocess.run(args,capture_output=True,text=True,cwd=ROOT)
+            self.assertNotEqual(result.returncode,0)
+            self.assertIn('TP2_OUTPUT_PROJECTION must be on or off',result.stderr)
+
+    def test_tp2_options_reach_coordinator_independently(self):
+        options=['ATTENTION','QUERY_PROJECTION','OUTPUT_PROJECTION','DSPARK_EXPERTS']
+        flags=['--tp2-'+option.lower().replace('_','-') for option in options]
+        for enabled in [[], *[[option] for option in options], options]:
+            with self.subTest(enabled=enabled):
+                result,events=self.run_startup(2,dict(version=1,rtx_gpus=2,nonce='fresh',rtx_expert_layers=20,spark_first_layer=20),enabled)
+                self.assertEqual(result.returncode,0,result.stderr)
+                args=events[0][1]
+                for option,flag in zip(options,flags):
+                    self.assertEqual(flag in args,option in enabled)
 
     def test_invalid_boundary_never_starts_workers(self):
         result,events=self.run_startup(2,dict(version=1,rtx_gpus=2,nonce='fresh',rtx_expert_layers=17,spark_first_layer=20))

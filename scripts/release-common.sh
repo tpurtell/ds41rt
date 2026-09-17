@@ -84,7 +84,7 @@ release_trim() {
 
 release_known_key() {
   case "$1" in
-    EXL3_PAIRED_TP4) return 0 ;;
+    EXL3_PAIRED_TP4|TP2_ATTENTION|TP2_QUERY_PROJECTION|TP2_OUTPUT_PROJECTION|TP2_DSPARK_EXPERTS) return 0 ;;
     HTTP_QUEUE_DEPTH|HTTP_QUEUE_WAIT_MS|MODEL_ID|MODEL_VARIANT|MODEL_REVISION|EXPERT_FORMAT|DSPARK|DSPARK_DRAFT_POLICY|RTX_GPUS|RTX_EXPERT_LAYERS|COORDINATOR_GPU|COORDINATOR_GPU_UUID|COORDINATOR_GPU_PCI_BUS_ID|COORDINATOR_GPU_HEADROOM_GIB|KV_POOL_TOKENS|KV_POOL_SIZE|HOST_CACHE_BYTES|MEMORY_RESERVATION|MAX_CONTEXT_TOKENS|MAX_OUTPUT_TOKENS|CONCURRENCY|PREFIX_CACHE_ENTRIES|PREFILL_BATCH_TOKENS|SPARK_DEVICE_BUDGET_BYTES|SPARK_REDUCTION_MIN_ROWS|SPARKINFER_EXL3|ADDR|EXPERT_PORT|SPARK_[0-3]_HOST|SPARK_[0-3]_LANE_A|SPARK_[0-3]_LANE_B|COORDINATOR_DOCKER_DEV|COORDINATOR_DOCKER_INFERENCE|SPARK_EXPERT_DOCKER_DEV|SPARK_EXPERT_DOCKER_INFERENCE)
       return 0
       ;;
@@ -104,6 +104,10 @@ release_load_config() {
   MODEL_REVISION=dba1be0a40aa45a94ad051997016db3960a90277
   EXPERT_FORMAT=native
   DSPARK=on
+  TP2_ATTENTION=off
+  TP2_QUERY_PROJECTION=off
+  TP2_OUTPUT_PROJECTION=off
+  TP2_DSPARK_EXPERTS=off
   DSPARK_DRAFT_POLICY=adaptive
   RTX_EXPERT_LAYERS=auto
   RTX_GPUS=auto
@@ -228,6 +232,8 @@ release_load_config() {
     release_die "MODEL_ID must be a Hugging Face repository ID"
   [[ -z "$MODEL_REVISION" || "$MODEL_REVISION" =~ ^[0-9a-f]{40,64}$ ]] ||
     release_die "MODEL_REVISION must be empty or a 40..64 lowercase hex revision"
+
+  release_validate_tp2_options
 
   local missing_b=0 present_b=0
   for release_i in 0 1 2 3; do
@@ -607,4 +613,18 @@ release_spark_first_layer() {
   # routed layer is local. Keep its last layer as an unused transport endpoint.
   if [[ "$layers" == 40 ]]; then printf '39\n'; return; fi
   printf '%s\n' "$layers"
+}
+
+# Validate booleans independently of resolved GPU selection. Called again after
+# command-line overrides, before launcher operations that change services.
+release_validate_tp2_options() {
+  local name
+  for name in TP2_ATTENTION TP2_QUERY_PROJECTION TP2_OUTPUT_PROJECTION TP2_DSPARK_EXPERTS; do
+    case "${!name}" in on|off) ;; *) release_die "$name must be on or off" ;; esac
+  done
+}
+
+release_tp2_enabled() {
+  [[ "$TP2_ATTENTION" == on || "$TP2_QUERY_PROJECTION" == on ||
+     "$TP2_OUTPUT_PROJECTION" == on || "$TP2_DSPARK_EXPERTS" == on ]]
 }

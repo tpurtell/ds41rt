@@ -290,7 +290,7 @@ done
 ./run.sh
 ```
 
-To build from the checked-out source instead, run:
+Building from source exports CUDA kernels on the coordinator GPU and the first Spark. Stop existing serving processes on those build devices to leave GPU memory available, then run:
 
 ```bash
 ./build.sh
@@ -333,6 +333,14 @@ Command-line values override [`ds41rt.config`](ds41rt.config) for one launch:
 | `--dspark` / `--no-dspark` | enabled | Enable or disable speculative decoding |
 | `--restart` | off | Replace the running five-host deployment |
 | `--dry-run` | off | Validate configuration, images, hosts, model, and devices without starting services |
+
+V6 source builds additionally accept `--tp2-attention`, `--tp2-query-projection`,
+`--tp2-output-projection` and `--tp2-dspark-experts`. These independent experiments
+require two RTX GPUs and default to off; use `--no-tp2-…` to override an enabled
+recipe setting. Attention replicates KV; draft expert TP2 requires native weights
+and dSpark, and leaves draft attention/projections on RTX1. Current measurements
+do not establish a consistent decode win. The published v5 images do not support
+these new switches.
 
 Automatic RTX selection checks physical UUIDs, bidirectional peer reads, the
 requested cache or memory ceiling, and available memory. With `--restart`, it
