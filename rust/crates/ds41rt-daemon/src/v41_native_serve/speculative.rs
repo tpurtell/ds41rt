@@ -526,10 +526,49 @@ impl<'a> DraftPrefix<'a> {
     pub fn parts(&self) -> &[crate::v41_dspark_cache::DsparkPrefix<'a>] {
         self.windows.get().as_slice()
     }
-    pub fn from_parts(device: &crate::v41_memory::device::Device<'a>, windows: Vec<crate::v41_dspark_cache::DsparkPrefix<'a>>) -> Result<Self> {
+    pub fn from_parts(library: &'a NativeLibrary, windows: Vec<crate::v41_dspark_cache::DsparkPrefix<'a>>) -> Result<Self> {
+        ensure!(windows.len() == 3, "draft prefix requires three windows");
+        let device = crate::v41_memory::device::Device {
+            library, id: windows[0].parts().2.buffer.device_id,
+        };
+        ensure!(windows.iter().all(|window| window.parts().2.buffer.device_id == device.id),
+            "draft prefix windows span devices");
         Ok(Self { windows: device.own(move || Ok(windows))? })
     }
 }
+
+#[cfg(test)]
+mod restored_prefix_tests {
+    use super::*;
+    use crate::v41_dspark_cache::DsparkPrefix;
+    use crate::v41_memory::{device::Device, SnapshotStorage};
+
+    #[test]
+    #[ignore = "requires DS41RT_NATIVE_LIB and two CUDA devices"]
+    fn native_host_draft_prefix_keeps_gpu1_owner() -> Result<()> {
+        let lib = unsafe { NativeLibrary::load(std::env::var("DS41RT_NATIVE_LIB")?)? };
+        lib.cuda_set_device(0)?;
+        let device = Device { library: &lib, id: 1 };
+        let mut window = device.own(|| DsparkWindow::new(&lib, 1, 1, usize::MAX))?;
+        // Exercise both the allocation fallback and the preallocated serving arena.
+        for pooled in [false, true] {
+            if pooled { device.run(|| window.reserve_prefixes(3))?; }
+            let rings = (0..3).map(|_| {
+                window.device().run(|| SnapshotStorage::new(
+                    window.library(), 64, window.prefix_pool()))
+                    .map(|ring| DsparkPrefix::from_parts(window.owner(), 2, ring))
+            }).collect::<Result<Vec<_>>>()?;
+            assert_eq!(lib.cuda_get_device()?, 0);
+            let prefix = DraftPrefix::from_parts(&lib, rings)?;
+            assert_eq!(prefix.windows.device.id, 1);
+            assert!(prefix.parts().iter().all(|p| p.parts().2.buffer.device_id == 1));
+            drop(prefix);
+            assert_eq!(lib.cuda_get_device()?, 0);
+        }
+        Ok(())
+    }
+}
+
 impl<'w, 'a, C: DraftChain<'a>> DraftRuntime<'w, 'a, C> {
     pub fn windows(&self) -> &[DsparkWindow<'a>; 3] {
         &self.windows

@@ -363,6 +363,52 @@ impl Drop for CudaCopyEngine<'_> {
     }
 }
 
+#[cfg(test)]
+mod cuda_tests {
+    use super::*;
+    use crate::v41_memory::device::{Allocation, Device};
+
+    #[test]
+    #[ignore = "requires DS41RT_NATIVE_LIB and two CUDA devices"]
+    fn native_host_cache_copies_both_gpus() -> Result<()> {
+        let lib = unsafe { NativeLibrary::load(std::env::var("DS41RT_NATIVE_LIB")?)? };
+        lib.cuda_set_device(0)?;
+        let devices = [Device { library: &lib, id: 0 }, Device { library: &lib, id: 1 }];
+        for device in devices { device.run(|| lib.cuda_enable_peer(1-device.id))?; }
+        let buffers = devices.map(|device| Allocation::new(device, 4096))
+            .into_iter().collect::<Result<Vec<_>>>()?;
+        let originals = [vec![17u8; 4096], vec![93u8; 4096]];
+        let mut engine = CudaCopyEngine::new(&lib, buffers[0].buffer)?;
+        let chunk = engine.allocate_chunk(8192)?;
+        let hosts = [0, 4096].map(|offset| HostRange { chunk: chunk.id, offset, bytes: 4096 });
+        // Cover the runtime-selected batch path and the older-runtime 1D fallback.
+        for fallback in [false, true] {
+            if fallback { engine.runtime = None; }
+            for (buffer, original) in buffers.iter().zip(&originals) {
+                buffer.device.run(|| lib.copy_h2d(buffer.buffer, original))?;
+            }
+            let copies: Vec<_> = buffers.iter().zip(hosts).map(|(b, h)| (range(b.buffer), h)).collect();
+            engine.d2h_many(Stream::Store, &copies)?;
+            engine.synchronize(Stream::Store)?;
+            for buffer in &buffers {
+                buffer.device.run(|| lib.copy_h2d(buffer.buffer, &[0; 4096]))?;
+            }
+            let copies: Vec<_> = copies.into_iter().map(|(d, h)| (h, d)).collect();
+            engine.h2d_many(Stream::Restore, &copies)?;
+            let event = engine.record(Stream::Restore)?;
+            engine.synchronize(Stream::Restore)?;
+            assert!(engine.completed(event)?);
+            for (buffer, original) in buffers.iter().zip(&originals) {
+                let mut actual = vec![0u8; 4096];
+                buffer.device.run(|| lib.copy_d2h(&mut actual, buffer.buffer))?;
+                assert_eq!(&actual, original, "GPU {} fallback={fallback}", buffer.device.id);
+            }
+        }
+        engine.release_chunk(chunk)?;
+        Ok(())
+    }
+}
+
 /// The glue: builds `DeviceSnapshot`s from `Saved`s and `Saved`s from restored bytes.
 pub(crate) struct HostCacheBinding<'a> {
     cache: HostCache<CudaCopyEngine<'a>, HostSaved>,
@@ -560,7 +606,8 @@ impl<'a> HostCacheBinding<'a> {
                     .iter()
                     .zip(runtime.windows())
                     .map(|(&(_, _, bytes), window)| {
-                        SnapshotStorage::new(window.library(), bytes, window.prefix_pool())
+                        window.device().run(||
+                            SnapshotStorage::new(window.library(), bytes, window.prefix_pool()))
                     })
                     .collect::<Result<Vec<_>>>()?,
             ),
@@ -591,7 +638,7 @@ impl<'a> HostCacheBinding<'a> {
             history,
         );
         let draft = match (draft_parts.as_ref(), rings) {
-            (Some(parts), Some(rings)) => Some(DraftPrefix::from_parts(&caches[0].device,
+            (Some(parts), Some(rings)) => Some(DraftPrefix::from_parts(backbone.prefix_library(),
                 parts
                     .iter()
                     .zip(rings)
