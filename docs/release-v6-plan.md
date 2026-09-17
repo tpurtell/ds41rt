@@ -59,3 +59,33 @@ ownership descriptions and must be updated from the implementation.
 Sources: [PR #4](https://github.com/tpurtell/ds41rt/pull/4),
 [issue #2](https://github.com/tpurtell/ds41rt/issues/2),
 [issue #3](https://github.com/tpurtell/ds41rt/issues/3).
+
+## Integration progress (September 17)
+
+The `work/v6-hostcache` branch merges PR #4's original commits onto v5,
+preserving attribution. Its host cache remains disabled by default pending
+complete serving validation. The daemon compiles; the host-cache suite passes
+214 tests (two soak tests remain ignored). Native HTTP tests pass 28 cases,
+including bounded queue waiting, cancellation, overload status and Retry-After.
+The recipe and binary retention default is now 20; the existing separate prompt
+and completed-turn banks each use that limit, which the RAM planner must include.
+
+Dual-device review found that host restore incorrectly labelled dSpark prefixes
+as GPU0-owned. Restored rings now allocate on their runtime device, and snapshot
+ownership derives from the actual buffers. Two hardware tests pass on both RTX
+cards: mixed-device RAM round trips through both batch and fallback copies, and
+GPU1 draft ownership with both pooled and directly allocated storage.
+
+Token-aware admission now checks prompt plus output allowances for the whole
+active cohort against actual source-page capacity, preserving prefix sharing
+and partial-page copy accounting. A blocked request keeps only its prepared host
+input and retries after retirement. The lane wake policy prevents a waiting
+request or nonempty HTTP queue from repeatedly stopping decode while the same
+requests still occupy the pool; cancellation wakes admission. An individually
+oversized request receives a clear 400 response instead of an execution failure.
+Three CPU policy tests and a native source-page pressure test pass. Full serving
+pressure, cancellation, restore and performance checks remain outstanding.
+
+This admission policy reserves future GPU capacity; it does not implement active
+request parking in RAM. RAM sizing, complete cache qualification, flexible expert
+placement, all TP2 experiments and v6 publication remain required.

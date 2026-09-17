@@ -6,7 +6,7 @@ pub(super) fn run<'a, P: VerificationTarget<'a>, C: DraftChain<'a>>(lib: &'a Nat
     first: &mut P, second: &mut P, requests: &mut Requests<'a>,
     first_transport: &mut P::Transport, second_transport: &mut P::Transport,
     active: &mut [Option<Active<'a>>], draft: Option<&mut DraftRuntime<'_, 'a, C>>,
-    prefixes: &mut PrefixCache<'a>, receive: &mpsc::Receiver<NativeRequest>,
+    prefixes: &mut PrefixCache<'a>, receive: &mpsc::Receiver<NativeRequest>, wake: admission::Wake<'_>,
 ) -> Result<()> {
     let requests = RefCell::new(requests);
     let active = RefCell::new(active);
@@ -15,8 +15,8 @@ pub(super) fn run<'a, P: VerificationTarget<'a>, C: DraftChain<'a>>(lib: &'a Nat
     let drain = Cell::new(false);
     // Do not cancel the peer future on error: it may own queued CUDA/RDMA work.
     let results = runtime.block_on(async { tokio::join!(
-        lane(0, lib, first, first_transport, &requests, &active, &draft, &prefixes, receive, &drain),
-        lane(1, lib, second, second_transport, &requests, &active, &draft, &prefixes, receive, &drain),
+        lane(0, lib, first, first_transport, &requests, &active, &draft, &prefixes, receive, &drain, wake),
+        lane(1, lib, second, second_transport, &requests, &active, &draft, &prefixes, receive, &drain, wake),
     ) });
     results.0?; results.1?;
     Ok(())
@@ -25,7 +25,7 @@ pub(super) fn run<'a, P: VerificationTarget<'a>, C: DraftChain<'a>>(lib: &'a Nat
 async fn lane<'a, P: VerificationTarget<'a>, C: DraftChain<'a>>(lane: usize, lib: &'a NativeLibrary, pass: &mut P,
     transport: &mut P::Transport, requests: &RefCell<&mut Requests<'a>>,
     active: &RefCell<&mut [Option<Active<'a>>]>, draft: &RefCell<Option<&mut DraftRuntime<'_, 'a, C>>>,
-    prefixes: &RefCell<&mut PrefixCache<'a>>, receive: &mpsc::Receiver<NativeRequest>, drain: &Cell<bool>,
+    prefixes: &RefCell<&mut PrefixCache<'a>>, receive: &mpsc::Receiver<NativeRequest>, drain: &Cell<bool>, wake: admission::Wake<'_>,
 ) -> Result<()> {
     let result = async {
         let mut round_id = 0u64;
@@ -46,7 +46,7 @@ async fn lane<'a, P: VerificationTarget<'a>, C: DraftChain<'a>>(lane: usize, lib
             // Admission/prefill still uses both execution lanes.
             let members: Vec<_> = {
                 let active = active.borrow();
-                if active.iter().any(Option::is_none) && !receive.is_empty() {
+                if wake.ready(active.iter().flatten().count(), active.len(), !receive.is_empty()) {
                     drain.set(true); return Ok(());
                 }
                 active.iter().enumerate().filter_map(|(slot, r)|

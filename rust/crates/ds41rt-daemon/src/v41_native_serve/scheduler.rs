@@ -2,6 +2,7 @@ use super::speculative::DraftChain;
 use super::*;
 use crate::v41_target_pass::VerificationTarget;
 mod independent;
+mod admission;
 mod layout;
 use layout::ServingTarget;
 use super::scores::BatchScores;
@@ -36,7 +37,7 @@ pub(crate) fn exercise_distributed_decode<'t, 'd, 'a: 'd>(lib: &'a NativeLibrary
     Pass::begin_request(first_transport)?;
     Pass::begin_request(second_transport)?;
     Pass::decode_round(lib, runtime, first, second, requests, first_transport, second_transport,
-        &mut active, &[vec![0], vec![]], Some(draft), &mut prefixes, &receive)?;
+        &mut active, &[vec![0], vec![]], Some(draft), &mut prefixes, &receive, admission::Wake::default())?;
     ensure!(active.iter().all(Option::is_none), "distributed serving round did not retire its request");
     ensure!(requests.cache().request_id(lease).is_err(), "retired target lease remains live");
     let mut finished = 0;
@@ -140,6 +141,7 @@ pub(super) fn serve<'w, 'a, P: ServingTarget<'w, 'a>>(lib: &'a NativeLibrary, ar
     let mut compiler = super::constraints::Compiler::new(lib, args.snapshot.join("tokenizer.json"));
     let mut id = 0u64;
     let mut closed = false;
+    let mut pending: Option<admission::Pending> = None;
     let template = requests.cache().sources()[0].get().source_cache().page_segments(0)[0];
     let host_cache = super::prefix::HostCacheBinding::new(lib, args.host_cache_config()?, template)?;
     let mut prefixes = PrefixCache::new(args.prefix_cache_entries as usize).with_host_cache(host_cache);
@@ -180,40 +182,84 @@ pub(super) fn serve<'w, 'a, P: ServingTarget<'w, 'a>>(lib: &'a NativeLibrary, ar
         // Admit available work at a completed boundary. Prefill currently owns
         // both lanes; mixed prefill/decode interleaving is a subsequent policy.
         while let Some(slot) = active.iter().position(Option::is_none) {
-            let mut job = if active.iter().all(Option::is_none) && !closed {
-                match receive.blocking_recv() { Some(job) => job, None => { closed = true; break; } }
-            } else {
-                match receive.try_recv() {
-                    Ok(job) => job,
-                    Err(mpsc::error::TryRecvError::Empty) => break,
-                    Err(mpsc::error::TryRecvError::Disconnected) => { closed = true; break; }
+            let active_count = active.iter().flatten().count();
+            if pending.as_ref().is_some_and(|p| p.active_when_blocked == active_count
+                && !p.prepared.job.events.is_closed()) { break; }
+            let prepared = if let Some(pending) = pending.take() { pending.prepared } else {
+                let job = if active_count == 0 && !closed {
+                    match receive.blocking_recv() { Some(job) => job, None => { closed = true; break; } }
+                } else {
+                    match receive.try_recv() {
+                        Ok(job) => job,
+                        Err(mpsc::error::TryRecvError::Empty) => break,
+                        Err(mpsc::error::TryRecvError::Disconnected) => { closed = true; break; }
+                    }
+                };
+                if job.events.is_closed() { continue; }
+                let events = job.events.clone();
+                match admission::Prepared::new(job, &args.snapshot, limits) {
+                    Ok(prepared) => prepared,
+                    Err(error) => {
+                        let failure = error.downcast_ref::<ds41rt_api::native_v41::NativeFailure>()
+                            .cloned().unwrap_or_else(|| format!("{error:#}").into());
+                        let _ = events.blocking_send(Err(failure));
+                        continue;
+                    }
                 }
             };
-            if job.events.is_closed() { continue; }
+            if prepared.job.events.is_closed() { continue; }
             id = id.checked_add(1).context("request ID exhausted")?;
             let lease = requests.admit(slot, id)?;
             let lane = usize::from(loads[1] < loads[0]);
-            let events = job.events.clone();
+            let events = prepared.job.events.clone();
+            let admitted = (|| -> Result<_> {
+                let admission::Prepared { job, prompt, images } = &prepared;
+                if let Some(draft) = draft.as_deref_mut() { draft.admit(id)?; }
+                let image_keys = prefixes.prepare_key(prompt, images)?;
+                if !images.is_empty() {
+                    requests.attach_images(lease, crate::v41_requests::RequestImages::new(images)?)?;
+                }
+                let hit = prefixes.restore(prompt, &image_keys, id, lease, requests, draft.as_deref_mut())?;
+                // Check the declared lifetime budget of every active request,
+                // including the new request, against the actual source pages.
+                // This preserves prefix sharing and accounts for partial-page COW.
+                let mut capacity = active.iter().flatten().map(|r| Ok((r.lease,
+                    admission::remaining_budget(r.tokens.len(), r.job.max_tokens-r.generated,
+                        requests.cache().committed_end(r.lease)?)?)))
+                    .collect::<Result<Vec<_>>>()?;
+                capacity.push((lease, admission::remaining_budget(prompt.len(), job.max_tokens,
+                    requests.cache().committed_end(lease)?)?));
+                prefixes.make_room(requests, &capacity)?;
+                Ok((image_keys, hit))
+            })();
+            let (image_keys, hit) = match admitted {
+                Ok(value) => value,
+                Err(error) => {
+                    requests.release_if_present(lease)?;
+                    if let Some(draft) = draft.as_deref_mut() { draft.release(id)?; }
+                    if error.downcast_ref::<crate::v41_compressor::SourcePoolExhausted>().is_some() {
+                        if active_count > 0 {
+                            tracing::debug!(request_id=id, active_count, "waiting for request KV token budget");
+                            pending = Some(admission::Pending { prepared, active_when_blocked: active_count });
+                            break;
+                        }
+                        let _ = events.blocking_send(Err(ds41rt_api::native_v41::NativeFailure::BadRequest(
+                            "prompt plus max_tokens exceeds the GPU KV pool; reduce max_tokens or increase the pool".into())));
+                    } else {
+                        let failure = error.downcast_ref::<ds41rt_api::native_v41::NativeFailure>()
+                            .cloned().unwrap_or_else(|| format!("{error:#}").into());
+                        let _ = events.blocking_send(Err(failure));
+                    }
+                    continue;
+                }
+            };
+            let admission::Prepared { job, prompt, images } = prepared;
             let result = (|| -> Result<Active<'a>> {
                 let mut constraint = job.constraint.as_ref().map(|spec| compiler.matcher(spec)).transpose()?;
                 ensure!(!job.events.is_closed(), "client disconnected");
-                let prompt = ds41rt_loader::encode_tokenizer_text(&args.snapshot, &job.prompt, false)?.token_ids;
-                let (prompt, images) = if job.images.is_empty() { (prompt, Vec::new()) } else {
-                    let expanded = ds41rt_loader::V41VisionPrompt::expand(&prompt,
-                        std::mem::take(&mut job.images), limits.context() as usize)?;
-                    (expanded.tokens, expanded.images)
-                };
-                job.max_tokens = limits.output_for_prompt(prompt.len(), job.max_tokens)?;
                 let decoder = ds41rt_loader::streaming_token_decoder(&args.snapshot, false)?;
-                if let Some(draft) = draft.as_deref_mut() { draft.admit(id)?; }
-                let image_keys = prefixes.prepare_key(&prompt, &images)?;
-                if !images.is_empty() {
-                    requests.attach_images(lease, crate::v41_requests::RequestImages::new(&images)?)?;
-                }
-                let hit = prefixes.restore(&prompt, &image_keys, id, lease, requests, draft.as_deref_mut())?;
                 let cached = hit.as_ref().map_or(0, |(end, _)| *end);
                 let source_end = requests.cache().committed_end(lease)? as usize;
-                prefixes.make_room(requests, &[(lease, (prompt.len() - source_end) as u32)])?;
                 if !images.is_empty() {
                     // Deliberately unheld (packet HC-9): this is per-image pre-prefill
                     // preparation, not a batch-tokens chunk, so the store-pace pacing hold
@@ -300,7 +346,9 @@ pub(super) fn serve<'w, 'a, P: ServingTarget<'w, 'a>>(lib: &'a NativeLibrary, ar
         }
         let result = room.and_then(|_| P::decode_round(lib, runtime, first, second,
             requests, first_transport, second_transport, &mut active, &members,
-            draft.as_deref_mut(), &mut prefixes, receive));
+            draft.as_deref_mut(), &mut prefixes, receive,
+            admission::Wake { blocked_at: pending.as_ref().map(|p| p.active_when_blocked),
+                pending: pending.as_ref().map(|p| &p.prepared.job) }));
         if let Err(error) = result {
             tracing::error!(error=%format!("{error:#}"), "native decode round failed");
             P::reset_connections(first_transport)?; P::reset_connections(second_transport)?;
