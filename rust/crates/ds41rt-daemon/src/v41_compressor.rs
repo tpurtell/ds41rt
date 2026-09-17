@@ -64,6 +64,9 @@ pub(crate) struct CompressorState<'a> {
     owner: u64,
 }
 impl<'a> CompressorState<'a> {
+    pub fn replica(&self) -> Option<std::rc::Rc<SourceReplica<'a>>> {
+        self.index.replica.as_ref().map(|r|r.storage.clone())
+    }
     pub fn enable_replica(&mut self,peer:crate::v41_memory::device::Device<'a>)
         ->Result<std::rc::Rc<SourceReplica<'a>>> {
         ensure!(self.slots.iter().all(|slot|slot.request.is_none()),"source replica requires no live requests");

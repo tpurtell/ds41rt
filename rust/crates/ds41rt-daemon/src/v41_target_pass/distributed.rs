@@ -73,6 +73,10 @@ impl Drop for ReservedPassGuard<'_, '_, '_, '_, '_> {
     }
 }
 impl<'w, 'a> DistributedTargetPass<'w, 'a> {
+    pub fn configure_cache_replicas(&mut self,bank:&crate::v41_backbone_cache::BackboneCache<'a>)->Result<()> {
+        bank.configure_producer_replicas(&mut self.execution.producers.windows,
+            &mut self.execution.producers.sources)
+    }
     pub fn encoder_device(&self) -> Result<crate::v41_memory::device::Device<'a>> {
         Ok(self.lanes[self.map.attention(19)?].device)
     }

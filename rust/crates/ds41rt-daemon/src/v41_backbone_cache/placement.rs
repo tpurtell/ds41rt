@@ -29,6 +29,14 @@ mod tests {
     #[test]
     #[ignore = "requires DS41RT_NATIVE_LIB and two CUDA GPUs"]
     fn distributed_cache_allocations_and_leases_follow_placement() -> Result<()> {
+        cache_allocations(false)
+    }
+    #[test]
+    #[ignore = "requires SM peer copy and two CUDA GPUs"]
+    fn replicated_cache_allocations_preserve_capacity_and_reset_both_devices() -> Result<()> {
+        cache_allocations(true)
+    }
+    fn cache_allocations(replicated:bool) -> Result<()> {
         use super::super::BackboneCache;
         use ds41rt_ffi::NativeLibrary;
         let lib = unsafe { NativeLibrary::load(std::env::var("DS41RT_NATIVE_LIB")?)? };
@@ -39,7 +47,12 @@ mod tests {
             let bytes = BackboneCache::distributed_device_bytes(placement,2,pages)?;
             assert_eq!(bytes.iter().sum::<usize>(),BackboneCache::device_bytes(2,pages)?);
             assert!(BackboneCache::new_distributed(&lib,placement,2,pages,[bytes[0]-1,bytes[1]]).is_err());
-            let mut bank = BackboneCache::new_distributed(&lib,placement,2,pages,bytes)?;
+            let mut bank = if replicated {
+                let replicated_bytes=BackboneCache::replicated_device_bytes(placement,2,pages)?;
+                assert!(BackboneCache::new_replicated(&lib,placement,2,pages,
+                    [replicated_bytes[0]-1,replicated_bytes[1]]).is_err());
+                BackboneCache::new_replicated(&lib,placement,2,pages,replicated_bytes)?
+            } else { BackboneCache::new_distributed(&lib,placement,2,pages,bytes)? };
             for cycle in 0..2 {
                 let lease = bank.begin_request(0,42+cycle)?;
                 assert_eq!(bank.committed_end(lease)?,0);
@@ -52,6 +65,13 @@ mod tests {
                     let mut end = [255;8];
                     bank.attention_device(layer)?.run(|| lib.copy_d2h(&mut end,view.device_end))?;
                     assert_eq!(end,[0;8]);
+                    if replicated {
+                        let replica=bank.windows[layer].replica().unwrap();
+                        let peer=unsafe { replica.view(&bank.windows[layer],request.windows[layer])? };
+                        assert_eq!(peer.device_end.device_id,1-expected);
+                        replica.device().run(||lib.copy_d2h(&mut end,peer.device_end))?;
+                        assert_eq!(end,[0;8]);
+                    }
                 }
                 for (index,gpu) in placement.sources().into_iter().enumerate() {
                     let kv = bank.sources[index].kv_cache(request.sources[index])?;
@@ -60,6 +80,15 @@ mod tests {
                         assert_eq!(buffer.device_id,gpu as i32);
                     }
                     assert_eq!(kv.rows,0);
+                    assert_eq!(bank.sources[index].source_cache().capacity,pages[index]*256);
+                    if replicated {
+                        let replica=bank.sources[index].replica().unwrap();
+                        let peer=unsafe { replica.view(bank.sources[index].source_cache(),0,0)? };
+                        assert_eq!(peer.values.device_id,1-gpu as i32);
+                        let mut end=[255;8];
+                        replica.device().run(||lib.copy_d2h(&mut end,peer.device_rows))?;
+                        assert_eq!(end,[0;8]);
+                    }
                 }
                 bank.release(&[lease])?;
                 assert!(bank.committed_end(lease).is_err());

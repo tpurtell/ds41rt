@@ -553,3 +553,24 @@ and `source-state-replica-commit.log` in the compact attention bundle. Actual RA
 eviction/restore with replicas still needs serving-level coverage once startup
 and dual-attention scheduling are wired. Temporary fixtures were removed and the
 running server remains healthy; defaults are unchanged.
+
+### Replicated backbone cache allocation and producer configuration
+
+The backbone bank now has a per-GPU replicated budget and constructor covering
+all 40 FP8 windows and four FP4 source pools. Replica payloads and metadata are
+charged to the opposite GPU; index keys and compression carry stay on their
+original GPU. Logical source capacity is unchanged. Budget rejection precedes
+allocation, and allocation failure drops the private partially built bank.
+
+The bank can bind fresh producer waves to its replica owners. Distributed serving
+now performs this binding for each lane after cache construction; with the current
+nonreplicated constructor this allocates no publication owners. The replicated
+constructor is not yet selected by serving: CLI/pool-sizing integration and dual
+attention execution are still required together before enabling it.
+
+GPU tests pass original and replicated banks with boundaries at layers 20 and 14,
+under-budget rejection, preserved logical source capacity, two cycles of admission
+and release, and zero ends on both GPUs after reset. Daemon build checks pass.
+Evidence: `replicated-bank-build.log`, `replicated-bank-check.log`, and
+`replicated-bank-hardware.log` in the compact attention bundle. Temporary fixtures
+were removed and serving remains healthy. No performance result is implied.

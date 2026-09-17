@@ -296,6 +296,8 @@ pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Recei
         2 * ds41rt_core::ENGRAM_LAYERS.len(), rows * 64 * 1024)? };
     let mut requests = Requests::new_distributed(&lib, pipeline, args.concurrency as usize,
         pool.pages, map, pool.cache_bytes)?;
+    pass.configure_cache_replicas(requests.cache())?;
+    second.configure_cache_replicas(requests.cache())?;
     if let Some(pool) = target_prefix_pool { requests.install_prefix_pool(pool)?; }
     memory_checkpoint("allocated KV cache")?;
     let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;

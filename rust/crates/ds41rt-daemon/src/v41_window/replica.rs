@@ -9,6 +9,9 @@ pub(super) struct WindowStateReplica<'a> {
     source: Device<'a>,
 }
 impl<'a> WindowState<'a> {
+    pub fn replica(&self) -> Option<std::rc::Rc<WindowReplica<'a>>> {
+        self.replica.as_ref().map(|r|r.storage.clone())
+    }
     /// Allocate before admission; producer waves share this storage but retain
     /// their own independent commit publication events.
     pub fn enable_replica(&mut self, peer: Device<'a>) -> Result<std::rc::Rc<WindowReplica<'a>>> {

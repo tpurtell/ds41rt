@@ -171,6 +171,61 @@ pub(crate) struct BackboneCache<'a> {
     poisoned: bool,
 }
 impl<'a> BackboneCache<'a> {
+    /// DCP1 storage: replicate FP8 windows and FP4 source payloads, retaining
+    /// index keys and compressor carry on their original devices. Token capacity
+    /// remains source_pages; replica bytes must not be counted as extra tokens.
+    pub fn replicated_device_bytes(placement:CachePlacement,slots:usize,
+        source_pages:[usize;4])->Result<[usize;2]> {
+        let mut bytes=Self::distributed_device_bytes(placement,slots,source_pages)?;
+        for layer in 0..40 {
+            let peer=1-placement.attention(layer)?;
+            bytes[peer]=bytes[peer].checked_add(WindowState::device_bytes(layer,slots)?)
+                .context("replicated window budget overflow")?;
+        }
+        for (i,gpu) in placement.sources().into_iter().enumerate() {
+            bytes[1-gpu]=bytes[1-gpu].checked_add(
+                crate::v41_compressor::SourceReplica::device_bytes(source_pages[i],slots)?)
+                .context("replicated source budget overflow")?;
+        }
+        Ok(bytes)
+    }
+    /// All replica storage is allocated before returning a usable bank. Failure
+    /// drops the partially built bank; admission cannot observe partial enablement.
+    pub fn new_replicated(library:&'a NativeLibrary,placement:CachePlacement,slots:usize,
+        source_pages:[usize;4],budgets:[usize;2])->Result<Self> {
+        let needed=Self::replicated_device_bytes(placement,slots,source_pages)?;
+        ensure!(needed.into_iter().zip(budgets).all(|(n,b)|n<=b),"replicated cache exceeds a device budget");
+        let mut bank=Self::new_distributed(library,placement,slots,source_pages,budgets)?;
+        for state in &mut bank.windows {
+            let device=state.device;
+            device.run(||state.enable_replica(Device { library,id:1-device.id }).map(|_|()))?;
+        }
+        for state in &mut bank.sources {
+            let device=state.device;
+            device.run(||state.enable_replica(Device { library,id:1-device.id }).map(|_|()))?;
+        }
+        Ok(bank)
+    }
+    /// Bind fresh producer workspaces to this bank's optional replica owners.
+    /// Called separately for each independent lane, before any production.
+    pub fn configure_producer_replicas(&self,windows:&mut [DeviceOwner<'a,WindowWave<'_, 'a>>],
+        sources:&mut [DeviceOwner<'a,CompressorWave<'_, 'a>>])->Result<()> {
+        ensure!(windows.len()==self.windows.len() && sources.len()==self.sources.len(),
+            "replicated producer layer count differs");
+        for (wave,state) in windows.iter_mut().zip(&self.windows) {
+            if let Some(replica)=state.replica() {
+                let device=wave.device;
+                device.run(||wave.enable_replica(state,replica))?;
+            }
+        }
+        for (wave,state) in sources.iter_mut().zip(&self.sources) {
+            if let Some(replica)=state.replica() {
+                let device=wave.device;
+                device.run(||wave.enable_replica(state,replica))?;
+            }
+        }
+        Ok(())
+    }
     /// Explicit cache storage only; snapshots and CUDA state are budgeted separately.
     pub fn distributed_device_bytes(placement: CachePlacement, slots: usize,
         source_pages: [usize; 4]) -> Result<[usize; 2]> {
