@@ -22,7 +22,7 @@ independently; shipping supported opt-in paths is acceptable when they do not wi
   default to 20. Compute logical device-plus-host capacity above
   slots * max_context_tokens, allowing for snapshot overhead and staging.
   Replicated device copies count once toward logical capacity.
-- [ ] Replace the dual-RTX 20-layer minimum with budget-driven bottom-up placement;
+- [x] Replace the dual-RTX 20-layer minimum with budget-driven bottom-up placement;
   coordinate the chosen RTX/Spark boundary before loading and verify fast startup.
 - [x] Implement independently selectable TP2 projection and attention paths,
   considering head partitioning with replicated KV (DCP1-style). Account for
@@ -1400,3 +1400,41 @@ startup speed comparison. Evidence: `~/.cache/ds41rt-v6-auto-placement/` and
 
 The live tests use the coordinator executable and temporary worker containers;
 full clean build.sh/run.sh image qualification remains a release gate.
+
+### Clean candidate build and standard dual launcher
+
+The standard `build.sh --config <candidate.config>` completes for engine
+`619be005af10c506df3c261d99e9f282fdc846ae` and SparkInfer
+`63e2140e4a32a977faa777c172b86679344fdc6a`, producing matched coordinator and
+Spark `v6-candidate` images and distributing the latter to all four workers.
+Artifact/package/provenance checks pass. The coordinator image is
+`sha256:1f2f7d18d90188f34a8541e17642c6c941f076448159ddce76164c37fcf57540`.
+Its packaged binary exposes all four optional TP2 switches.
+
+The first attempt passed Rust compilation but failed CUDA AOT export with the
+v5 model still resident and only about 2 GiB free on the build GPU. Stopping the
+coordinator and the build host's expert worker freed memory; the subsequent
+unmodified standard build passed. CUDA AOT generation needs available GPU memory.
+Both attempts are preserved; this is a build-resource failure, not a serving
+performance sample.
+
+After checking image revisions on all hosts, the standard `run.sh` starts fresh
+containers successfully in **31.715 seconds**, including orchestration. Automatic
+placement chooses 20 bottom-up RTX expert layers and Spark first layer 20. The
+old stopped containers are retained separately for rollback. Concurrent text,
+code and a 10,824-token identifier prompt succeed, and repeated identifier input
+reuses its cached prefix. This is one startup observation, not a controlled
+before/after startup comparison.
+
+Default capacity is **14,680,064 usable GPU tokens + 6,291,968 RAM tokens =
+20,972,032 logical tokens**, exceeding 20 × 1,048,576 by 512 tokens. Pinned RAM is
+**7,247,757,312 bytes (6.75 GiB)**, including overhead and staging. Readiness GPU
+occupancy is 95,132 / 95,738 MiB, with 2,119 / 1,510 MiB free. Both cards retain
+400 W limits. The three-sample native dual performance campaign is underway;
+these startup/smoke results do not establish its throughput outcome.
+
+Evidence: `~/.cache/ds41rt-v6-package/` contains build logs, image metadata,
+artifact hashes, exact launcher command, deployment records, committed placement,
+server logs, smoke responses and the guarded performance command manifest.
+Single-RTX clean launch, final performance tables, packaged EXL3 compatibility,
+remaining draft-component assessment and publication remain release gates.
