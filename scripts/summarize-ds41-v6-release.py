@@ -48,6 +48,24 @@ def validate_prefill_samples(report):
     assert all(row['passed'] for row in report['samples'])
 
 
+def summarize_telemetry(path, complete):
+    rows = list(csv.DictReader(io.StringIO(path.read_text()), skipinitialspace=True))
+    assert rows, f'empty GPU telemetry: {path}'
+    devices = {}
+    for uuid in sorted({row['uuid'] for row in rows}):
+        selected = [row for row in rows if row['uuid'] == uuid]
+        assert all(float(row['power.limit [W]'].split()[0]) == 400 for row in selected)
+        devices[uuid] = {
+            'samples': len(selected), 'first_timestamp': selected[0]['timestamp'],
+            'last_timestamp': selected[-1]['timestamp'],
+            'maximum_temperature_c': max(float(row['temperature.gpu']) for row in selected),
+            'hardware_thermal_slowdown_samples': sum(
+                row['clocks_event_reasons.hw_thermal_slowdown'] != 'Not Active' for row in selected),
+        }
+    return {'coverage': 'complete phase' if complete else 'partial phase; began during third direct-decode repeat',
+            'devices': devices}
+
+
 def assemble(directory):
     helpers = runpy.run_path(str(HERE / 'summarize-ds41-phase2-release.py'))
     checks = runpy.run_path(str(HERE / 'summarize-ds41-upstream-release.py'))
@@ -104,6 +122,16 @@ def assemble(directory):
                 'started_ns': execution['started_ns'], 'completed_ns': execution['completed_ns'],
                 'commands': execution['commands'], 'gpu_settings': execution['gpu_settings'],
             }
+            telemetry = execution.get('telemetry')
+            if telemetry:
+                assert telemetry['running_until_phase_end'], 'GPU telemetry stopped early'
+                telemetry_path = data / Path(telemetry['path']).name
+            else:
+                # The initial dual phase began collecting after its first two repeats.
+                assert (layout, phase) == ('dual', 'dspark'), 'missing phase telemetry'
+                telemetry_path = data / 'dual-gpu-telemetry.csv'
+            phases[f'{layout}-{phase}']['telemetry'] = summarize_telemetry(telemetry_path, bool(telemetry))
+            artifacts.add(telemetry_path)
             artifacts.add(path)
         launch_path = directory / f'{layout}-launch.json'
         launch = read(launch_path)
