@@ -47,6 +47,7 @@ extern "C" int32_t ds41rt_v41_fp8_matrix_pack_scales(
     const uint8_t* source, uint8_t* destination, int32_t k, int32_t n, void* stream) {
   if (!((k == 6144 && n == 25600) || (k == 5120 && n == 2304) || (k == 2304 && n == 5120) ||
         (k == 5120 && n == 1152) || (k == 1152 && n == 5120) ||
+        (k == 1280 && n == 16384) || (k == 8192 && n == 2560) ||
         (k == 15360 && n == 5120) || (k == 5120 && n == 1280) || (k == 1280 && n == 32768) ||
         (k == 1280 && n == 4096) || (k == 5120 && n == 512) || (k == 8192 && n == 5120) || (k == 32768 && n == 8192)))
     return cudaErrorInvalidValue;

@@ -14,6 +14,8 @@ PROJECTIONS = (
     ('engram', 25600, 6144), ('ffn_up', 2304, 5120), ('ffn_down', 5120, 2304),
     ('main', 5120, 15360), ('q_a', 1280, 5120), ('q_b', 32768, 1280),
     ('kv', 512, 5120), ('o_b', 5120, 8192), ('o_a', 8192, 32768), ('index_q', 4096, 1280),
+    # Output-channel shards preserve the full reduction dimension on each GPU.
+    ('q_b_tp2', 16384, 1280), ('o_b_tp2', 2560, 8192),
     ('ffn_tp2_up', 1152, 5120), ('ffn_tp2_down', 5120, 1152),
 )
 

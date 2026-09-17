@@ -846,3 +846,27 @@ was restored. Attention stays opt-in; next implementation work is independently
 selectable query/output projection parallelism, followed by dSpark parallelism.
 Splitting projection work could reduce weight streaming and full-head intermediate
 traffic, but neither a gain nor a default change is presumed.
+
+### Projection output-channel shard kernels
+
+The coordinator FP8 export/build now includes query-B [1280 -> 16384] and
+output-B [8192 -> 2560] kernels at all six native row capacities. These are
+output-channel halves of the existing matrices: each retains the complete
+reduction dimension, allowing concatenation without a cross-GPU partial-sum
+reduction. Native scale packing accepts the two additional geometries. Existing
+full-width kernels and serving defaults are unchanged.
+
+`qualify-ds41-projection-shards.py` loads real layer 2/20 checkpoint weights,
+compares full projections with concatenated output halves on GPU0/GPU1, and
+replays captured graphs after changing input values. All 32 cases pass at rows
+1, 6, 64 and 129 (capacities 1/16/80/256); 29 are exact and maximum absolute error
+is 0.000030517578125 (absolute tolerance 0.0001, relative tolerance zero).
+The complete native build also exports capacities 1024/4096, whose execution
+coverage remains outstanding. Evidence: `projection-shards-build.log`,
+`projection-shards-rebuild.log`, `projection-shards.log` and
+`projection-shards.json` in the compact attention bundle.
+
+This is a kernel prerequisite, not a serving implementation or performance claim.
+Weight placement, lane-owned exchange/graph scheduling, query normalization and
+output-stage integration, memory budgeting and independent runtime controls are
+still required before projection TP2 can be evaluated end to end.
