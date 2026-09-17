@@ -7,7 +7,7 @@ use crate::v41_memory::{DeviceAllocation, HostAllocation, LoadStream};
 use crate::v41_window::WindowProposal;
 use anyhow::{ensure, Context, Result};
 use ds41rt_ffi::{
-    Ds41rtDeviceBuffer, NativeLibrary, V41SparseAttention, V41SparseBatch, V41SparseSource, V41SparseWindow, V41Kv,
+    Ds41rtDeviceBuffer, NativeLibrary, V41SparseAttention, V41SparseBatch, V41SparseSource, V41SparseWindow, V41Kv, V41PeerCopy,
 };
 use std::{collections::VecDeque, ffi::c_void, marker::PhantomData};
 
@@ -674,6 +674,43 @@ impl<'a,const HEADS:usize> LocalSparseAttentionWave<'a,HEADS> {
         Ok(Some(QueuedSparseAttention {
             values: slice(self.output.buffer, 0, rows * (HEADS*1024)), layer, rows,
         }))
+    }
+}
+impl LocalSparseAttentionWave<'_,32> {
+    /// Split the live producer's full-width query directly into this wave's
+    /// compact input. Keep the original query identity for selection validation;
+    /// its other tensors remain on their producer device.
+    ///
+    /// # Safety
+    /// The current device and copy kernel must match this wave. Peer access must
+    /// be enabled when needed. Producer completion and replica publication must
+    /// precede this stream's work through lane-local events. Retain the original
+    /// query and all proposal/selection/tail owners through warmup and consumers,
+    /// including error paths. Sink contains the corresponding 32 checkpoint heads.
+    pub unsafe fn enqueue_split_query_prepared(&mut self,
+        query: &AttentionQueryOutput<'_>, first_head: usize, copy: &V41PeerCopy<'_>,
+        sink: Ds41rtDeviceBuffer, requests: &[AttentionRequest<'_>],
+        selection: Option<&IndexSelectionOutput<'_>>, defer_warmup: bool,
+        tail: Option<&mut dyn AttentionGraphTail>) -> Result<Option<QueuedSparseAttention>> {
+        ensure!(self.cold.is_none(), "cold attention preparation already pending");
+        ensure!(first_head == 0 || first_head == 32, "invalid compact attention head half");
+        let binding = query.binding()?;
+        let tokens = query.tokens()?;
+        ensure!(binding.layer() == query.layer && query.rows > 0
+            && query.rows == tokens.len() && query.rows <= self.capacity
+            && query.rows.checked_mul(64*1024) == Some(query.rotated.bytes)
+            && requests.iter().flat_map(|r| r.positions.iter().copied()).eq(tokens.iter().copied()),
+            "split attention query layer, extent or token order differs");
+        if let Some(s) = selection { s.validate_query(binding)?; }
+        let offset = first_head*1024;
+        let input = slice(query.rotated, offset, query.rotated.bytes-offset);
+        let result = (|| unsafe {
+            copy.launch_rows(self.query.buffer, input, 32*1024, query.rows,
+                32*1024, 64*1024, self.stream.raw)?;
+            self.execute_staged_inner(query.layer, sink, requests, selection, defer_warmup, tail)
+        })();
+        if result.is_err() { self.drain_chain()?; }
+        result
     }
 }
 impl<const HEADS:usize> Drop for LocalSparseAttentionWave<'_,HEADS> {

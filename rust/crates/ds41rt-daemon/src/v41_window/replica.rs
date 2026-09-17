@@ -73,6 +73,30 @@ impl<'a> WindowReplica<'a> {
             device_end:slice(self.ends.buffer,slot*8,8),end:state.slots[slot].end,
             begin:state.slots[slot].begin,_owner:PhantomData })
     }
+    /// Bind peer storage to an existing proposal without creating a new snapshot.
+    /// # Safety
+    /// Both peer proposal planes contain this exact proposal's published rows at
+    /// their original offsets. Keep their allocation owners alive and immutable
+    /// until all consumers drain, including cold graph preparation and errors.
+    /// The committed replica publication required by view must also be complete.
+    pub unsafe fn proposal<'s>(&'s self,state:&'s WindowState<'_>,
+        original:&'s WindowProposal<'_>,values:Ds41rtDeviceBuffer,
+        scales:Ds41rtDeviceBuffer)->Result<WindowProposal<'s>> {
+        let cache=unsafe { self.view(state,original.binding.lease)? };
+        ensure!(original.layer==state.layer
+            && state.request_id(original.binding.lease)?==original.request
+            && cache.end==original.cache.end && cache.begin==original.cache.begin
+            && original.first==cache.end,
+            "window replica proposal snapshot differs");
+        ensure!(values.device_id==cache.values.device_id && scales.device_id==values.device_id
+            && original.capacity.checked_mul(512).is_some_and(|n|values.bytes>=n)
+            && original.capacity.checked_mul(16).is_some_and(|n|scales.bytes>=n)
+            && !values.ptr.is_null() && !scales.ptr.is_null(),
+            "window replica proposal storage differs");
+        Ok(WindowProposal { cache,values,scales,capacity:original.capacity,
+            request:original.request,layer:original.layer,binding:original.binding,
+            first:original.first,tokens:original.tokens,offset:original.offset,_wave:PhantomData })
+    }
 }
 
 #[cfg(test)]

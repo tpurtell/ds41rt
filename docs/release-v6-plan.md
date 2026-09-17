@@ -417,3 +417,21 @@ No memory errors are reported. Evidence: `peer-rows-memcheck-final.log`,
 `proposal-strided-hardware.log` and `peer-rows-rust-build.log` in the same bundle.
 Temporary container fixtures were removed. These are prerequisite copy operations;
 live-model attention splitting/gathering and throughput measurement remain pending.
+
+### Live query and window proposal adapters
+
+Compact waves now accept an original full-width `AttentionQueryOutput`, validate
+its layer, token order and selection origin, and enqueue a pitched head-half copy
+into their own query storage before attention. This avoids fabricating a compact
+query object whose other tensors still belong to the original producer. The copy
+uses the existing preinitialized SM primitive and the wave's own stream; callers
+must establish producer readiness with lane-local events.
+
+Window replicas can now construct a peer proposal while retaining its original
+request, lease, snapshot, offsets and token extent. The adapter validates the
+authoritative lease, layer and committed range before substituting local storage.
+Both adapters preserve the existing asynchronous owner-retention contract.
+`cargo check -p ds41rt-daemon` passes (see `split-query-check.log` in the compact
+attention evidence bundle). These adapters are not yet exercised by serving:
+compressed-source and selection views, scheduler ownership/publication hooks,
+full-model correctness and performance qualification remain outstanding.
