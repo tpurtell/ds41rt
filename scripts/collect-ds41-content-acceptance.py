@@ -38,6 +38,20 @@ def summarize_acceptance(observations):
     return result
 
 
+def completion_markers(observations, text, rtx_gpus, fields):
+    """Return the scheduler events that prove the captured case trace settled."""
+    if rtx_gpus == 2:
+        return ({int(dict(fields.findall(line))['request_id'])
+                 for line in text.splitlines()
+                 if 'independent snapshot published' in line},
+                'published snapshots')
+    # The synchronous scheduler does not publish an independent snapshot event,
+    # and a request may finish on a target-only cycle with no terminal draft
+    # observation. The caller has already received all three complete client
+    # responses, so request IDs in a quiescent trace are the correct boundary.
+    return ({row['request_id'] for row in observations}, 'settled request traces')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--base-url', required=True)
@@ -82,26 +96,37 @@ def main():
             subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True)
         client = json.loads((args.output_directory / f'{case}.json').read_text())
         assert client['passed'] and len(client['samples']) == 3
-        # Snapshot publication follows completed generation, including a last
-        # target-only token that has no draft-confidence observation. Require
-        # all three publications rather than assuming every final cycle drafts.
+        # Dual-RTX independent lanes publish retained snapshots asynchronously,
+        # so their publication log is the strongest trace-settlement marker.
+        # The single-RTX scheduler retains synchronously and has no independent
+        # publication event; its terminal policy observation is the last event
+        # needed for acceptance accounting. In both cases the client has already
+        # completed all three requests before this loop begins.
         deadline = time.monotonic() + 10
+        previous_size = -1
+        stable_polls = 0
         while True:
             with args.trace.open('rb') as stream:
                 stream.seek(start)
                 raw = stream.read()
             raw = raw[:raw.rfind(b'\n') + 1]
+            if len(raw) == previous_size:
+                stable_polls += 1
+            else:
+                previous_size = len(raw)
+                stable_polls = 0
             text = policy['ANSI'].sub('', raw.decode())
             observations, rounds = policy['parse'](text)
             ids = {row['request_id'] for row in observations}
-            completed = {int(dict(policy['FIELDS'].findall(line))['request_id'])
-                         for line in text.splitlines()
-                         if 'independent snapshot published' in line}
+            completed, marker = completion_markers(
+                observations, text, args.rtx_gpus, policy['FIELDS'])
+            if args.rtx_gpus == 1 and stable_polls < 5:
+                completed = set()
             if len(ids) == 3 and completed == ids:
                 break
             if time.monotonic() >= deadline:
                 raise RuntimeError(f'{case}: incomplete or contaminated trace: '
-                                   f'{len(ids)} observed requests, {len(completed)} published snapshots')
+                                   f'{len(ids)} observed requests, {len(completed)} {marker}')
             time.sleep(0.1)
         (args.output_directory / f'{case}-trace.log').write_bytes(raw)
         definition = corpus['cases'][case]

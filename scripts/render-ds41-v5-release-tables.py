@@ -103,7 +103,75 @@ def load_acceptance(directory, reports):
     return result
 
 
-def render(reports, official=None, tools=None, acceptance=None):
+def validate_quant_analysis(report):
+    assert report['schema'] == 1 and report['passed']
+    snapshots = report['snapshots']
+    assert set(snapshots) == {'full', 'exl3', 'exl3_fp4ple'}
+    assert snapshots['full']['revision'] == report['exl3']['metadata']['provenance']['source_revision']
+    assert report['exl3']['nominal_average_bpw'] == 3.25
+    assert 3.25 < report['exl3']['packed_effective_bpw'] < 3.27
+    assert report['exl3']['tensor_entries'] == 41 * 384 * 3
+    assert report['hardlink_clone']['shared_shards'] == 48
+    assert len(report['hardlink_clone']['changed_shards']) == 4
+    for category in ('routed_expert', 'shared_expert', 'embedding', 'head', 'other'):
+        assert snapshots['exl3']['categories'][category] == snapshots['exl3_fp4ple']['categories'][category]
+    assert snapshots['exl3_fp4ple']['categories']['ple']['payload_bytes'] < snapshots['exl3']['categories']['ple']['payload_bytes']
+    tier_counts = {}
+    for row in report['exl3']['tiers']:
+        key = row['projection'], row['bits']
+        tier_counts[key] = tier_counts.get(key, 0) + row['tensors']
+    assert sum(tier_counts.values()) == report['exl3']['tensor_entries']
+    assert set(bits for projection, bits in tier_counts) == {3, 4}
+    return report
+
+
+def load_top1(directory):
+    load = lambda path: json.loads(path.read_text())
+    complete = load(directory/'complete.json')
+    assert not load(directory/'restoration.json')['errors']
+    assert [row['case'] for row in complete['results']] == ['full', 'exl3', 'fp4ple']
+    assert all(row['passed'] for row in complete['results'])
+    collector = runpy.run_path(str(Path(__file__).with_name('collect-ds41-top1-agreement.py')))
+    reports = {}
+    results = {}
+    for result in complete['results']:
+        case = result['case']; path = directory/case/'top1.json'; report = load(path)
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == result['output_sha256']
+        assert report['passed'] and len(report['samples']) == 132
+        assert report['binary_sha256'] == complete['diagnostic']['binary_sha256']
+        assert report['corpus_sha256'] == complete['corpus_sha256']
+        assert report['protocol'] == {
+            'target_only': True, 'draft_model': 'disabled', 'concurrency': 1,
+            'temperature': 0, 'top_p': 1, 'max_tokens': 1, 'thinking': 'disabled',
+            'token_source': 'instrumented target-model scores.select(mask) after fixed-prompt prefill',
+            'constrained': False, 'comparison': 'exact token ID on byte-identical OpenAI messages'}
+        trace = (directory/case/'trace.log').read_bytes()
+        ids = set()
+        for row in report['samples']:
+            raw = trace[row['trace_start']:row['trace_end']]
+            assert hashlib.sha256(raw).hexdigest() == row['trace_sha256']
+            parsed = collector['parse_top1'](raw)
+            assert len(parsed) == 1 and parsed[0]['token_id'] == row['token_id']
+            assert parsed[0]['request_id'] == row['request_id'] and parsed[0]['prompt_tokens'] == row['prompt_tokens']
+            assert row['id'] not in ids; ids.add(row['id'])
+        reports[case] = report; results[case] = result
+    baseline = reports['full']; baseline_rows = {row['id']:row for row in baseline['samples']}
+    assert baseline['role'] == 'baseline' and baseline['overall'] is None
+    baseline_sha = hashlib.sha256((directory/'full/top1.json').read_bytes()).hexdigest()
+    for case in ('exl3', 'fp4ple'):
+        report = reports[case]
+        assert report['role'] == 'candidate' and report['reference']['sha256'] == baseline_sha
+        assert collector['summary'](report['samples']) == report['overall']
+        for category, value in report['categories'].items():
+            assert collector['summary']([row for row in report['samples'] if row['category'] == category]) == value
+        for row in report['samples']:
+            assert row['reference_token_id'] == baseline_rows[row['id']]['token_id']
+            assert row['matches_reference'] == (row['token_id'] == row['reference_token_id'])
+    assert reports['exl3']['checkpoint_revision'] != reports['fp4ple']['checkpoint_revision']
+    return dict(complete=complete, reports=reports, results=results)
+
+
+def render(reports, official=None, tools=None, acceptance=None, quant=None, top1=None):
     validate(reports)
     lines = ['RTX measurements use **400 W per card** and **standard memory speed, without a memory overclock**. '
              'All performance tables use FP8 PLE. Reasoning code uses thinking enabled at high effort; '
@@ -236,22 +304,91 @@ def render(reports, official=None, tools=None, acceptance=None):
         assert set(tools) == {'full', 'exl3', 'exl3-fp4ple'}
         rows = []
         for model, label in [('full', 'Full / FP8 PLE'), ('exl3', 'EXL3 / FP8 PLE'), ('exl3-fp4ple', 'EXL3 / FP4 PLE')]:
-            runs = tools[model]['runs']
+            source = tools[model]
+            runs = source['runs'] if isinstance(source, dict) else source
+            assert isinstance(runs, list)
             assert len(runs) == len({run['run_id'] for run in runs}) == 3
             for run in runs:
                 assert (run['thinking'] is True or run['thinking'] == 'enabled') and run['reasoning_effort'] == 'high'
                 rows.append([label, run['run_id'], *[f"{run[key+'_points']}/{run[key+'_max']}" for key in ('basic', 'hard', 'total')]])
-        table('Tool calling', 'Three campaigns per checkpoint variant with high-effort thinking. Failures remain in '
-              'the scores; see each campaign report for its engine/image provenance and response cap.',
+        table('Tool calling', 'Three campaigns per checkpoint variant with high-effort thinking. Full/FP8-PLE '
+              'rows preserve the clean v4 campaigns for the unchanged tool and schema path; both EXL3 variants '
+              'are fresh v5 campaigns. Failures remain in the scores; see each campaign report for its '
+              'engine/image provenance and response cap.',
               ['Checkpoint', 'Run', 'Basic', 'Hard', 'Total'], rows)
+    if quant is not None:
+        quant = validate_quant_analysis(quant)
+        lines.extend(['### Quant analysis', ''])
+        snapshots = quant['snapshots']; full_bytes = snapshots['full']['snapshot_bytes']
+        labels = [('full', 'Full / FP8 PLE'), ('exl3', 'EXL3 / FP8 PLE'),
+                  ('exl3_fp4ple', 'EXL3 / FP4 PLE')]
+        rows = []
+        for key, label in labels:
+            snapshot = snapshots[key]
+            delta = '—' if key == 'full' else f"{-100*(full_bytes-snapshot['snapshot_bytes'])/full_bytes:.1f}%"
+            rows.append([label, snapshot['shard_count'], f"{snapshot['snapshot_bytes']/2**30:,.2f}", delta,
+                f"{snapshot['categories']['routed_expert']['payload_bytes']/2**30:,.2f}",
+                f"{snapshot['categories']['ple']['payload_bytes']/2**30:,.2f}"])
+        table('Checkpoint and tensor payload sizes', 'GiB uses 2^30 bytes. Tensor columns exclude safetensors headers. '
+              'Both EXL3 checkpoints share identical routed experts; FP4 PLE changes only the lookup tables.',
+              ['Checkpoint', 'Shards', 'Checkpoint GiB', 'Size vs full', 'Routed-expert GiB', 'PLE GiB'], rows)
+        tier_counts = {}
+        tier_shapes = {}
+        for row in quant['exl3']['tiers']:
+            tier_counts[row['projection'], row['bits']] = tier_counts.get((row['projection'], row['bits']), 0) + row['tensors']
+        for row in quant['exl3']['shapes']:
+            tier_shapes.setdefault(row['projection'], (row['suh'], row['svh']))
+            assert tier_shapes[row['projection']] == (row['suh'], row['svh'])
+        rows = []
+        for projection in ('w1', 'w2', 'w3'):
+            shape = tier_shapes[projection]
+            low, high = tier_counts[projection, 3], tier_counts[projection, 4]
+            rows.append([projection, f"{shape[0][0]:,} × {shape[1][0]:,}", f'{low:,}', f'{high:,}', f'{100*high/(low+high):.2f}%'])
+        table('EXL3 routed projection tiers', f"Target layers plus one MTP layer: 384 experts each. The aggregate is "
+              f"{quant['exl3']['nominal_average_bpw']:.2f} nominal bpw and "
+              f"{quant['exl3']['packed_effective_bpw']:.4f} bpw including scales and metadata.",
+              ['Projection', 'Logical shape', '3-bit tensors', '4-bit tensors', '4-bit share'], rows)
+        def ple_geometry(snapshot):
+            shapes = snapshot['categories']['ple']['shapes']
+            return '; '.join(f"{row['dtype']} " + ('×'.join(f'{value:,}' for value in row['shape']) if row['shape'] else 'scalar')
+                            + f" ({row['tensors']}×)" for row in shapes)
+        table('PLE table geometry', f"The FP4-PLE clone hard-links {quant['hardlink_clone']['shared_shards']} unchanged shards "
+              f"and replaces {len(quant['hardlink_clone']['changed_shards'])} shards.",
+              ['Variant', 'Stored tensor geometry', 'Payload GiB'], [
+                  ['FP8 PLE', ple_geometry(snapshots['exl3']), f"{snapshots['exl3']['categories']['ple']['payload_bytes']/2**30:,.2f}"],
+                  ['FP4 PLE', ple_geometry(snapshots['exl3_fp4ple']), f"{snapshots['exl3_fp4ple']['categories']['ple']['payload_bytes']/2**30:,.2f}"]])
+    if top1 is not None:
+        reports1, results1 = top1['reports'], top1['results']
+        assert set(reports1) == {'full', 'exl3', 'fp4ple'}
+        rows = [['Full baseline', 132, 'Reference', '—', f"{results1['full']['launch_seconds']+results1['full']['collection_seconds']:.1f}"]]
+        for key, label in [('exl3', 'EXL3 / FP8 PLE'), ('fp4ple', 'EXL3 / FP4 PLE')]:
+            result = reports1[key]['overall']; low, high = result['wilson_95']
+            rows.append([label, result['samples'], f"{result['matches']}/{result['samples']} ({100*result['agreement']:.2f}%)",
+                         f"{100*low:.2f}–{100*high:.2f}%", f"{results1[key]['launch_seconds']+results1[key]['collection_seconds']:.1f}"])
+        table('Fixed-history top-1 agreement', 'Exact unconstrained target argmax IDs at C1 with dSpark disabled. '
+              'All checkpoints use the same 20-layer TP2 placement, byte-identical teacher-forced assistant prefixes, '
+              f"and corpus SHA-256 `{top1['complete']['corpus_sha256']}`. Runtime includes launch and collection. "
+              'This isolates next-token argmax preservation; it is not a long-form generation-quality score.',
+              ['Checkpoint', 'Samples', 'Matches', 'Wilson 95% CI', 'Seconds'], rows)
+        categories = sorted(reports1['exl3']['categories'])
+        rows = []
+        for category in categories:
+            row = [category.replace('-', ' ').title()]
+            for key in ('exl3', 'fp4ple'):
+                value = reports1[key]['categories'][category]
+                row.append(f"{value['matches']}/{value['samples']} ({100*value['agreement']:.1f}%)")
+            rows.append(row)
+        table('Top-1 agreement by category', 'Each category uses twelve fixed continuations; percentages retain exact token-ID denominators.',
+              ['Category', 'EXL3 / FP8 PLE', 'EXL3 / FP4 PLE'], rows)
     return '\n'.join(lines)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    for option in ('full', 'exl3', 'full-tools', 'exl3-tools', 'fp4ple-tools', 'output'):
+    for option in ('full', 'exl3', 'full-tools', 'exl3-tools', 'fp4ple-tools', 'quant-analysis', 'output'):
         parser.add_argument('--'+option, type=Path, required=True)
     parser.add_argument('--acceptance-dir', type=Path, required=True)
+    parser.add_argument('--top1-dir', type=Path, required=True)
     args = parser.parse_args()
     if args.output.exists():
         parser.error('output must be new')
@@ -264,7 +401,7 @@ def main():
     acceptance = load_acceptance(args.acceptance_dir, reports)
     text = render(reports, official,
                   {'full': load(args.full_tools), 'exl3': load(args.exl3_tools), 'exl3-fp4ple': load(args.fp4ple_tools)},
-                  acceptance)
+                  acceptance, load(args.quant_analysis), load_top1(args.top1_dir))
     args.output.write_text(text)
 
 

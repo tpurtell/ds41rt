@@ -1,0 +1,2011 @@
+{
+  "schema": 1,
+  "name": "ds41rt-v5-teacher-forced-top1",
+  "description": "Fixed assistant-prefix continuations for one-step greedy target-model top-1 comparison. All checkpoints receive byte-identical OpenAI messages; the final assistant prefix has wo_eos=true.",
+  "protocol": {
+    "temperature": 0,
+    "top_p": 1,
+    "max_tokens": 1,
+    "thinking": {
+      "type": "disabled"
+    },
+    "draft_model": "disabled",
+    "concurrency": 1,
+    "selection": "unconstrained target-model argmax after the fully rendered fixed prompt"
+  },
+  "category_counts": {
+    "creative": 12,
+    "factual": 12,
+    "instructions": 12,
+    "long-context": 12,
+    "math": 12,
+    "multilingual": 12,
+    "python": 12,
+    "reasoning": 12,
+    "science": 12,
+    "structured": 12,
+    "systems": 12
+  },
+  "samples": [
+    {
+      "id": "python-01",
+      "category": "python",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Write a Python function that returns the stable unique elements of a sequence."
+        },
+        {
+          "role": "assistant",
+          "content": "```python\ndef stable_unique(items):\n    seen = set()\n    result = []\n    for item in items:\n        if item not in seen:\n            seen.add(item)\n            result.",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "python-02",
+      "category": "python",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Implement binary search over a sorted Python list and return -1 when absent."
+        },
+        {
+          "role": "assistant",
+          "content": "```python\ndef binary_search(values, target):\n    lo, hi = 0, len(values)\n    while lo < hi:\n        mid = (lo + hi) // 2\n        if values[mid] < target:\n            lo = mid + 1\n        else:\n            hi = mid\n    return lo if lo < len(values) and values[lo] == target else",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "python-03",
+      "category": "python",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Show a context manager that measures elapsed wall-clock time."
+        },
+        {
+          "role": "assistant",
+          "content": "```python\nfrom contextlib import contextmanager\nfrom time import perf_counter\n\n@contextmanager\ndef elapsed(report):\n    start = perf_counter()\n    try:\n        yield\n    finally:\n        report(perf_counter() -",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "python-04",
+      "category": "python",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Parse a comma-separated line while preserving quoted commas."
+        },
+        {
+          "role": "assistant",
+          "content": "The standard library already handles the quoting rules:\n\n```python\nimport csv\nfrom io import StringIO\n\ndef parse_line(line):\n    return next(csv.reader(StringIO(",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "python-05",
+      "category": "python",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Write an async worker that stops after receiving a sentinel."
+        },
+        {
+          "role": "assistant",
+          "content": "```python\nasync def worker(queue):\n    while True:\n        item = await queue.get()\n        try:\n            if item is None:\n                return\n            await process(item)\n        finally:\n            queue.",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "python-06",
+      "category": "python",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Implement a small immutable two-dimensional vector with a norm method."
+        },
+        {
+          "role": "assistant",
+          "content": "```python\nfrom dataclasses import dataclass\nfrom math import hypot\n\n@dataclass(frozen=True)\nclass Vec2:\n    x: float\n    y: float\n\n    def norm(self):\n        return hypot(self.x,",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "python-07",
+      "category": "python",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Return the counts of words in a string, case-insensitively."
+        },
+        {
+          "role": "assistant",
+          "content": "```python\nfrom collections import Counter\nimport re\n\ndef word_counts(text):\n    words = re.findall(r\"[A-Za-z]+\", text.lower())\n    return Counter(",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "python-08",
+      "category": "python",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Write a generator that yields fixed-size chunks from an iterable."
+        },
+        {
+          "role": "assistant",
+          "content": "```python\nfrom itertools import islice\n\ndef chunks(items, size):\n    iterator = iter(items)\n    while chunk := tuple(islice(iterator, size)):\n        yield",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "python-09",
+      "category": "python",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Implement retry with exponential backoff and a finite attempt count."
+        },
+        {
+          "role": "assistant",
+          "content": "```python\nimport time\n\ndef retry(call, attempts=4, base_delay=0.1):\n    for attempt in range(attempts):\n        try:\n            return call()\n        except TransientError:\n            if attempt + 1 == attempts:\n                raise\n            time.sleep(base_delay * (2 **",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "python-10",
+      "category": "python",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Sort records by descending score, then ascending name."
+        },
+        {
+          "role": "assistant",
+          "content": "```python\ndef ranked(records):\n    return sorted(records, key=lambda row: (-row[\"score\"], row[",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "python-11",
+      "category": "python",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Merge overlapping integer intervals."
+        },
+        {
+          "role": "assistant",
+          "content": "```python\ndef merge(intervals):\n    merged = []\n    for start, end in sorted(intervals):\n        if not merged or start > merged[-1][1]:\n            merged.append([start, end])\n        else:\n            merged[-1][1] = max(merged[-1][1],",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "python-12",
+      "category": "python",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Validate that a directed graph has no cycle using depth-first search."
+        },
+        {
+          "role": "assistant",
+          "content": "```python\ndef is_acyclic(graph):\n    visiting, done = set(), set()\n    def visit(node):\n        if node in visiting:\n            return False\n        if node in done:\n            return True\n        visiting.add(node)\n        if not all(visit(next_node) for next_node in graph.get(node, ())):\n            return False\n        visiting.remove(node)\n        done.",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "systems-01",
+      "category": "systems",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Explain why an acquire load pairs with a release store."
+        },
+        {
+          "role": "assistant",
+          "content": "A release store prevents earlier writes from moving after publication. An acquire load that observes that value prevents later reads from moving before it, creating a happens-before",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "systems-02",
+      "category": "systems",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Describe what happens after a process accesses a nonresident virtual page."
+        },
+        {
+          "role": "assistant",
+          "content": "The processor raises a page fault and transfers control to the kernel. The kernel validates the mapping, obtains a physical frame, reads the page from backing storage if necessary, updates the page table, and then",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "systems-03",
+      "category": "systems",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Why can false sharing slow two otherwise independent counters?"
+        },
+        {
+          "role": "assistant",
+          "content": "The counters occupy the same cache line, so writes by either core invalidate the other core’s copy. Ownership of the line repeatedly moves between cores even though the variables are logically",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "systems-04",
+      "category": "systems",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Summarize the purpose of TCP congestion control."
+        },
+        {
+          "role": "assistant",
+          "content": "Congestion control adjusts the sender’s in-flight data to the capacity currently available along the path. It increases cautiously when acknowledgements arrive and reduces the window when loss or delay indicates",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "systems-05",
+      "category": "systems",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Explain the difference between a mutex and a semaphore."
+        },
+        {
+          "role": "assistant",
+          "content": "A mutex represents exclusive ownership and is normally unlocked by its owner. A semaphore maintains a count of available permits, so it can admit several callers and can be signaled by",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "systems-06",
+      "category": "systems",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Describe copy-on-write after fork."
+        },
+        {
+          "role": "assistant",
+          "content": "Initially the parent and child map the same physical pages read-only. A write triggers a protection fault; the kernel copies that page, remaps the writer to the private copy, and leaves",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "systems-07",
+      "category": "systems",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Explain why aligned vector loads can be faster."
+        },
+        {
+          "role": "assistant",
+          "content": "Alignment lets a vector access fall within the boundaries expected by the memory instruction and cache subsystem. It can avoid split transactions across cache lines or pages, although modern processors",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "systems-08",
+      "category": "systems",
+      "messages": [
+        {
+          "role": "user",
+          "content": "What invariant makes a ring buffer distinguish full from empty?"
+        },
+        {
+          "role": "assistant",
+          "content": "One common design reserves one slot: head equal to tail means empty, while advancing tail to the slot immediately before head means",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "systems-09",
+      "category": "systems",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Explain an ABA problem in a lock-free stack."
+        },
+        {
+          "role": "assistant",
+          "content": "A thread reads pointer A, pauses, and another thread removes A, changes the stack, then reuses A at the head. The first compare-and-swap sees the same pointer value even though",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "systems-10",
+      "category": "systems",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Why does an fsync call matter after writing a database journal?"
+        },
+        {
+          "role": "assistant",
+          "content": "A successful write may only reach the kernel page cache. fsync asks the storage stack to persist the journal and required metadata before the database exposes a commit that must survive",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "systems-11",
+      "category": "systems",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Describe the role of a GPU execution stream."
+        },
+        {
+          "role": "assistant",
+          "content": "A stream orders submitted operations relative to one another while allowing independent streams to overlap when resources and dependencies permit. Events can record completion in one stream and make another",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "systems-12",
+      "category": "systems",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Explain why a branch predictor helps a pipeline."
+        },
+        {
+          "role": "assistant",
+          "content": "The processor must choose which instructions to fetch before the branch result is known. A good prediction keeps useful work entering the pipeline; a misprediction discards speculative work and",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "math-01",
+      "category": "math",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Find the derivative of x^3 e^x and explain one step."
+        },
+        {
+          "role": "assistant",
+          "content": "Using the product rule, d/dx[x^3 e^x] = 3x^2 e^x + x^3 e^x = e^x(",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "math-02",
+      "category": "math",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Solve 3x + 7 = 25."
+        },
+        {
+          "role": "assistant",
+          "content": "Subtracting 7 gives 3x = 18, so x =",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "math-03",
+      "category": "math",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Evaluate the sum of the first 20 positive integers."
+        },
+        {
+          "role": "assistant",
+          "content": "The arithmetic-series formula gives 20·21/2 =",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "math-04",
+      "category": "math",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Factor x^2 - 9."
+        },
+        {
+          "role": "assistant",
+          "content": "This is a difference of squares: x^2 - 3^2 = (x - 3)(",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "math-05",
+      "category": "math",
+      "messages": [
+        {
+          "role": "user",
+          "content": "A fair coin is flipped four times. What is the probability of exactly two heads?"
+        },
+        {
+          "role": "assistant",
+          "content": "There are C(4,2) favorable sequences among 2^4 equally likely sequences, so the probability is 6/16 =",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "math-06",
+      "category": "math",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Compute the determinant of [[2,3],[5,7]]."
+        },
+        {
+          "role": "assistant",
+          "content": "For a 2×2 matrix the determinant is ad-bc, giving 2·7 - 3·5 =",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "math-07",
+      "category": "math",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Simplify log(a) + log(b) for positive a and b."
+        },
+        {
+          "role": "assistant",
+          "content": "The product rule for logarithms gives log(a) + log(b) = log(",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "math-08",
+      "category": "math",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Integrate 2x from 0 to 3."
+        },
+        {
+          "role": "assistant",
+          "content": "An antiderivative is x^2. Evaluating at the limits gives 3^2 - 0^2 =",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "math-09",
+      "category": "math",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Convert the binary number 101101 to decimal."
+        },
+        {
+          "role": "assistant",
+          "content": "Reading place values gives 32 + 8 + 4 + 1 =",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "math-10",
+      "category": "math",
+      "messages": [
+        {
+          "role": "user",
+          "content": "If a triangle has legs 5 and 12, find its hypotenuse."
+        },
+        {
+          "role": "assistant",
+          "content": "By the Pythagorean theorem, c = sqrt(5^2 + 12^2) = sqrt(169) =",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "math-11",
+      "category": "math",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Solve the recurrence a_n = a_(n-1) + 3 with a_0 = 2."
+        },
+        {
+          "role": "assistant",
+          "content": "Each step adds three, so the closed form is a_n = 2 +",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "math-12",
+      "category": "math",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Find the mean of 4, 7, 9, and 12."
+        },
+        {
+          "role": "assistant",
+          "content": "Their sum is 32 and there are four values, so the mean is",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "science-01",
+      "category": "science",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Explain why the sky often appears blue."
+        },
+        {
+          "role": "assistant",
+          "content": "Air molecules scatter shorter visible wavelengths more strongly than longer ones. The scattered light reaching an observer from many directions is therefore enriched in",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "science-02",
+      "category": "science",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Describe the main function of mitochondria."
+        },
+        {
+          "role": "assistant",
+          "content": "Mitochondria convert energy from nutrients into ATP through pathways including the citric acid cycle and oxidative phosphorylation. ATP then supplies",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "science-03",
+      "category": "science",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Why does ice float in liquid water?"
+        },
+        {
+          "role": "assistant",
+          "content": "Hydrogen bonding arranges water molecules into an open crystal lattice when they freeze. The solid therefore has lower density than",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "science-04",
+      "category": "science",
+      "messages": [
+        {
+          "role": "user",
+          "content": "State what conservation of momentum means for an isolated system."
+        },
+        {
+          "role": "assistant",
+          "content": "When external impulse is zero, the vector sum of all momenta remains constant before and after any internal interaction or",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "science-05",
+      "category": "science",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Explain how a catalyst changes a chemical reaction."
+        },
+        {
+          "role": "assistant",
+          "content": "A catalyst provides an alternative reaction pathway with a lower activation energy. It changes the rate at which equilibrium is reached but does not change the equilibrium",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "science-06",
+      "category": "science",
+      "messages": [
+        {
+          "role": "user",
+          "content": "What causes ocean tides on Earth?"
+        },
+        {
+          "role": "assistant",
+          "content": "The Moon’s gravity, with a smaller contribution from the Sun, varies across Earth and produces tidal bulges. Earth’s rotation carries coastlines through these",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "science-07",
+      "category": "science",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Describe natural selection in one paragraph."
+        },
+        {
+          "role": "assistant",
+          "content": "Heritable variants that improve survival or reproduction tend to leave more descendants. Across generations, the associated traits become more common in the population, provided the environment continues to",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "science-08",
+      "category": "science",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Why do metals conduct electricity?"
+        },
+        {
+          "role": "assistant",
+          "content": "In a metal, some valence electrons occupy delocalized states and can move through the lattice. An applied electric field gives these charge carriers a net",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "science-09",
+      "category": "science",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Explain why pressure drops as altitude rises."
+        },
+        {
+          "role": "assistant",
+          "content": "Higher locations have less atmosphere above them, so the weight of the overlying air column is smaller. Air density also generally",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "science-10",
+      "category": "science",
+      "messages": [
+        {
+          "role": "user",
+          "content": "What is the role of chlorophyll in photosynthesis?"
+        },
+        {
+          "role": "assistant",
+          "content": "Chlorophyll absorbs photons, especially in blue and red portions of the spectrum, and transfers the resulting excitation energy into reaction centers where charge",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "science-11",
+      "category": "science",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Describe how a vaccine creates immune memory."
+        },
+        {
+          "role": "assistant",
+          "content": "Vaccine antigens activate matching lymphocytes without requiring the full disease. Some activated B and T cells persist as memory cells and respond more rapidly upon later",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "science-12",
+      "category": "science",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Why does a moving charge experience a magnetic force?"
+        },
+        {
+          "role": "assistant",
+          "content": "The magnetic part of the Lorentz force is q times the cross product of velocity and magnetic field, so its direction is perpendicular to both and it changes",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "factual-01",
+      "category": "factual",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Name the capital of Japan and add one geographic fact."
+        },
+        {
+          "role": "assistant",
+          "content": "Japan’s capital is Tokyo. It lies on the eastern side of Honshu beside",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "factual-02",
+      "category": "factual",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Who wrote Pride and Prejudice?"
+        },
+        {
+          "role": "assistant",
+          "content": "Pride and Prejudice was written by Jane",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "factual-03",
+      "category": "factual",
+      "messages": [
+        {
+          "role": "user",
+          "content": "What language is primarily spoken in Brazil?"
+        },
+        {
+          "role": "assistant",
+          "content": "The primary language of Brazil is Portuguese, reflecting the country’s colonial history under",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "factual-04",
+      "category": "factual",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Which planet is closest to the Sun?"
+        },
+        {
+          "role": "assistant",
+          "content": "Mercury is the planet closest to the",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "factual-05",
+      "category": "factual",
+      "messages": [
+        {
+          "role": "user",
+          "content": "What is the largest ocean on Earth?"
+        },
+        {
+          "role": "assistant",
+          "content": "The Pacific Ocean is the largest and deepest of Earth’s ocean",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "factual-06",
+      "category": "factual",
+      "messages": [
+        {
+          "role": "user",
+          "content": "In which year did the first human land on the Moon?"
+        },
+        {
+          "role": "assistant",
+          "content": "Apollo 11 landed on the Moon in",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "factual-07",
+      "category": "factual",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Name the process by which plants lose water through leaves."
+        },
+        {
+          "role": "assistant",
+          "content": "The loss of water vapor through leaf stomata is called",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "factual-08",
+      "category": "factual",
+      "messages": [
+        {
+          "role": "user",
+          "content": "What instrument measures atmospheric pressure?"
+        },
+        {
+          "role": "assistant",
+          "content": "Atmospheric pressure is measured with a",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "factual-09",
+      "category": "factual",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Who painted The Starry Night?"
+        },
+        {
+          "role": "assistant",
+          "content": "The Starry Night was painted by Vincent van",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "factual-10",
+      "category": "factual",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Which element has atomic number 6?"
+        },
+        {
+          "role": "assistant",
+          "content": "Atomic number 6 belongs to",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "factual-11",
+      "category": "factual",
+      "messages": [
+        {
+          "role": "user",
+          "content": "What is the longest river in South America?"
+        },
+        {
+          "role": "assistant",
+          "content": "The Amazon is the longest river in South",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "factual-12",
+      "category": "factual",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Which treaty formally ended World War I between Germany and the Allies?"
+        },
+        {
+          "role": "assistant",
+          "content": "The Treaty of Versailles was signed in 1919 and formally ended the state of war between Germany and the",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "instructions-01",
+      "category": "instructions",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Give concise steps for changing a bicycle tire."
+        },
+        {
+          "role": "assistant",
+          "content": "1. Shift to a small cog and remove the wheel.\n2. Deflate the tube completely and release one tire bead with levers.\n3. Pull out the tube and inspect the tire for debris.\n4. Slightly inflate the replacement tube, insert it, and",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "instructions-02",
+      "category": "instructions",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Explain how to make pour-over coffee."
+        },
+        {
+          "role": "assistant",
+          "content": "Heat water to just below boiling and rinse the paper filter. Add medium-fine grounds, wet them evenly for a short bloom, then pour the remaining water in slow concentric",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "instructions-03",
+      "category": "instructions",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Give a safe checklist for backing up a laptop."
+        },
+        {
+          "role": "assistant",
+          "content": "First inventory the folders and application data that matter. Copy them to an encrypted external drive, create a second independent copy in another location, and then verify a sample of files by",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "instructions-04",
+      "category": "instructions",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Describe how to repot a houseplant."
+        },
+        {
+          "role": "assistant",
+          "content": "Choose a pot with drainage only slightly larger than the old one. Ease out the root ball, loosen circling roots, add fresh mix, set the plant at its previous depth, fill around it, and",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "instructions-05",
+      "category": "instructions",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Explain how to calibrate a kitchen scale."
+        },
+        {
+          "role": "assistant",
+          "content": "Place the scale on a firm level surface, turn it on, and let it stabilize. Enter calibration mode according to its manual, place the specified reference mass at the center, and wait for",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "instructions-06",
+      "category": "instructions",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Give steps for resolving a merge conflict."
+        },
+        {
+          "role": "assistant",
+          "content": "Open each conflicted file and inspect both sides around the markers. Edit the file into the intended combined result, remove every marker, run the relevant tests, stage the resolved files, and",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "instructions-07",
+      "category": "instructions",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Explain how to season a cast-iron pan."
+        },
+        {
+          "role": "assistant",
+          "content": "Wash and dry the pan thoroughly, rub a very thin film of high-smoke-point oil over every surface, wipe away the apparent excess, and bake it upside down until the oil",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "instructions-08",
+      "category": "instructions",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Give a procedure for measuring resting pulse."
+        },
+        {
+          "role": "assistant",
+          "content": "Sit quietly for several minutes. Place two fingers over the radial artery at the wrist, count beats for a timed interval without using your thumb, and convert the count to beats per",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "instructions-09",
+      "category": "instructions",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Describe how to create a strong unique password."
+        },
+        {
+          "role": "assistant",
+          "content": "Use a password manager to generate a long random value for each account. Store it only in the manager, enable multifactor authentication, and never reuse it on another",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "instructions-10",
+      "category": "instructions",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Explain how to test a smoke alarm."
+        },
+        {
+          "role": "assistant",
+          "content": "Tell everyone nearby that you are testing it, press and hold the test button until the alarm sounds, confirm it is audible from sleeping areas, and replace the battery or unit if",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "instructions-11",
+      "category": "instructions",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Give steps for cleaning a mechanical keyboard."
+        },
+        {
+          "role": "assistant",
+          "content": "Disconnect the keyboard, photograph the layout, and remove keycaps with a puller. Brush or blow out loose debris, clean the caps separately, wipe the plate with minimal moisture, let everything dry, and",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "instructions-12",
+      "category": "instructions",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Describe how to plan a short meeting."
+        },
+        {
+          "role": "assistant",
+          "content": "Write a single decision-oriented objective, invite only the people needed for it, circulate a brief agenda and pre-reading, assign a facilitator and note taker, time-box each item, and end by recording",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "creative-01",
+      "category": "creative",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Continue a quiet science-fiction scene aboard an empty station."
+        },
+        {
+          "role": "assistant",
+          "content": "The station rotated without lights, a black wheel against the stars. Mara’s boots clicked along the central spoke until a voice, too soft for the emergency speakers, said",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "creative-02",
+      "category": "creative",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Continue a fable about a proud heron and a patient turtle."
+        },
+        {
+          "role": "assistant",
+          "content": "The heron laughed whenever the turtle paused beside the reeds. “At that pace,” he said, “winter will arrive before you cross the pond.” The turtle looked at the clouds and",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "creative-03",
+      "category": "creative",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Continue a mystery opening set in a closed museum."
+        },
+        {
+          "role": "assistant",
+          "content": "At midnight the marble gallery was locked from both sides, yet the bronze key lay warm in Elise’s palm. From behind the sealed portrait came three careful",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "creative-04",
+      "category": "creative",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Continue a comic scene about a robot learning to bake."
+        },
+        {
+          "role": "assistant",
+          "content": "Unit Seven followed the recipe with mathematical devotion, including the instruction to “beat the eggs until cheerful.” After seventeen minutes of motivational speeches, the eggs remained",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "creative-05",
+      "category": "creative",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Continue a fantasy paragraph about a map that changes."
+        },
+        {
+          "role": "assistant",
+          "content": "Each dawn the inked mountains moved a finger-width east. On the seventh morning a narrow road appeared beside Nia’s village, and at its end someone had written her",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "creative-06",
+      "category": "creative",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Continue a reflective story about an old train ticket."
+        },
+        {
+          "role": "assistant",
+          "content": "The ticket fell from the dictionary as pale as a pressed leaf. Its date had faded, but the destination was still legible: the town where my father",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "creative-07",
+      "category": "creative",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Continue a suspense scene during a citywide blackout."
+        },
+        {
+          "role": "assistant",
+          "content": "Every window on the avenue went dark at once. A second later, phones began ringing in apartments that had no landlines, all repeating the same",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "creative-08",
+      "category": "creative",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Continue a warm story about neighbors sharing a garden."
+        },
+        {
+          "role": "assistant",
+          "content": "No one agreed who planted the first tomato, but by June every balcony leaned toward the courtyard. Mrs. Alvarez brought string, the twins painted signs, and Mr. Chen quietly built",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "creative-09",
+      "category": "creative",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Continue a sea adventure narrated by the ship’s cook."
+        },
+        {
+          "role": "assistant",
+          "content": "I knew the storm was serious when the captain returned his stew untouched. By sunset the spoons were sliding west, the gulls had vanished, and the horizon had turned the color of",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "creative-10",
+      "category": "creative",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Continue a tale about a librarian who can hear forgotten books."
+        },
+        {
+          "role": "assistant",
+          "content": "Most abandoned books whispered only titles. The green volume under the stairs knew my name, and when I opened it the first page asked why I had",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "creative-11",
+      "category": "creative",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Continue a dreamlike scene in a market selling memories."
+        },
+        {
+          "role": "assistant",
+          "content": "Under striped awnings, merchants weighed summers in brass scales and bottled first songs in blue glass. I had come to buy back one Tuesday, but the vendor offered me",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "creative-12",
+      "category": "creative",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Continue a short story whose narrator finds a door in a tree."
+        },
+        {
+          "role": "assistant",
+          "content": "The door was no taller than my hand, with a silver knob polished by impossible use. When I touched it, the oak inhaled and the hinges",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "structured-01",
+      "category": "structured",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Continue this JSON object with a valid status field and close it."
+        },
+        {
+          "role": "assistant",
+          "content": "{\n  \"service\": \"catalog\",\n  \"replicas\": 3,\n  \"healthy\":",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "structured-02",
+      "category": "structured",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Complete the YAML list with another deployment step."
+        },
+        {
+          "role": "assistant",
+          "content": "steps:\n  - name: test\n    command: pytest -q\n  - name: package\n    command: python -m build\n  - name:",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "structured-03",
+      "category": "structured",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Finish this SQL query to group active users by country."
+        },
+        {
+          "role": "assistant",
+          "content": "```sql\nSELECT country, COUNT(*) AS active_users\nFROM users\nWHERE last_seen_at >= CURRENT_DATE - INTERVAL '30 days'\nGROUP BY",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "structured-04",
+      "category": "structured",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Complete this TOML package metadata."
+        },
+        {
+          "role": "assistant",
+          "content": "[package]\nname = \"orbit-cache\"\nversion = \"1.2.0\"\nedition = \"2024\"\n\n[dependencies]\nserde = { version = \"1\", features = [",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "structured-05",
+      "category": "structured",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Continue this XML element and close it correctly."
+        },
+        {
+          "role": "assistant",
+          "content": "<book id=\"b7\">\n  <title>The Quiet Engine</title>\n  <author>A. Rivera</author>\n  <year>",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "structured-06",
+      "category": "structured",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Complete this HTTP response header block."
+        },
+        {
+          "role": "assistant",
+          "content": "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nCache-Control: max-age=60\r\nContent-Length:",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "structured-07",
+      "category": "structured",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Finish this regular expression explanation."
+        },
+        {
+          "role": "assistant",
+          "content": "The pattern `^[A-Z]{2}-\\d{4}$` matches two uppercase ASCII letters, followed by a hyphen, followed by exactly",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "structured-08",
+      "category": "structured",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Continue the Markdown table with the second data row."
+        },
+        {
+          "role": "assistant",
+          "content": "| Name | State | Latency |\n|---|---:|---:|\n| alpha | ready | 12 ms |\n| beta |",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "structured-09",
+      "category": "structured",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Complete the shell conditional."
+        },
+        {
+          "role": "assistant",
+          "content": "```bash\nif [[ -f \"$config_path\" ]]; then\n  load_config \"$config_path\"\nelse\n  printf 'missing config: %s\\n' \"$config_path\" >&2\n  exit",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "structured-10",
+      "category": "structured",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Finish the Rust match expression."
+        },
+        {
+          "role": "assistant",
+          "content": "```rust\nlet label = match status {\n    Status::Ready => \"ready\",\n    Status::Waiting => \"waiting\",\n    Status::Failed(code) if code > 0 => \"failed\",\n    _ =>",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "structured-11",
+      "category": "structured",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Continue this CSV row with the final numeric field."
+        },
+        {
+          "role": "assistant",
+          "content": "timestamp,region,requests,p95_ms\n2026-09-17,ap-east,1842,",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "structured-12",
+      "category": "structured",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Complete this JSON Schema required array."
+        },
+        {
+          "role": "assistant",
+          "content": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"name\": {\"type\": \"string\"},\n    \"count\": {\"type\": \"integer\", \"minimum\": 0}\n  },\n  \"required\": [\"name\",",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "multilingual-01",
+      "category": "multilingual",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Continúa en español con una recomendación breve para ahorrar agua."
+        },
+        {
+          "role": "assistant",
+          "content": "Para ahorrar agua en casa, repara primero las fugas pequeñas y cierra el grifo mientras",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "multilingual-02",
+      "category": "multilingual",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Continuez en français avec une phrase sur les transports publics."
+        },
+        {
+          "role": "assistant",
+          "content": "Les transports publics réduisent le nombre de voitures en circulation et permettent aux habitants de se déplacer sans",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "multilingual-03",
+      "category": "multilingual",
+      "messages": [
+        {
+          "role": "user",
+          "content": "请用中文继续解释为什么要定期备份数据。"
+        },
+        {
+          "role": "assistant",
+          "content": "定期备份可以在硬盘故障、误删除或勒索软件攻击后恢复重要文件，因此最好保留至少两个副本，并且",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "multilingual-04",
+      "category": "multilingual",
+      "messages": [
+        {
+          "role": "user",
+          "content": "日本語で、朝の習慣について続きを一文書いてください。"
+        },
+        {
+          "role": "assistant",
+          "content": "朝は窓を開けて新鮮な空気を入れ、短い散歩をしてから",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "multilingual-05",
+      "category": "multilingual",
+      "messages": [
+        {
+          "role": "user",
+          "content": "한국어로 건강한 수면 습관에 대한 문장을 이어 쓰세요."
+        },
+        {
+          "role": "assistant",
+          "content": "매일 비슷한 시간에 잠들고 일어나면 몸의 생체 리듬이 안정되어 밤에 더 쉽게",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "multilingual-06",
+      "category": "multilingual",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Führe den deutschen Satz über Energieeffizienz fort."
+        },
+        {
+          "role": "assistant",
+          "content": "Eine gute Dämmung senkt den Wärmeverlust eines Gebäudes und reduziert dadurch sowohl den Energieverbrauch als auch",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "multilingual-07",
+      "category": "multilingual",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Continue em português com uma dica de organização."
+        },
+        {
+          "role": "assistant",
+          "content": "Uma lista curta de prioridades ajuda a começar pelo trabalho mais importante e evita que pequenas tarefas",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "multilingual-08",
+      "category": "multilingual",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Продолжите по-русски объяснение о командной работе."
+        },
+        {
+          "role": "assistant",
+          "content": "Хорошая команда заранее распределяет ответственность, регулярно обменивается информацией и спокойно обсуждает",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "multilingual-09",
+      "category": "multilingual",
+      "messages": [
+        {
+          "role": "user",
+          "content": "تابع بالعربية جملة عن أهمية القراءة."
+        },
+        {
+          "role": "assistant",
+          "content": "توسّع القراءة المفردات وتعرّف القارئ على أفكار وتجارب مختلفة، كما أنها تساعد على",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "multilingual-10",
+      "category": "multilingual",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Continua in italiano con un consiglio per cucinare la pasta."
+        },
+        {
+          "role": "assistant",
+          "content": "Sala l’acqua quando bolle, mescola la pasta nei primi minuti e conserva un po’ di acqua di cottura per",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "multilingual-11",
+      "category": "multilingual",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Vul de Nederlandse zin over fietsen aan."
+        },
+        {
+          "role": "assistant",
+          "content": "Fietsen is efficiënt in drukke steden, kost weinig ruimte en zorgt tijdens de dagelijkse reis ook voor",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "multilingual-12",
+      "category": "multilingual",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Türkçe olarak düzenli egzersizin yararını anlatmaya devam et."
+        },
+        {
+          "role": "assistant",
+          "content": "Düzenli egzersiz kalp ve kas sağlığını destekler, stresi azaltır ve gün boyunca daha dengeli bir enerji",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "reasoning-01",
+      "category": "reasoning",
+      "messages": [
+        {
+          "role": "user",
+          "content": "A box is labeled apples, another oranges, and another mixed; all labels are wrong. Explain the first decisive step."
+        },
+        {
+          "role": "assistant",
+          "content": "Because every label is wrong, the box marked “mixed” cannot be mixed. Draw one fruit from that box: if it is an apple, then the box must contain only",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "reasoning-02",
+      "category": "reasoning",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Three switches control one lamp in another room. You may enter the room once. Continue the solution."
+        },
+        {
+          "role": "assistant",
+          "content": "Turn on the first switch for several minutes, then turn it off and turn on the second. Enter the room: if the lamp is lit, the second switch controls it; if it is dark but warm, the first does; otherwise",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "reasoning-03",
+      "category": "reasoning",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Explain whether the conclusion follows: all ravens are birds; some birds cannot fly; therefore some ravens cannot fly."
+        },
+        {
+          "role": "assistant",
+          "content": "The conclusion does not follow. The birds that cannot fly may all be non-ravens, so the premises allow a model in which every raven",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "reasoning-04",
+      "category": "reasoning",
+      "messages": [
+        {
+          "role": "user",
+          "content": "A meeting moves from Tuesday to two days after the day before Friday. Determine the new day."
+        },
+        {
+          "role": "assistant",
+          "content": "The day before Friday is Thursday, and two days after Thursday is",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "reasoning-05",
+      "category": "reasoning",
+      "messages": [
+        {
+          "role": "user",
+          "content": "If exactly one of A and B is true, and A is false, what follows?"
+        },
+        {
+          "role": "assistant",
+          "content": "Exclusive-or requires one true operand. Since A is false, B must be",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "reasoning-06",
+      "category": "reasoning",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Explain why observing correlation alone does not establish causation."
+        },
+        {
+          "role": "assistant",
+          "content": "A third variable may influence both observations, the direction of influence may be reversed, or the association may arise from selection or chance. Establishing causation therefore needs",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "reasoning-07",
+      "category": "reasoning",
+      "messages": [
+        {
+          "role": "user",
+          "content": "A train travels 120 km in two hours and then 90 km in one hour. Find its average speed."
+        },
+        {
+          "role": "assistant",
+          "content": "Average speed uses total distance divided by total time, not the mean of segment speeds. The train covers 210 km in 3 hours, giving",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "reasoning-08",
+      "category": "reasoning",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Every red key opens the vault. This key opens the vault. Can we infer it is red?"
+        },
+        {
+          "role": "assistant",
+          "content": "No. The statement says being red is sufficient for opening the vault, not necessary. A blue key might also open it, so the inference affirms the",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "reasoning-09",
+      "category": "reasoning",
+      "messages": [
+        {
+          "role": "user",
+          "content": "A number is divisible by 6. What two divisibility facts must hold?"
+        },
+        {
+          "role": "assistant",
+          "content": "Divisibility by 6 requires divisibility by both 2 and 3, so the number must be even and its decimal digits must sum to a multiple of",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "reasoning-10",
+      "category": "reasoning",
+      "messages": [
+        {
+          "role": "user",
+          "content": "There are five seats in a row. Ana sits left of Bo, and Bo sits left of Cy. State what follows."
+        },
+        {
+          "role": "assistant",
+          "content": "The ordering is transitive, so Ana must sit to the left of",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "reasoning-11",
+      "category": "reasoning",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Explain the flaw: “The new policy preceded lower sales, so it caused them.”"
+        },
+        {
+          "role": "assistant",
+          "content": "Temporal order alone is insufficient. Seasonal demand, pricing, competitors, or other concurrent changes could explain the decline, so the claim confuses post hoc timing with",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "reasoning-12",
+      "category": "reasoning",
+      "messages": [
+        {
+          "role": "user",
+          "content": "A jar contains twice as many blue beads as green beads and 18 beads total. Find each count."
+        },
+        {
+          "role": "assistant",
+          "content": "Let g be the green count, so blue is 2g. Then g + 2g = 18, hence g = 6 and blue =",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "long-context-01",
+      "category": "long-context",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Read the operational log below and answer the final question using only the log.\n\nCycle 1, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 1, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 1, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 1, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 1, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 1, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 1, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 1, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 2, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 2, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 2, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 2, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 2, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 2, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 2, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 2, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 3, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 3, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 3, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 3, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 3, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 3, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 3, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 3, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 4, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 4, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 4, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 4, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 4, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 4, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 4, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 4, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 5, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 5, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 5, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 5, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 5, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 5, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 5, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 5, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 6, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 6, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 6, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 6, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 6, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 6, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 6, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 6, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 7, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 7, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 7, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 7, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 7, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 7, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 7, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 7, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 8, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 8, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 8, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 8, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 8, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 8, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 8, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 8, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\n\nQuestion: What state did node Alder enter in every recorded cycle?"
+        },
+        {
+          "role": "assistant",
+          "content": "The repeated records for node Alder consistently say that it ",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "long-context-02",
+      "category": "long-context",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Read the operational log below and answer the final question using only the log.\n\nCycle 1, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 1, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 1, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 1, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 1, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 1, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 1, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 1, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 2, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 2, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 2, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 2, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 2, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 2, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 2, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 2, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 3, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 3, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 3, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 3, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 3, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 3, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 3, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 3, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 4, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 4, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 4, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 4, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 4, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 4, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 4, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 4, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 5, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 5, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 5, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 5, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 5, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 5, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 5, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 5, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 6, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 6, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 6, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 6, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 6, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 6, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 6, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 6, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 7, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 7, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 7, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 7, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 7, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 7, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 7, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 7, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 8, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 8, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 8, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 8, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 8, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 8, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 8, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 8, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 9, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 9, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 9, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 9, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 9, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 9, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 9, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 9, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\n\nQuestion: What state did node Fir enter in every recorded cycle?"
+        },
+        {
+          "role": "assistant",
+          "content": "The repeated records for node Fir consistently say that it ",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "long-context-03",
+      "category": "long-context",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Read the operational log below and answer the final question using only the log.\n\nCycle 1, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 1, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 1, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 1, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 1, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 1, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 1, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 1, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 2, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 2, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 2, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 2, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 2, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 2, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 2, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 2, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 3, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 3, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 3, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 3, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 3, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 3, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 3, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 3, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 4, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 4, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 4, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 4, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 4, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 4, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 4, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 4, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 5, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 5, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 5, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 5, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 5, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 5, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 5, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 5, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 6, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 6, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 6, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 6, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 6, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 6, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 6, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 6, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 7, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 7, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 7, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 7, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 7, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 7, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 7, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 7, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 8, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 8, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 8, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 8, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 8, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 8, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 8, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 8, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 9, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 9, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 9, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 9, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 9, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 9, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 9, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 9, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 10, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 10, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 10, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 10, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 10, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 10, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 10, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 10, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\n\nQuestion: What state did node Cedar enter in every recorded cycle?"
+        },
+        {
+          "role": "assistant",
+          "content": "The repeated records for node Cedar consistently say that it ",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "long-context-04",
+      "category": "long-context",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Read the operational log below and answer the final question using only the log.\n\nCycle 1, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 1, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 1, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 1, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 1, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 1, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 1, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 1, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 2, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 2, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 2, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 2, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 2, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 2, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 2, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 2, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 3, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 3, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 3, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 3, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 3, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 3, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 3, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 3, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 4, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 4, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 4, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 4, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 4, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 4, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 4, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 4, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 5, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 5, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 5, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 5, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 5, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 5, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 5, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 5, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 6, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 6, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 6, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 6, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 6, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 6, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 6, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 6, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 7, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 7, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 7, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 7, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 7, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 7, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 7, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 7, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 8, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 8, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 8, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 8, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 8, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 8, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 8, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 8, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\n\nQuestion: What state did node Hazel enter in every recorded cycle?"
+        },
+        {
+          "role": "assistant",
+          "content": "The repeated records for node Hazel consistently say that it ",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "long-context-05",
+      "category": "long-context",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Read the operational log below and answer the final question using only the log.\n\nCycle 1, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 1, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 1, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 1, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 1, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 1, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 1, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 1, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 2, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 2, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 2, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 2, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 2, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 2, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 2, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 2, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 3, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 3, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 3, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 3, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 3, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 3, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 3, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 3, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 4, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 4, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 4, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 4, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 4, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 4, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 4, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 4, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 5, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 5, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 5, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 5, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 5, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 5, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 5, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 5, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 6, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 6, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 6, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 6, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 6, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 6, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 6, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 6, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 7, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 7, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 7, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 7, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 7, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 7, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 7, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 7, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 8, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 8, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 8, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 8, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 8, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 8, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 8, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 8, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 9, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 9, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 9, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 9, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 9, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 9, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 9, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 9, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\n\nQuestion: What state did node Elm enter in every recorded cycle?"
+        },
+        {
+          "role": "assistant",
+          "content": "The repeated records for node Elm consistently say that it ",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "long-context-06",
+      "category": "long-context",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Read the operational log below and answer the final question using only the log.\n\nCycle 1, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 1, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 1, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 1, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 1, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 1, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 1, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 1, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 2, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 2, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 2, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 2, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 2, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 2, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 2, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 2, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 3, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 3, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 3, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 3, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 3, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 3, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 3, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 3, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 4, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 4, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 4, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 4, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 4, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 4, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 4, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 4, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 5, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 5, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 5, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 5, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 5, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 5, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 5, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 5, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 6, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 6, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 6, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 6, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 6, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 6, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 6, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 6, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 7, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 7, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 7, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 7, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 7, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 7, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 7, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 7, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 8, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 8, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 8, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 8, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 8, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 8, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 8, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 8, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 9, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 9, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 9, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 9, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 9, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 9, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 9, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 9, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 10, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 10, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 10, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 10, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 10, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 10, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 10, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 10, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\n\nQuestion: What state did node Birch enter in every recorded cycle?"
+        },
+        {
+          "role": "assistant",
+          "content": "The repeated records for node Birch consistently say that it ",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "long-context-07",
+      "category": "long-context",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Read the operational log below and answer the final question using only the log.\n\nCycle 1, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 1, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 1, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 1, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 1, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 1, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 1, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 1, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 2, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 2, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 2, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 2, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 2, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 2, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 2, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 2, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 3, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 3, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 3, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 3, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 3, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 3, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 3, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 3, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 4, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 4, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 4, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 4, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 4, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 4, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 4, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 4, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 5, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 5, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 5, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 5, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 5, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 5, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 5, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 5, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 6, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 6, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 6, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 6, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 6, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 6, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 6, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 6, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 7, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 7, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 7, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 7, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 7, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 7, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 7, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 7, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 8, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 8, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 8, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 8, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 8, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 8, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 8, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 8, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\n\nQuestion: What state did node Grove enter in every recorded cycle?"
+        },
+        {
+          "role": "assistant",
+          "content": "The repeated records for node Grove consistently say that it ",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "long-context-08",
+      "category": "long-context",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Read the operational log below and answer the final question using only the log.\n\nCycle 1, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 1, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 1, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 1, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 1, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 1, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 1, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 1, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 2, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 2, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 2, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 2, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 2, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 2, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 2, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 2, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 3, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 3, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 3, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 3, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 3, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 3, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 3, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 3, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 4, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 4, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 4, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 4, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 4, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 4, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 4, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 4, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 5, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 5, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 5, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 5, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 5, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 5, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 5, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 5, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 6, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 6, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 6, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 6, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 6, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 6, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 6, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 6, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 7, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 7, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 7, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 7, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 7, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 7, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 7, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 7, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 8, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 8, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 8, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 8, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 8, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 8, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 8, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 8, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 9, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 9, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 9, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 9, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 9, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 9, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 9, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 9, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\n\nQuestion: What state did node Dogwood enter in every recorded cycle?"
+        },
+        {
+          "role": "assistant",
+          "content": "The repeated records for node Dogwood consistently say that it ",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "long-context-09",
+      "category": "long-context",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Read the operational log below and answer the final question using only the log.\n\nCycle 1, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 1, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 1, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 1, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 1, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 1, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 1, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 1, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 2, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 2, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 2, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 2, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 2, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 2, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 2, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 2, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 3, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 3, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 3, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 3, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 3, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 3, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 3, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 3, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 4, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 4, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 4, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 4, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 4, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 4, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 4, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 4, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 5, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 5, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 5, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 5, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 5, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 5, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 5, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 5, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 6, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 6, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 6, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 6, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 6, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 6, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 6, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 6, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 7, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 7, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 7, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 7, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 7, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 7, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 7, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 7, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 8, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 8, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 8, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 8, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 8, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 8, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 8, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 8, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 9, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 9, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 9, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 9, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 9, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 9, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 9, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 9, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 10, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 10, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 10, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 10, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 10, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 10, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 10, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 10, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\n\nQuestion: What state did node Alder enter in every recorded cycle?"
+        },
+        {
+          "role": "assistant",
+          "content": "The repeated records for node Alder consistently say that it ",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "long-context-10",
+      "category": "long-context",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Read the operational log below and answer the final question using only the log.\n\nCycle 1, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 1, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 1, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 1, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 1, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 1, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 1, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 1, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 2, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 2, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 2, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 2, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 2, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 2, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 2, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 2, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 3, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 3, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 3, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 3, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 3, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 3, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 3, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 3, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 4, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 4, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 4, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 4, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 4, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 4, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 4, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 4, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 5, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 5, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 5, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 5, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 5, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 5, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 5, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 5, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 6, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 6, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 6, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 6, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 6, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 6, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 6, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 6, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 7, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 7, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 7, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 7, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 7, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 7, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 7, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 7, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 8, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 8, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 8, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 8, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 8, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 8, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 8, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 8, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\n\nQuestion: What state did node Fir enter in every recorded cycle?"
+        },
+        {
+          "role": "assistant",
+          "content": "The repeated records for node Fir consistently say that it ",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "long-context-11",
+      "category": "long-context",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Read the operational log below and answer the final question using only the log.\n\nCycle 1, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 1, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 1, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 1, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 1, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 1, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 1, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 1, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 2, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 2, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 2, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 2, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 2, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 2, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 2, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 2, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 3, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 3, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 3, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 3, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 3, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 3, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 3, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 3, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 4, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 4, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 4, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 4, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 4, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 4, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 4, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 4, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 5, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 5, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 5, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 5, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 5, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 5, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 5, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 5, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 6, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 6, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 6, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 6, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 6, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 6, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 6, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 6, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 7, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 7, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 7, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 7, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 7, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 7, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 7, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 7, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 8, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 8, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 8, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 8, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 8, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 8, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 8, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 8, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 9, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 9, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 9, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 9, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 9, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 9, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 9, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 9, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\n\nQuestion: What state did node Cedar enter in every recorded cycle?"
+        },
+        {
+          "role": "assistant",
+          "content": "The repeated records for node Cedar consistently say that it ",
+          "wo_eos": true
+        }
+      ]
+    },
+    {
+      "id": "long-context-12",
+      "category": "long-context",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Read the operational log below and answer the final question using only the log.\n\nCycle 1, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 1, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 1, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 1, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 1, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 1, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 1, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 1, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 2, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 2, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 2, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 2, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 2, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 2, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 2, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 2, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 3, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 3, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 3, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 3, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 3, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 3, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 3, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 3, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 4, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 4, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 4, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 4, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 4, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 4, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 4, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 4, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 5, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 5, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 5, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 5, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 5, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 5, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 5, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 5, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 6, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 6, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 6, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 6, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 6, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 6, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 6, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 6, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 7, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 7, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 7, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 7, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 7, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 7, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 7, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 7, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 8, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 8, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 8, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 8, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 8, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 8, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 8, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 8, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 9, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 9, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 9, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 9, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 9, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 9, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 9, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 9, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\nCycle 10, record 1: Node Alder reported 17 packets at 08:10 and switched to standby after the amber signal.\nCycle 10, record 2: Node Birch reported 23 packets at 08:12 and remained active after the blue signal.\nCycle 10, record 3: Node Cedar reported 11 packets at 08:14 and entered maintenance after the green signal.\nCycle 10, record 4: Node Dogwood reported 29 packets at 08:16 and switched to standby after the violet signal.\nCycle 10, record 5: Node Elm reported 19 packets at 08:18 and remained active after the amber signal.\nCycle 10, record 6: Node Fir reported 31 packets at 08:20 and entered maintenance after the blue signal.\nCycle 10, record 7: Node Grove reported 13 packets at 08:22 and switched to standby after the green signal.\nCycle 10, record 8: Node Hazel reported 37 packets at 08:24 and remained active after the violet signal.\n\nQuestion: What state did node Hazel enter in every recorded cycle?"
+        },
+        {
+          "role": "assistant",
+          "content": "The repeated records for node Hazel consistently say that it ",
+          "wo_eos": true
+        }
+      ]
+    }
+  ]
+}

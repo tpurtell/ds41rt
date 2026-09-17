@@ -1,0 +1,2857 @@
+{
+  "schema": 1,
+  "passed": true,
+  "scope": "Summarize v5 full/EXL3 checkpoint storage, tensor shapes, and EXL3 tiers.",
+  "snapshots": {
+    "full": {
+      "path": "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+      "revision": "dba1be0a40aa45a94ad051997016db3960a90277",
+      "shard_count": 48,
+      "snapshot_bytes": 510296708312,
+      "tensor_payload_bytes": 510286023000,
+      "index_sha256": "74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8",
+      "tensor_count": 96085,
+      "categories": {
+        "embedding": {
+          "tensors": 4,
+          "payload_bytes": 1391224832,
+          "dtypes": {
+            "BF16": 1391224832
+          },
+          "shapes": [
+            {
+              "dtype": "BF16",
+              "shape": [
+                1024
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                1024,
+                588
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                129280,
+                256
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                129280,
+                5120
+              ],
+              "tensors": 1
+            }
+          ]
+        },
+        "head": {
+          "tensors": 3,
+          "payload_bytes": 1390029312,
+          "dtypes": {
+            "BF16": 1390029312
+          },
+          "shapes": [
+            {
+              "dtype": "BF16",
+              "shape": [
+                1,
+                5376
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                129280,
+                256
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                129280,
+                5120
+              ],
+              "tensors": 1
+            }
+          ]
+        },
+        "other": {
+          "tensors": 1352,
+          "payload_bytes": 7226228296,
+          "dtypes": {
+            "BF16": 1171629568,
+            "F32": 169229128,
+            "F8_E4M3": 5879627776,
+            "F8_E8M0": 5741824
+          },
+          "shapes": [
+            {
+              "dtype": "BF16",
+              "shape": [
+                4,
+                5120
+              ],
+              "tensors": 4
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                32,
+                5120
+              ],
+              "tensors": 8
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                128
+              ],
+              "tensors": 4
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                128,
+                512
+              ],
+              "tensors": 4
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                128,
+                5120
+              ],
+              "tensors": 3
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                384,
+                5120
+              ],
+              "tensors": 40
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                512
+              ],
+              "tensors": 47
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                512,
+                5120
+              ],
+              "tensors": 7
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                1024
+              ],
+              "tensors": 97
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                1024,
+                1024
+              ],
+              "tensors": 32
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                1024,
+                2816
+              ],
+              "tensors": 32
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                1280
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                3072
+              ],
+              "tensors": 32
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                3072,
+                1024
+              ],
+              "tensors": 32
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                5120
+              ],
+              "tensors": 94
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                5120,
+                5120
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                5120,
+                9216
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                5632,
+                1024
+              ],
+              "tensors": 32
+            },
+            {
+              "dtype": "F32",
+              "shape": [
+                3
+              ],
+              "tensors": 86
+            },
+            {
+              "dtype": "F32",
+              "shape": [
+                24
+              ],
+              "tensors": 86
+            },
+            {
+              "dtype": "F32",
+              "shape": [
+                24,
+                20480
+              ],
+              "tensors": 86
+            },
+            {
+              "dtype": "F32",
+              "shape": [
+                64
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "F32",
+              "shape": [
+                128
+              ],
+              "tensors": 6
+            },
+            {
+              "dtype": "F32",
+              "shape": [
+                384
+              ],
+              "tensors": 80
+            },
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                512,
+                5120
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                1280,
+                5120
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                4096,
+                1280
+              ],
+              "tensors": 8
+            },
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                5120,
+                8192
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                5120,
+                15360
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                8192,
+                4096
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                25600,
+                6144
+              ],
+              "tensors": 2
+            },
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                32768,
+                1280
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                16,
+                160
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                40,
+                160
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                128,
+                40
+              ],
+              "tensors": 8
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                160,
+                256
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                160,
+                480
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                256,
+                128
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                800,
+                192
+              ],
+              "tensors": 2
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                1024,
+                40
+              ],
+              "tensors": 43
+            }
+          ]
+        },
+        "ple": {
+          "tensors": 4,
+          "payload_bytes": 202758032400,
+          "dtypes": {
+            "F8_E4M3": 196613849600,
+            "F8_E8M0": 6144182800
+          },
+          "shapes": [
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                384006168,
+                256
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                384016682,
+                256
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                384006168,
+                8
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                384016682,
+                8
+              ],
+              "tensors": 1
+            }
+          ]
+        },
+        "routed_expert": {
+          "tensors": 94464,
+          "payload_bytes": 295997276160,
+          "dtypes": {
+            "F8_E8M0": 17411604480,
+            "I8": 278585671680
+          },
+          "shapes": [
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                2304,
+                160
+              ],
+              "tensors": 31488
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                5120,
+                72
+              ],
+              "tensors": 15744
+            },
+            {
+              "dtype": "I8",
+              "shape": [
+                2304,
+                2560
+              ],
+              "tensors": 31488
+            },
+            {
+              "dtype": "I8",
+              "shape": [
+                5120,
+                1152
+              ],
+              "tensors": 15744
+            }
+          ]
+        },
+        "shared_expert": {
+          "tensors": 258,
+          "payload_bytes": 1523232000,
+          "dtypes": {
+            "F8_E4M3": 1521745920,
+            "F8_E8M0": 1486080
+          },
+          "shapes": [
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                2304,
+                5120
+              ],
+              "tensors": 86
+            },
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                5120,
+                2304
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                72,
+                160
+              ],
+              "tensors": 86
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                160,
+                72
+              ],
+              "tensors": 43
+            }
+          ]
+        }
+      },
+      "shards": {
+        "model-00001-of-00048.safetensors": {
+          "bytes": 970533624,
+          "device": 66306,
+          "inode": 95302712,
+          "links": 1
+        },
+        "model-00002-of-00048.safetensors": {
+          "bytes": 1323858272,
+          "device": 66306,
+          "inode": 95302709,
+          "links": 1
+        },
+        "model-00003-of-00048.safetensors": {
+          "bytes": 7389759032,
+          "device": 66306,
+          "inode": 95302708,
+          "links": 1
+        },
+        "model-00004-of-00048.safetensors": {
+          "bytes": 7389759032,
+          "device": 66306,
+          "inode": 95302707,
+          "links": 1
+        },
+        "model-00005-of-00048.safetensors": {
+          "bytes": 7405953784,
+          "device": 66306,
+          "inode": 95302711,
+          "links": 1
+        },
+        "model-00006-of-00048.safetensors": {
+          "bytes": 7389759032,
+          "device": 66306,
+          "inode": 95302714,
+          "links": 1
+        },
+        "model-00007-of-00048.safetensors": {
+          "bytes": 7389759032,
+          "device": 66306,
+          "inode": 95302710,
+          "links": 1
+        },
+        "model-00008-of-00048.safetensors": {
+          "bytes": 7389759032,
+          "device": 66306,
+          "inode": 95302713,
+          "links": 1
+        },
+        "model-00009-of-00048.safetensors": {
+          "bytes": 7389759032,
+          "device": 66306,
+          "inode": 95302715,
+          "links": 1
+        },
+        "model-00010-of-00048.safetensors": {
+          "bytes": 7389759032,
+          "device": 66306,
+          "inode": 95302716,
+          "links": 1
+        },
+        "model-00011-of-00048.safetensors": {
+          "bytes": 7405953784,
+          "device": 66306,
+          "inode": 95302717,
+          "links": 1
+        },
+        "model-00012-of-00048.safetensors": {
+          "bytes": 7389759032,
+          "device": 66306,
+          "inode": 95302718,
+          "links": 1
+        },
+        "model-00013-of-00048.safetensors": {
+          "bytes": 7389761368,
+          "device": 66306,
+          "inode": 95302719,
+          "links": 1
+        },
+        "model-00014-of-00048.safetensors": {
+          "bytes": 7389761368,
+          "device": 66306,
+          "inode": 95302720,
+          "links": 1
+        },
+        "model-00015-of-00048.safetensors": {
+          "bytes": 7389761368,
+          "device": 66306,
+          "inode": 95302721,
+          "links": 1
+        },
+        "model-00016-of-00048.safetensors": {
+          "bytes": 7389761368,
+          "device": 66306,
+          "inode": 95302722,
+          "links": 1
+        },
+        "model-00017-of-00048.safetensors": {
+          "bytes": 7405956128,
+          "device": 66306,
+          "inode": 95302723,
+          "links": 1
+        },
+        "model-00018-of-00048.safetensors": {
+          "bytes": 7389761368,
+          "device": 66306,
+          "inode": 95302724,
+          "links": 1
+        },
+        "model-00019-of-00048.safetensors": {
+          "bytes": 7389761368,
+          "device": 66306,
+          "inode": 95302725,
+          "links": 1
+        },
+        "model-00020-of-00048.safetensors": {
+          "bytes": 7389761368,
+          "device": 66306,
+          "inode": 95302726,
+          "links": 1
+        },
+        "model-00021-of-00048.safetensors": {
+          "bytes": 7389761368,
+          "device": 66306,
+          "inode": 95302727,
+          "links": 1
+        },
+        "model-00022-of-00048.safetensors": {
+          "bytes": 7389761368,
+          "device": 66306,
+          "inode": 95302728,
+          "links": 1
+        },
+        "model-00023-of-00048.safetensors": {
+          "bytes": 7400713088,
+          "device": 66306,
+          "inode": 95302729,
+          "links": 1
+        },
+        "model-00024-of-00048.safetensors": {
+          "bytes": 7389761368,
+          "device": 66306,
+          "inode": 95302730,
+          "links": 1
+        },
+        "model-00025-of-00048.safetensors": {
+          "bytes": 7389761368,
+          "device": 66306,
+          "inode": 95302731,
+          "links": 1
+        },
+        "model-00026-of-00048.safetensors": {
+          "bytes": 7389761368,
+          "device": 66306,
+          "inode": 95302732,
+          "links": 1
+        },
+        "model-00027-of-00048.safetensors": {
+          "bytes": 7395337384,
+          "device": 66306,
+          "inode": 95302733,
+          "links": 1
+        },
+        "model-00028-of-00048.safetensors": {
+          "bytes": 7389761368,
+          "device": 66306,
+          "inode": 95302734,
+          "links": 1
+        },
+        "model-00029-of-00048.safetensors": {
+          "bytes": 7389761368,
+          "device": 66306,
+          "inode": 95302735,
+          "links": 1
+        },
+        "model-00030-of-00048.safetensors": {
+          "bytes": 7389761368,
+          "device": 66306,
+          "inode": 95302736,
+          "links": 1
+        },
+        "model-00031-of-00048.safetensors": {
+          "bytes": 7395337384,
+          "device": 66306,
+          "inode": 95302737,
+          "links": 1
+        },
+        "model-00032-of-00048.safetensors": {
+          "bytes": 7389761368,
+          "device": 66306,
+          "inode": 95302738,
+          "links": 1
+        },
+        "model-00033-of-00048.safetensors": {
+          "bytes": 7389761368,
+          "device": 66306,
+          "inode": 95302739,
+          "links": 1
+        },
+        "model-00034-of-00048.safetensors": {
+          "bytes": 7389761368,
+          "device": 66306,
+          "inode": 95302740,
+          "links": 1
+        },
+        "model-00035-of-00048.safetensors": {
+          "bytes": 7395337384,
+          "device": 66306,
+          "inode": 95302741,
+          "links": 1
+        },
+        "model-00036-of-00048.safetensors": {
+          "bytes": 7389761368,
+          "device": 66306,
+          "inode": 95302742,
+          "links": 1
+        },
+        "model-00037-of-00048.safetensors": {
+          "bytes": 7389761368,
+          "device": 66306,
+          "inode": 95302743,
+          "links": 1
+        },
+        "model-00038-of-00048.safetensors": {
+          "bytes": 7389761368,
+          "device": 66306,
+          "inode": 95302744,
+          "links": 1
+        },
+        "model-00039-of-00048.safetensors": {
+          "bytes": 7395337384,
+          "device": 66306,
+          "inode": 95302745,
+          "links": 1
+        },
+        "model-00040-of-00048.safetensors": {
+          "bytes": 7389761368,
+          "device": 66306,
+          "inode": 95302746,
+          "links": 1
+        },
+        "model-00041-of-00048.safetensors": {
+          "bytes": 7389761368,
+          "device": 66306,
+          "inode": 95302747,
+          "links": 1
+        },
+        "model-00042-of-00048.safetensors": {
+          "bytes": 7389761368,
+          "device": 66306,
+          "inode": 95302748,
+          "links": 1
+        },
+        "model-00043-of-00048.safetensors": {
+          "bytes": 1323837624,
+          "device": 66306,
+          "inode": 95302749,
+          "links": 1
+        },
+        "model-00044-of-00048.safetensors": {
+          "bytes": 2652728736,
+          "device": 66306,
+          "inode": 95302750,
+          "links": 1
+        },
+        "model-00045-of-00048.safetensors": {
+          "bytes": 2573998176,
+          "device": 66306,
+          "inode": 95302751,
+          "links": 1
+        },
+        "model-00046-of-00048.safetensors": {
+          "bytes": 2706402896,
+          "device": 66306,
+          "inode": 95302752,
+          "links": 1
+        },
+        "model-00047-of-00048.safetensors": {
+          "bytes": 101535150936,
+          "device": 66306,
+          "inode": 95302950,
+          "links": 1
+        },
+        "model-00048-of-00048.safetensors": {
+          "bytes": 101537926640,
+          "device": 66306,
+          "inode": 95302949,
+          "links": 1
+        }
+      }
+    },
+    "exl3": {
+      "path": "/home/tj/.cache/huggingface/hub/models--wrldsuksgo2mars--DeepSeek-V4.1-EXL3-K3.25-v1/snapshots/cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+      "revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+      "shard_count": 52,
+      "snapshot_bytes": 441361180176,
+      "tensor_payload_bytes": 441341094744,
+      "index_sha256": "0d3ff908ff5960f37d4b48439b44daab5aaef587a7c34ec28743838f42ed0a0d",
+      "tensor_count": 190549,
+      "categories": {
+        "embedding": {
+          "tensors": 4,
+          "payload_bytes": 1391224832,
+          "dtypes": {
+            "BF16": 1391224832
+          },
+          "shapes": [
+            {
+              "dtype": "BF16",
+              "shape": [
+                1024
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                1024,
+                588
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                129280,
+                256
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                129280,
+                5120
+              ],
+              "tensors": 1
+            }
+          ]
+        },
+        "head": {
+          "tensors": 3,
+          "payload_bytes": 1390029312,
+          "dtypes": {
+            "BF16": 1390029312
+          },
+          "shapes": [
+            {
+              "dtype": "BF16",
+              "shape": [
+                1,
+                5376
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                129280,
+                256
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                129280,
+                5120
+              ],
+              "tensors": 1
+            }
+          ]
+        },
+        "other": {
+          "tensors": 1352,
+          "payload_bytes": 7226228296,
+          "dtypes": {
+            "BF16": 1171629568,
+            "F32": 169229128,
+            "F8_E4M3": 5879627776,
+            "F8_E8M0": 5741824
+          },
+          "shapes": [
+            {
+              "dtype": "BF16",
+              "shape": [
+                4,
+                5120
+              ],
+              "tensors": 4
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                32,
+                5120
+              ],
+              "tensors": 8
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                128
+              ],
+              "tensors": 4
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                128,
+                512
+              ],
+              "tensors": 4
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                128,
+                5120
+              ],
+              "tensors": 3
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                384,
+                5120
+              ],
+              "tensors": 40
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                512
+              ],
+              "tensors": 47
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                512,
+                5120
+              ],
+              "tensors": 7
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                1024
+              ],
+              "tensors": 97
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                1024,
+                1024
+              ],
+              "tensors": 32
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                1024,
+                2816
+              ],
+              "tensors": 32
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                1280
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                3072
+              ],
+              "tensors": 32
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                3072,
+                1024
+              ],
+              "tensors": 32
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                5120
+              ],
+              "tensors": 94
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                5120,
+                5120
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                5120,
+                9216
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                5632,
+                1024
+              ],
+              "tensors": 32
+            },
+            {
+              "dtype": "F32",
+              "shape": [
+                3
+              ],
+              "tensors": 86
+            },
+            {
+              "dtype": "F32",
+              "shape": [
+                24
+              ],
+              "tensors": 86
+            },
+            {
+              "dtype": "F32",
+              "shape": [
+                24,
+                20480
+              ],
+              "tensors": 86
+            },
+            {
+              "dtype": "F32",
+              "shape": [
+                64
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "F32",
+              "shape": [
+                128
+              ],
+              "tensors": 6
+            },
+            {
+              "dtype": "F32",
+              "shape": [
+                384
+              ],
+              "tensors": 80
+            },
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                512,
+                5120
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                1280,
+                5120
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                4096,
+                1280
+              ],
+              "tensors": 8
+            },
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                5120,
+                8192
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                5120,
+                15360
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                8192,
+                4096
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                25600,
+                6144
+              ],
+              "tensors": 2
+            },
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                32768,
+                1280
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                16,
+                160
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                40,
+                160
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                128,
+                40
+              ],
+              "tensors": 8
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                160,
+                256
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                160,
+                480
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                256,
+                128
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                800,
+                192
+              ],
+              "tensors": 2
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                1024,
+                40
+              ],
+              "tensors": 43
+            }
+          ]
+        },
+        "ple": {
+          "tensors": 4,
+          "payload_bytes": 202758032400,
+          "dtypes": {
+            "F8_E4M3": 196613849600,
+            "F8_E8M0": 6144182800
+          },
+          "shapes": [
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                384006168,
+                256
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                384016682,
+                256
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                384006168,
+                8
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                384016682,
+                8
+              ],
+              "tensors": 1
+            }
+          ]
+        },
+        "routed_expert": {
+          "tensors": 188928,
+          "payload_bytes": 227052347904,
+          "dtypes": {
+            "F16": 701300736,
+            "I16": 226350858240,
+            "I32": 188928
+          },
+          "shapes": [
+            {
+              "dtype": "F16",
+              "shape": [
+                2304
+              ],
+              "tensors": 47232
+            },
+            {
+              "dtype": "F16",
+              "shape": [
+                5120
+              ],
+              "tensors": 47232
+            },
+            {
+              "dtype": "I16",
+              "shape": [
+                144,
+                320,
+                48
+              ],
+              "tensors": 9840
+            },
+            {
+              "dtype": "I16",
+              "shape": [
+                144,
+                320,
+                64
+              ],
+              "tensors": 5904
+            },
+            {
+              "dtype": "I16",
+              "shape": [
+                320,
+                144,
+                48
+              ],
+              "tensors": 25584
+            },
+            {
+              "dtype": "I16",
+              "shape": [
+                320,
+                144,
+                64
+              ],
+              "tensors": 5904
+            },
+            {
+              "dtype": "I32",
+              "shape": [],
+              "tensors": 47232
+            }
+          ]
+        },
+        "shared_expert": {
+          "tensors": 258,
+          "payload_bytes": 1523232000,
+          "dtypes": {
+            "F8_E4M3": 1521745920,
+            "F8_E8M0": 1486080
+          },
+          "shapes": [
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                2304,
+                5120
+              ],
+              "tensors": 86
+            },
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                5120,
+                2304
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                72,
+                160
+              ],
+              "tensors": 86
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                160,
+                72
+              ],
+              "tensors": 43
+            }
+          ]
+        }
+      },
+      "shards": {
+        "model-00001-of-00052.safetensors": {
+          "bytes": 4996667464,
+          "device": 66306,
+          "inode": 91902514,
+          "links": 5
+        },
+        "model-00002-of-00052.safetensors": {
+          "bytes": 4997502812,
+          "device": 66306,
+          "inode": 91902580,
+          "links": 5
+        },
+        "model-00003-of-00052.safetensors": {
+          "bytes": 4998446112,
+          "device": 66306,
+          "inode": 91902582,
+          "links": 5
+        },
+        "model-00004-of-00052.safetensors": {
+          "bytes": 4999914156,
+          "device": 66306,
+          "inode": 91902583,
+          "links": 5
+        },
+        "model-00005-of-00052.safetensors": {
+          "bytes": 4996899700,
+          "device": 66306,
+          "inode": 91902596,
+          "links": 5
+        },
+        "model-00006-of-00052.safetensors": {
+          "bytes": 4996868684,
+          "device": 66306,
+          "inode": 91902598,
+          "links": 5
+        },
+        "model-00007-of-00052.safetensors": {
+          "bytes": 4999847948,
+          "device": 66306,
+          "inode": 91902599,
+          "links": 5
+        },
+        "model-00008-of-00052.safetensors": {
+          "bytes": 4998986340,
+          "device": 66306,
+          "inode": 91902600,
+          "links": 5
+        },
+        "model-00009-of-00052.safetensors": {
+          "bytes": 4996883552,
+          "device": 66306,
+          "inode": 91902611,
+          "links": 5
+        },
+        "model-00010-of-00052.safetensors": {
+          "bytes": 4999909100,
+          "device": 66306,
+          "inode": 91902841,
+          "links": 5
+        },
+        "model-00011-of-00052.safetensors": {
+          "bytes": 4998342820,
+          "device": 66306,
+          "inode": 91903093,
+          "links": 5
+        },
+        "model-00012-of-00052.safetensors": {
+          "bytes": 4999883708,
+          "device": 66306,
+          "inode": 91903115,
+          "links": 5
+        },
+        "model-00013-of-00052.safetensors": {
+          "bytes": 4998374196,
+          "device": 66306,
+          "inode": 91903159,
+          "links": 5
+        },
+        "model-00014-of-00052.safetensors": {
+          "bytes": 4999787060,
+          "device": 66306,
+          "inode": 91907392,
+          "links": 5
+        },
+        "model-00015-of-00052.safetensors": {
+          "bytes": 4999819812,
+          "device": 66306,
+          "inode": 91907395,
+          "links": 5
+        },
+        "model-00016-of-00052.safetensors": {
+          "bytes": 4998909556,
+          "device": 66306,
+          "inode": 91907397,
+          "links": 5
+        },
+        "model-00017-of-00052.safetensors": {
+          "bytes": 4996868260,
+          "device": 66306,
+          "inode": 91907402,
+          "links": 5
+        },
+        "model-00018-of-00052.safetensors": {
+          "bytes": 4998419256,
+          "device": 66306,
+          "inode": 91907424,
+          "links": 5
+        },
+        "model-00019-of-00052.safetensors": {
+          "bytes": 4999817420,
+          "device": 66306,
+          "inode": 91907518,
+          "links": 5
+        },
+        "model-00020-of-00052.safetensors": {
+          "bytes": 4999899048,
+          "device": 66306,
+          "inode": 91907520,
+          "links": 5
+        },
+        "model-00021-of-00052.safetensors": {
+          "bytes": 4996546844,
+          "device": 66306,
+          "inode": 91907522,
+          "links": 5
+        },
+        "model-00022-of-00052.safetensors": {
+          "bytes": 4998327736,
+          "device": 66306,
+          "inode": 91907528,
+          "links": 5
+        },
+        "model-00023-of-00052.safetensors": {
+          "bytes": 4999909052,
+          "device": 66306,
+          "inode": 91907529,
+          "links": 5
+        },
+        "model-00024-of-00052.safetensors": {
+          "bytes": 4999786876,
+          "device": 66306,
+          "inode": 91907530,
+          "links": 5
+        },
+        "model-00025-of-00052.safetensors": {
+          "bytes": 4997959484,
+          "device": 66306,
+          "inode": 91907531,
+          "links": 5
+        },
+        "model-00026-of-00052.safetensors": {
+          "bytes": 4996990524,
+          "device": 66306,
+          "inode": 91907532,
+          "links": 5
+        },
+        "model-00027-of-00052.safetensors": {
+          "bytes": 4996867940,
+          "device": 66306,
+          "inode": 91907533,
+          "links": 5
+        },
+        "model-00028-of-00052.safetensors": {
+          "bytes": 4998420288,
+          "device": 66306,
+          "inode": 91907534,
+          "links": 5
+        },
+        "model-00029-of-00052.safetensors": {
+          "bytes": 4998343484,
+          "device": 66306,
+          "inode": 91907535,
+          "links": 5
+        },
+        "model-00030-of-00052.safetensors": {
+          "bytes": 4998312492,
+          "device": 66306,
+          "inode": 91907536,
+          "links": 5
+        },
+        "model-00031-of-00052.safetensors": {
+          "bytes": 4999586828,
+          "device": 66306,
+          "inode": 91907537,
+          "links": 5
+        },
+        "model-00032-of-00052.safetensors": {
+          "bytes": 4998388704,
+          "device": 66306,
+          "inode": 91907538,
+          "links": 5
+        },
+        "model-00033-of-00052.safetensors": {
+          "bytes": 4998327608,
+          "device": 66306,
+          "inode": 91907539,
+          "links": 5
+        },
+        "model-00034-of-00052.safetensors": {
+          "bytes": 4999863240,
+          "device": 66306,
+          "inode": 91907540,
+          "links": 5
+        },
+        "model-00035-of-00052.safetensors": {
+          "bytes": 4998020612,
+          "device": 66306,
+          "inode": 91907541,
+          "links": 5
+        },
+        "model-00036-of-00052.safetensors": {
+          "bytes": 4998393888,
+          "device": 66306,
+          "inode": 91907542,
+          "links": 5
+        },
+        "model-00037-of-00052.safetensors": {
+          "bytes": 4999940396,
+          "device": 66306,
+          "inode": 91907544,
+          "links": 5
+        },
+        "model-00038-of-00052.safetensors": {
+          "bytes": 4999802480,
+          "device": 66306,
+          "inode": 91907545,
+          "links": 5
+        },
+        "model-00039-of-00052.safetensors": {
+          "bytes": 4999832664,
+          "device": 66306,
+          "inode": 91907546,
+          "links": 5
+        },
+        "model-00040-of-00052.safetensors": {
+          "bytes": 4999784708,
+          "device": 66306,
+          "inode": 91907547,
+          "links": 5
+        },
+        "model-00041-of-00052.safetensors": {
+          "bytes": 4995374424,
+          "device": 66306,
+          "inode": 91907548,
+          "links": 5
+        },
+        "model-00042-of-00052.safetensors": {
+          "bytes": 4998354120,
+          "device": 66306,
+          "inode": 91907549,
+          "links": 5
+        },
+        "model-00043-of-00052.safetensors": {
+          "bytes": 4999874404,
+          "device": 66306,
+          "inode": 91907550,
+          "links": 5
+        },
+        "model-00044-of-00052.safetensors": {
+          "bytes": 4995471144,
+          "device": 66306,
+          "inode": 91907551,
+          "links": 5
+        },
+        "model-00045-of-00052.safetensors": {
+          "bytes": 4996763288,
+          "device": 66306,
+          "inode": 91907552,
+          "links": 5
+        },
+        "model-00046-of-00052.safetensors": {
+          "bytes": 4999920568,
+          "device": 66306,
+          "inode": 91902507,
+          "links": 5
+        },
+        "model-00047-of-00052.safetensors": {
+          "bytes": 4998908176,
+          "device": 66306,
+          "inode": 91907569,
+          "links": 5
+        },
+        "model-00048-of-00052.safetensors": {
+          "bytes": 3673028336,
+          "device": 66306,
+          "inode": 91907594,
+          "links": 5
+        },
+        "model-00049-of-00052.safetensors": {
+          "bytes": 3072049456,
+          "device": 66306,
+          "inode": 91907596,
+          "links": 3
+        },
+        "model-00050-of-00052.safetensors": {
+          "bytes": 98305579128,
+          "device": 66306,
+          "inode": 91907598,
+          "links": 3
+        },
+        "model-00051-of-00052.safetensors": {
+          "bytes": 3072133568,
+          "device": 66306,
+          "inode": 91907605,
+          "links": 3
+        },
+        "model-00052-of-00052.safetensors": {
+          "bytes": 98308270712,
+          "device": 66306,
+          "inode": 91907606,
+          "links": 3
+        }
+      }
+    },
+    "exl3_fp4ple": {
+      "path": "/home/tj/.cache/huggingface/hub/models--wrldsuksgo2mars--DeepSeek-V4.1-EXL3-K3.25-FP4PLE-v1/snapshots/04cada4d3f38584f069e0a7debc53720832d738e",
+      "revision": "04cada4d3f38584f069e0a7debc53720832d738e",
+      "shard_count": 52,
+      "snapshot_bytes": 349198438400,
+      "tensor_payload_bytes": 349178352752,
+      "index_sha256": "ff64cfc1bfd305078f5b60c050022fffd4fa54ded2262b973f75b47e6fe23b25",
+      "tensor_count": 190551,
+      "categories": {
+        "embedding": {
+          "tensors": 4,
+          "payload_bytes": 1391224832,
+          "dtypes": {
+            "BF16": 1391224832
+          },
+          "shapes": [
+            {
+              "dtype": "BF16",
+              "shape": [
+                1024
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                1024,
+                588
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                129280,
+                256
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                129280,
+                5120
+              ],
+              "tensors": 1
+            }
+          ]
+        },
+        "head": {
+          "tensors": 3,
+          "payload_bytes": 1390029312,
+          "dtypes": {
+            "BF16": 1390029312
+          },
+          "shapes": [
+            {
+              "dtype": "BF16",
+              "shape": [
+                1,
+                5376
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                129280,
+                256
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                129280,
+                5120
+              ],
+              "tensors": 1
+            }
+          ]
+        },
+        "other": {
+          "tensors": 1352,
+          "payload_bytes": 7226228296,
+          "dtypes": {
+            "BF16": 1171629568,
+            "F32": 169229128,
+            "F8_E4M3": 5879627776,
+            "F8_E8M0": 5741824
+          },
+          "shapes": [
+            {
+              "dtype": "BF16",
+              "shape": [
+                4,
+                5120
+              ],
+              "tensors": 4
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                32,
+                5120
+              ],
+              "tensors": 8
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                128
+              ],
+              "tensors": 4
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                128,
+                512
+              ],
+              "tensors": 4
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                128,
+                5120
+              ],
+              "tensors": 3
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                384,
+                5120
+              ],
+              "tensors": 40
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                512
+              ],
+              "tensors": 47
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                512,
+                5120
+              ],
+              "tensors": 7
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                1024
+              ],
+              "tensors": 97
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                1024,
+                1024
+              ],
+              "tensors": 32
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                1024,
+                2816
+              ],
+              "tensors": 32
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                1280
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                3072
+              ],
+              "tensors": 32
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                3072,
+                1024
+              ],
+              "tensors": 32
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                5120
+              ],
+              "tensors": 94
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                5120,
+                5120
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                5120,
+                9216
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "BF16",
+              "shape": [
+                5632,
+                1024
+              ],
+              "tensors": 32
+            },
+            {
+              "dtype": "F32",
+              "shape": [
+                3
+              ],
+              "tensors": 86
+            },
+            {
+              "dtype": "F32",
+              "shape": [
+                24
+              ],
+              "tensors": 86
+            },
+            {
+              "dtype": "F32",
+              "shape": [
+                24,
+                20480
+              ],
+              "tensors": 86
+            },
+            {
+              "dtype": "F32",
+              "shape": [
+                64
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "F32",
+              "shape": [
+                128
+              ],
+              "tensors": 6
+            },
+            {
+              "dtype": "F32",
+              "shape": [
+                384
+              ],
+              "tensors": 80
+            },
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                512,
+                5120
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                1280,
+                5120
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                4096,
+                1280
+              ],
+              "tensors": 8
+            },
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                5120,
+                8192
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                5120,
+                15360
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                8192,
+                4096
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                25600,
+                6144
+              ],
+              "tensors": 2
+            },
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                32768,
+                1280
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                16,
+                160
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                40,
+                160
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                128,
+                40
+              ],
+              "tensors": 8
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                160,
+                256
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                160,
+                480
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                256,
+                128
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                800,
+                192
+              ],
+              "tensors": 2
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                1024,
+                40
+              ],
+              "tensors": 43
+            }
+          ]
+        },
+        "ple": {
+          "tensors": 6,
+          "payload_bytes": 110595290408,
+          "dtypes": {
+            "F32": 8,
+            "F8_E4M3": 12288365600,
+            "U8": 98306924800
+          },
+          "shapes": [
+            {
+              "dtype": "F32",
+              "shape": [],
+              "tensors": 2
+            },
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                384006168,
+                16
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                384016682,
+                16
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "U8",
+              "shape": [
+                384006168,
+                128
+              ],
+              "tensors": 1
+            },
+            {
+              "dtype": "U8",
+              "shape": [
+                384016682,
+                128
+              ],
+              "tensors": 1
+            }
+          ]
+        },
+        "routed_expert": {
+          "tensors": 188928,
+          "payload_bytes": 227052347904,
+          "dtypes": {
+            "F16": 701300736,
+            "I16": 226350858240,
+            "I32": 188928
+          },
+          "shapes": [
+            {
+              "dtype": "F16",
+              "shape": [
+                2304
+              ],
+              "tensors": 47232
+            },
+            {
+              "dtype": "F16",
+              "shape": [
+                5120
+              ],
+              "tensors": 47232
+            },
+            {
+              "dtype": "I16",
+              "shape": [
+                144,
+                320,
+                48
+              ],
+              "tensors": 9840
+            },
+            {
+              "dtype": "I16",
+              "shape": [
+                144,
+                320,
+                64
+              ],
+              "tensors": 5904
+            },
+            {
+              "dtype": "I16",
+              "shape": [
+                320,
+                144,
+                48
+              ],
+              "tensors": 25584
+            },
+            {
+              "dtype": "I16",
+              "shape": [
+                320,
+                144,
+                64
+              ],
+              "tensors": 5904
+            },
+            {
+              "dtype": "I32",
+              "shape": [],
+              "tensors": 47232
+            }
+          ]
+        },
+        "shared_expert": {
+          "tensors": 258,
+          "payload_bytes": 1523232000,
+          "dtypes": {
+            "F8_E4M3": 1521745920,
+            "F8_E8M0": 1486080
+          },
+          "shapes": [
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                2304,
+                5120
+              ],
+              "tensors": 86
+            },
+            {
+              "dtype": "F8_E4M3",
+              "shape": [
+                5120,
+                2304
+              ],
+              "tensors": 43
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                72,
+                160
+              ],
+              "tensors": 86
+            },
+            {
+              "dtype": "F8_E8M0",
+              "shape": [
+                160,
+                72
+              ],
+              "tensors": 43
+            }
+          ]
+        }
+      },
+      "shards": {
+        "model-00001-of-00052.safetensors": {
+          "bytes": 4996667464,
+          "device": 66306,
+          "inode": 91902514,
+          "links": 5
+        },
+        "model-00002-of-00052.safetensors": {
+          "bytes": 4997502812,
+          "device": 66306,
+          "inode": 91902580,
+          "links": 5
+        },
+        "model-00003-of-00052.safetensors": {
+          "bytes": 4998446112,
+          "device": 66306,
+          "inode": 91902582,
+          "links": 5
+        },
+        "model-00004-of-00052.safetensors": {
+          "bytes": 4999914156,
+          "device": 66306,
+          "inode": 91902583,
+          "links": 5
+        },
+        "model-00005-of-00052.safetensors": {
+          "bytes": 4996899700,
+          "device": 66306,
+          "inode": 91902596,
+          "links": 5
+        },
+        "model-00006-of-00052.safetensors": {
+          "bytes": 4996868684,
+          "device": 66306,
+          "inode": 91902598,
+          "links": 5
+        },
+        "model-00007-of-00052.safetensors": {
+          "bytes": 4999847948,
+          "device": 66306,
+          "inode": 91902599,
+          "links": 5
+        },
+        "model-00008-of-00052.safetensors": {
+          "bytes": 4998986340,
+          "device": 66306,
+          "inode": 91902600,
+          "links": 5
+        },
+        "model-00009-of-00052.safetensors": {
+          "bytes": 4996883552,
+          "device": 66306,
+          "inode": 91902611,
+          "links": 5
+        },
+        "model-00010-of-00052.safetensors": {
+          "bytes": 4999909100,
+          "device": 66306,
+          "inode": 91902841,
+          "links": 5
+        },
+        "model-00011-of-00052.safetensors": {
+          "bytes": 4998342820,
+          "device": 66306,
+          "inode": 91903093,
+          "links": 5
+        },
+        "model-00012-of-00052.safetensors": {
+          "bytes": 4999883708,
+          "device": 66306,
+          "inode": 91903115,
+          "links": 5
+        },
+        "model-00013-of-00052.safetensors": {
+          "bytes": 4998374196,
+          "device": 66306,
+          "inode": 91903159,
+          "links": 5
+        },
+        "model-00014-of-00052.safetensors": {
+          "bytes": 4999787060,
+          "device": 66306,
+          "inode": 91907392,
+          "links": 5
+        },
+        "model-00015-of-00052.safetensors": {
+          "bytes": 4999819812,
+          "device": 66306,
+          "inode": 91907395,
+          "links": 5
+        },
+        "model-00016-of-00052.safetensors": {
+          "bytes": 4998909556,
+          "device": 66306,
+          "inode": 91907397,
+          "links": 5
+        },
+        "model-00017-of-00052.safetensors": {
+          "bytes": 4996868260,
+          "device": 66306,
+          "inode": 91907402,
+          "links": 5
+        },
+        "model-00018-of-00052.safetensors": {
+          "bytes": 4998419256,
+          "device": 66306,
+          "inode": 91907424,
+          "links": 5
+        },
+        "model-00019-of-00052.safetensors": {
+          "bytes": 4999817420,
+          "device": 66306,
+          "inode": 91907518,
+          "links": 5
+        },
+        "model-00020-of-00052.safetensors": {
+          "bytes": 4999899048,
+          "device": 66306,
+          "inode": 91907520,
+          "links": 5
+        },
+        "model-00021-of-00052.safetensors": {
+          "bytes": 4996546844,
+          "device": 66306,
+          "inode": 91907522,
+          "links": 5
+        },
+        "model-00022-of-00052.safetensors": {
+          "bytes": 4998327736,
+          "device": 66306,
+          "inode": 91907528,
+          "links": 5
+        },
+        "model-00023-of-00052.safetensors": {
+          "bytes": 4999909052,
+          "device": 66306,
+          "inode": 91907529,
+          "links": 5
+        },
+        "model-00024-of-00052.safetensors": {
+          "bytes": 4999786876,
+          "device": 66306,
+          "inode": 91907530,
+          "links": 5
+        },
+        "model-00025-of-00052.safetensors": {
+          "bytes": 4997959484,
+          "device": 66306,
+          "inode": 91907531,
+          "links": 5
+        },
+        "model-00026-of-00052.safetensors": {
+          "bytes": 4996990524,
+          "device": 66306,
+          "inode": 91907532,
+          "links": 5
+        },
+        "model-00027-of-00052.safetensors": {
+          "bytes": 4996867940,
+          "device": 66306,
+          "inode": 91907533,
+          "links": 5
+        },
+        "model-00028-of-00052.safetensors": {
+          "bytes": 4998420288,
+          "device": 66306,
+          "inode": 91907534,
+          "links": 5
+        },
+        "model-00029-of-00052.safetensors": {
+          "bytes": 4998343484,
+          "device": 66306,
+          "inode": 91907535,
+          "links": 5
+        },
+        "model-00030-of-00052.safetensors": {
+          "bytes": 4998312492,
+          "device": 66306,
+          "inode": 91907536,
+          "links": 5
+        },
+        "model-00031-of-00052.safetensors": {
+          "bytes": 4999586828,
+          "device": 66306,
+          "inode": 91907537,
+          "links": 5
+        },
+        "model-00032-of-00052.safetensors": {
+          "bytes": 4998388704,
+          "device": 66306,
+          "inode": 91907538,
+          "links": 5
+        },
+        "model-00033-of-00052.safetensors": {
+          "bytes": 4998327608,
+          "device": 66306,
+          "inode": 91907539,
+          "links": 5
+        },
+        "model-00034-of-00052.safetensors": {
+          "bytes": 4999863240,
+          "device": 66306,
+          "inode": 91907540,
+          "links": 5
+        },
+        "model-00035-of-00052.safetensors": {
+          "bytes": 4998020612,
+          "device": 66306,
+          "inode": 91907541,
+          "links": 5
+        },
+        "model-00036-of-00052.safetensors": {
+          "bytes": 4998393888,
+          "device": 66306,
+          "inode": 91907542,
+          "links": 5
+        },
+        "model-00037-of-00052.safetensors": {
+          "bytes": 4999940396,
+          "device": 66306,
+          "inode": 91907544,
+          "links": 5
+        },
+        "model-00038-of-00052.safetensors": {
+          "bytes": 4999802480,
+          "device": 66306,
+          "inode": 91907545,
+          "links": 5
+        },
+        "model-00039-of-00052.safetensors": {
+          "bytes": 4999832664,
+          "device": 66306,
+          "inode": 91907546,
+          "links": 5
+        },
+        "model-00040-of-00052.safetensors": {
+          "bytes": 4999784708,
+          "device": 66306,
+          "inode": 91907547,
+          "links": 5
+        },
+        "model-00041-of-00052.safetensors": {
+          "bytes": 4995374424,
+          "device": 66306,
+          "inode": 91907548,
+          "links": 5
+        },
+        "model-00042-of-00052.safetensors": {
+          "bytes": 4998354120,
+          "device": 66306,
+          "inode": 91907549,
+          "links": 5
+        },
+        "model-00043-of-00052.safetensors": {
+          "bytes": 4999874404,
+          "device": 66306,
+          "inode": 91907550,
+          "links": 5
+        },
+        "model-00044-of-00052.safetensors": {
+          "bytes": 4995471144,
+          "device": 66306,
+          "inode": 91907551,
+          "links": 5
+        },
+        "model-00045-of-00052.safetensors": {
+          "bytes": 4996763288,
+          "device": 66306,
+          "inode": 91907552,
+          "links": 5
+        },
+        "model-00046-of-00052.safetensors": {
+          "bytes": 4999920568,
+          "device": 66306,
+          "inode": 91902507,
+          "links": 5
+        },
+        "model-00047-of-00052.safetensors": {
+          "bytes": 4998908176,
+          "device": 66306,
+          "inode": 91907569,
+          "links": 5
+        },
+        "model-00048-of-00052.safetensors": {
+          "bytes": 3673028336,
+          "device": 66306,
+          "inode": 91907594,
+          "links": 5
+        },
+        "model-00049-of-00052.safetensors": {
+          "bytes": 6144098916,
+          "device": 66306,
+          "inode": 93198997,
+          "links": 2
+        },
+        "model-00050-of-00052.safetensors": {
+          "bytes": 49152789616,
+          "device": 66306,
+          "inode": 93198996,
+          "links": 2
+        },
+        "model-00051-of-00052.safetensors": {
+          "bytes": 6144267148,
+          "device": 66306,
+          "inode": 93199004,
+          "links": 2
+        },
+        "model-00052-of-00052.safetensors": {
+          "bytes": 49154135408,
+          "device": 66306,
+          "inode": 93199003,
+          "links": 2
+        }
+      }
+    }
+  },
+  "exl3": {
+    "quantize_config_sha256": "39442a0750a5095d4b7710b56d2e4b9203ccb59ea99b487023b1cb5f0f3f1655",
+    "tensor_entries": 47232,
+    "nominal_average_bpw": 3.25,
+    "packed_effective_bpw": 3.2600721571180555,
+    "logical_weights": 557171343360,
+    "stored_bytes": 227052347904,
+    "tiers": [
+      {
+        "scope": "layers",
+        "projection": "w1",
+        "bits": 3,
+        "tensors": 13200,
+        "logical_weights": 155713536000,
+        "stored_bytes": 58588622400
+      },
+      {
+        "scope": "layers",
+        "projection": "w1",
+        "bits": 4,
+        "tensors": 2160,
+        "logical_weights": 25480396800,
+        "stored_bytes": 12772278720
+      },
+      {
+        "scope": "layers",
+        "projection": "w2",
+        "bits": 3,
+        "tensors": 9600,
+        "logical_weights": 113246208000,
+        "stored_bytes": 42609907200
+      },
+      {
+        "scope": "layers",
+        "projection": "w2",
+        "bits": 4,
+        "tensors": 5760,
+        "logical_weights": 67947724800,
+        "stored_bytes": 34059409920
+      },
+      {
+        "scope": "layers",
+        "projection": "w3",
+        "bits": 3,
+        "tensors": 11760,
+        "logical_weights": 138726604800,
+        "stored_bytes": 52197136320
+      },
+      {
+        "scope": "layers",
+        "projection": "w3",
+        "bits": 4,
+        "tensors": 3600,
+        "logical_weights": 42467328000,
+        "stored_bytes": 21287131200
+      },
+      {
+        "scope": "mtp",
+        "projection": "w1",
+        "bits": 3,
+        "tensors": 330,
+        "logical_weights": 3892838400,
+        "stored_bytes": 1464715560
+      },
+      {
+        "scope": "mtp",
+        "projection": "w1",
+        "bits": 4,
+        "tensors": 54,
+        "logical_weights": 637009920,
+        "stored_bytes": 319306968
+      },
+      {
+        "scope": "mtp",
+        "projection": "w2",
+        "bits": 3,
+        "tensors": 240,
+        "logical_weights": 2831155200,
+        "stored_bytes": 1065247680
+      },
+      {
+        "scope": "mtp",
+        "projection": "w2",
+        "bits": 4,
+        "tensors": 144,
+        "logical_weights": 1698693120,
+        "stored_bytes": 851485248
+      },
+      {
+        "scope": "mtp",
+        "projection": "w3",
+        "bits": 3,
+        "tensors": 294,
+        "logical_weights": 3468165120,
+        "stored_bytes": 1304928408
+      },
+      {
+        "scope": "mtp",
+        "projection": "w3",
+        "bits": 4,
+        "tensors": 90,
+        "logical_weights": 1061683200,
+        "stored_bytes": 532178280
+      }
+    ],
+    "shapes": [
+      {
+        "projection": "w1",
+        "bits": 3,
+        "suh": [
+          5120
+        ],
+        "svh": [
+          2304
+        ],
+        "trellis": [
+          320,
+          144,
+          48
+        ],
+        "tensors": 13530
+      },
+      {
+        "projection": "w1",
+        "bits": 4,
+        "suh": [
+          5120
+        ],
+        "svh": [
+          2304
+        ],
+        "trellis": [
+          320,
+          144,
+          64
+        ],
+        "tensors": 2214
+      },
+      {
+        "projection": "w2",
+        "bits": 3,
+        "suh": [
+          2304
+        ],
+        "svh": [
+          5120
+        ],
+        "trellis": [
+          144,
+          320,
+          48
+        ],
+        "tensors": 9840
+      },
+      {
+        "projection": "w2",
+        "bits": 4,
+        "suh": [
+          2304
+        ],
+        "svh": [
+          5120
+        ],
+        "trellis": [
+          144,
+          320,
+          64
+        ],
+        "tensors": 5904
+      },
+      {
+        "projection": "w3",
+        "bits": 3,
+        "suh": [
+          5120
+        ],
+        "svh": [
+          2304
+        ],
+        "trellis": [
+          320,
+          144,
+          48
+        ],
+        "tensors": 12054
+      },
+      {
+        "projection": "w3",
+        "bits": 4,
+        "suh": [
+          5120
+        ],
+        "svh": [
+          2304
+        ],
+        "trellis": [
+          320,
+          144,
+          64
+        ],
+        "tensors": 3690
+      }
+    ],
+    "metadata": {
+      "loader_validation": "deferred-to-inference-engine-integration",
+      "native_quantization_config": {
+        "activation_scheme": "dynamic",
+        "expert_dtype": "fp4",
+        "quant_method": "fp8",
+        "scale_fmt": "ue8m0",
+        "weight_block_size": [
+          32,
+          32
+        ]
+      },
+      "projection_ratio": {
+        "w1": 3,
+        "w2": 8,
+        "w3": 5
+      },
+      "provenance": {
+        "implementation_commit": "f0c640e",
+        "recipe": "routed-only-k325-gate-up-down-3-5-8",
+        "run": "deepseek-v41-exl3-k325-v1",
+        "source_revision": "dba1be0a40aa45a94ad051997016db3960a90277"
+      },
+      "routed_average_bpw": "13/4",
+      "schema": "ds41rt.v41-routed-exl3.v1",
+      "tensor_naming": "checkpoint-native"
+    }
+  },
+  "fp4ple_metadata": {
+    "algorithm": "weight-amax-rne-no-activation-calibration",
+    "block_size": 16,
+    "format": "nvfp4",
+    "numerical_validation": "one-row-per-table-only; whole-model validation deferred",
+    "packing": "even-element-low-nibble",
+    "reconstruction": "E2M1(weight) * FP8_E4M3(weight_scale) * FP32(weight_scale_2)",
+    "scale_layout": "row-major",
+    "schema": "ds41rt.nvfp4-ple.v1",
+    "source_repo": "wrldsuksgo2mars/DeepSeek-V4.1-EXL3-K3.25-v1",
+    "source_revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+    "tensors": {
+      "layers.1.engram.embed": {
+        "global_scale": 0.004092262126505375,
+        "logical_shape": [
+          384006168,
+          256
+        ],
+        "weight_dtype": "uint8",
+        "weight_scale_2_dtype": "float32",
+        "weight_scale_dtype": "float8_e4m3fn"
+      },
+      "layers.14.engram.embed": {
+        "global_scale": 0.008928571827709675,
+        "logical_shape": [
+          384016682,
+          256
+        ],
+        "weight_dtype": "uint8",
+        "weight_scale_2_dtype": "float32",
+        "weight_scale_dtype": "float8_e4m3fn"
+      }
+    }
+  },
+  "hardlink_clone": {
+    "shared_shards": 48,
+    "changed_shards": [
+      "model-00049-of-00052.safetensors",
+      "model-00050-of-00052.safetensors",
+      "model-00051-of-00052.safetensors",
+      "model-00052-of-00052.safetensors"
+    ],
+    "additional_safetensor_bytes": 110595291088
+  },
+  "comparisons_to_full": {
+    "exl3": {
+      "bytes_saved": 68935528136,
+      "fraction_saved": 0.13508910994944573
+    },
+    "exl3_fp4ple": {
+      "bytes_saved": 161098269912,
+      "fraction_saved": 0.3156952950860562
+    }
+  }
+}

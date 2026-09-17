@@ -1,0 +1,56 @@
+[
+  {
+    "directory": "ds41rt-v5-coordinator-linux-amd64",
+    "role": "coordinator",
+    "architecture": "amd64",
+    "files": 106,
+    "payload_bytes": 64939376,
+    "provenance": {
+      "version": "v5",
+      "role": "coordinator",
+      "architecture": "amd64",
+      "engine_revision": "3841117183a399a30bfc2f227b77cacbbefebc38",
+      "engine_tree": "9e2030848abcd30f4c08f586d5fe28ca2e7400a2",
+      "source_manifest_sha256": null,
+      "qualified_image_id": "sha256:a43d693ad7189ecbcf5a9b59652793ebb241a1efbffee18099b3e5da0071f51d",
+      "sparkinfer_revision": "e685f48c3b941208a8dc5915a742738a3c2de706",
+      "xgrammar_revision": "557becfb64c503ae9c04344b0047661f43f44320",
+      "clean_build_log_sha256": "b0133eb999c468359247656977c079cdccfe03ec89a78b21c6d5ba6fcb1a6283",
+      "build_options": {
+        "EXL3_PAIRED_TP4": "on",
+        "DS41RT_ENABLE_V41_EXL3_AOT": "ON"
+      },
+      "image_id": "sha256:a43d693ad7189ecbcf5a9b59652793ebb241a1efbffee18099b3e5da0071f51d"
+    },
+    "file": "ds41rt-v5-coordinator-linux-amd64.tar.gz",
+    "bytes": 19660391,
+    "sha256": "fff631345aeee91cc1063f0d4729364f03b13387a62a7010761c77417460f8c4"
+  },
+  {
+    "directory": "ds41rt-v5-spark-expert-linux-arm64",
+    "role": "spark-expert",
+    "architecture": "arm64",
+    "files": 136,
+    "payload_bytes": 57269796,
+    "provenance": {
+      "version": "v5",
+      "role": "spark-expert",
+      "architecture": "arm64",
+      "engine_revision": "3841117183a399a30bfc2f227b77cacbbefebc38",
+      "engine_tree": "9e2030848abcd30f4c08f586d5fe28ca2e7400a2",
+      "source_manifest_sha256": null,
+      "qualified_image_id": "sha256:743a2490db82a42f2f0040e7167953370b99bf19ce6e7b90c31007fba684aa28",
+      "sparkinfer_revision": "e685f48c3b941208a8dc5915a742738a3c2de706",
+      "xgrammar_revision": "557becfb64c503ae9c04344b0047661f43f44320",
+      "clean_build_log_sha256": "b0133eb999c468359247656977c079cdccfe03ec89a78b21c6d5ba6fcb1a6283",
+      "build_options": {
+        "EXL3_PAIRED_TP4": "on",
+        "DS41RT_ENABLE_V41_EXL3_AOT": "ON"
+      },
+      "image_id": "sha256:743a2490db82a42f2f0040e7167953370b99bf19ce6e7b90c31007fba684aa28"
+    },
+    "file": "ds41rt-v5-spark-expert-linux-arm64.tar.gz",
+    "bytes": 18225642,
+    "sha256": "e51f903d1fbb763203a1b5c594c01bea1b8c7c501acab4b56c052d131fd924db"
+  }
+]

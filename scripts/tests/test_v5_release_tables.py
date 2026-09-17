@@ -28,7 +28,10 @@ def reports():
 def test_four_configuration_tables_without_old_comparisons_or_peaks():
     data = reports()
     tools = json.loads((ROOT/'docs/sparkinfer-upstream-tool-eval-20260916.json').read_text())
-    text = RENDER['render'](data, tools={key:tools for key in ('full','exl3','exl3-fp4ple')})
+    # Current collectors write summaries.json as a raw three-run list; older
+    # preserved evidence wraps the same rows in a provenance object.
+    text = RENDER['render'](data, tools={'full': tools['runs'], 'exl3': tools,
+                                        'exl3-fp4ple': tools['runs']})
     assert text.count(' prefill matrix.**') == 4
     assert text.count(' content-type decode.**') == 2
     assert text.count(' concurrency scaling.**') == 2
@@ -76,6 +79,29 @@ def test_acceptance_keeps_grammar_targets_separate_and_rejects_invalid_denominat
         RENDER['render'](data, acceptance=acceptance)
 
 
+def test_acceptance_trace_settlement_matches_each_scheduler_path():
+    collector = runpy.run_path(str(ROOT/'scripts/collect-ds41-content-acceptance.py'))
+    policy = runpy.run_path(str(ROOT/'scripts/summarize-ds41-native-policy.py'))
+    observations = [
+        {'request_id': 1, 'terminal': True},
+        {'request_id': 2, 'terminal': False},
+        {'request_id': 2, 'terminal': True},
+        {'request_id': 3, 'terminal': True},
+    ]
+    text = '\n'.join([
+        'independent snapshot published lane=0 request_id=1',
+        'independent snapshot published lane=1 request_id=2',
+        'independent snapshot published lane=0 request_id=3',
+    ])
+    single, single_marker = collector['completion_markers'](
+        observations, text, 1, policy['FIELDS'])
+    dual, dual_marker = collector['completion_markers'](
+        observations, text, 2, policy['FIELDS'])
+    assert single == dual == {1, 2, 3}
+    assert single_marker == 'settled request traces'
+    assert dual_marker == 'published snapshots'
+
+
 def test_acceptance_loader_reproduces_traces_and_rejects_tampering(tmp_path):
     import hashlib
     data = reports()
@@ -119,3 +145,119 @@ def test_acceptance_loader_reproduces_traces_and_rejects_tampering(tmp_path):
     trace.write_bytes(trace.read_bytes().replace(b'matched_prefix=1', b'matched_prefix=2'))
     with pytest.raises(AssertionError):
         RENDER['load_acceptance'](tmp_path, data)
+
+
+def synthetic_quant_analysis():
+    common = {'routed_expert': {'payload_bytes': 200, 'tensors': 1, 'dtypes': {}, 'shapes': []},
+              'shared_expert': {'payload_bytes': 2, 'tensors': 1, 'dtypes': {}, 'shapes': []},
+              'embedding': {'payload_bytes': 2, 'tensors': 1, 'dtypes': {}, 'shapes': []},
+              'head': {'payload_bytes': 2, 'tensors': 1, 'dtypes': {}, 'shapes': []},
+              'other': {'payload_bytes': 2, 'tensors': 1, 'dtypes': {}, 'shapes': []}}
+    def snapshot(revision, size, ple, ple_shapes):
+        categories = copy.deepcopy(common)
+        categories['ple'] = {'payload_bytes': ple, 'tensors': len(ple_shapes),
+                             'dtypes': {}, 'shapes': ple_shapes}
+        return {'revision': revision, 'snapshot_bytes': size, 'shard_count': 52,
+                'categories': categories}
+    full_revision = 'a' * 40
+    full = snapshot(full_revision, 1000, 300, [{'dtype':'F8_E4M3','shape':[10,256],'tensors':2}])
+    exl3 = snapshot('b'*40, 850, 300, [
+        {'dtype':'F8_E4M3','shape':[10,256],'tensors':2},
+        {'dtype':'F8_E8M0','shape':[10,8],'tensors':2}])
+    fp4 = snapshot('c'*40, 700, 150, [
+        {'dtype':'F32','shape':[],'tensors':2},
+        {'dtype':'F8_E4M3','shape':[10,16],'tensors':2},
+        {'dtype':'U8','shape':[10,128],'tensors':2}])
+    tiers=[]; shapes=[]
+    counts={'w1':(13530,2214),'w2':(9840,5904),'w3':(12054,3690)}
+    dims={'w1':([5120],[2304]),'w2':([2304],[5120]),'w3':([5120],[2304])}
+    for projection,(low,high) in counts.items():
+        for bits,count in [(3,low),(4,high)]:
+            tiers.append({'scope':'layers','projection':projection,'bits':bits,'tensors':count,
+                          'logical_weights':count*5120*2304,'stored_bytes':count})
+            shapes.append({'projection':projection,'bits':bits,'suh':dims[projection][0],
+                           'svh':dims[projection][1],'trellis':[1,1,bits*16],'tensors':count})
+    return {'schema':1,'passed':True,'snapshots':{'full':full,'exl3':exl3,'exl3_fp4ple':fp4},
+            'exl3':{'metadata':{'provenance':{'source_revision':full_revision}},
+                    'nominal_average_bpw':3.25,'packed_effective_bpw':3.260072,
+                    'tensor_entries':47232,'tiers':tiers,'shapes':shapes},
+            'hardlink_clone':{'shared_shards':48,'changed_shards':['49','50','51','52']}}
+
+
+def synthetic_top1():
+    categories = {f'category-{i:02d}': {'samples':12,'matches':11,'agreement':11/12,
+        'wilson_95':[.646,.985], 'baseline_token_count':10,'candidate_token_count':10}
+        for i in range(11)}
+    reports={'full':{'categories':None},
+             'exl3':{'overall':{'samples':132,'matches':121,'agreement':121/132,
+                 'wilson_95':[.856,.954]},'categories':copy.deepcopy(categories)},
+             'fp4ple':{'overall':{'samples':132,'matches':120,'agreement':120/132,
+                 'wilson_95':[.846,.949]},'categories':copy.deepcopy(categories)}}
+    results={key:{'launch_seconds':60.,'collection_seconds':150.} for key in reports}
+    return {'complete':{'corpus_sha256':'d'*64},'reports':reports,'results':results}
+
+
+def test_quant_and_top1_sections_render_sizes_tiers_denominators_and_protocol():
+    text = RENDER['render'](reports(), quant=synthetic_quant_analysis(), top1=synthetic_top1())
+    section = text.split('### Quant analysis')[1]
+    assert '**Checkpoint and tensor payload sizes.**' in section
+    assert '**EXL3 routed projection tiers.**' in section and '3.2601 bpw' in section
+    assert '**PLE table geometry.**' in section and '48 unchanged shards' in section
+    assert '**Fixed-history top-1 agreement.**' in section
+    assert 'same 20-layer TP2 placement' in section and 'exact token-ID denominators' in section
+    assert section.count('11/12 (91.7%)') == 22
+
+
+def materialize_top1(directory):
+    import hashlib
+    collector = runpy.run_path(str(ROOT/'scripts/collect-ds41-top1-agreement.py'))
+    corpus_hash='e'*64;binary='f'*64
+    ids=[(f'category-{i//12:02d}-{i:03d}',f'category-{i//12:02d}') for i in range(132)]
+    reports={};results=[]
+    baseline_sha=None
+    for case in ('full','exl3','fp4ple'):
+        target=directory/case;target.mkdir(parents=True)
+        trace=bytearray();samples=[]
+        for index,(identifier,category) in enumerate(ids,1):
+            token=index%97
+            if case!='full' and index%13==0:token+=1
+            line=(f'INFO ds41rt::top1_agreement: native prompt top-1 request_id={index} '
+                  f'prompt_tokens={100+index} token_id={token}\n').encode()
+            start=len(trace);trace.extend(line)
+            reference=index%97
+            samples.append({'id':identifier,'category':category,'token_id':token,
+                'reference_token_id':reference,'matches_reference':token==reference,
+                'request_id':index,'prompt_tokens':100+index,'trace_start':start,
+                'trace_end':len(trace),'trace_sha256':hashlib.sha256(line).hexdigest()})
+        (target/'trace.log').write_bytes(trace)
+        report={'passed':True,'role':'baseline' if case=='full' else 'candidate',
+                'binary_sha256':binary,'corpus_sha256':corpus_hash,
+                'checkpoint_revision':case,'protocol':{
+                    'target_only':True,'draft_model':'disabled','concurrency':1,'temperature':0,
+                    'top_p':1,'max_tokens':1,'thinking':'disabled',
+                    'token_source':'instrumented target-model scores.select(mask) after fixed-prompt prefill',
+                    'constrained':False,'comparison':'exact token ID on byte-identical OpenAI messages'},
+                'samples':samples,'overall':None,'categories':None,'reference':None}
+        if case!='full':
+            report['reference']={'sha256':baseline_sha}
+            report['overall']=collector['summary'](samples)
+            report['categories']={category:collector['summary']([row for row in samples if row['category']==category])
+                                  for _,category in ids[::12]}
+        path=target/'top1.json';path.write_text(json.dumps(report))
+        if case=='full':baseline_sha=hashlib.sha256(path.read_bytes()).hexdigest()
+        results.append({'case':case,'passed':True,'output_sha256':hashlib.sha256(path.read_bytes()).hexdigest(),
+                        'launch_seconds':1.,'collection_seconds':2.})
+        reports[case]=report
+    (directory/'complete.json').write_text(json.dumps({'results':results,'corpus_sha256':corpus_hash,
+        'diagnostic':{'binary_sha256':binary}}))
+    (directory/'restoration.json').write_text(json.dumps({'errors':[]}))
+
+
+def test_top1_loader_reproduces_exact_trace_ids_and_rejects_tampering(tmp_path):
+    materialize_top1(tmp_path)
+    result=RENDER['load_top1'](tmp_path)
+    assert result['reports']['exl3']['overall']['samples']==132
+    trace=tmp_path/'fp4ple/trace.log'
+    trace.write_bytes(trace.read_bytes().replace(b'token_id=1\n',b'token_id=2\n',1))
+    with pytest.raises(AssertionError):
+        RENDER['load_top1'](tmp_path)
