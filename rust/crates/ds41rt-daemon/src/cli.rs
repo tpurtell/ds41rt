@@ -534,6 +534,9 @@ pub(crate) struct NativeServeArgs {
     /// Experimental TP2 attention with replicated KV; requires two RTX GPUs.
     #[arg(long)]
     pub tp2_attention: bool,
+    /// Experimental TP2 query-B projection; independent of TP2 attention, requires two RTX GPUs.
+    #[arg(long)]
+    pub tp2_query_projection: bool,
 
     /// Maximum tokens per prefill step. Storage rounds up to an AOT capacity
     /// (80, 256, 1024, or 4096); all expert peers must support that capacity.

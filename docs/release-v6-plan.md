@@ -942,3 +942,58 @@ The daemon test targets compile. Evidence in the compact attention bundle:
 This removes duplicate component storage; the distributed replacement shards
 still consume memory. Serving selection and startup accounting remain to be
 connected, so this is not a serving memory-saving or performance claim.
+
+### Query-B TP2 serving selection
+
+`serve-native --rtx-gpus 2 --tp2-query-projection` now selects checkpoint
+query-B output-channel shards for all 40 backbone layers. This switch is
+independent of `--tp2-attention`, does not require replicated KV, and defaults
+to off. Query-A, normalization, rotary and the attention owner stay at their
+existing placements. Both token entry and prepared-layer entry use the split
+query handoff. Each target lane has separate rank streams, events and exchange
+buffers; the immutable shard banks are shared. Output-B and dSpark are unchanged.
+
+Startup omits full-width query-B weights and scratch, loads the replacement
+shards, and creates all projection workspaces before measuring free memory for
+expert and KV allocation. At capacity 2048 each layer-owner wave budgets
+212,286,480 bytes on its output GPU and 78,068,752 bytes on its peer. There are
+two such owners per target lane and two target lanes. These are gross replacement
+workspace figures, not a net-memory comparison with the removed query-B scratch.
+
+The serving smoke check passed three concurrent requests (READY, Python code,
+and a retained identifier) and a repeat with all 804 prompt tokens reused. The
+warm-filesystem startup reported 12.35 seconds; this single smoke observation is
+not a load-speed qualification. With 20 local expert layers and the normal KV
+setting, startup retained 14,680,064 usable GPU tokens plus 6,291,968 RAM tokens,
+for 20,972,032 combined tokens, with 6.75 GiB pinned RAM. Evidence:
+`~/.cache/ds41rt-v6-query-serving/{launch.json,server.log,smoke.json,check.log}`.
+The daemon checks, test-target build and release build passed. Projection rank
+and exchange operations still launch directly; their graph scheduling remains
+an optimization candidate rather than a claimed completed optimization.
+
+The first same-build query-only comparison used a fixed 5 GiB logical KV budget,
+20 local expert layers, K7, capacity 2048, C16 serving, 20 retained slots,
+automatic host cache, and stock 13,365 MHz memory with 400 W limits. Three warm
+samples per point, thinking disabled, median per-request decode tokens/s:
+
+| Workload | Concurrency | Full query-B | TP2 query-B, direct launches | Change |
+|---|---:|---:|---:|---:|
+| Code | 1 | 167.8 | 162.8 | -3.0% |
+| Code | 4 | 118.0 | 115.7 | -1.9% |
+| Topic | 1 | 94.5 | 95.1 | +0.7% |
+| Topic | 4 | 67.2 | 68.3 | +1.8% |
+
+Code and C1 topic outputs match exactly between arms. C4 topic varies in the
+reference arm (259/264/274 output tokens versus 264 throughout the candidate),
+so that row is not an isolated speedup measurement. The small topic differences
+and variable C4 samples do not establish a performance winner; the option stays
+off. Evidence: `~/.cache/ds41rt-v6-query-perf/` contains both launch commands,
+server logs, per-request results, and the harness. Graphing the rank projection
+and exchange work is the next query-path optimization to evaluate.
+
+A second serving check exercised a 10,824-token prompt through capacity-2048
+prefill chunks alongside the two short requests. All expected responses passed,
+and the repeat reused all 10,824 prompt tokens. This exercises the large query
+projection AOT path in serving, including chunked prefill and retained-context
+reuse. Evidence: `~/.cache/ds41rt-v6-query-serving-wide/`. The standard coordinator
+was restored after both smoke checks and the performance comparison.

@@ -334,15 +334,29 @@ impl<'w, 'a> BackboneBlockWave<'w, 'a> {
         query: &'q mut AttentionQueryWave<'_, '_>, tokens: &[u64],
         prepare: impl FnOnce(*mut std::ffi::c_void, [Ds41rtDeviceBuffer; 2]) -> Result<()>)
         -> Result<AttentionQueryOutput<'q>> {
+        unsafe { self.begin_attention_with_projection_cooperative(query,tokens,None,prepare).await }
+    }
+    /// # Safety
+    /// Same contract as begin_attention_cooperative; retain the optional TP2
+    /// projection owner through completion or drained cancellation.
+    pub async unsafe fn begin_attention_with_projection_cooperative<'q>(&mut self,
+        query: &'q mut AttentionQueryWave<'_, '_>, tokens: &[u64],
+        projection: Option<&mut crate::v41_projection_tp2::Wave<'_, '_>>,
+        prepare: impl FnOnce(*mut std::ffi::c_void, [Ds41rtDeviceBuffer; 2]) -> Result<()>)
+        -> Result<AttentionQueryOutput<'q>> {
         self.reset();
         ensure!(query.layer() == self.layer && !tokens.is_empty() && tokens.len() <= self.capacity
             && tokens.iter().all(|&p| p < 1048576), "block attention layer or tokens differ");
         ensure!(query.input().device_id == self.inputs()[0].device_id, "block query device differs");
-        let out = unsafe { query.execute_tokens_prepared_cooperative(tokens, |stream, input| {
+        let prepare_query = |stream, input| unsafe {
             prepare(stream, self.inputs())?;
             self.attention.enqueue_begin(tokens.len(), Some(input), stream)?;
             Ok(())
-        }).await? };
+        };
+        let out = unsafe { match projection {
+            Some(projection) => query.execute_tokens_tp2_prepared_cooperative(tokens,projection,prepare_query).await?,
+            None => query.execute_tokens_prepared_cooperative(tokens,prepare_query).await?,
+        } };
         self.tokens.extend_from_slice(tokens);
         self.phase = Phase::Attention(out.binding()?, tokens.len());
         Ok(out)
@@ -351,11 +365,19 @@ impl<'w, 'a> BackboneBlockWave<'w, 'a> {
     /// Same contract as begin_prepared_attention, retained across completion waits.
     pub async unsafe fn begin_prepared_attention_cooperative<'q>(&mut self,
         query: &'q mut AttentionQueryWave<'_, '_>) -> Result<AttentionQueryOutput<'q>> {
+        unsafe { self.begin_prepared_attention_with_projection_cooperative(query,None).await }
+    }
+    /// # Safety
+    /// Same contract as begin_attention_with_projection_cooperative.
+    pub async unsafe fn begin_prepared_attention_with_projection_cooperative<'q>(&mut self,
+        query: &'q mut AttentionQueryWave<'_, '_>,
+        projection: Option<&mut crate::v41_projection_tp2::Wave<'_, '_>>)
+        -> Result<AttentionQueryOutput<'q>> {
         let tokens = match self.prepared_input() {
             Ok(input) => input.tokens.to_vec(),
             Err(error) => { self.reset(); return Err(error); }
         };
-        unsafe { self.begin_attention_cooperative(query, &tokens, |_, _| Ok(())).await }
+        unsafe { self.begin_attention_with_projection_cooperative(query, &tokens, projection, |_, _| Ok(())).await }
     }
     /// # Safety
     /// Attention output is complete and immutable; no external writes race the

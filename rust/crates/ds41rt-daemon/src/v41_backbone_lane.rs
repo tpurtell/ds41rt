@@ -32,6 +32,7 @@ pub(crate) struct BackboneLaneWeights<'a> {
     library: &'a NativeLibrary,
     layers: Vec<DeviceOwner<'a, LayerWeights<'a>>>,
     placement: Option<CachePlacement>,
+    split_query_b: bool,
 }
 impl<'a> BackboneLaneWeights<'a> {
     fn layer_bytes(
@@ -39,9 +40,13 @@ impl<'a> BackboneLaneWeights<'a> {
         catalog: &OfficialV41Catalog,
         layer: usize,
     ) -> Result<[usize; 5]> {
+        Self::layer_bytes_with_split(library,catalog,layer,false)
+    }
+    fn layer_bytes_with_split(library:&NativeLibrary,catalog:&OfficialV41Catalog,layer:usize,
+        split_query_b:bool)->Result<[usize;5]> {
         Ok([
             BackboneHcWeights::device_bytes(catalog, layer)?,
-            AttentionQueryWeights::device_bytes(library, catalog, layer)?,
+            AttentionQueryWeights::device_bytes_with_split(library, catalog, layer,split_query_b)?,
             AttentionOutputWeights::device_bytes(library, catalog, layer)?,
             BackboneSharedWeights::device_bytes(library, catalog, layer)?,
             BackboneRouterWeights::device_bytes(catalog, layer)?,
@@ -348,6 +353,7 @@ pub(crate) struct BackboneLane<'w, 'a> {
     weights: &'w BackboneLaneWeights<'a>,
     block: BackboneBlockWave<'w, 'a>,
     query: AttentionQueryWave<'w, 'a>,
+    tp2_query: Option<crate::v41_projection_tp2::Wave<'w,'a>>,
     projection: AttentionOutputWave<'w, 'a>,
     shared: Option<BackboneSharedWave<'w, 'a>>,
     router: BackboneRouterWave<'w, 'a>,
@@ -380,6 +386,7 @@ impl<'w, 'a> BackboneLane<'w, 'a> {
     fn new_inner(weights: &'w BackboneLaneWeights<'a>, capacity: u32, budget: usize, first_layer: usize) -> Result<Self> {
         let mut sizes = Self::workspace_bytes(weights.library, capacity)?;
         if weights.placement.is_some() { sizes[3] = 0; }
+        sizes[1]=AttentionQueryWave::device_bytes_with_split(weights.library,capacity,weights.split_query_b)?;
         let total = sizes.into_iter().try_fold(0usize, |n, b| {
             n.checked_add(b)
                 .ok_or_else(|| anyhow::anyhow!("backbone lane budget overflow"))
@@ -394,6 +401,7 @@ impl<'w, 'a> BackboneLane<'w, 'a> {
             weights,
             block: first.hc.block(capacity as usize, sizes[0])?,
             query: first.query.wave(capacity, sizes[1])?,
+            tp2_query: None,
             projection: first.projection.wave(capacity, sizes[2])?,
             shared: first.shared.as_ref().map(|w| w.wave(capacity,sizes[3])).transpose()?,
             sparse: Some(SparseAttentionWave::new(weights.library, capacity as usize, sizes[4])?),
@@ -472,7 +480,7 @@ impl<'w, 'a> BackboneLane<'w, 'a> {
         tokens: &[u32], positions: &[u64]) -> Result<AttentionQueryOutput<'_>> {
         self.enter(Phase::Idle)?;
         ensure!(self.layer == 0 && tokens.len() == positions.len(), "invalid token entry");
-        let result = unsafe { self.block.begin_attention_cooperative(&mut self.query, positions,
+        let result = unsafe { self.block.begin_attention_with_projection_cooperative(&mut self.query, positions,self.tp2_query.as_mut(),
             |stream, destination| embedding.enqueue_into(tokens, stream, destination)).await? };
         self.phase = Phase::Query;
         Ok(result)
@@ -481,7 +489,7 @@ impl<'w, 'a> BackboneLane<'w, 'a> {
     /// Same ownership contract as begin_prepared, retained across suspension.
     pub async unsafe fn begin_prepared_cooperative(&mut self) -> Result<AttentionQueryOutput<'_>> {
         self.enter(Phase::Prepared)?;
-        let result = unsafe { self.block.begin_prepared_attention_cooperative(&mut self.query).await? };
+        let result = unsafe { self.block.begin_prepared_attention_with_projection_cooperative(&mut self.query,self.tp2_query.as_mut()).await? };
         self.phase = Phase::Query;
         Ok(result)
     }
@@ -894,6 +902,7 @@ mod tests {
             library: &library,
             layers: vec![],
             placement: None,
+            split_query_b: false,
         };
         // Native AOT variants supply scratch extents; validate budget boundaries
         // against this library instead of totals from an older export build.
