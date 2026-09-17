@@ -480,7 +480,7 @@ extern "C" int32_t ds41rt_v41_sparse_attention_bounded(const uint16_t* query,con
       partial,scratch_bytes,parts,window_begins);
 }
 
-extern "C" int32_t ds41rt_v41_sparse_attention_batch_validate(
+template<int Heads> static int32_t validate_batch(
     const uint16_t* query,const float* sink,const uint64_t* metadata,
     const int32_t* selected,uint16_t* output,int32_t rows,
     const ds41rt_v41_sparse_kv_t* host_views,const ds41rt_v41_sparse_kv_t* device_views,
@@ -494,12 +494,12 @@ extern "C" int32_t ds41rt_v41_sparse_attention_batch_validate(
   for(int row=0;row<rows;++row) {
     const auto& v=host_views[row];
     if(v.compressed!=compressed)return cudaErrorInvalidValue;
-    const auto status=validate_attention(query,sink,metadata,selected,output,rows,0,
+    const auto status=validate_attention<Heads>(query,sink,metadata,selected,output,rows,0,
         &v,nullptr,partial,scratch_bytes,parts,begins);
     if(status!=cudaSuccess)return status;
     const void* common[]={query,sink,metadata,selected,output,begins,partial,v.window_end,v.pages,v.source_end};
-    const uint64_t bytes[]={uint64_t(rows)*65536,256,uint64_t(rows)*80,uint64_t(rows)*2048,
-        uint64_t(rows)*65536,uint64_t(rows)*8,uint64_t(rows)*parts*64*514*4,8,uint64_t(v.page_stride)*4,8};
+    const uint64_t bytes[]={uint64_t(rows)*Heads*1024,Heads*4,uint64_t(rows)*80,uint64_t(rows)*2048,
+        uint64_t(rows)*Heads*1024,uint64_t(rows)*8,uint64_t(rows)*parts*Heads*514*4,8,uint64_t(v.page_stride)*4,8};
     for(int i=0;i<10;++i) {
       if((i==3 || i>=8) && !compressed)continue;
       if(!disjoint(device_views,descriptor_bytes,common[i],bytes[i]))return cudaErrorInvalidValue;
@@ -513,21 +513,21 @@ extern "C" int32_t ds41rt_v41_sparse_attention_batch_validate(
   }
   return cudaSuccess;
 }
-template<bool FP4> static int32_t dispatch_batch(const uint16_t* query,const float* sink,
+template<bool FP4,int Heads> static int32_t dispatch_batch(const uint16_t* query,const float* sink,
     const uint64_t* metadata,const int32_t* selected,uint16_t* output,int32_t rows,
     const ds41rt_v41_sparse_kv_t* views,void* stream,const uint64_t* begins,
     float* partial,int32_t parts) {
   ds41rt_v41_sparse_kv_t unused{};
-  attend<true,1,FP4,true><<<dim3(rows,4,parts),128,kSharedBytes,reinterpret_cast<cudaStream_t>(stream)>>>(
+  attend<true,1,FP4,true,Heads><<<dim3(rows,Heads/16,parts),128,kSharedBytes,reinterpret_cast<cudaStream_t>(stream)>>>(
     reinterpret_cast<const __nv_bfloat16*>(query),sink,metadata,selected,
     reinterpret_cast<__nv_bfloat16*>(output),0,unused,partial,begins,views);
   const auto status=cudaGetLastError();
   if(status!=cudaSuccess)return status;
-  merge<><<<dim3(rows,64),256,0,reinterpret_cast<cudaStream_t>(stream)>>>(
+  merge<Heads><<<dim3(rows,Heads),256,0,reinterpret_cast<cudaStream_t>(stream)>>>(
     partial,sink,reinterpret_cast<__nv_bfloat16*>(output),parts);
   return cudaGetLastError();
 }
-extern "C" int32_t ds41rt_v41_sparse_attention_batch(
+template<int Heads> static int32_t launch_batch(
     const uint16_t* query,const float* sink,const uint64_t* metadata,
     const int32_t* selected,uint16_t* output,int32_t rows,
     const ds41rt_v41_sparse_kv_t* device_views,void* stream,const uint64_t* begins,
@@ -535,8 +535,8 @@ extern "C" int32_t ds41rt_v41_sparse_attention_batch(
   // Contents were host-validated before upload/replay; never download metadata.
   if(rows<1 || rows>64 || compressed<0 || compressed>2 || parts!=(compressed?10:2) ||
       !device_views || !begins || !partial)return cudaErrorInvalidValue;
-  return compressed==2?dispatch_batch<true>(query,sink,metadata,selected,output,rows,device_views,stream,begins,partial,parts):
-      dispatch_batch<false>(query,sink,metadata,selected,output,rows,device_views,stream,begins,partial,parts);
+  return compressed==2?dispatch_batch<true,Heads>(query,sink,metadata,selected,output,rows,device_views,stream,begins,partial,parts):
+      dispatch_batch<false,Heads>(query,sink,metadata,selected,output,rows,device_views,stream,begins,partial,parts);
 }
 #ifdef DS41RT_HAVE_V41_ATTENTION_AOT
 extern "C" int32_t ds41rt_v41_sparse_attention_batch_aot(
@@ -566,4 +566,38 @@ extern "C" int32_t ds41rt_v41_sparse_attention_heads32_bounded(
   if(!window_begins || (!partial && (parts!=1 || scratch_bytes!=0)))return cudaErrorInvalidValue;
   return launch_attention<32>(query,sink,metadata,selected,output,rows,window_width,view,stream,
       partial,scratch_bytes,parts,window_begins);
+}
+
+extern "C" int32_t ds41rt_v41_sparse_attention_batch_validate(
+    const uint16_t* query,const float* sink,const uint64_t* metadata,
+    const int32_t* selected,uint16_t* output,int32_t rows,
+    const ds41rt_v41_sparse_kv_t* host_views,const ds41rt_v41_sparse_kv_t* device_views,
+    const uint64_t* begins,float* partial,uint64_t scratch_bytes,int32_t parts,int32_t compressed) {
+  return validate_batch<64>(query,sink,metadata,selected,output,rows,host_views,device_views,
+      begins,partial,scratch_bytes,parts,compressed);
+}
+extern "C" int32_t ds41rt_v41_sparse_attention_batch(
+    const uint16_t* query,const float* sink,const uint64_t* metadata,
+    const int32_t* selected,uint16_t* output,int32_t rows,
+    const ds41rt_v41_sparse_kv_t* device_views,void* stream,const uint64_t* begins,
+    float* partial,int32_t parts,int32_t compressed) {
+  return launch_batch<64>(query,sink,metadata,selected,output,rows,device_views,stream,
+      begins,partial,parts,compressed);
+}
+
+extern "C" int32_t ds41rt_v41_sparse_attention_heads32_batch_validate(
+    const uint16_t* query,const float* sink,const uint64_t* metadata,
+    const int32_t* selected,uint16_t* output,int32_t rows,
+    const ds41rt_v41_sparse_kv_t* host_views,const ds41rt_v41_sparse_kv_t* device_views,
+    const uint64_t* begins,float* partial,uint64_t scratch_bytes,int32_t parts,int32_t compressed) {
+  return validate_batch<32>(query,sink,metadata,selected,output,rows,host_views,device_views,
+      begins,partial,scratch_bytes,parts,compressed);
+}
+extern "C" int32_t ds41rt_v41_sparse_attention_heads32_batch(
+    const uint16_t* query,const float* sink,const uint64_t* metadata,
+    const int32_t* selected,uint16_t* output,int32_t rows,
+    const ds41rt_v41_sparse_kv_t* device_views,void* stream,const uint64_t* begins,
+    float* partial,int32_t parts,int32_t compressed) {
+  return launch_batch<32>(query,sink,metadata,selected,output,rows,device_views,stream,
+      begins,partial,parts,compressed);
 }

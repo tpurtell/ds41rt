@@ -226,3 +226,14 @@ rejected. Compute Sanitizer memcheck reports zero errors. CUDA 13.3 SM120a
 compilation passes both with and without the AOT feature macro; numerical tests
 use the standalone WMMA build. Full native AOT integration and serving performance
 are not established by these tests. Evidence: `~/.cache/ds41rt-v6-heads32/`.
+
+Compact 32-head multi-request batch validation and launch are now implemented.
+The existing 64-head batch API shares the same validation rules and retains its
+original geometry. Additional six-row tests cover distinct request descriptors
+for all three cache formats, compare both local head halves against full-head
+batch output, and mutate descriptors between captured graph replays. Undersized
+scratch and descriptor/output overlap are rejected. The expanded suite passes
+on both RTX cards, and its memory-sanitized run reports zero errors. These are
+native WMMA checks; Rust binding, compact AOT and replicated-cache serving remain
+outstanding. Evidence: `batch-selftest*.log` and `batch-memcheck.log` in the same
+local bundle.

@@ -155,6 +155,70 @@ int main() {
           if(compact[size_t(row)*32*512+col]!=actual[(size_t(row)*64+rank*32)*512+col])
             throw std::runtime_error("compact TP2 attention disagrees with full-head output");
       }
+      if(rows==6 && begin==0 && mode==0 && parts==3) {
+        const int batch_parts=format?10:2;
+        Buffer device_views(rows*sizeof(view)),bad_end(8);
+        bad_end.Copy<uint64_t>({0});
+        std::vector<ds41rt_v41_sparse_kv_t> views(rows,view);
+        for(int row=1;row<rows;row+=2)
+          views[row].window_end=reinterpret_cast<const uint64_t*>(bad_end.data);
+        device_views.Copy(views);
+        auto* dv=reinterpret_cast<const ds41rt_v41_sparse_kv_t*>(device_views.data);
+        Buffer batch_scratch(size_t(rows)*batch_parts*64*514*4);
+        auto* bs=reinterpret_cast<float*>(batch_scratch.data);
+        Check(static_cast<cudaError_t>(ds41rt_v41_sparse_attention_batch_validate(
+            q,sk,m,s,out,rows,views.data(),dv,wb,bs,batch_scratch.bytes,batch_parts,format)));
+        Check(static_cast<cudaError_t>(ds41rt_v41_sparse_attention_batch(
+            q,sk,m,s,out,rows,dv,test_stream,wb,bs,batch_parts,format)));
+        Check(cudaStreamSynchronize(test_stream));
+        Check(cudaMemcpy(actual.data(),output.data,output.bytes,cudaMemcpyDeviceToHost));
+        Buffer half_query(size_t(rows)*32*512*2),half_output(half_query.bytes),half_sink(128);
+        Buffer half_scratch(batch_scratch.bytes/2);
+        for(int rank=0;rank<2;++rank) {
+          std::vector<uint16_t> compact(half_query.bytes/2);
+          for(int row=0;row<rows;++row)
+            std::copy_n(varied_query.data()+(size_t(row)*64+rank*32)*512,32*512,
+                compact.data()+size_t(row)*32*512);
+          half_query.Copy(compact);
+          half_sink.Copy(std::vector<float>(varied_sink.begin()+rank*32,varied_sink.begin()+(rank+1)*32));
+          auto* hq=reinterpret_cast<const uint16_t*>(half_query.data);
+          auto* hs=reinterpret_cast<const float*>(half_sink.data);
+          auto* ho=reinterpret_cast<uint16_t*>(half_output.data);
+          auto* hp=reinterpret_cast<float*>(half_scratch.data);
+          auto validate=[&](uint64_t bytes,const ds41rt_v41_sparse_kv_t* descriptors) {
+            return ds41rt_v41_sparse_attention_heads32_batch_validate(hq,hs,m,s,ho,rows,
+                views.data(),descriptors,wb,hp,bytes,batch_parts,format);
+          };
+          Check(static_cast<cudaError_t>(validate(half_scratch.bytes,dv)));
+          if(validate(half_scratch.bytes-1,dv)!=cudaErrorInvalidValue ||
+              validate(half_scratch.bytes,reinterpret_cast<const ds41rt_v41_sparse_kv_t*>(half_output.data))!=cudaErrorInvalidValue)
+            throw std::runtime_error("compact batch validation missed scratch/descriptor overlap");
+          cudaGraph_t graph;cudaGraphExec_t executable;
+          Check(cudaStreamBeginCapture(test_stream,cudaStreamCaptureModeThreadLocal));
+          Check(static_cast<cudaError_t>(ds41rt_v41_sparse_attention_heads32_batch(
+              hq,hs,m,s,ho,rows,dv,test_stream,wb,hp,batch_parts,format)));
+          Check(cudaStreamEndCapture(test_stream,&graph));
+          Check(cudaGraphInstantiate(&executable,graph,nullptr,nullptr,0));
+          for(int replay=0;replay<2;++replay) {
+            Check(cudaGraphLaunch(executable,test_stream));Check(cudaStreamSynchronize(test_stream));
+            Check(cudaMemcpy(compact.data(),half_output.data,half_output.bytes,cudaMemcpyDeviceToHost));
+            for(int row=0;row<rows;++row)for(size_t col=0;col<32*512;++col) {
+              const auto expected=replay?0:actual[(size_t(row)*64+rank*32)*512+col];
+              if(compact[size_t(row)*32*512+col]!=expected)
+                throw std::runtime_error("compact batch descriptor replay mismatch");
+            }
+            if(replay==0) {
+              auto invalid=views;
+              for(auto& v:invalid)v.window_end=reinterpret_cast<const uint64_t*>(bad_end.data);
+              Check(static_cast<cudaError_t>(ds41rt_v41_sparse_attention_heads32_batch_validate(
+                  hq,hs,m,s,ho,rows,invalid.data(),dv,wb,hp,half_scratch.bytes,batch_parts,format)));
+              device_views.Copy(invalid);
+            }
+          }
+          Check(cudaGraphExecDestroy(executable));Check(cudaGraphDestroy(graph));
+          device_views.Copy(views);
+        }
+      }
       query.Fill(0);sink.Fill(0);
       ++checks;
     }

@@ -60,7 +60,7 @@ int32_t ds41rt_v41_sparse_attention_bounded(
     const int32_t* selected,uint16_t* output,int32_t rows,int32_t window_width,
     const ds41rt_v41_sparse_kv_t* view,void* stream,const uint64_t* window_begins,
     float* partial,uint64_t scratch_bytes,int32_t parts);
-// Small multi-request split attention, homogeneous compressed format, rows 1..48.
+// Small multi-request split attention, homogeneous compressed format, rows 1..64.
 // Each row has one device descriptor; metadata/query/selection use global row
 // indices. Width is per-row automatic. Parts must be 2 without source, 10 with
 // source. Scratch is [rows,parts,64,514] FP32 and bounds are mandatory (zeros
@@ -101,6 +101,23 @@ int32_t ds41rt_v41_sparse_attention_heads32_bounded(
     const int32_t* selected,uint16_t* output,int32_t rows,int32_t window_width,
     const ds41rt_v41_sparse_kv_t* view,void* stream,const uint64_t* window_begins,
     float* partial,uint64_t scratch_bytes,int32_t parts);
+// Compact-head batch: same batch ownership contract, 32-head buffer extents.
+int32_t ds41rt_v41_sparse_attention_heads32_batch_validate(
+    const uint16_t* query,const float* sink,const uint64_t* metadata,
+    const int32_t* selected,uint16_t* output,int32_t rows,
+    const ds41rt_v41_sparse_kv_t* host_views,const ds41rt_v41_sparse_kv_t* device_views,
+    const uint64_t* begins,float* partial,uint64_t scratch_bytes,int32_t parts,int32_t compressed);
+// Requires successful validation for EXACTLY these buffers, dimensions, format,
+// and descriptors before launch and every replay. Upload the matching host
+// descriptors on the stream first. No allocations or module resolution here.
+// Device descriptors and referenced allocations remain live/immutable through
+// completion. Capture retains device descriptor addresses, not their contents;
+// callers may change contents only after prior consumers have completed.
+int32_t ds41rt_v41_sparse_attention_heads32_batch(
+    const uint16_t* query,const float* sink,const uint64_t* metadata,
+    const int32_t* selected,uint16_t* output,int32_t rows,
+    const ds41rt_v41_sparse_kv_t* device_views,void* stream,const uint64_t* begins,
+    float* partial,int32_t parts,int32_t compressed);
 #ifdef __cplusplus
 }
 #endif
