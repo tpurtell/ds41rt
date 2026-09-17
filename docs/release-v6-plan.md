@@ -1555,3 +1555,29 @@ Any attempt to remove it needs a separate event/graph handoff assessment.
 The unimplemented draft attention/projection splits remain distinct from the
 measured expert option. Release documentation must not describe all draft
 components as evaluated or the entire draft stack as parallelized.
+
+### Single-RTX launch and historical variability
+
+The clean candidate single-RTX launch passes concurrent text/code/10,824-token
+needle requests and prefix reuse, reaching readiness in 58.63 seconds including
+orchestration. Its automatic budget is 18,736,128 GPU tokens plus 2,235,904 RAM
+tokens, totaling 20,972,032. Pinned RAM is 3,489,660,928 bytes (3.25 GiB), including
+staging and overhead. The single-RTX performance campaign is running.
+
+The completed dual 2K-context phase passes all 27 requests and cache checks,
+with weighted throughput 103.81 tok/s. Dual target-only decode completes its
+three samples: weighted 49.95, code 51.67, reasoning code 50.74, topic 48.59 and
+counting 49.53 tok/s. These are candidate measurements, not new TP2-option wins.
+
+Inspecting the archived v5 raw retained samples adds context to the historical
+gap. Weighted rates calculated separately for each repeat are:
+
+| Retained context | V5 repeats tok/s | V6 repeats tok/s |
+|---|---|---|
+| 128K | 104.59 / 96.19 / 105.18 | 99.05 / 97.87 / 98.24 |
+| 256K | 94.73 / 95.21 / 98.65 | 92.65 / 95.28 / 90.18 |
+
+The ranges overlap, but this is neither an interleaved control nor proof that
+the decrease is noise. In particular the 256K candidate remains lower overall.
+`retained-repeat-variability.json` records the calculation and archived input
+member hash without extracting the entire old evidence bundle.
