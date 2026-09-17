@@ -16,7 +16,7 @@ pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Recei
     let minimum_expert_layers = match args.rtx_expert_layers {
         memory::LocalLayers::Auto => 20,
         memory::LocalLayers::Count(count) => {
-            ensure!((20..=40).contains(&count), "dual RTX expert layers must be 20..=40");
+            ensure!((1..=40).contains(&count), "dual RTX expert layers must be 1..=40");
             count as usize
         }
     };

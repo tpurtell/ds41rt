@@ -11,6 +11,21 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class NativeReleaseLauncherTest(unittest.TestCase):
+    def test_explicit_dual_layer_boundary_covers_delegated_experts(self) -> None:
+        for layout, layers, expected in [('2', 'auto', '20'), ('2', '17', '17'),
+                                         ('2', '1', '1'), ('2', '40', '39'),
+                                         ('1', '17', '0'), ('1', '0', '0')]:
+            with self.subTest(layout=layout, layers=layers):
+                result = subprocess.run(['bash', '-c',
+                    'source scripts/release-common.sh; release_spark_first_layer "$1" "$2"',
+                    'test', layout, layers], cwd=ROOT, text=True, capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.strip(), expected)
+        result = subprocess.run(['bash', '-c',
+            'source scripts/release-common.sh; release_spark_first_layer 2 0'],
+            cwd=ROOT, text=True, capture_output=True)
+        self.assertNotEqual(result.returncode, 0)
+
     def test_spark_build_arguments_survive_ssh_empty_argument_elision(self) -> None:
         source = (ROOT / 'build.sh').read_text()
         block = source.split('echo "== building Spark development and inference images natively on $seed_host =="', 1)[1]

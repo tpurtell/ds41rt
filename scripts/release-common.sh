@@ -85,7 +85,7 @@ release_trim() {
 release_known_key() {
   case "$1" in
     EXL3_PAIRED_TP4) return 0 ;;
-    HTTP_QUEUE_DEPTH|HTTP_QUEUE_WAIT_MS|MODEL_ID|MODEL_VARIANT|MODEL_REVISION|EXPERT_FORMAT|DSPARK|DSPARK_DRAFT_POLICY|RTX_GPUS|COORDINATOR_GPU|COORDINATOR_GPU_UUID|COORDINATOR_GPU_PCI_BUS_ID|COORDINATOR_GPU_HEADROOM_GIB|KV_POOL_TOKENS|KV_POOL_SIZE|HOST_CACHE_BYTES|MEMORY_RESERVATION|MAX_CONTEXT_TOKENS|MAX_OUTPUT_TOKENS|CONCURRENCY|PREFIX_CACHE_ENTRIES|PREFILL_BATCH_TOKENS|SPARK_DEVICE_BUDGET_BYTES|SPARK_REDUCTION_MIN_ROWS|SPARKINFER_EXL3|ADDR|EXPERT_PORT|SPARK_[0-3]_HOST|SPARK_[0-3]_LANE_A|SPARK_[0-3]_LANE_B|COORDINATOR_DOCKER_DEV|COORDINATOR_DOCKER_INFERENCE|SPARK_EXPERT_DOCKER_DEV|SPARK_EXPERT_DOCKER_INFERENCE)
+    HTTP_QUEUE_DEPTH|HTTP_QUEUE_WAIT_MS|MODEL_ID|MODEL_VARIANT|MODEL_REVISION|EXPERT_FORMAT|DSPARK|DSPARK_DRAFT_POLICY|RTX_GPUS|RTX_EXPERT_LAYERS|COORDINATOR_GPU|COORDINATOR_GPU_UUID|COORDINATOR_GPU_PCI_BUS_ID|COORDINATOR_GPU_HEADROOM_GIB|KV_POOL_TOKENS|KV_POOL_SIZE|HOST_CACHE_BYTES|MEMORY_RESERVATION|MAX_CONTEXT_TOKENS|MAX_OUTPUT_TOKENS|CONCURRENCY|PREFIX_CACHE_ENTRIES|PREFILL_BATCH_TOKENS|SPARK_DEVICE_BUDGET_BYTES|SPARK_REDUCTION_MIN_ROWS|SPARKINFER_EXL3|ADDR|EXPERT_PORT|SPARK_[0-3]_HOST|SPARK_[0-3]_LANE_A|SPARK_[0-3]_LANE_B|COORDINATOR_DOCKER_DEV|COORDINATOR_DOCKER_INFERENCE|SPARK_EXPERT_DOCKER_DEV|SPARK_EXPERT_DOCKER_INFERENCE)
       return 0
       ;;
     *)
@@ -105,6 +105,7 @@ release_load_config() {
   EXPERT_FORMAT=native
   DSPARK=on
   DSPARK_DRAFT_POLICY=adaptive
+  RTX_EXPERT_LAYERS=auto
   RTX_GPUS=auto
   COORDINATOR_GPU=0
   COORDINATOR_GPU_UUID=
@@ -182,6 +183,8 @@ release_load_config() {
     release_die "SPARKINFER_EXL3=disable requires EXPERT_FORMAT=native"
   [[ "$SPARKINFER_EXL3" != force || "$EXPERT_FORMAT" == exl3 ]] ||
     release_die "SPARKINFER_EXL3=force requires EXPERT_FORMAT=exl3"
+  [[ "$RTX_EXPERT_LAYERS" == auto || "$RTX_EXPERT_LAYERS" =~ ^([0-9]|[1-3][0-9]|40)$ ]] ||
+    release_die "RTX_EXPERT_LAYERS must be auto or 0..40"
   case "$RTX_GPUS" in auto|1|2) ;; *) release_die "RTX_GPUS must be auto, 1, or 2" ;; esac
   [[ "$COORDINATOR_GPU" =~ ^[0-9]+$ ]] || release_die "COORDINATOR_GPU must be a non-negative host GPU index"
   [[ -z "$COORDINATOR_GPU_UUID" || "$COORDINATOR_GPU_UUID" =~ ^GPU-[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$ ]] ||
@@ -589,4 +592,19 @@ release_select_build_hosts() {
     done
     RELEASE_BUILD_HOSTS+=("$host")
   done
+}
+
+# The Spark interval must cover every routed layer the coordinator delegates.
+# Auto currently guarantees at least 20 RTX layers for the dual layout; an
+# explicit boundary can be lower while the coordinator-produced plan is pending.
+release_spark_first_layer() {
+  local layout="$1" layers="$2"
+  if [[ "$layout" == 1 ]]; then printf '0\n'; return; fi
+  [[ "$layout" == 2 ]] || release_die "invalid RTX layout"
+  if [[ "$layers" == auto ]]; then printf '20\n'; return; fi
+  [[ "$layers" =~ ^([1-9]|[1-3][0-9]|40)$ ]] || release_die "dual RTX expert layers must be 1..40"
+  # The existing expert service requires a nonempty interval even when every
+  # routed layer is local. Keep its last layer as an unused transport endpoint.
+  if [[ "$layers" == 40 ]]; then printf '39\n'; return; fi
+  printf '%s\n' "$layers"
 }

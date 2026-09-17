@@ -21,7 +21,7 @@ pub(crate) fn expert_layers(requested: super::LocalLayers, prefix_peak: &[[usize
     let fits = |count: usize| prefix_peak[count-1].iter().zip(available).all(|(&used, free)| used <= free);
     let layers = match requested {
         super::LocalLayers::Count(count) => {
-            ensure!((20..=40).contains(&count), "dual RTX expert layers must be 20..=40");
+            ensure!((1..=40).contains(&count), "dual RTX expert layers must be 1..=40");
             count
         }
         super::LocalLayers::Auto => (20..=40).rev().find(|&count| fits(count))
@@ -179,6 +179,12 @@ mod tests {
             [available[0], 24*layer_bytes])?, 24);
         assert!(expert_layers(super::super::LocalLayers::Auto, &prefix,
             [available[0], 20*layer_bytes-1]).is_err());
+        // Explicit placement can return expert memory to replicated KV without
+        // changing the existing automatic launcher boundary before negotiation.
+        assert_eq!(expert_layers(super::super::LocalLayers::Count(17), &prefix,
+            [17*layer_bytes, 18*layer_bytes])?, 17);
+        assert!(expert_layers(super::super::LocalLayers::Count(18), &prefix,
+            [17*layer_bytes, 18*layer_bytes]).is_err());
         Ok(())
     }
 
