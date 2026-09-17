@@ -61,6 +61,9 @@ impl<'library> DsparkWeights<'library> {
     }
 }
 impl DsparkStage<'_, '_> {
+    #[cfg(test)]
+    pub(super) fn expert_diagnostics(&self)->[Ds41rtDeviceBuffer;4] {self.ffn.expert_diagnostics()}
+
     pub fn inputs(&self) -> [Ds41rtDeviceBuffer; 2] {
         self.boundary.inputs()
     }

@@ -1224,3 +1224,26 @@ comparison and acceptance measurement remain necessary. The diagnostic test
 continues to fail rather than asserting full-reference equivalence. Evidence:
 `dspark-tp2-chain-hardware.log` in the same directory. Normal v5 serving was
 restored after each test. No serving speed or acceptance claim follows.
+
+### Draft split trace and serving experiment entry point
+
+Stage tracing locates the C8 difference in one of 286,720 stage-0 expert output
+values (absolute 0.001953125) despite identical normalized input, expert IDs and
+routing weights. Later stages retain identical expert IDs at C8, but quantized
+projections amplify the changed values. At C16, stage 0 changes three of 573,440
+expert output values (maximum 0.00390625); stage 2 eventually changes three of
+336 expert IDs, and draft token IDs differ. Thus the split is not bit-exact
+with full experts, even though independent TP2 lane execution is exact against
+sequential TP2. This is evidence of numerical propagation from the partition,
+not proof of equivalent draft acceptance. The full-reference diagnostic remains
+failing; it now collects floating-point discrepancies through later batch sizes
+while retaining strict token checks. The same-backend lane/cancellation test
+remains the scheduling correctness check.
+
+An experimental `--tp2-dspark-experts` flag selects the native split in dual-RTX
+serving and requires `--dspark`. It rejects EXL3 through the loader, preserves
+the existing full path by default, and admits weights/workspaces against both
+GPUs' currently free memory before loading. The serving load reserves the main
+context owner and two draft waves. Serving smoke, content acceptance and decode
+measurements must establish whether this option is useful; stage tracing does
+not establish those properties.

@@ -233,6 +233,14 @@ impl<'library> DsparkWeights<'library> {
         Self::load_with_width(library, catalog, draft_capacity, 1, draft_budget, pinned_staging_bytes, width, exl3_directory)
     }
 
+    pub fn load_serving_tp2(library:&'library NativeLibrary,catalog:&OfficialV41Catalog,
+        context_capacity:u32,requests:u32,mut budgets:[usize;2],pinned_staging_bytes:usize,width:usize)->Result<Self> {
+        let capacity=DsparkAttentionWave::projection_capacity_with_width(requests,width)?;
+        budgets[1]=budgets[1].checked_sub(DsparkMainContext::device_bytes(library,context_capacity)?)
+            .context("TP2 draft main context exceeds RTX1 budget")?;
+        Self::load_tp2_with_width(library,catalog,capacity,2,budgets,pinned_staging_bytes,width)
+    }
+
     /// Native routed-expert TP2; attention/shared/projections stay on RTX1.
     /// Both ranks are admitted before loading any checkpoint payload.
     pub fn load_tp2_with_width(library:&'library NativeLibrary,catalog:&OfficialV41Catalog,

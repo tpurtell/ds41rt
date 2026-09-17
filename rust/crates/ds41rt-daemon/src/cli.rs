@@ -540,6 +540,9 @@ pub(crate) struct NativeServeArgs {
     /// Experimental TP2 output-B projection; independent of other TP2 switches, requires two RTX GPUs.
     #[arg(long)]
     pub tp2_output_projection: bool,
+    /// Experimental native dSpark routed-expert TP2; requires --dspark and two RTX GPUs.
+    #[arg(long)]
+    pub tp2_dspark_experts: bool,
 
     /// Maximum tokens per prefill step. Storage rounds up to an AOT capacity
     /// (80, 256, 1024, or 4096); all expert peers must support that capacity.

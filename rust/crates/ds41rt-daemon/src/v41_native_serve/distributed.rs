@@ -243,9 +243,15 @@ pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Recei
     if args.dspark && args.dspark_draft_limit > 5 { second.reserve_sparse_decode_rows(64)?; }
     memory_checkpoint("second target lane")?;
     let draft_weights = if args.dspark {
-        Some(devices[1].own(|| crate::v41_experts::dspark::DsparkWeights::load_serving_with_width(&lib, &catalog,
-            capacity, args.concurrency, 32 << 30, 16 << 20, if args.dspark_draft_limit > 5 { 7 } else { 5 },
-            Some(&args.native_lib.parent().context("native library directory missing")?.join("exl3/dspark"))))?)
+        let width=if args.dspark_draft_limit>5 {7} else {5};
+        Some(if args.tp2_dspark_experts {
+            let budgets=[devices[0].run(||Ok(lib.cuda_memory_info()?.0.min(32usize<<30)))?,
+                devices[1].run(||Ok(lib.cuda_memory_info()?.0.min(32usize<<30)))?];
+            devices[1].own(||crate::v41_experts::dspark::DsparkWeights::load_serving_tp2(&lib,&catalog,
+                capacity,args.concurrency,budgets,16<<20,width))?
+        } else {devices[1].own(|| crate::v41_experts::dspark::DsparkWeights::load_serving_with_width(&lib, &catalog,
+            capacity, args.concurrency, 32 << 30, 16 << 20, width,
+            Some(&args.native_lib.parent().context("native library directory missing")?.join("exl3/dspark"))))?})
     } else { None };
     memory_checkpoint("draft weights")?;
     let mut draft = draft_weights.as_ref().map(|weights| DraftRuntime::with_distributed_requests(

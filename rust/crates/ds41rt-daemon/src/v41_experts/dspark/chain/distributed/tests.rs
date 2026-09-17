@@ -33,7 +33,7 @@ fn check_chain(tp2:bool,full_reference:bool) -> Result<()> {
     let full_experts=if tp2 && full_reference {Some(devices[1].own(||DsparkWeights::load_with_width(&lib,&catalog,capacity,
         1,32usize<<30,16<<20,width,None))?)} else {None};
     let reference_weights=full_experts.as_deref().unwrap_or(&weights);
-    let compare=|actual:&[u8],expected:&[u8],part:usize|->bool {
+    let compare_raw=|actual:&[u8],expected:&[u8],part:usize|->bool {
         if !tp2 || !full_reference || part==0 {return actual==expected;}
         if actual.len()!=expected.len() {return false;}
         let mut squared=0f64;let mut norm=0f64;let mut maximum=(0f32,0f32,0f32,0usize);let mut failed=0;
@@ -67,6 +67,15 @@ fn check_chain(tp2:bool,full_reference:bool) -> Result<()> {
             eprintln!("TP2 draft distribution max_total_variation={max_tv} max_probability_delta={max_probability_delta}");
             max_tv<=1e-3 && max_probability_delta<=1e-3 && (squared/norm.max(1e-30)).sqrt()<1e-3
         } else { failed==0 && (squared/norm.max(1e-30)).sqrt()<1e-4 }
+    };
+    // Collect all floating-point diagnostics before failing, so a numerical
+    // discrepancy at C3/C8 does not hide the C16 or cancellation evidence.
+    let numeric_failures=std::cell::Cell::new(0usize);
+    let compare=|actual:&[u8],expected:&[u8],part:usize| {
+        let matched=compare_raw(actual,expected,part);
+        if tp2 && full_reference && part>0 && !matched {
+            numeric_failures.set(numeric_failures.get()+1);true
+        } else {matched}
     };
     let budgets = devices[1].run(|| DistributedDsparkChain::device_bytes(&weights, 16, 64640))?;
     let mut lanes = [DistributedDsparkChain::new(devices, &weights, &embedding, [&shards[0], &shards[1]], 16, budgets)?,
@@ -148,6 +157,23 @@ fn check_chain(tp2:bool,full_reference:bool) -> Result<()> {
                 }
             }
             for (lane, chain) in lanes.iter().enumerate() {
+                if tp2 && full_reference && lane==1 && replay==0 {
+                    for stage in 0..3 {
+                        let actual=chain.chain.stages[stage].expert_diagnostics();
+                        let expected=reference.stages[stage].expert_diagnostics();
+                        for (field,((a,b),(stride,element))) in actual.into_iter().zip(expected).zip([(10240,2),(12,4),(12,4),(10240,2)]).enumerate() {
+                            let mut a_bytes=vec![0;count*width*stride];let mut b_bytes=a_bytes.clone();
+                            devices[1].run(|| {lib.copy_d2h(&mut a_bytes,a)?;lib.copy_d2h(&mut b_bytes,b)})?;
+                            let changed=a_bytes.chunks_exact(element).zip(b_bytes.chunks_exact(element)).filter(|(a,b)|a!=b).count();
+                            let decode=|x:&[u8]| if element==2 {f32::from_bits(u32::from(u16::from_ne_bytes(x.try_into().unwrap()))<<16)} else {f32::from_ne_bytes(x.try_into().unwrap())};
+                            let mut squared=0f64;let mut norm=0f64;let mut maximum=0f32;
+                            if field!=1 {for (a,b) in a_bytes.chunks_exact(element).zip(b_bytes.chunks_exact(element)) {
+                                let a=decode(a);let b=decode(b);let delta=(a-b).abs();maximum=maximum.max(delta);squared+=f64::from(delta).powi(2);norm+=f64::from(b).powi(2);
+                            }}
+                            eprintln!("TP2 stage trace requests={count} stage={stage} field={field} changed={changed}/{} relative_rms={} max_abs={maximum}",a_bytes.len()/element,(squared/norm.max(1e-30)).sqrt());
+                        }
+                    }
+                }
                 let actual = download(chain.output()?)?;
                 for part in 0..3 {
                     ensure!(compare(&actual[part],&expected[lane][part],part),
@@ -157,7 +183,7 @@ fn check_chain(tp2:bool,full_reference:bool) -> Result<()> {
                 }
             }
         }
-        eprintln!("PASS complete distributed draft tp2={tp2} width={width} requests={count}: tokens/logits/confidence checked, peer embedding, two lanes, changed cache/seed/order, cold/replay");
+        eprintln!("CHECK complete distributed draft tp2={tp2} width={width} requests={count}: tokens/logits/confidence checked, peer embedding, two lanes, changed cache/seed/order, cold/replay");
     }
     use std::{future::Future, task::{Context, Poll, Waker}};
     let bindings: Vec<Vec<_>> = (0..3).map(|stage| (0..3).map(|row| (leases[stage][row], 9)).collect()).collect();
@@ -174,5 +200,6 @@ fn check_chain(tp2:bool,full_reference:bool) -> Result<()> {
     })?;
     assert_eq!(lib.cuda_get_device()?, 0);
     eprintln!("PASS complete distributed draft cancellation, reuse, cache lease release and device restoration");
+    ensure!(numeric_failures.get()==0,"{} full-expert numerical comparisons exceeded diagnostic bounds",numeric_failures.get());
     Ok(())
 }

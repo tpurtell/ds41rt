@@ -67,6 +67,11 @@ impl<'library> DsparkWeights<'library> {
     }
 }
 impl DsparkFfn<'_, '_> {
+    #[cfg(test)]
+    pub(super) fn expert_diagnostics(&self)->[Ds41rtDeviceBuffer;4] {
+        let [hidden,ids,routing]=self.experts.inputs();
+        [hidden,ids,routing,self.experts.output().expect("draft output")]
+    }
     pub(super) fn stream(&self) -> *mut c_void {
         self.experts.stream()
     }
