@@ -45,8 +45,9 @@ impl<'w,'a> RoutedWave<'w,'a> {
         let inputs=self.inputs();
         unsafe {
             router.enqueue(inputs,rows as usize,stream)?;
-            shared.enqueue(inputs[0],self.shared.buffer,rows,stream)?;
-            self.pair.enqueue(self.stage,rows,inputs,Some(self.shared.buffer),stream)
+            let shared_output=self.shared.buffer;
+            self.pair.enqueue_with_shared(self.stage,rows,inputs,Some(shared_output),stream,
+                ||shared.enqueue(inputs[0],shared_output,rows,stream))
         }
     }
 }

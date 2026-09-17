@@ -1302,3 +1302,17 @@ and failed before requests; it is excluded. Normal serving was restored.
 Next targeted optimization: fork peer expert work before RTX1's shared expert
 execution, allowing those operations to overlap within the same graph. Current
 implementation enqueues the shared expert before the peer fork.
+
+The shared-expert overlap change is implemented: after root quantization and
+peer publication, RTX0 begins its routed expert half while RTX1 enqueues the
+shared expert and its local routed half. The same graph joins before reduction.
+No buffers, host waits or cross-lane dependencies are added. The independent
+K7 lane control still matches sequential execution exactly through C16, including
+cancellation/reuse. Evidence: `dspark-overlap-lanes-hardware.log` under
+`~/.cache/ds41rt-v6-heads32/`. The optimized build and direct before/after
+performance comparison are pending; the previous executable is retained only
+for that comparison in `~/.cache/ds41rt-v6-dspark-overlap-perf/`.
+
+A fresh GitHub check on September 17 finds no open issues or pull requests.
+The earlier PR #4 integration and issue #2/#3 fixes remain the applicable
+request/cache changes for this release.
