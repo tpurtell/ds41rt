@@ -690,3 +690,45 @@ copies. Five focused packaging tests pass, and the updated verifier accepts
 all 24 variants of the existing measured candidate package. A fresh GPU build
 through this option, exact source-pin promotion, and normal clean-image
 qualification remain pending; they will run after the measurement queue.
+
+### Full-model single-RTX reference calibration
+
+All K1–K5 collections passed with five RTX expert layers and 35 Spark expert
+layers. The same code/topic/reasoning C1/C8/C16 and mixed C4/C16 schedule yielded
+20,674 complete cost rounds, 20,514 warm rounds, and 2,405 odd-width code/mixed
+training rounds. This completes fixed-width calibration for full/EXL3 on both
+one and two RTX cards.
+
+| Held-out workload | Legacy formula median error | Affine fit median error | Affine p90 error |
+| --- | ---: | ---: | ---: |
+| Code, K2/K4 | 9.31% | 10.50% | 26.51% |
+| Mixed, K2/K4 | 28.32% | 6.64% | 19.51% |
+| Topic, K2/K4 | 8.87% | 10.10% | 26.53% |
+| Reasoning code, K2/K4 | 8.24% | 9.09% | 26.58% |
+
+The improved mixed fit trades against worse errors elsewhere. No profile is
+promoted. As with the EXL3 single-RTX fit, the reference here is the legacy
+formula, not the embedded placement profile currently used by default.
+The queued EXL3 serving comparison explicitly uses that embedded profile as
+its baseline, with its bytes checked against the tested binary's build source.
+
+| Content, single RTX / K5 | Full accepted / verified | Full acceptance | EXL3 accepted / verified | EXL3 acceptance |
+| --- | ---: | ---: | ---: | ---: |
+| Code | 4,472 / 5,200 | 86.00% | 4,422 / 5,450 | 81.14% |
+| Reasoning code | 19,662 / 34,780 | 56.53% | 26,602 / 42,740 | 62.24% |
+| Topic | 4,290 / 10,800 | 39.72% | 3,876 / 10,990 | 35.27% |
+
+Prompts, corpus hashes, thinking/effort controls, generation limits, concurrency
+points and repeat counts match for each content pair. Each includes 26 requests
+with warmup and drain. Both target and draft weights differ between checkpoints;
+this does not isolate draft-only quantization or measure answer quality. Actual
+outputs and cycle counts differ. Final adaptive acceptance and release TPS
+remain separate measurements.
+
+Evidence: `release-v5-full-single-calibration.json`, its archive, and
+`release-v5-full-single-cost-fit.json`. Archive filtering reproduced every cost
+observation and every acceptance/round record exactly, and checked the saved
+acceptance summaries. Startup allocation logs and original source hashes remain
+in the archive. All four calibration configurations are complete; this does not
+complete serving policy selection, clean builds, release qualification or v5
+publication.
