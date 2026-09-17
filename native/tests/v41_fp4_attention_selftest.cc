@@ -2,6 +2,7 @@
 #include <cuda_runtime.h>
 #include <cstdint>
 #include <cstring>
+#include <algorithm>
 #include <iostream>
 #include <stdexcept>
 #include <vector>
@@ -33,20 +34,23 @@ static uint16_t BFloat16(float value) {
 
 int main() {
   Check(static_cast<cudaError_t>(ds41rt_v41_sparse_attention_initialize()));
+  Check(static_cast<cudaError_t>(ds41rt_v41_sparse_attention_heads32_initialize()));
+  cudaStream_t test_stream;
+  Check(cudaStreamCreateWithFlags(&test_stream,cudaStreamNonBlocking));
   int checks = 0;
-  for (int rows : {1, 6, 128, 256}) {
+  for(int format : {0,1,2}) for (int rows : {1, 6, 128, 256}) {
     Buffer query(size_t(rows)*64*512*2), output(query.bytes), sink(64*4);
     Buffer window(128*512, true), window_scales(128*16, true);
     Buffer proposal(size_t(rows)*512, true), proposal_scales(size_t(rows)*16, true);
-    Buffer source(768*256, true), source_scales(768*32, true);
-    Buffer private_source(3*256, true), private_scales(3*32, true);
+    Buffer source(768*(format==2?256:512), true), source_scales(768*(format==2?32:16), true);
+    Buffer private_source(3*(format==2?256:512), true), private_scales(3*(format==2?32:16), true);
     Buffer window_end(8), source_end(8), pages(8), metadata(size_t(rows)*10*8);
     Buffer selected(size_t(rows)*512*4), bounds(size_t(rows)*8);
     Buffer scratch(size_t(rows)*3*64*514*4);
     query.Fill(0); sink.Fill(0); window.Fill(0); proposal.Fill(0);
     window_scales.Fill(127); proposal_scales.Fill(127);
-    source.Fill(0x22); private_source.Fill(0x22); // Four E2M1 ones per two bytes.
-    source_scales.Fill(0x38); private_scales.Fill(0x38); // E4M3 scale one.
+    source.Fill(format==2?0x22:0x38); private_source.Fill(format==2?0x22:0x38); // Quantized ones.
+    source_scales.Fill(format==2?0x38:127); private_scales.Fill(format==2?0x38:127); // Scale one.
     window_end.Copy<uint64_t>({2048}); source_end.Copy<uint64_t>({512});
     pages.Copy<uint32_t>({1, 0});
     ds41rt_v41_sparse_kv_t view{};
@@ -58,7 +62,7 @@ int main() {
     view.source_end=reinterpret_cast<const uint64_t*>(source_end.data);
     view.pages=reinterpret_cast<const uint32_t*>(pages.data);
     view.window_proposal_capacity=rows; view.source_capacity=768;
-    view.source_proposal_capacity=3; view.page_stride=2; view.compressed=2;
+    view.source_proposal_capacity=3; view.page_stride=2; view.compressed=format;
     for (int parts : {0, 3}) for (int begin : {-1, 0, 2048, 2049}) for (int mode : {0, 1, 2}) {
       std::vector<uint64_t> meta;
       std::vector<int32_t> ids(size_t(rows)*512, -1);
@@ -91,15 +95,71 @@ int main() {
         // Zero queries/sink give equal attention weights. Window values are
         // zero, source values are one, and the sink contributes one to the denominator.
         int windows=begin==2048?std::min(row+1,128):128;
-        int sources=mode?2:512;
+        int sources=format?(mode?2:512):0;
         uint16_t expected=begin==2049?0:BFloat16(float(sources)/float(sources+windows+1));
         for (size_t col=0; col<64*512; ++col)
           if (actual[size_t(row)*64*512+col]!=expected)
-            throw std::runtime_error("FP4 attention disagrees with closed-form reference");
+            throw std::runtime_error("attention disagrees with closed-form reference");
       }
+      // Compare compact local heads with the full-head kernel using nonuniform
+      // queries and sinks. This catches row/head strides and rank-one sink offsets.
+      std::vector<uint16_t> varied_query(query.bytes/2);
+      std::vector<float> varied_sink(64);
+      for(size_t i=0;i<varied_query.size();++i)
+        varied_query[i]=BFloat16(float(int((i*17+i/512)%31)-15)/64.0f);
+      for(int head=0;head<64;++head)varied_sink[head]=float(head-32)/16.0f;
+      query.Copy(varied_query);sink.Copy(varied_sink);
+      const auto* wb=reinterpret_cast<const uint64_t*>(bounds.data);
+      Check(static_cast<cudaError_t>(ds41rt_v41_sparse_attention_bounded(q,sk,m,s,out,rows,0,
+          &view,nullptr,wb,parts?reinterpret_cast<float*>(scratch.data):nullptr,
+          parts?scratch.bytes:0,parts?parts:1)));
+      Check(cudaMemcpy(actual.data(),output.data,output.bytes,cudaMemcpyDeviceToHost));
+      Buffer local_query(size_t(rows)*32*512*2),local_output(local_query.bytes),local_sink(32*4);
+      Buffer local_scratch(size_t(rows)*3*32*514*4);
+      for(int rank=0;rank<2;++rank) {
+        std::vector<uint16_t> compact(local_query.bytes/2);
+        for(int row=0;row<rows;++row)
+          std::copy_n(varied_query.data()+(size_t(row)*64+rank*32)*512,32*512,
+              compact.data()+size_t(row)*32*512);
+        local_query.Copy(compact);
+        local_sink.Copy(std::vector<float>(varied_sink.begin()+rank*32,varied_sink.begin()+(rank+1)*32));
+        local_output.Fill(0xcd);local_scratch.Fill(0xcd);
+        auto launch=[&](uint64_t bytes) {
+          return ds41rt_v41_sparse_attention_heads32_bounded(
+              reinterpret_cast<const uint16_t*>(local_query.data),reinterpret_cast<const float*>(local_sink.data),
+              m,s,reinterpret_cast<uint16_t*>(local_output.data),rows,0,&view,test_stream,wb,
+              parts?reinterpret_cast<float*>(local_scratch.data):nullptr,bytes,parts?parts:1);
+        };
+        if(parts && launch(local_scratch.bytes-1)!=cudaErrorInvalidValue)
+          throw std::runtime_error("compact attention accepted undersized scratch");
+        Check(static_cast<cudaError_t>(launch(parts?local_scratch.bytes:0)));
+        if(rows==6 && begin==0 && mode==0) {
+          Check(cudaStreamSynchronize(test_stream));
+          cudaGraph_t graph;cudaGraphExec_t executable;
+          Check(cudaStreamBeginCapture(test_stream,cudaStreamCaptureModeThreadLocal));
+          Check(static_cast<cudaError_t>(launch(parts?local_scratch.bytes:0)));
+          Check(cudaStreamEndCapture(test_stream,&graph));
+          Check(cudaGraphInstantiate(&executable,graph,nullptr,nullptr,0));
+          bounds.Copy(std::vector<uint64_t>(rows,2049));
+          Check(cudaGraphLaunch(executable,test_stream));Check(cudaStreamSynchronize(test_stream));
+          Check(cudaMemcpy(compact.data(),local_output.data,local_output.bytes,cudaMemcpyDeviceToHost));
+          if(std::any_of(compact.begin(),compact.end(),[](uint16_t v){return v!=0;}))
+            throw std::runtime_error("compact replay ignored updated invalid bounds");
+          bounds.Copy(std::vector<uint64_t>(rows,0));
+          Check(cudaGraphLaunch(executable,test_stream));Check(cudaStreamSynchronize(test_stream));
+          Check(cudaGraphExecDestroy(executable));Check(cudaGraphDestroy(graph));
+        }
+        Check(cudaStreamSynchronize(test_stream));
+        Check(cudaMemcpy(compact.data(),local_output.data,local_output.bytes,cudaMemcpyDeviceToHost));
+        for(int row=0;row<rows;++row)for(size_t col=0;col<32*512;++col)
+          if(compact[size_t(row)*32*512+col]!=actual[(size_t(row)*64+rank*32)*512+col])
+            throw std::runtime_error("compact TP2 attention disagrees with full-head output");
+      }
+      query.Fill(0);sink.Fill(0);
       ++checks;
     }
-    std::cout << "PASS rows=" << rows << std::endl;
+    std::cout << "PASS format=" << format << " rows=" << rows << std::endl;
   }
-  std::cout << "FP4 attention closed-form checks passed: " << checks << std::endl;
+  Check(cudaStreamDestroy(test_stream));
+  std::cout << "Attention closed-form and compact-head checks passed: " << checks << std::endl;
 }

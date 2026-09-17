@@ -205,3 +205,24 @@ The corrected coordinator initialized in 23.23 seconds (26.44 for the preceding
 20-layer automatic-RAM pilot; isolated launches, not a controlled timing claim).
 Temporary workers on port 19442 were removed and normal v5 serving restored.
 Evidence is in `~/.cache/ds41rt-v6-placement/`, including the initial failing run.
+
+### Compact attention head kernel foundation
+
+Added opt-in native 32-head bounded attention entry points. Queries and outputs
+use `[rows,32,512]`, sinks contain the local 32 heads, and split scratch is
+`[rows,parts,32,514]`. The caller will supply replicated local KV; this does not
+yet implement replication, Rust serving integration or the TP2 scheduler. Existing
+64-head entry points retain their launch geometry and AOT eligibility. The new
+path currently uses WMMA, so a compact AOT backend remains needed for a competitive
+decode experiment.
+
+The expanded native selftest passes 288 cases on each RTX: closed-form output and
+bit-for-bit comparison of two compact head halves with the full-head kernel,
+covering FP4, legacy FP8, window-only attention, rows 1/6/128/256, sequential and
+three-way split execution, private source overlays and valid/invalid replay bounds.
+Queries and sinks vary across heads for the split comparison. Captured graphs
+correctly observe changed bounds between replays, and undersized split scratch is
+rejected. Compute Sanitizer memcheck reports zero errors. CUDA 13.3 SM120a
+compilation passes both with and without the AOT feature macro; numerical tests
+use the standalone WMMA build. Full native AOT integration and serving performance
+are not established by these tests. Evidence: `~/.cache/ds41rt-v6-heads32/`.
