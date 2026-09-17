@@ -3,6 +3,41 @@ use super::*;
 use crate::v41_memory::device::{Allocation, Device};
 use ds41rt_ffi::V41PeerCopy;
 
+pub(super) struct WindowStateReplica<'a> {
+    pub storage: std::rc::Rc<WindowReplica<'a>>,
+    publication: std::cell::RefCell<crate::v41_memory::peer_publication::PeerPublication<'a>>,
+    source: Device<'a>,
+}
+impl<'a> WindowState<'a> {
+    /// Allocate before admission; producer waves share this storage but retain
+    /// their own independent commit publication events.
+    pub fn enable_replica(&mut self, peer: Device<'a>) -> Result<std::rc::Rc<WindowReplica<'a>>> {
+        ensure!(self.replica.is_none(),"window replica already configured");
+        let storage=std::rc::Rc::new(WindowReplica::new(self,peer)?);
+        let source=Device { library:self.ends.library,id:self.ends.buffer.device_id };
+        let publication=crate::v41_memory::peer_publication::PeerPublication::new(source,peer)?;
+        self.replica=Some(WindowStateReplica { storage:storage.clone(),
+            publication:std::cell::RefCell::new(publication),source });
+        Ok(storage)
+    }
+    /// # Safety
+    /// Stream belongs to the current CUDA device and contains the restore writes.
+    /// Retain state, replica and lease until completion, including on failure.
+    /// Restores using different streams must finish before reusing these events.
+    pub(super) unsafe fn publish_replica_restore(&self, lease:WindowLease,stream:*mut c_void)->Result<()> {
+        let Some(replica)=&self.replica else { return Ok(()); };
+        let current=self.ends.library.cuda_get_device()?;
+        if current==replica.storage.device().id {
+            // Prefix copies may already run on the replica device's stream.
+            unsafe { replica.storage.copy_restored(self,lease,stream) }
+        } else {
+            ensure!(current==replica.source.id,"window restore stream device differs");
+            unsafe { replica.publication.borrow_mut().enqueue(stream,
+                |peer|replica.storage.copy_restored(self,lease,peer)) }
+        }
+    }
+}
+
 pub(crate) struct WindowReplica<'a> {
     copy: V41PeerCopy<'a>,
     values: Allocation<'a>,
@@ -14,6 +49,11 @@ impl<'a> WindowReplica<'a> {
     pub fn device(&self) -> Device<'a> { self.values.device }
     pub fn validate_owner(&self, state: &WindowState<'_>) -> Result<()> {
         ensure!(self.owner==state.owner,"foreign window replica"); Ok(())
+    }
+    pub(super) fn reset_end(&self,slot:usize,end:u64)->Result<()> {
+        ensure!(slot<self.ends.buffer.bytes/8,"window replica reset slot differs");
+        self.ends.device.run(||self.ends.device.library.copy_h2d(
+            slice(self.ends.buffer,slot*8,8),&end.to_ne_bytes()))
     }
     pub fn new(state: &WindowState<'a>, device: Device<'a>) -> Result<Self> {
         ensure!(std::ptr::eq(state.ends.library,device.library)
@@ -117,7 +157,7 @@ mod tests {
             let peer=Device { library:&lib,id:1-gpu };
             owner.run(|| {
                 let mut state=WindowState::new(&lib,0,2,WindowState::device_bytes(0,2)?)?;
-                let replica=WindowReplica::new(&state,peer)?;
+                let replica=state.enable_replica(peer)?;
                 let producer=Stream::new(owner)?;
                 let mut publication=PeerPublication::new(owner,peer)?;
                 peer.run(|| {
@@ -166,19 +206,21 @@ mod tests {
                 let storage=DeviceAllocation::new(&lib,WINDOW_PREFIX_BYTES)?;
                 let prefix=unsafe { state.retain_prefix(lease,storage.buffer,producer.raw)? };
                 producer.drain()?;
-                let restored=state.begin_request(1,2)?;
-                unsafe {
-                    state.restore_prefix(restored,&prefix,storage.buffer,producer.raw)?;
-                    publication.enqueue(producer.raw,|stream|replica.copy_restored(&state,restored,stream))?;
+                for restore_device in [owner,peer] {
+                    let restored=state.begin_request(1,2)?;
+                    let restore_stream=Stream::new(restore_device)?;
+                    restore_device.run(||unsafe {
+                        state.restore_prefix(restored,&prefix,storage.buffer,restore_stream.raw)
+                    })?;
+                    restore_stream.drain()?;
+                    check(&state,restored,&expected_values,&expected_scales)?;
+                    state.release(restored)?;
                 }
-                producer.drain()?;
-                check(&state,restored,&expected_values,&expected_scales)?;
                 state.release(lease)?;
                 assert!(unsafe { replica.view(&state,lease) }.is_err());
                 let replay=state.begin_request(0,3)?;
+                check(&state,replay,&expected_values,&expected_scales)?;
                 state.begin_encoder_replay(replay,900)?;
-                unsafe { publication.enqueue(producer.raw,|stream|replica.copy_restored(&state,replay,stream))?; }
-                producer.drain()?;
                 let view=unsafe { replica.view(&state,replay)? };
                 assert_eq!((view.begin,view.end),(900,900));
                 check(&state,replay,&expected_values,&expected_scales)?;

@@ -65,6 +65,7 @@ pub(crate) struct WindowState<'a> {
     slot_count: usize,
     layer: usize,
     owner: u64,
+    replica: Option<replica::WindowStateReplica<'a>>,
 }
 impl<'a> WindowState<'a> {
     pub fn device_bytes(layer: usize, slots: usize) -> Result<usize> {
@@ -93,6 +94,7 @@ impl<'a> WindowState<'a> {
             slot_count: slots,
             layer,
             owner: next(&NEXT_OWNER)?,
+            replica: None,
         };
         library.copy_h2d(value.ends.buffer, &vec![0; slots * 8])?;
         Ok(value)
@@ -114,6 +116,7 @@ impl<'a> WindowState<'a> {
         self.ends
             .library
             .copy_h2d(slice(self.ends.buffer, slot * 8, 8), &[0; 8])?;
+        if let Some(replica)=&self.replica { replica.storage.reset_end(slot,0)?; }
         self.slots[slot] = Slot {
             request: Some(request),
             generation,
@@ -143,8 +146,12 @@ impl<'a> WindowState<'a> {
             self.slots[slot].end == 0 && self.slots[slot].version == 0,
             "decoder replay requires a fresh window lease"
         );
-        if let Err(error) = self.ends.library.copy_h2d(
-            slice(self.ends.buffer, slot * 8, 8), &position.to_ne_bytes()) {
+        let written=self.ends.library.copy_h2d(
+            slice(self.ends.buffer, slot * 8, 8), &position.to_ne_bytes()).and_then(|()| {
+                if let Some(replica)=&self.replica { replica.storage.reset_end(slot,position)?; }
+                Ok(())
+            });
+        if let Err(error) = written {
             self.slots[slot].request = None;
             return Err(error);
         }

@@ -66,6 +66,9 @@ impl WindowState<'_> {
     /// # Safety
     /// Source and destination stay live until completion. Drain the stream before
     /// observing the restored request or releasing it after any error.
+    /// Stream belongs to the current CUDA device; replica publication uses that
+    /// device's ordering. Complete a restore before reusing its publication events
+    /// on another stream.
     pub unsafe fn restore_prefix(
         &mut self,
         lease: WindowLease,
@@ -107,6 +110,7 @@ impl WindowState<'_> {
         self.slots[slot].begin = prefix.begin;
         self.slots[slot].end = prefix.end;
         self.slots[slot].version = 1;
+        unsafe { self.publish_replica_restore(lease,stream)?; }
         Ok(())
     }
 }

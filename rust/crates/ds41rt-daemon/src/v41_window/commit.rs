@@ -34,6 +34,10 @@ impl<'a> WindowWave<'_, 'a> {
     /// through completion; on any failure drain before invalidating its requests.
     pub unsafe fn enqueue_commit(&mut self, state: &WindowState<'_>, accepted: &[u32]) -> Result<()> {
         ensure!(self.pending_commit.is_none(), "window commit already pending");
+        if let Some(configured)=&state.replica {
+            ensure!(self.replica.as_ref().is_some_and(|(storage,_)|
+                std::rc::Rc::ptr_eq(storage,&configured.storage)),"window producer replica is not configured");
+        }
         if let Some((replica,_))=&self.replica { replica.validate_owner(state)?; }
         self.validate_ready(state)?;
         let p = self.ready.take().context("window output unpublished")?;
@@ -189,8 +193,8 @@ mod tests {
         let mut state = WindowState::new(&lib, 0, 2, usize::MAX)?;
         let mut reference = WindowState::new(&lib, 0, 2, usize::MAX)?;
         let replica=if replicated {
-            Some(std::rc::Rc::new(super::super::replica::WindowReplica::new(&state,
-                crate::v41_memory::device::Device { library:&lib,id:1-lib.cuda_get_device()? })?))
+            Some(state.enable_replica(
+                crate::v41_memory::device::Device { library:&lib,id:1-lib.cuda_get_device()? })?)
         } else { None };
         let first = state.begin_request(0, 11)?;
         let second = state.begin_request(1, 22)?;

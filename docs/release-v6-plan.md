@@ -512,3 +512,22 @@ append/COW/host-restore fixture also passes. Evidence:
 `source-commit-replica-cow.log` in the compact attention bundle. Serving startup,
 restore/reset publication and the backbone dual-attention switch remain required;
 these checks do not establish an end-to-end TP2 speedup.
+
+### SWA replica reset and retained restore integration
+
+Window state can now allocate/retain its replica before admission and share it
+with producer waves. Fresh slot admission resets the peer end; bounded replay
+publishes its empty frontier. Retained-prefix restore automatically republishes
+initialized ring spans and the end on the caller's stream. Prefix streams on the
+replica GPU copy directly; streams on the authoritative GPU use state-owned
+publication events. Ordinary commit waves still use their own independent events.
+A replicated state rejects commits from a wave not configured with its replica.
+
+The GPU fixture passes both ownership directions and restores issued on either
+device, plus wraparound, slot reuse, stale lease rejection and empty replay at
+token 900. The checkpoint-backed original/replicated commit tests also pass with
+state-owned replica configuration. Evidence: `window-restore-replica-build.log`,
+`window-restore-replica-hardware.log`, and `window-state-replica-commit.log` in the
+compact attention bundle. Temporary fixtures were removed and serving is healthy.
+Compressed-cache restore/reset integration, startup budgeting/configuration and
+backbone scheduling still remain before full-model TP2 qualification.
