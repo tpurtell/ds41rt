@@ -59,3 +59,62 @@ ownership descriptions and must be updated from the implementation.
 Sources: [PR #4](https://github.com/tpurtell/ds41rt/pull/4),
 [issue #2](https://github.com/tpurtell/ds41rt/issues/2),
 [issue #3](https://github.com/tpurtell/ds41rt/issues/3).
+
+## Integration progress (September 17)
+
+The `work/v6-hostcache` branch merges PR #4's original commits onto v5,
+preserving attribution. Its host cache remains disabled by default pending
+complete serving validation. The daemon compiles; the host-cache suite passes
+214 tests (two soak tests remain ignored). Native HTTP tests pass 28 cases,
+including bounded queue waiting, cancellation, overload status and Retry-After.
+The recipe and binary retention default is now 20; the existing separate prompt
+and completed-turn banks each use that limit, which the RAM planner must include.
+
+Dual-device review found that host restore incorrectly labelled dSpark prefixes
+as GPU0-owned. Restored rings now allocate on their runtime device, and snapshot
+ownership derives from the actual buffers. Two hardware tests pass on both RTX
+cards: mixed-device RAM round trips through both batch and fallback copies, and
+GPU1 draft ownership with both pooled and directly allocated storage.
+
+Token-aware admission now checks prompt plus output allowances for the whole
+active cohort against actual source-page capacity, preserving prefix sharing
+and partial-page copy accounting. A blocked request keeps only its prepared host
+input and retries after retirement. The lane wake policy prevents a waiting
+request or nonempty HTTP queue from repeatedly stopping decode while the same
+requests still occupy the pool; cancellation wakes admission. An individually
+oversized request receives a clear 400 response instead of an execution failure.
+Three CPU policy tests and a native source-page pressure test pass. Core, loader
+and transport library tests also pass (390 cases, seven hardware-dependent cases
+ignored). The one-off serving pressure test below passes. Performance qualification
+and the final default RAM configuration remain outstanding.
+
+### One-off small-pool torture test
+
+Run on September 17 against `5f487c1`, using the full native checkpoint and v5
+native kernels: dual RTX, 20 TP2 routed layers, dSpark enabled, C4, two retained
+entries per bank, 6 MiB requested global KV (13 groups = 6,656 logical tokens,
+5,923,840 allocated global bytes), 64 MiB pinned RAM in 8 MiB chunks, and an HTTP
+queue of four with a 500 ms queue-space wait. These are deliberately restrictive
+test settings, not proposed release defaults. RTX power limits and memory speed
+were unchanged. This is not a throughput benchmark.
+
+The deterministic randomized pressure phase lasted 120.42 seconds. Including
+warm-up and recovery, 1,085 requests yielded 48 HTTP 200 responses, 992 retryable
+429 responses, two explicit 400 responses for requests exceeding the GPU KV pool,
+and 43 cancellations before headers. There were 45 intentional cancellations in
+total (two after HTTP 200), no unexpected 5xx responses, stream errors, transport
+exceptions or 40-second request timeouts. All three final recovery requests
+finished successfully in 0.296, 0.182 and 0.184 seconds.
+
+Cache telemetry recorded 43 completed RAM restores, 116 device evictions and 49
+host evictions. All eleven `restore_failures` were logged no-device-room skips;
+there were no CUDA copy failures or restore timeouts. The current metric combines
+capacity skips with copy failures, so interpret it alongside the logs. The final
+stats snapshot had 74 completed stores of 75 issued (publication can lag while
+the scheduler waits for the next request). Normal v5 serving was restored after
+the test. The local evidence bundle is `~/.cache/ds41rt-v6-torture/`; its script is
+deliberately not part of recurring release qualification.
+
+This admission policy reserves future GPU capacity; it does not implement active
+request parking in RAM. RAM sizing, complete cache qualification, flexible expert
+placement, all TP2 experiments and v6 publication remain required.

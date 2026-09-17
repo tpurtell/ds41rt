@@ -18,6 +18,7 @@ clap.workspace = true
 ds41rt-api = { path = "../ds41rt-api" }
 ds41rt-core = { path = "../ds41rt-core" }
 ds41rt-ffi = { path = "../ds41rt-ffi" }
+ds41rt-hostcache = { path = "../ds41rt-hostcache" }
 ds41rt-loader = { path = "../ds41rt-loader" }
 ds41rt-transport = { path = "../ds41rt-transport" }
 io-uring.workspace = true

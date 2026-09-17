@@ -30,7 +30,7 @@ pub(super) const PAGE_ROWS: usize = 256;
 const KV_VALUES: usize = V41Kv::COMPRESSED_VALUE_BYTES;
 const KV_SCALES: usize = V41Kv::COMPRESSED_SCALE_BYTES;
 const SOURCE_ROW_BYTES: usize = 68 + V41Kv::COMPRESSED_ROW_BYTES;
-pub(super) struct SourceCache<'a> {
+pub(crate) struct SourceCache<'a> {
     pub packed: DeviceAllocation<'a>,
     pub scales: DeviceAllocation<'a>,
     pub kv_values: DeviceAllocation<'a>,
@@ -149,6 +149,40 @@ impl<'a> SourceCache<'a> {
         self.lengths
             .library
             .copy_h2d(slice(self.lengths.buffer, slot * 8, 8), &[0; 8])
+    }
+    /// The four device segments holding `page`'s rows (packed index, index scales, KV values,
+    /// KV scales), in the order the host cache stores them.
+    pub fn page_segments(&self, page: u32) -> [Ds41rtDeviceBuffer; 4] {
+        let rows = |buffer: Ds41rtDeviceBuffer, bytes: usize| {
+            slice(buffer, page as usize * PAGE_ROWS * bytes, PAGE_ROWS * bytes)
+        };
+        [
+            rows(self.packed.buffer, 64),
+            rows(self.scales.buffer, 4),
+            rows(self.kv_values.buffer, KV_VALUES),
+            rows(self.kv_scales.buffer, KV_SCALES),
+        ]
+    }
+    /// Identity generation of `page`: changes whenever the page is freed and reused.
+    pub fn page_generation(&self, page: u32) -> u32 {
+        self.pool.borrow().generation(page)
+    }
+    /// A prefix over `count` freshly allocated pages holding `rows` rows, for the host cache to
+    /// fill; the prefix owns the pages. `SourcePoolExhausted` when fewer pages are free.
+    pub fn allocate_prefix(&self, count: usize, rows: usize) -> Result<SourcePrefix> {
+        ensure!(rows <= count * PAGE_ROWS, "allocated prefix rows exceed its pages");
+        let mut pool = self.pool.borrow_mut();
+        let available = pool.free.len();
+        let pages = pool.allocate(count).ok_or(SourcePoolExhausted {
+            work_index: 0,
+            needed: count,
+            available,
+        })?;
+        Ok(SourcePrefix {
+            pool: Rc::clone(&self.pool),
+            pages,
+            rows,
+        })
     }
     /// Retain initialized source rows without copying GPU data. Callers drain
     /// consumers and supply the authoritative committed row count.

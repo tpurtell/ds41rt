@@ -282,3 +282,20 @@ impl<'a> BackboneCache<'a> {
         Ok(())
     }
 }
+
+impl<'a> BackbonePrefix<'a> {
+    /// Owner, frontier, the arena tail and the per-layer descriptors, for the host cache.
+    pub fn parts(&self) -> (u64, u64, &SnapshotStorage<'a>, &[WindowPrefix], &[CompressorPrefix]) {
+        (self.owner, self.end, &self.tail, &self.windows, &self.sources)
+    }
+    /// Rebuild from a host copy: `tail` holds the copied arena bytes.
+    pub fn from_parts(
+        owner: u64,
+        end: u64,
+        tail: SnapshotStorage<'a>,
+        windows: Vec<WindowPrefix>,
+        sources: Vec<CompressorPrefix>,
+    ) -> Self {
+        Self { owner, end, tail, windows, sources }
+    }
+}

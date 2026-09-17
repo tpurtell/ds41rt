@@ -33,6 +33,25 @@ impl<'w, 'a> TargetPass<'w, 'a> {
         transports: [&mut NativeTp4Wave<'a>; 2], suffix: &mut EncoderSuffix<'a>,
         keep_running: &dyn Fn() -> bool,
     ) -> Result<()> {
+        unsafe {
+            self.execute_encoder_stream_held(other, requests, lease, chunks, transports, suffix,
+                keep_running, &|| Ok(())).await
+        }
+    }
+
+    /// `execute_encoder_stream` with a hook the engine runs at the top of every chunk
+    /// iteration, after the `keep_running` check and before the chunk is reserved or any
+    /// transport work begins. The host-cache prefill hold (packet HC-9) paces the stream
+    /// against pending store copies here. Hooks must not error: the engine's hook logs and
+    /// ignores its own errors, so in production the stream is never aborted by the hook
+    /// (the `?` below is a defensive last resort for hooks that do return an error).
+    /// # Safety
+    /// Both lanes and transport waves own independent storage on this CUDA device.
+    pub async unsafe fn execute_encoder_stream_held(&mut self, other: &mut Self,
+        requests: &mut Requests<'a>, lease: CacheLease, chunks: &[&[u32]],
+        transports: [&mut NativeTp4Wave<'a>; 2], suffix: &mut EncoderSuffix<'a>,
+        keep_running: &dyn Fn() -> bool, before_chunk: &dyn Fn() -> Result<()>,
+    ) -> Result<()> {
         ensure!(!chunks.is_empty(), "empty encoder stream");
         let requests = RefCell::new(requests);
         let suffix = RefCell::new(suffix);
@@ -44,9 +63,9 @@ impl<'w, 'a> TargetPass<'w, 'a> {
         tokio::try_join!(
             biased;
             unsafe { self.encoder_stream_lane(0, &requests, lease, chunks, first, &suffix,
-                &published, &reserved, &committed, keep_running) },
+                &published, &reserved, &committed, keep_running, before_chunk) },
             unsafe { other.encoder_stream_lane(1, &requests, lease, chunks, second, &suffix,
-                &published, &reserved, &committed, keep_running) },
+                &published, &reserved, &committed, keep_running, before_chunk) },
         )?;
         Ok(())
     }
@@ -55,11 +74,12 @@ impl<'w, 'a> TargetPass<'w, 'a> {
         requests: &RefCell<&mut Requests<'a>>, lease: CacheLease, chunks: &[&[u32]],
         transport: &mut NativeTp4Wave<'a>, suffix: &RefCell<&mut EncoderSuffix<'a>>,
         published: &[[Notify; 20]], reserved: &[Notify], committed: &[Notify],
-        keep_running: &dyn Fn() -> bool,
+        keep_running: &dyn Fn() -> bool, before_chunk: &dyn Fn() -> Result<()>,
     ) -> Result<()> {
         for index in (parity..chunks.len()).step_by(2) {
             if index != 0 { reserved[index - 1].notified().await; }
             ensure!(keep_running(), "client disconnected");
+            before_chunk()?;
             let chunk = chunks[index];
             let batch = requests.borrow_mut().reserve_encoder(&[RequestTokens {
                 lease, tokens: chunk, image_mask: None, kind: ExpertV2SourceKind::Prefill,

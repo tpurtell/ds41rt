@@ -240,3 +240,14 @@ mod tests {
         Ok(())
     }
 }
+
+impl CompressorPrefix {
+    /// Owner, frontier and the retained source pages, for the host cache.
+    pub fn parts(&self) -> (u64, u64, &SourcePrefix) {
+        (self.owner, self.end, &self.source)
+    }
+    /// Rebuild from a host copy; `source` comes from `SourceCache::allocate_prefix`.
+    pub fn from_parts(owner: u64, end: u64, source: SourcePrefix) -> Self {
+        Self { owner, end, source }
+    }
+}

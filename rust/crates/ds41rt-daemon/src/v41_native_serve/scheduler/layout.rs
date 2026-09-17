@@ -13,7 +13,7 @@ pub(in crate::v41_native_serve) trait ServingTarget<'w, 'a>: PrefillTarget<'a> {
         first_transport: &mut Self::Transport, second_transport: &mut Self::Transport,
         active: &mut [Option<Active<'a>>], members: &[Vec<usize>; 2],
         draft: Option<&mut DraftRuntime<'w, 'a, Self::Chain>>,
-        prefixes: &mut PrefixCache<'a>, receive: &mpsc::Receiver<NativeRequest>) -> Result<()>;
+        prefixes: &mut PrefixCache<'a>, receive: &mpsc::Receiver<NativeRequest>, wake: admission::Wake<'_>) -> Result<()>;
 }
 
 impl<'w, 'a: 'w> ServingTarget<'w, 'a> for TargetPass<'_, 'a> {
@@ -29,10 +29,10 @@ impl<'w, 'a: 'w> ServingTarget<'w, 'a> for TargetPass<'_, 'a> {
         first_transport: &mut Self::Transport, second_transport: &mut Self::Transport,
         active: &mut [Option<Active<'a>>], members: &[Vec<usize>; 2],
         draft: Option<&mut DraftRuntime<'w, 'a, Self::Chain>>,
-        prefixes: &mut PrefixCache<'a>, receive: &mpsc::Receiver<NativeRequest>) -> Result<()> {
+        prefixes: &mut PrefixCache<'a>, receive: &mpsc::Receiver<NativeRequest>, wake: admission::Wake<'_>) -> Result<()> {
         if members.iter().all(|lane| !lane.is_empty()) {
             independent::run(lib, runtime, first, second, requests, first_transport,
-                second_transport, active, draft, prefixes, receive)
+                second_transport, active, draft, prefixes, receive, wake)
         } else {
             // Preserve the single-RTX C1 path without shared-bank/async delivery.
             let lane = usize::from(members[0].is_empty());
@@ -58,10 +58,10 @@ impl<'w, 'a: 'w> ServingTarget<'w, 'a> for DistributedTargetPass<'_, 'a> {
         first_transport: &mut Self::Transport, second_transport: &mut Self::Transport,
         active: &mut [Option<Active<'a>>], _members: &[Vec<usize>; 2],
         draft: Option<&mut DraftRuntime<'w, 'a, Self::Chain>>,
-        prefixes: &mut PrefixCache<'a>, receive: &mpsc::Receiver<NativeRequest>) -> Result<()> {
+        prefixes: &mut PrefixCache<'a>, receive: &mpsc::Receiver<NativeRequest>, wake: admission::Wake<'_>) -> Result<()> {
         // A single active lane still drives its distributed draft via polling.
         // The empty peer returns immediately without joining per-token work.
         independent::run(lib, runtime, first, second, requests, first_transport,
-            second_transport, active, draft, prefixes, receive)
+            second_transport, active, draft, prefixes, receive, wake)
     }
 }

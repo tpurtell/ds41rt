@@ -544,3 +544,24 @@ INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
 LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE
 OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
+
+## Test-Case Provenance
+
+The upstream-derived test suites under `rust/**/tests/upstream_*.rs`,
+`rust/crates/ds41rt-api/src/tests/upstream_*.rs`, and
+`python/tests/test_upstream_*.py` were rewritten from published test
+*behavior* (invariants, test vectors, golden cases) from:
+
+- vLLM (<https://github.com/vllm-project/vllm>), Apache-2.0, no NOTICE file,
+  revision `64856080b05054fc62754f37234f7b483b753445`
+- SGLang (<https://github.com/sgl-project/sglang>), Apache-2.0, no NOTICE
+  file, revision `832ec39cc0324cb0e7823dc8385e27a30c356bdd`
+- llama.cpp (<https://github.com/ggml-org/llama.cpp>), MIT (the ggml authors),
+  no NOTICE file, revision `6011c34ce6099646ccdf0d39a61c6e681477c178`
+
+No upstream code is distributed in these suites: each test re-expresses the
+upstream invariant against ds41rt implementations and cites its source file
+and test name in a comment. Numeric test vectors and schema golden cases are
+facts from the referenced revisions. Neither Apache-2.0 nor MIT requires
+notice preservation for this manner of use; this entry is provided for
+provenance clarity.

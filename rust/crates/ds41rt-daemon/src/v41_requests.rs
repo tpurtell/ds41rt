@@ -726,3 +726,12 @@ mod tests {
 
 #[cfg(test)]
 mod image_tests;
+
+impl<'a> RequestPrefix<'a> {
+    pub fn parts(&self) -> (&crate::v41_backbone_cache::BackbonePrefix<'a>, &EngramHistory) {
+        (&self.cache, &self.history)
+    }
+    pub fn from_parts(cache: crate::v41_backbone_cache::BackbonePrefix<'a>, history: EngramHistory) -> Self {
+        Self { cache, history }
+    }
+}

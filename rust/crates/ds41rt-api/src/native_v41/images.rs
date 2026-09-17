@@ -256,6 +256,8 @@ mod tests {
             queue,
             limits: NativeLimits::default(),
             images: ImageDecoder::new(1),
+            admission: crate::native_v41::admission::Admission::new(1, Duration::from_millis(1)),
+            stats: std::sync::Arc::new(std::sync::Mutex::new(serde_json::Value::Null)),
         };
         let body = |url: String| {
             json!({"model":MODEL,"messages":[{"role":"user","content":[
@@ -298,7 +300,7 @@ mod tests {
         use super::super::*;
         use tower::ServiceExt;
         let (tx, mut rx) = mpsc::channel::<NativeRequest>(1);
-        let app = router(tx.clone());
+        let app = router_with_admission(tx.clone(), NativeLimits::default(), Arc::new(Mutex::new(Value::Null)), Duration::from_millis(1));
         let request = |count: usize, url: String| {
             let mut content = vec![json!({"type":"text","text":"Describe these images."})];
             content.extend((0..count).map(|_| json!({"type":"image_url","image_url":{"url":url}})));
@@ -325,7 +327,7 @@ mod tests {
                 .await
                 .unwrap()
                 .status(),
-            StatusCode::SERVICE_UNAVAILABLE
+            StatusCode::TOO_MANY_REQUESTS
         );
         drop(permit);
         let worker = tokio::spawn(async move {

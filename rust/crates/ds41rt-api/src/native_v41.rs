@@ -23,6 +23,7 @@ use tokio::sync::mpsc;
 
 pub const MODEL: &str = "deepseek-ai/DeepSeek-V4.1-Flash";
 mod limits;
+mod admission;
 mod constraints;
 mod tools;
 pub use constraints::NativeConstraint;
@@ -54,23 +55,44 @@ pub struct NativeRequest {
     pub max_tokens: usize,
     pub events: mpsc::Sender<Result<InferenceChunk, NativeFailure>>,
 }
+/// Serving statistics the CUDA owner publishes (a JSON object; `null` until the first publish).
+pub type SharedStats = Arc<Mutex<Value>>;
 #[derive(Clone)]
 struct NativeState {
     queue: mpsc::Sender<NativeRequest>,
     limits: NativeLimits,
     images: images::ImageDecoder,
+    stats: SharedStats,
+    admission: admission::Admission,
 }
 pub fn router(queue: mpsc::Sender<NativeRequest>) -> Router {
     router_with_limits(queue, NativeLimits::default())
 }
 pub fn router_with_limits(queue: mpsc::Sender<NativeRequest>, limits: NativeLimits) -> Router {
+    router_with_limits_and_stats(queue, limits, Arc::new(Mutex::new(Value::Null)))
+}
+pub fn router_with_limits_and_stats(queue: mpsc::Sender<NativeRequest>, limits: NativeLimits, stats: SharedStats) -> Router {
+    router_with_admission(queue, limits, stats, std::time::Duration::from_secs(25))
+}
+pub fn router_with_admission(queue: mpsc::Sender<NativeRequest>, limits: NativeLimits,
+    stats: SharedStats, wait: std::time::Duration) -> Router {
+    let admission = admission::Admission::new(queue.max_capacity(), wait);
     let images = images::ImageDecoder::new(queue.max_capacity());
     Router::new()
         .route("/health", get(health))
         .route("/v1/models", get(models))
+        .route("/v1/stats", get(stats_route))
         .route("/v1/chat/completions", post(chat))
         .layer(axum::extract::DefaultBodyLimit::max(images::BODY_BYTES))
-        .with_state(NativeState { queue, limits, images })
+        .with_state(NativeState { queue, limits, images, stats, admission })
+}
+async fn stats_route(State(state): State<NativeState>) -> Json<Value> {
+    let mut value = state.stats.lock().map(|stats| stats.clone()).unwrap_or(Value::Null);
+    if !value.is_object() { value = json!({}); }
+    let object = value.as_object_mut().unwrap();
+    object.extend(state.admission.metrics().as_object().unwrap().clone());
+    object.insert("http_queue_len".into(), json!(state.queue.max_capacity() - state.queue.capacity()));
+    Json(value)
 }
 async fn models(State(state): State<NativeState>) -> Json<Value> {
     Json(json!({"object":"list","data":[{"id":MODEL,"object":"model","owned_by":"deepseek-ai",
@@ -84,9 +106,16 @@ async fn health(State(state): State<NativeState>) -> StatusCode {
     }
 }
 fn error(status: StatusCode, message: impl ToString) -> Response {
+    // Bound upstream parse/validation details before they reach the response
+    // body: serde invalid-type errors echo the full offending string (e.g. a
+    // 100 KB string in a wrongly-typed field). Same class as the JsonRejection
+    // echo fixed in lib.rs (upstream vLLM #49239). This router is the
+    // production serving path (mounted by the daemon) — verified live on the
+    // fleet 2026-09-15.
+    let message = crate::error::bounded_error_detail(&message.to_string());
     (
         status,
-        Json(json!({"error":{"message":message.to_string(),"type":"native_v41_error"}})),
+        Json(json!({"error":{"message":message,"type":"native_v41_error"}})),
     )
         .into_response()
 }
@@ -155,14 +184,19 @@ async fn chat(State(state): State<NativeState>, Json(mut body): Json<Value>) -> 
     // Rendered sources own the image payloads needed by preprocessing. Do not
     // retain another copy of their data URLs throughout the generated response.
     drop(converted.conversation);
-    let (prepared, permit) = if rendered.image_sources.is_empty() { (Vec::new(), None) } else {
-        if rendered.image_sources.len() > ds41rt_loader::V41_MAX_IMAGES {
-            return error(StatusCode::BAD_REQUEST, "at most 16 images are supported");
+    if rendered.image_sources.len() > ds41rt_loader::V41_MAX_IMAGES {
+        return error(StatusCode::BAD_REQUEST, "at most 16 images are supported");
+    }
+    let permit = match state.admission.reserve(state.queue.clone()).await {
+        Ok(permit) => permit,
+        Err(admission::Rejected::Closed) => return error(StatusCode::SERVICE_UNAVAILABLE, "worker queue is closed"),
+        Err(admission::Rejected::Overloaded) => {
+            let mut response = error(StatusCode::TOO_MANY_REQUESTS, "request queue is full or its wait budget expired");
+            response.headers_mut().insert(axum::http::header::RETRY_AFTER, axum::http::HeaderValue::from_static("1"));
+            return response;
         }
-        let permit = match state.queue.clone().try_reserve_owned() {
-            Ok(permit) => permit,
-            Err(e) => return error(StatusCode::SERVICE_UNAVAILABLE, e),
-        };
+    };
+    let prepared = if rendered.image_sources.is_empty() { Vec::new() } else {
         // The queue permit bounds waiters while up to four decoders run. A C16
         // burst should wait here instead of imposing a hidden C4 image limit.
         let slot = match state.images.slots.clone().acquire_owned().await {
@@ -175,7 +209,7 @@ async fn chat(State(state): State<NativeState>, Json(mut body): Json<Value>) -> 
             decoder.decode(rendered.image_sources)
         }).await;
         match result {
-            Ok(Ok(images)) => (images, Some(permit)),
+            Ok(Ok(images)) => images,
             Ok(Err(e)) => return error(StatusCode::BAD_REQUEST, format!("{e:#}")),
             Err(e) => return error(StatusCode::INTERNAL_SERVER_ERROR, e),
         }
@@ -192,10 +226,7 @@ async fn chat(State(state): State<NativeState>, Json(mut body): Json<Value>) -> 
         max_tokens,
         events,
     };
-    if let Some(permit) = permit { permit.send(job); }
-    else if let Err(e) = state.queue.try_send(job) {
-        return error(StatusCode::SERVICE_UNAVAILABLE, e);
-    }
+    permit.send(job);
     // Admission errors must retain their cause and HTTP status, including for
     // SSE, before a protocol processor can turn early EOF into a finish chunk.
     let first = match receive.recv().await {

@@ -144,7 +144,7 @@ printf '%s\n' "$MODEL_ID" "$MODEL_REVISION" "$EXPERT_FORMAT" "$SPARKINFER_EXL3" 
                 "native",
                 "disable",
                 "16",
-                "24",
+                "20",
                 "1048576",
                 "393216",
                 "0.0.0.0:8000",

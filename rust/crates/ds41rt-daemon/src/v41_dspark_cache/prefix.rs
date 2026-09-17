@@ -187,3 +187,23 @@ mod tests {
         Ok(())
     }
 }
+
+impl<'a> DsparkPrefix<'a> {
+    pub fn parts(&self) -> (u64, u64, &SnapshotStorage<'a>) {
+        (self.owner, self.end, &self.ring)
+    }
+    pub fn from_parts(owner: u64, end: u64, ring: SnapshotStorage<'a>) -> Self {
+        Self { owner, end, ring }
+    }
+}
+impl<'a> DsparkWindow<'a> {
+    pub fn owner(&self) -> u64 {
+        self.owner
+    }
+    pub fn prefix_pool(&self) -> Option<&SnapshotPool<'a>> {
+        self.prefix_pool.as_ref()
+    }
+    pub fn library(&self) -> &'a NativeLibrary {
+        self.stream.library
+    }
+}

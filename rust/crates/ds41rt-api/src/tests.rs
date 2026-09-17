@@ -4576,3 +4576,10 @@ async fn invalid_role_returns_openai_error_metadata() {
     assert_eq!(err.status, StatusCode::BAD_REQUEST);
     assert_eq!(err.param.as_deref(), Some("messages[0].role"));
 }
+
+mod upstream_protocol_errors;
+mod upstream_stop_strings;
+mod upstream_streaming;
+mod upstream_tool_calls;
+mod upstream_sampler;
+mod upstream_native_v41;
