@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1100" viewBox="0 0 1600 1100" role="img" aria-labelledby="title desc">
   <title id="title">DS41RT automatic one or two RTX execution with four DGX Spark workers</title>
-  <desc id="desc">The launcher selects two peer-connected RTX PRO 6000 GPUs when memory permits and otherwise uses one. In two-GPU mode, RTX0 owns embeddings, vision, encoder attention, and three compressed KV sources. RTX1 owns decoder attention, dSpark, and the fourth compressed KV source. Both GPUs execute tensor-parallel encoder routed experts, shared experts, and vocabulary selection. Four DGX Spark workers retain decoder routed experts. Two asynchronous serving lanes support sixteen active requests with FP4 compressed KV, FP8 sliding-window attention, and twenty-four retained turns.</desc>
+  <desc id="desc">The launcher selects two peer-connected RTX PRO 6000 GPUs when memory permits and otherwise uses one. In the qualified two-GPU layout, RTX0 owns embeddings, vision, layers 0 through 13, and compressed sources 2 and 8. RTX1 owns layers 14 through 39, compressed sources 14 and 20, and dSpark. Both GPUs execute tensor-parallel bottom-up routed experts, shared experts, and vocabulary selection. Four DGX Spark workers retain routed experts above the published boundary. Two asynchronous serving lanes support sixteen active requests with FP4 compressed KV, FP8 sliding-window attention, pinned-RAM snapshots, and twenty retained turns.</desc>
   <defs>
     <linearGradient id="background" x2="1" y2="1">
       <stop stop-color="#07111f"/>
@@ -36,43 +36,43 @@
 
   <g aria-label="headline performance">
     <rect x="40" y="105" width="370" height="68" rx="12" fill="#0d1e32" stroke="#5d8cff" stroke-width="1.4"/>
-    <text x="59" y="135" class="metric">8,454 tok/s</text>
+    <text x="59" y="135" class="metric">8,355 tok/s</text>
     <text x="59" y="158" class="metric-label">BEST 2×RTX PREFILL</text>
     <rect x="423" y="105" width="370" height="68" rx="12" fill="#0d1e32" stroke="#56d7e8" stroke-width="1.4"/>
-    <text x="442" y="135" class="metric">79.33 tok/s</text>
+    <text x="442" y="135" class="metric">109.44 tok/s</text>
     <text x="442" y="158" class="metric-label">WEIGHTED DSPARK DECODE</text>
     <rect x="806" y="105" width="370" height="68" rx="12" fill="#0d1e32" stroke="#a978ff" stroke-width="1.4"/>
-    <text x="825" y="135" class="metric">1,181.49 tok/s</text>
+    <text x="825" y="135" class="metric">1,195.37 tok/s</text>
     <text x="825" y="158" class="metric-label">C16 CODE AGGREGATE</text>
     <rect x="1189" y="105" width="371" height="68" rx="12" fill="#0d1e32" stroke="#56d69c" stroke-width="1.4"/>
-    <text x="1208" y="135" class="metric">309.06 tok/s</text>
+    <text x="1208" y="135" class="metric">284.69 tok/s</text>
     <text x="1208" y="158" class="metric-label">C16 MIXED AGGREGATE</text>
   </g>
 
   <g aria-label="automatic GPU selection">
     <rect x="40" y="196" width="1520" height="82" rx="14" fill="#0d1e32" stroke="#56d69c" stroke-width="1.4"/>
     <text x="61" y="226" class="section">Automatic release layout</text>
-    <text x="61" y="253" class="body">Inventory free memory + bidirectional peer reads before replacement · prefer 2×RTX when the complete 14M-token plan fits · fall back to 1×RTX</text>
+    <text x="61" y="253" class="body">Inventory free memory + bidirectional peer reads before replacement · prefer 2×RTX when the complete 14M-token GPU plan fits · fall back to 1×RTX</text>
     <rect x="1190" y="211" width="346" height="48" rx="10" fill="#102a30" stroke="#56d69c"/>
-    <text x="1363" y="232" class="label" text-anchor="middle">C16 · 24 retained turns</text>
+    <text x="1363" y="232" class="label" text-anchor="middle">C16 · 20 retained turns</text>
     <text x="1363" y="250" class="small" text-anchor="middle">two independent serving lanes</text>
   </g>
 
   <g aria-label="RTX zero">
     <rect x="40" y="308" width="735" height="414" rx="18" fill="url(#gpu0)" stroke="#5d8cff" stroke-width="1.6"/>
     <text x="64" y="342" class="section">RTX0 · encoder owner</text>
-    <text x="64" y="366" class="small">lower-stack inputs and every consumer of compressed sources 2 / 8 / 14</text>
+    <text x="64" y="366" class="small">lower-stack inputs and consumers of compressed sources 2 / 8</text>
 
     <rect x="64" y="390" width="324" height="135" rx="12" fill="#10243a" stroke="#56d7e8"/>
     <text x="83" y="419" class="label">Admission + encoder path</text>
     <text x="83" y="447" class="body">Embeddings and vision</text>
-    <text x="83" y="471" class="body">Attention / mHC / routers 0–19</text>
-    <text x="83" y="495" class="body">FP8 SWA 0–19</text>
+    <text x="83" y="471" class="body">Attention / mHC / routers 0–13</text>
+    <text x="83" y="495" class="body">FP8 SWA 0–13</text>
 
     <rect x="411" y="390" width="340" height="135" rx="12" fill="#10243a" stroke="#5d8cff"/>
     <text x="430" y="419" class="label">FP4 cache ownership</text>
-    <text x="430" y="447" class="body">Sources 2, 8, 14 + indices</text>
-    <text x="430" y="471" class="body">3/5 of global source storage</text>
+    <text x="430" y="447" class="body">Sources 2, 8 + indices</text>
+    <text x="430" y="471" class="body">2/5 of global source storage</text>
     <text x="430" y="495" class="body">No remote attention reads</text>
 
     <rect x="64" y="549" width="687" height="145" rx="12" fill="#0e2035" stroke="#a9b8ff"/>
@@ -86,13 +86,13 @@
   <g aria-label="RTX one">
     <rect x="825" y="308" width="735" height="414" rx="18" fill="url(#gpu1)" stroke="#a978ff" stroke-width="1.6"/>
     <text x="849" y="342" class="section">RTX1 · decoder + draft owner</text>
-    <text x="849" y="366" class="small">upper-stack attention, final compressed source, and lane-local dSpark</text>
+    <text x="849" y="366" class="small">upper-stack attention, compressed sources 14 / 20, and lane-local dSpark</text>
 
     <rect x="849" y="390" width="324" height="135" rx="12" fill="#1c2140" stroke="#a978ff"/>
     <text x="868" y="419" class="label">Decoder path</text>
-    <text x="868" y="447" class="body">Attention / mHC / routers 20–39</text>
-    <text x="868" y="471" class="body">FP8 SWA 20–39</text>
-    <text x="868" y="495" class="body">FP4 source 20 + index</text>
+    <text x="868" y="447" class="body">Attention / mHC / routers 14–39</text>
+    <text x="868" y="471" class="body">FP8 SWA 14–39</text>
+    <text x="868" y="495" class="body">FP4 sources 14 / 20 · 3/5 storage</text>
 
     <rect x="1196" y="390" width="340" height="135" rx="12" fill="#1c2140" stroke="#56d69c"/>
     <text x="1215" y="419" class="label">dSpark · adaptive K5</text>
@@ -139,11 +139,11 @@
 
   <g aria-label="cache and fallback policy">
     <rect x="40" y="1005" width="475" height="58" rx="11" fill="#0d1e32" stroke="#5d8cff"/>
-    <text x="58" y="1030" class="label">13.094 GB FP4 source pool</text>
-    <text x="58" y="1051" class="small">14,680,064 logical + 32,768 tail tokens</text>
+    <text x="58" y="1030" class="label">13.091 GB GPU + 6.75 GiB pinned RAM</text>
+    <text x="58" y="1051" class="small">14,680,064 + 6,291,968 = 20,972,032 tokens</text>
     <rect x="532" y="1005" width="475" height="58" rx="11" fill="#0d1e32" stroke="#56d7e8"/>
     <text x="550" y="1030" class="label">Exact reuse + bounded replay</text>
-    <text x="550" y="1051" class="small">FP8 SWA · final 128 encoder tokens · 24 turns</text>
+    <text x="550" y="1051" class="small">FP8 SWA · final 128 encoder tokens · 20 turns</text>
     <rect x="1024" y="1005" width="536" height="58" rx="11" fill="#0d1e32" stroke="#a978ff"/>
     <text x="1042" y="1030" class="label">1×RTX fallback</text>
     <text x="1042" y="1051" class="small">layers 0–4 local · Sparks 0–39 · placement-aware K5</text>
