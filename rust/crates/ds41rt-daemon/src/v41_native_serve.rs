@@ -42,11 +42,13 @@ pub(crate) async fn run(args: crate::cli::NativeServeArgs) -> Result<()> {
     let limits = ds41rt_api::native_v41::NativeLimits::new(args.max_context_tokens, args.max_output_tokens)?;
     let (send, receive) = mpsc::channel(args.concurrency as usize);
     let (ready, readiness) = oneshot::channel();
+    let stats = std::sync::Arc::new(std::sync::Mutex::new(serde_json::Value::Null));
+    let worker_stats = stats.clone();
     let worker_thread = std::thread::Builder::new()
         .name("v41-target-cuda".into())
         .spawn(move || {
             let mut ready = Some(ready);
-            let result = worker(args, receive, &mut ready);
+            let result = worker(args, receive, &mut ready, worker_stats);
             if let Some(ready) = ready.take() {
                 let _ = ready.send(Err(result
                     .as_ref()
@@ -64,7 +66,7 @@ pub(crate) async fn run(args: crate::cli::NativeServeArgs) -> Result<()> {
         .map_err(anyhow::Error::msg)?;
     let listener = tokio::net::TcpListener::bind(&listen).await?;
     tracing::info!(%listen,"native V4.1 target API ready");
-    axum::serve(listener, ds41rt_api::native_v41::router_with_limits(send, limits))
+    axum::serve(listener, ds41rt_api::native_v41::router_with_limits_and_stats(send, limits, stats))
         .with_graceful_shutdown(async {
             let mut term =
                 tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
@@ -118,8 +120,9 @@ fn worker(
     args: crate::cli::NativeServeArgs,
     mut receive: mpsc::Receiver<NativeRequest>,
     ready: &mut Option<oneshot::Sender<std::result::Result<(), String>>>,
+    stats: std::sync::Arc<std::sync::Mutex<serde_json::Value>>,
 ) -> Result<()> {
-    if args.rtx_gpus == 2 { return distributed::worker(args, receive, ready); }
+    if args.rtx_gpus == 2 { return distributed::worker(args, receive, ready, stats); }
     let capacity = prefill_capacity(args.prefill_batch_tokens)?;
     let rows = capacity as usize;
     let lib = unsafe { NativeLibrary::load(&args.native_lib)? };
@@ -355,7 +358,15 @@ fn worker(
         .send(Ok(()))
         .map_err(|_| anyhow::anyhow!("API startup cancelled"))?;
     scheduler::serve(&lib, &args, &runtime, &mut receive, &mut pass, &mut prefill_pass,
-        &mut requests, &mut transport, &mut prefill_transport, draft.as_mut(), &mut vision)
+        &mut requests, &mut transport, &mut prefill_transport, draft.as_mut(), &mut vision, stats)
+}
+
+/// The HC-9 prefill pacing hold at a chunk boundary: bounded by the host cache's store
+/// pace, counted in its metrics, and never a reason to fail the request.
+fn prefill_hold(hold: &mut dyn FnMut() -> Result<()>) {
+    if let Err(error) = hold() {
+        tracing::warn!(target: "ds41rt::host_cache", %error, "prefill hold failed; continuing");
+    }
 }
 
 fn prefill<'a, P: PrefillTarget<'a>, C: DraftChain<'a>>(
@@ -371,6 +382,7 @@ fn prefill<'a, P: PrefillTarget<'a>, C: DraftChain<'a>>(
     chunk_rows: usize,
     job: &NativeRequest,
     draft: Option<&mut DraftRuntime<'_, 'a, C>>,
+    hold: &mut dyn FnMut() -> Result<()>,
 ) -> Result<TokenScores> {
     use crate::v41_backbone_cache::{CacheStage, CacheWork};
     let end = tokens.len() as u64;
@@ -389,6 +401,7 @@ fn prefill<'a, P: PrefillTarget<'a>, C: DraftChain<'a>>(
             chunk_rows,
             job,
             draft,
+            hold,
         );
     }
     let mut suffix = pass.new_suffix(lib, end)?;
@@ -400,6 +413,7 @@ fn prefill<'a, P: PrefillTarget<'a>, C: DraftChain<'a>>(
         );
         for chunk in tokens[start..cached].chunks(chunk_rows) {
             ensure!(!job.events.is_closed(), "client disconnected");
+            prefill_hold(hold);
             let mut batch = requests.prepare(&[RequestTokens {
                 lease,
                 tokens: chunk,
@@ -426,6 +440,7 @@ fn prefill<'a, P: PrefillTarget<'a>, C: DraftChain<'a>>(
     if chunks.len() == 1 {
         let chunk = chunks.next().expect("one chunk");
         ensure!(!job.events.is_closed(), "client disconnected");
+        prefill_hold(hold);
         let mut batch = requests.prepare(&[RequestTokens { lease, tokens: chunk,
             image_mask: None, kind: ExpertV2SourceKind::Prefill }])?;
         let started = Instant::now();
@@ -441,8 +456,16 @@ fn prefill<'a, P: PrefillTarget<'a>, C: DraftChain<'a>>(
     if chunks.len() != 0 {
         let chunks: Vec<_> = chunks.collect();
         let started = Instant::now();
-        runtime.block_on(unsafe { pass.encoder_stream(other, requests, lease, &chunks,
-            [transport, other_transport], &mut suffix, &|| !job.events.is_closed()) })?;
+        // The hold must reach every chunk the stream dispatches; both lanes share one
+        // `&dyn Fn` hook, so the mutable callback goes through a RefCell (calls are
+        // synchronous, single-threaded, never nested).
+        let hold = std::cell::RefCell::new(&mut *hold);
+        let before_chunk = || -> Result<()> {
+            prefill_hold(&mut *hold.borrow_mut());
+            Ok(())
+        };
+        runtime.block_on(unsafe { pass.execute_encoder_stream_held(other, requests, lease, &chunks,
+            [transport, other_transport], &mut suffix, &|| !job.events.is_closed(), &before_chunk) })?;
         tracing::debug!(target: "ds41rt::timing", rows=tokens.len(),
             total_us=started.elapsed().as_micros() as u64, "target encoder stream");
     }
@@ -467,11 +490,12 @@ fn prefill<'a, P: PrefillTarget<'a>, C: DraftChain<'a>>(
 fn prefill_continuation<'a, P: PrefillTarget<'a>, C: DraftChain<'a>>(lib: &'a NativeLibrary, runtime: &tokio::runtime::Runtime,
     pass: &mut P, requests: &mut Requests<'a>, transport: &mut P::Transport,
     lease: crate::v41_backbone_cache::CacheLease, tokens: &[u32], chunk_rows: usize,
-    job: &NativeRequest, mut draft: Option<&mut DraftRuntime<'_, 'a, C>>) -> Result<TokenScores> {
+    job: &NativeRequest, mut draft: Option<&mut DraftRuntime<'_, 'a, C>>, hold: &mut dyn FnMut() -> Result<()>) -> Result<TokenScores> {
     ensure!(!tokens.is_empty(), "prefix continuation has no uncached rows");
     let mut anchor = None;
     for chunk in tokens.chunks(chunk_rows) {
         ensure!(!job.events.is_closed(), "client disconnected");
+        prefill_hold(hold);
         let mut batch = requests.prepare(&[RequestTokens { lease, tokens: chunk,
             image_mask: None, kind: ExpertV2SourceKind::Prefill }])?;
         let result = (|| -> Result<TokenScores> {

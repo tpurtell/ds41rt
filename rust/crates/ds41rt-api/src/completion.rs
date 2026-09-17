@@ -163,13 +163,26 @@ pub(crate) async fn build_validated_completion(
         "stop"
     }
     .to_owned();
-    if let Some(stop) = stop_strings(request.stop.as_ref())
+    // Stop selection follows vLLM's check_stop_strings semantics: the stop
+    // string that *completes* earliest in the text wins (so the result matches
+    // appending one token at a time under speculative decoding); ties are
+    // broken by stop-list order.
+    let mut matched_stop_start: Option<usize> = None;
+    let mut matched_stop_end = usize::MAX;
+    for stop in stop_strings(request.stop.as_ref())
         .iter()
         .filter(|stop| !stop.is_empty())
-        .filter_map(|stop| content.find(stop).map(|idx| (idx, stop)))
-        .min_by_key(|(idx, _)| *idx)
     {
-        content.truncate(stop.0);
+        if let Some(idx) = content.find(stop) {
+            let end = idx + stop.len();
+            if end < matched_stop_end {
+                matched_stop_start = Some(idx);
+                matched_stop_end = end;
+            }
+        }
+    }
+    if let Some(stop_idx) = matched_stop_start {
+        content.truncate(stop_idx);
         completion_tokens = None;
         stream_chunks = None;
         finish_reason = "stop".to_owned();

@@ -54,23 +54,33 @@ pub struct NativeRequest {
     pub max_tokens: usize,
     pub events: mpsc::Sender<Result<InferenceChunk, NativeFailure>>,
 }
+/// Serving statistics the CUDA owner publishes (a JSON object; `null` until the first publish).
+pub type SharedStats = Arc<Mutex<Value>>;
 #[derive(Clone)]
 struct NativeState {
     queue: mpsc::Sender<NativeRequest>,
     limits: NativeLimits,
     images: images::ImageDecoder,
+    stats: SharedStats,
 }
 pub fn router(queue: mpsc::Sender<NativeRequest>) -> Router {
     router_with_limits(queue, NativeLimits::default())
 }
 pub fn router_with_limits(queue: mpsc::Sender<NativeRequest>, limits: NativeLimits) -> Router {
+    router_with_limits_and_stats(queue, limits, Arc::new(Mutex::new(Value::Null)))
+}
+pub fn router_with_limits_and_stats(queue: mpsc::Sender<NativeRequest>, limits: NativeLimits, stats: SharedStats) -> Router {
     let images = images::ImageDecoder::new(queue.max_capacity());
     Router::new()
         .route("/health", get(health))
         .route("/v1/models", get(models))
+        .route("/v1/stats", get(stats_route))
         .route("/v1/chat/completions", post(chat))
         .layer(axum::extract::DefaultBodyLimit::max(images::BODY_BYTES))
-        .with_state(NativeState { queue, limits, images })
+        .with_state(NativeState { queue, limits, images, stats })
+}
+async fn stats_route(State(state): State<NativeState>) -> Json<Value> {
+    Json(state.stats.lock().map(|stats| stats.clone()).unwrap_or(Value::Null))
 }
 async fn models(State(state): State<NativeState>) -> Json<Value> {
     Json(json!({"object":"list","data":[{"id":MODEL,"object":"model","owned_by":"deepseek-ai",
@@ -84,9 +94,16 @@ async fn health(State(state): State<NativeState>) -> StatusCode {
     }
 }
 fn error(status: StatusCode, message: impl ToString) -> Response {
+    // Bound upstream parse/validation details before they reach the response
+    // body: serde invalid-type errors echo the full offending string (e.g. a
+    // 100 KB string in a wrongly-typed field). Same class as the JsonRejection
+    // echo fixed in lib.rs (upstream vLLM #49239). This router is the
+    // production serving path (mounted by the daemon) — verified live on the
+    // fleet 2026-09-15.
+    let message = crate::error::bounded_error_detail(&message.to_string());
     (
         status,
-        Json(json!({"error":{"message":message.to_string(),"type":"native_v41_error"}})),
+        Json(json!({"error":{"message":message,"type":"native_v41_error"}})),
     )
         .into_response()
 }

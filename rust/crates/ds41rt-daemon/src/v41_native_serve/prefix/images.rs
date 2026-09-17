@@ -156,7 +156,7 @@ impl ImageKeySpace {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{Radix, Retention, SnapshotKind};
+    use ds41rt_core::prefix::{Radix, Retention, SnapshotKind};
     use super::*;
 
     fn prompt(text: usize, images: usize) -> Vec<u32> {
@@ -271,8 +271,8 @@ mod tests {
         assert!(retained.evict_one());
         let replacement = space.prepare_spans(&tokens, &[(256, 10, [3; 32])])?;
         assert_eq!(replacement.encode(&tokens)?[256], original_key);
-        assert!(retained.prompts.root.children.is_empty());
-        assert!(retained.turns.root.children.is_empty());
+        assert!(retained.bank(SnapshotKind::Prompt).is_empty());
+        assert!(retained.bank(SnapshotKind::Turn).is_empty());
         // An active owner still pins a key after its retained snapshots disappear.
         let live_key = replacement.encode(&tokens)?[256];
         retained

@@ -495,6 +495,15 @@ fn parse_safetensors_header(path: &Path) -> Result<BTreeMap<String, SafetensorsT
         }
         let mut header: SafetensorsTensorHeader = serde_json::from_value(value)
             .with_context(|| format!("parsing header entry {name} in {}", path.display()))?;
+        // Hardening bound ported from upstream llama.cpp gguf-py
+        // test_gguf_reader_validation.py: reject absurd tensor rank before any
+        // downstream allocation/arithmetic on the dims vector.
+        anyhow::ensure!(
+            header.shape.len() <= 32,
+            "safetensors tensor {name} in {} has absurd rank {} (max 32)",
+            path.display(),
+            header.shape.len()
+        );
         anyhow::ensure!(
             header.data_offsets[0] <= header.data_offsets[1],
             "invalid safetensors offsets for {name} in {}: {:?}",

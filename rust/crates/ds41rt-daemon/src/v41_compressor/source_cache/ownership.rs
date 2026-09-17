@@ -5,13 +5,28 @@ use std::{cell::RefCell, rc::Rc};
 pub(super) struct PagePool {
     pub free: Vec<u32>,
     references: Vec<usize>,
+    /// Bumped when a page's last reference goes, so a reused index is a new identity.
+    generations: Vec<u32>,
 }
 impl PagePool {
     pub fn new(pages: usize) -> Self {
         Self {
             free: (0..pages as u32).rev().collect(),
             references: vec![0; pages],
+            generations: vec![0; pages],
         }
+    }
+    pub fn generation(&self, page: u32) -> u32 {
+        self.generations[page as usize]
+    }
+    /// Take `count` free pages, each with one reference owned by the caller; `None` if fewer are free.
+    pub fn allocate(&mut self, count: usize) -> Option<Vec<u32>> {
+        if self.free.len() < count {
+            return None;
+        }
+        let pages = self.free.split_off(self.free.len() - count);
+        self.retain(&pages);
+        Some(pages)
     }
     pub fn shared(&self, page: u32) -> bool {
         self.references(page) > 1
@@ -30,6 +45,7 @@ impl PagePool {
             assert!(*count > 0, "source page released without ownership");
             *count -= 1;
             if *count == 0 {
+                self.generations[page as usize] += 1;
                 self.free.push(page);
             }
         }
@@ -42,6 +58,12 @@ pub(crate) struct SourcePrefix {
     pub(super) rows: usize,
 }
 impl SourcePrefix {
+    pub fn pages(&self) -> &[u32] {
+        &self.pages
+    }
+    pub fn rows(&self) -> usize {
+        self.rows
+    }
     /// Retain a shorter initialized frontier after the original request was
     /// released. Future rows in its physical tail remain owned by the original
     /// snapshot; an appending branch must still use copy-on-write.

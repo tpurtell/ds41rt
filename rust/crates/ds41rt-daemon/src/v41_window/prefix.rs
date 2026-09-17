@@ -190,3 +190,12 @@ mod tests {
         Ok(())
     }
 }
+
+impl WindowPrefix {
+    pub fn parts(&self) -> (u64, u64, u64) {
+        (self.owner, self.end, self.begin)
+    }
+    pub fn from_parts(owner: u64, end: u64, begin: u64) -> Self {
+        Self { owner, end, begin }
+    }
+}

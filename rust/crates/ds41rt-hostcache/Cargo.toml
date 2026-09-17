@@ -1,0 +1,40 @@
+[package]
+name = "ds41rt-hostcache"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Host-RAM write-behind cache of DS41RT retained snapshots: pinned slab pool, exact page sharing, the engine's reuse rule, a stub copy engine and the simulator that drives the suites"
+
+[dependencies]
+ds41rt-core = { path = "../ds41rt-core" }
+anyhow.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+proptest = "1"
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "pool"
+harness = false
+[[bench]]
+name = "snapshots"
+harness = false
+[[bench]]
+name = "copy"
+harness = false
+[[bench]]
+name = "sim"
+harness = false
+[[bench]]
+name = "cache"
+harness = false
+[[bench]]
+name = "prefill_hold"
+harness = false
+[[bench]]
+name = "coalesce"
+harness = false

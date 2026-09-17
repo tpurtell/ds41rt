@@ -522,6 +522,19 @@ impl<'w, 'a, C: DraftChain<'a>> DraftRuntime<'w, 'a, C> {
     }
 }
 
+impl<'a> DraftPrefix<'a> {
+    pub fn parts(&self) -> &[crate::v41_dspark_cache::DsparkPrefix<'a>] {
+        self.windows.get().as_slice()
+    }
+    pub fn from_parts(device: &crate::v41_memory::device::Device<'a>, windows: Vec<crate::v41_dspark_cache::DsparkPrefix<'a>>) -> Result<Self> {
+        Ok(Self { windows: device.own(move || Ok(windows))? })
+    }
+}
+impl<'w, 'a, C: DraftChain<'a>> DraftRuntime<'w, 'a, C> {
+    pub fn windows(&self) -> &[DsparkWindow<'a>; 3] {
+        &self.windows
+    }
+}
 impl<'w, 'a> DraftRuntime<'w, 'a> {
     /// Inputs are (request identity, anchor, committed end, remaining output budget).
     /// Returned rows retain input order; short histories/budgets use the anchor only.

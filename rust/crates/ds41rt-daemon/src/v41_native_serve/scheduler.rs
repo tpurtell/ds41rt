@@ -134,14 +134,34 @@ pub(super) fn serve<'w, 'a, P: ServingTarget<'w, 'a>>(lib: &'a NativeLibrary, ar
     requests: &mut Requests<'a>, first_transport: &mut P::Transport,
     second_transport: &mut P::Transport, mut draft: Option<&mut DraftRuntime<'w, 'a, P::Chain>>,
     vision: &mut crate::v41_vision::VisionRuntime<'a>,
+    stats: std::sync::Arc<std::sync::Mutex<serde_json::Value>>,
 ) -> Result<()> {
     let mut active: Vec<Option<Active<'a>>> = (0..args.concurrency).map(|_| None).collect();
     let mut compiler = super::constraints::Compiler::new(lib, args.snapshot.join("tokenizer.json"));
     let mut id = 0u64;
     let mut closed = false;
-    let mut prefixes = PrefixCache::new(args.prefix_cache_entries as usize);
+    let template = requests.cache().sources()[0].get().source_cache().page_segments(0)[0];
+    let host_cache = super::prefix::HostCacheBinding::new(lib, args.host_cache_config()?, template)?;
+    let mut prefixes = PrefixCache::new(args.prefix_cache_entries as usize).with_host_cache(host_cache);
+    let mut stats_published = Instant::now();
     let limits = ds41rt_api::native_v41::NativeLimits::new(args.max_context_tokens, args.max_output_tokens)?;
     loop {
+        prefixes.tick();
+        if stats_published.elapsed() >= std::time::Duration::from_secs(1) {
+            stats_published = Instant::now();
+            if let Some(metrics) = prefixes.host_metrics() {
+                if let Ok(mut slot) = stats.lock() {
+                    // Deliberately exports the cache's whole effective `Config` under
+                    // `host_cache_config` (packet HC-9), not just `store_pace_ns`: fleet
+                    // operators tune several of these knobs, and one key keeps the export
+                    // forward-compatible as new knobs land.
+                    *slot = serde_json::json!({
+                        "host_cache": metrics,
+                        "host_cache_config": prefixes.host_config(),
+                    });
+                }
+            }
+        }
         // This point is reached only after both complete stacks have drained and
         // committed. No cache owner is migrated or retired inside a layer stack.
         for entry in &mut active {
@@ -195,6 +215,9 @@ pub(super) fn serve<'w, 'a, P: ServingTarget<'w, 'a>>(lib: &'a NativeLibrary, ar
                 let source_end = requests.cache().committed_end(lease)? as usize;
                 prefixes.make_room(requests, &[(lease, (prompt.len() - source_end) as u32)])?;
                 if !images.is_empty() {
+                    // Deliberately unheld (packet HC-9): this is per-image pre-prefill
+                    // preparation, not a batch-tokens chunk, so the store-pace pacing hold
+                    // does not apply here; the hold covers prefill chunk dispatch only.
                     let start = if requests.cache().stage(lease)? == crate::v41_backbone_cache::CacheStage::EncoderReplay {
                         requests.cache().history_end(lease)? as usize
                     } else { source_end };
@@ -220,7 +243,7 @@ pub(super) fn serve<'w, 'a, P: ServingTarget<'w, 'a>>(lib: &'a NativeLibrary, ar
                 let scores = if cached == prompt.len() { hit.expect("complete prefix hit").1.context("exact prefix has no logits")? }
                 else { prefill(lib, runtime, first, second, requests, first_transport,
                     second_transport, lease, &prompt, args.prefill_batch_tokens as usize, &job,
-                    draft.as_deref_mut())? };
+                    draft.as_deref_mut(), &mut || prefixes.prefill_hold())? };
                 if cached != prompt.len() {
                   if let Err(error) = prefixes.retain(SnapshotKind::Prompt, &prompt, &image_keys, &scores, id, lease, requests, draft.as_deref_mut()) {
                     tracing::warn!(%error, "prompt prefix was not retained");

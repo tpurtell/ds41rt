@@ -256,6 +256,7 @@ mod tests {
             queue,
             limits: NativeLimits::default(),
             images: ImageDecoder::new(1),
+            stats: std::sync::Arc::new(std::sync::Mutex::new(serde_json::Value::Null)),
         };
         let body = |url: String| {
             json!({"model":MODEL,"messages":[{"role":"user","content":[

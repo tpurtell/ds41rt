@@ -12,6 +12,12 @@ dependencies = [
 
 [project.optional-dependencies]
 torch = ["torch"]
+test = [
+    "pytest>=8",
+    "numpy>=2",
+    "xgrammar==0.2.6",
+]
+
 exl3 = [
   "torch>=2.6.0",
   "numpy>=2.1.0",
