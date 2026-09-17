@@ -1,14 +1,14 @@
 # DS41RT engineering report
 
-DS41RT is a native inference engine for the official DeepSeek V4.1 Flash checkpoint. One RTX PRO 6000 Blackwell coordinator owns the model state and request lifecycle; four DGX Spark systems execute tensor-parallel slices of the backbone routed experts. This report describes the selected release design. Numerical and serving evidence is linked from the [release checklist](release-v1-checklist.md).
+DS41RT is a native inference engine for the official DeepSeek V4.1 Flash checkpoint. A coordinator process uses one or two RTX PRO 6000 Blackwell cards and owns model state and request lifecycle; four DGX Spark systems execute tensor-parallel slices of the remaining backbone routed experts. This report describes the selected release design. Current numerical and serving evidence is tracked in the [v6 release plan](release-v6-plan.md).
 
 ## Execution topology
 
-The RTX owns the API, tokenizer, admission, scheduling, embeddings, mHC residual transforms, all attention, Engram lookup and projection, backbone routers, shared experts, vision, dSpark, the vocabulary head, sampling, and every cache transaction. This keeps causal state under one owner and makes accepted-prefix publication atomic across the components that advance a request.
+The coordinator owns the API, tokenizer, admission, scheduling, embeddings, mHC residual transforms, attention, Engram lookup and projection, backbone routers, shared experts, vision, dSpark, the vocabulary head, sampling, and every cache transaction. One process retains atomic accepted-prefix publication while its CUDA owners may reside on either logical RTX.
 
 The backbone has 40 layers at width 5,120: a 20-layer causal encoder followed by a 20-layer decoder. Each layer has a 128-token local window. Layers 2–19 also attend to ratio-two compressed global sources; layers 20–39 share a ratio-one source created at the encoder/decoder boundary. Global KV producers are layers 2, 8, 14, and 20. Index selections are produced at layers 2, 8, 14, 20, 24, 28, 32, and 36.
 
-Backbone routed experts use 384 experts and top-6 routing. Each of the four Sparks owns one intermediate-dimension tensor-parallel rank for every routed expert. The coordinator sends the same canonical rows, expert IDs, and FP32 route weights to all ranks, gathers the four partial planes in rank order, reduces them, combines the local shared expert, and advances the residual. The dSpark drafter stays entirely on the RTX and does not traverse this boundary.
+Backbone routed experts use 384 experts and top-6 routing. The coordinator first reserves cache and runtime storage, then installs as many complete expert layers as fit from layer 0 upward. A local layer is TP1 with one RTX or TP2 with two. Each of the four Sparks owns one intermediate-dimension tensor-parallel rank for every layer above the published boundary. The coordinator sends the same canonical rows, expert IDs, and FP32 route weights to all ranks, gathers the four partial planes in rank order, reduces them, combines the shared expert, and advances the residual. The dSpark drafter does not traverse this Spark boundary.
 
 Two independent target execution lanes overlap local work with the remote expert boundary. Admission is shared across the lanes and accepts up to sixteen active requests. Requests keep generation-checked leases and versions; stale batches, duplicate identities, changed cache bindings, and mismatched transport responses fail before publication.
 
@@ -32,7 +32,7 @@ The three persistent attention stores intentionally use different formats:
 | Sliding-window KV | FP8 E4M3 values, group-32 E8M0 scales | Last 128 tokens at all 40 layers |
 | Independent index keys | packed FP4 values with per-row scales | Learned sparse-source selection |
 
-The default pool contains 49,216 page groups. Sources 2, 8, and 14 receive one page per group; source 20 receives two because of its compression ratio. The resulting 62,996,480 physical source rows occupy 22.43 GB, with another 43.26 MB for active SWA rings and small page-table and compressor-tail storage. Pages are reference counted and shared between active requests and retained radix branches.
+The pool is planned in complete source-page groups. Sources 2, 8, and 14 receive one page per group; source 20 receives two because of its compression ratio. The standard dual layout reserves 13,090,775,040 bytes for this global FP4 source/index pool and exposes 14,680,064 usable logical GPU tokens, plus private tails. Pages are reference counted and shared between active requests and retained radix branches.
 
 Cache updates are transactional. A wave proposes private SWA rows, compression output, index keys, Engram history, and draft state. Target verification chooses the accepted prefix. Preflight validates every participant before any owner advances; the accepted rows are then committed and versions move together. An execution failure revokes the affected request state instead of exposing a partially advanced combination.
 
@@ -42,9 +42,9 @@ Compression operates on two-token groups. Odd trailing input is retained as a pr
 
 A token radix indexes rendered prompt tokens and image-content identities. An exact prompt hit can restore the complete target state and saved first-token logits. A partial hit aligns shared compressed sources to a complete two-token boundary and rebuilds at most the final 128 encoder tokens needed for the local windows. The new suffix then appends through copy-on-write if its last shared source page is partial. Divergent branches keep their common pages immutable.
 
-Completed responses retain target, dSpark, compressor, window, history, and logit tails so the next agentic turn can resume without rebuilding the previous assistant output. Prompt snapshots and completed-turn snapshots have independent banks. Each defaults to 24 entries: sixteen concurrent working slots plus eight spare retained turns. LRU eviction removes the radix value, retained tails, and page references together; active owners are never eviction candidates.
+Completed responses retain target, dSpark, compressor, window, history, and logit tails so the next agentic turn can resume without rebuilding the previous assistant output. Prompt snapshots and completed-turn snapshots have independent banks. Each defaults to 20 entries. LRU eviction removes the radix value, retained tails, and page references together; active owners are never eviction candidates. Optional pinned-RAM snapshots preserve inactive retained state. They do not park active requests or increase the GPU working-set limit.
 
-The final prefix campaign proves cold, partial, exact, shorter, divergent, and multi-chunk branches; bounded replay; C2/C6/C16 isolation; cancellation and replacement; and eviction of only the twenty-fifth least-recently-used turn. Exact repeats report full prompt hits, while partial-hit counters exclude the bounded reconstruction window.
+The prefix campaigns cover cold, partial, exact, shorter, divergent, and multi-chunk branches; bounded replay; concurrent isolation; cancellation and replacement; and LRU eviction at the configured bank limit. Exact repeats report full prompt hits, while partial-hit counters exclude the bounded reconstruction window.
 
 ## Engram and mapped storage
 
@@ -54,7 +54,7 @@ Image spans reset n-gram history and receive no Engram residual. Accepted-prefix
 
 ## dSpark speculative decoding
 
-The dSpark drafter has three stages with 128 experts and top-3 routing per stage. It uses target residual information from layers 37, 38, and 39, plus the shared embedding and vocabulary head. Its projections, attention, routed and shared experts, FP8 draft windows, and output remain on the coordinator.
+The dSpark drafter has three stages with 128 experts and top-3 routing per stage. It uses target residual information from layers 37, 38, and 39, plus the shared embedding and vocabulary head. Its projections, attention, routed and shared experts, FP8 draft windows, and output remain in the coordinator process. The selected dual default places the transformer on RTX1 and uses the existing TP2 vocabulary head. An independently selectable routed-expert TP2 path remains off because its measured gain was small and inconsistent.
 
 Draft tokens are private until the target backbone verifies them. The target accepts the matching prefix, emits those tokens, and commits the identical length to target cache, draft cache, and Engram state. Rejection cannot advance draft history. `--no-dspark` runs the same target path without proposals; this provides a direct correctness and performance control.
 
@@ -76,12 +76,12 @@ XGrammar compiles response constraints and masks logits on the native path. Stri
 
 ## Memory and startup
 
-The coordinator reserves model owners before sizing its shared cache. At the standard C16 launch, resident owners occupy 43.04 GiB and the eager architectural cache occupies 20.93 GiB for 25,165,824 tokens total (24 × 1,048,576-token contexts), for 63.97 GiB at readiness. A warmed C16 process uses 64.05 GiB. Exact pool bytes, total occupancy ceilings, context size, concurrency, and retention are independently configurable; insufficient plans fail startup instead of silently shrinking the requested service.
+The coordinator reserves fixed model owners, transport, execution workspaces and runtime headroom before sizing its GPU cache and bottom-up local expert boundary. The standard v6 dual launch provides 14,680,064 usable GPU tokens plus 6,291,968 logical RAM-backed tokens, totaling 20,972,032. The standard single launch provides 18,736,128 GPU tokens plus 2,235,904 RAM-backed tokens, with the same combined total. Both exceed 20 × 1,048,576 by 512 tokens. Exact pool bytes, pinned-RAM bytes, occupancy ceilings, context size, concurrency and retention remain independently configurable; infeasible plans fail startup instead of silently shrinking a requested explicit pool.
 
-Each Spark reads and packs its own checkpoint shard in parallel. A cold-cache phase run brings the four workers to readiness in 38–39 seconds and the coordinator in another 5.44 seconds, for 44.65 seconds of measured core startup. The standard clean launch reaches the API in 55–56 seconds. Startup performs no weight RDMA exchange because every rank owns a local snapshot; the network path is reserved for inference activations and expert results.
+Each Spark reads and packs its own checkpoint shard in parallel. The clean candidate standard launcher reached API readiness in 31.71 seconds with two RTX cards and 58.63 seconds with one, including orchestration; these are one observation per layout rather than controlled startup distributions. Startup performs no weight RDMA exchange because every rank owns a local snapshot. Dual automatic placement publishes and acknowledges the exact RTX/Spark boundary before the API becomes ready.
 
 Builds pin and verify the engine, model revision, SparkInfer, XGrammar, architecture, exported binaries, and notices. The amd64 coordinator and ARM64 worker images are built natively, and the worker image is distributed to the four Sparks after its identity is checked.
 
 ## Measured behavior
 
-The corrected-FP4 release candidate reaches 2,668 prompt tok/s at its best median prefill cell, 60.68 tok/s on the weighted eight-type dSpark mix, 128.03 tok/s on low-entropy dSpark decode, and 683.70 aggregate tok/s at C16. Paired FP4/FP8 checks show no material retained-decode regression, while the compressed source allocation is substantially smaller. See the [performance](release-v1-performance.md), [memory](release-v1-memory.md), [startup](release-v1-startup.md), and [prefix](release-v1-prefix-final.md) reports for methods and raw evidence.
+The release README and [v6 performance report](release-v6-performance.md) contain the complete native three-sample tables, deployment capacity and provenance. Historical EXL3 measurements remain in the [v5 performance report](release-v5-performance.md). The [v6 release plan](release-v6-plan.md) preserves rejected TP2 experiments, focused controls, correctness evidence and measured limitations.
