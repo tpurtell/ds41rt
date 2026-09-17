@@ -638,7 +638,10 @@ impl<'w, 'a> BackboneLane<'w, 'a> {
                 None=>unsafe { self.enqueue_attention_cached_ffn(sink,cache,None) } };
         }
         self.enter(Phase::Query)?;
-        let selection=index.map(|index|index.output(self.layer,cache)).transpose()?;
+        // The first two layers use only SWA and never produce an index selection.
+        let selection=if self.layer>=2 {
+            Some(index.context("attention index lane missing")?.output(self.layer,cache)?)
+        } else { None };
         let mut pending=PendingLaneFfn { lane:Some(self),values:None };
         let lane=pending.lane.as_deref_mut().unwrap();
         let query=lane.query.output()?;

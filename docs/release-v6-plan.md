@@ -711,3 +711,30 @@ bundle: `native-configure.log`, `native-production-serial-build.log`,
 `production-checkpoint-sinks.log`. Native build artifacts are outside the source
 checkout at `~/.cache/ds41rt-v6-native`. Full-model startup/FFN execution and
 retained-context checks are next.
+
+### First full-model TP2 attention serving check
+
+Full-model startup exposed an index handoff bug: layers 0 and 1 use SWA only,
+but the experimental dual path tried to read an index selection for them. The
+handoff now skips selection for these layers, matching the existing full-head
+path, and explicitly requires an index lane for later layers.
+
+With the current optimized binary/native build, TP2 attention now serves three
+concurrent smoke requests correctly (READY, Python sum-of-squares, and retrieval
+of MAPLE-7421). Repeating the retrieval request hits all 804 prompt tokens in the
+GPU prefix cache. This exercises the full backbone/FFN and dSpark-enabled serving;
+it does not yet verify RAM eviction/restore under replicated attention or establish
+a throughput comparison. The host launch also needs `DS41RT_NATIVE_LIB` set for
+RDMA discovery, in addition to the serving CLI argument.
+
+At 20 bottom-up RTX expert layers, 2048 prefill rows, concurrency 16 and 20 retained
+entries, automatic sizing provides 7,190,016 usable GPU-resident tokens. Automatic
+RAM sizing allocates 13 GiB pinned (including staging/snapshot overhead), giving
+20,972,032 combined logical tokens, just above 20 * 1,048,576. Physical replica
+bytes remain excluded from logical capacity. The successful warm-filesystem
+startup took 13.08 seconds; this is a smoke observation, not a qualified loading
+comparison. The original v5 coordinator was restored after testing.
+
+Evidence: `~/.cache/ds41rt-v6-serving-tp2/{launch.json,server.log,check.log,smoke.json}`;
+`first-server.log` records the discovered index bug. No default changed and no
+TPS claim is made from these short checks.
