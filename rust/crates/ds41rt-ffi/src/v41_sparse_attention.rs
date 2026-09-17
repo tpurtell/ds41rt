@@ -81,11 +81,12 @@ pub struct V41SparseBatch {
     views: Vec<RawView>,
     compressed: i32,
     aot: bool,
+    heads: usize,
 }
 impl V41SparseBatch {
     /// Include in captured graph identity: device descriptors may change their
     /// alignment/format eligibility between replays without changing shape.
-    pub fn backend_key(&self) -> usize { usize::from(self.aot) }
+    pub fn backend_key(&self) -> usize { usize::from(self.aot) | (usize::from(self.heads == 32) << 1) }
     pub fn bytes(&self) -> &[u8] {
         // repr(C), 120 bytes with no padding, all fields initialized by checked_view.
         unsafe { std::slice::from_raw_parts(self.views.as_ptr().cast(), self.views.len() * 120) }
@@ -93,8 +94,9 @@ impl V41SparseBatch {
 }
 pub struct V41SparseAttention<'a> {
     _library: &'a NativeLibrary,
-    launch: Launch,
-    split_launch: SplitLaunch,
+    heads: usize,
+    launch: Option<Launch>,
+    split_launch: Option<SplitLaunch>,
     bounded_launch: Option<BoundedLaunch>,
     batch_validate: Option<BatchValidate>,
     batch_launch: Option<BatchLaunch>,
@@ -114,32 +116,65 @@ impl NativeLibrary {
         );
         Ok(V41SparseAttention {
             _library: self,
-            launch: unsafe { *self.lib.get(b"ds41rt_v41_sparse_attention")? },
-            split_launch: unsafe { *self.lib.get(b"ds41rt_v41_sparse_attention_split")? },
+            heads: 64,
+            launch: Some(unsafe { *self.lib.get(b"ds41rt_v41_sparse_attention")? }),
+            split_launch: Some(unsafe { *self.lib.get(b"ds41rt_v41_sparse_attention_split")? }),
             batch_validate: unsafe { self.lib.get(b"ds41rt_v41_sparse_attention_batch_validate").ok().map(|symbol| *symbol) },
             batch_launch: unsafe { self.lib.get(b"ds41rt_v41_sparse_attention_batch").ok().map(|symbol| *symbol) },
             batch_aot_launch: unsafe { self.lib.get(b"ds41rt_v41_sparse_attention_batch_aot").ok().map(|symbol| *symbol) },
             bounded_launch: unsafe { self.lib.get(b"ds41rt_v41_sparse_attention_bounded").ok().map(|symbol| *symbol) },
         })
     }
+    /// Prepare compact local-head attention on the current device before capture.
+    /// Single-request launches require replay_begins (zeros allow the full window).
+    pub fn v41_sparse_attention_heads32(&self) -> Result<V41SparseAttention<'_>> {
+        let initialize = unsafe {
+            *self.lib.get::<unsafe extern "C" fn() -> i32>(b"ds41rt_v41_sparse_attention_heads32_initialize")?
+        };
+        ensure!(unsafe { initialize() } == 0, "compact sparse attention initialization failed");
+        Ok(V41SparseAttention {
+            _library: self,
+            heads: 32,
+            launch: None,
+            split_launch: None,
+            bounded_launch: Some(unsafe { *self.lib.get(b"ds41rt_v41_sparse_attention_heads32_bounded")? }),
+            batch_validate: Some(unsafe { *self.lib.get(b"ds41rt_v41_sparse_attention_heads32_batch_validate")? }),
+            batch_launch: Some(unsafe { *self.lib.get(b"ds41rt_v41_sparse_attention_heads32_batch")? }),
+            batch_aot_launch: unsafe { self.lib.get(b"ds41rt_v41_sparse_attention_heads32_batch_aot").ok().map(|symbol| *symbol) },
+        })
+    }
+
 }
 impl V41SparseAttention<'_> {
+    pub fn heads(&self) -> usize { self.heads }
+
+    /// Required split workspace for this prepared local-head geometry.
+    pub fn scratch_bytes(&self, rows: usize, parts: usize) -> Result<usize> {
+        Self::scratch_bytes_for_heads(rows, parts, self.heads)
+    }
+
+    /// Compatibility helper for the original 64-head path.
     pub fn split_scratch_bytes(rows: usize, parts: usize) -> Result<usize> {
+        Self::scratch_bytes_for_heads(rows, parts, 64)
+    }
+
+    fn scratch_bytes_for_heads(rows: usize, parts: usize, heads: usize) -> Result<usize> {
+        ensure!(heads == 32 || heads == 64, "invalid sparse attention head count");
         ensure!(
             (1..=4096).contains(&rows) && (1..=10).contains(&parts),
             "invalid sparse attention split shape"
         );
-        Ok(rows * parts * 64 * 514 * 4)
+        Ok(rows * parts * heads * 514 * 4)
     }
 
     fn checked_view(
         query: Ds41rtDeviceBuffer, sink: Ds41rtDeviceBuffer, metadata: Ds41rtDeviceBuffer,
         selected: Option<Ds41rtDeviceBuffer>, window: &V41SparseWindow,
         source: Option<&V41SparseSource>, output: Ds41rtDeviceBuffer,
-        rows: usize, window_width: usize,
+        rows: usize, window_width: usize, heads: usize,
     ) -> Result<RawView> {
         ensure!(
-            (1..=4096).contains(&rows) && window_width <= 128,
+            (1..=4096).contains(&rows) && window_width <= 128 && (heads == 32 || heads == 64),
             "invalid sparse attention shape"
         );
         ensure!(
@@ -158,10 +193,10 @@ impl V41SparseAttention<'_> {
             Ok(())
         };
         for (b, n) in [
-            (query, rows * 65536),
-            (sink, 256),
+            (query, rows * heads * 1024),
+            (sink, heads * 4),
             (metadata, rows * 80),
-            (output, rows * 65536),
+            (output, rows * heads * 1024),
             (window.values, 128 * 512),
             (window.scales, 128 * 16),
             (window.end, 8),
@@ -249,13 +284,13 @@ impl V41SparseAttention<'_> {
         let compressed = if selected.is_some() { 2 } else { 0 };
         let parts = if compressed != 0 { 10 } else { 2 };
         for (buffer, bytes) in [(descriptors, descriptor_bytes), (bounds, rows * 8),
-            (scratch, Self::split_scratch_bytes(rows, parts)?)] {
+            (scratch, self.scratch_bytes(rows, parts)?)] {
             ensure!(!buffer.ptr.is_null() && buffer.bytes >= bytes && buffer.device_id == query.device_id,
                 "sparse batch buffer is null, undersized or on another device");
         }
         let mut views = Vec::with_capacity(rows);
         for &(window, source, count) in requests {
-            let view = Self::checked_view(query, sink, metadata, selected, window, source, output, rows, 0)?;
+            let view = Self::checked_view(query, sink, metadata, selected, window, source, output, rows, 0, self.heads)?;
             views.extend(std::iter::repeat(view).take(count));
         }
         let validate = self.batch_validate.context("native library lacks sparse batch validation")?;
@@ -268,7 +303,7 @@ impl V41SparseAttention<'_> {
             && scratch.ptr as usize % 16 == 0
             && views.iter().all(|view| view.values.iter().chain(view.scales.iter())
                 .all(|pointer| *pointer as usize % 16 == 0));
-        Ok(V41SparseBatch { views, compressed, aot })
+        Ok(V41SparseBatch { views, compressed, aot, heads: self.heads })
     }
     /// # Safety
     /// All buffers and dimensions must match prepare_batch; upload batch.bytes()
@@ -281,6 +316,7 @@ impl V41SparseAttention<'_> {
         output: Ds41rtDeviceBuffer, descriptors: Ds41rtDeviceBuffer,
         bounds: Ds41rtDeviceBuffer, scratch: Ds41rtDeviceBuffer, stream: *mut c_void,
     ) -> Result<()> {
+        ensure!(batch.heads == self.heads, "sparse batch head geometry differs from prepared kernel");
         let launch = if batch.aot { self.batch_aot_launch } else { self.batch_launch }
             .context("native library lacks selected sparse batch attention")?;
         let status = unsafe { launch(query.ptr.cast(), sink.ptr.cast(), metadata.ptr.cast(),
@@ -292,7 +328,7 @@ impl V41SparseAttention<'_> {
     }
 
     /// # Safety
-    /// Rotated BF16 queries [rows,64,512], finite FP32 sinks [64], U64 metadata
+    /// Rotated BF16 queries [rows,heads(),512], finite FP32 sinks [heads()], U64 metadata
     /// [rows,10] and optional I32 source IDs [rows,512] follow the native header.
     /// FP8 window and FP4 source KV dequantize to finite BF16. Caller binds every row to one request's
     /// live window/source leases and proposal snapshots; causal source lengths
@@ -316,7 +352,7 @@ impl V41SparseAttention<'_> {
         split: Option<(Ds41rtDeviceBuffer, usize)>,
         stream: *mut c_void,
     ) -> Result<()> {
-        let view = Self::checked_view(query, sink, metadata, selected, window, source, output, rows, window_width)?;
+        let view = Self::checked_view(query, sink, metadata, selected, window, source, output, rows, window_width, self.heads)?;
         let check = |b: Ds41rtDeviceBuffer, n: usize| -> Result<()> {
             ensure!(!b.ptr.is_null() && b.bytes >= n && b.device_id == query.device_id,
                 "sparse attention buffer is null, undersized or on another device");
@@ -326,7 +362,7 @@ impl V41SparseAttention<'_> {
             check(bounds, rows * 8)?;
             let launch = self.bounded_launch.context("native library lacks bounded decoder attention")?;
             let (partial, bytes, parts) = if let Some((scratch, parts)) = split {
-                check(scratch, Self::split_scratch_bytes(rows, parts)?)?;
+                check(scratch, self.scratch_bytes(rows, parts)?)?;
                 (scratch.ptr.cast(), scratch.bytes as u64, parts as i32)
             } else {
                 (std::ptr::null_mut(), 0, 1)
@@ -338,9 +374,9 @@ impl V41SparseAttention<'_> {
                     partial, bytes, parts)
             }
         } else if let Some((scratch, parts)) = split {
-            check(scratch, Self::split_scratch_bytes(rows, parts)?)?;
+            check(scratch, self.scratch_bytes(rows, parts)?)?;
             unsafe {
-                (self.split_launch)(
+                (self.split_launch.context("compact attention requires replay bounds")?)(
                     query.ptr.cast(),
                     sink.ptr.cast(),
                     metadata.ptr.cast(),
@@ -357,7 +393,7 @@ impl V41SparseAttention<'_> {
             }
         } else {
             unsafe {
-                (self.launch)(
+                (self.launch.context("compact attention requires replay bounds")?)(
                     query.ptr.cast(),
                     sink.ptr.cast(),
                     metadata.ptr.cast(),
@@ -371,6 +407,55 @@ impl V41SparseAttention<'_> {
             }
         };
         ensure!(status == 0, "native sparse attention status {status}");
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn buffer(bytes: usize) -> Ds41rtDeviceBuffer {
+        Ds41rtDeviceBuffer { ptr: 0x1000usize as *mut c_void, bytes, device_id: 0, flags: 0 }
+    }
+
+    #[test]
+    fn compact_geometry_validates_exact_extents_and_device_ownership() {
+        let window = V41SparseWindow {
+            values: buffer(128*512), scales: buffer(128*16),
+            proposals: buffer(512), proposal_scales: buffer(16), end: buffer(8),
+            proposal_capacity: 1, replay_begins: None,
+        };
+        let check = |query, sink, output, heads| {
+            V41SparseAttention::checked_view(query, sink, buffer(80), None,
+                &window, None, output, 1, 0, heads)
+        };
+        assert!(check(buffer(32768), buffer(128), buffer(32768), 32).is_ok());
+        assert!(check(buffer(32768), buffer(128), buffer(32768), 64).is_err());
+        assert!(check(buffer(32767), buffer(128), buffer(32768), 32).is_err());
+        assert!(check(buffer(32768), buffer(127), buffer(32768), 32).is_err());
+        assert!(check(buffer(32768), buffer(128), buffer(32767), 32).is_err());
+        let mut other_device = buffer(32768);
+        other_device.device_id = 1;
+        assert!(check(buffer(32768), buffer(128), other_device, 32).is_err());
+        assert!(check(buffer(65536), buffer(256), buffer(65536), 64).is_ok());
+        assert!(check(buffer(65536), buffer(256), buffer(65536), 16).is_err());
+    }
+
+    #[test]
+    fn scratch_and_graph_identity_distinguish_local_heads() -> Result<()> {
+        for rows in [1, 16, 64, 4096] {
+            let full = V41SparseAttention::split_scratch_bytes(rows, 10)?;
+            assert_eq!(V41SparseAttention::scratch_bytes_for_heads(rows, 10, 32)?, full/2);
+        }
+        assert!(V41SparseAttention::scratch_bytes_for_heads(4097, 10, 32).is_err());
+        assert!(V41SparseAttention::scratch_bytes_for_heads(64, 11, 32).is_err());
+        let mut keys = Vec::new();
+        for heads in [64, 32] { for aot in [false, true] {
+            let batch = V41SparseBatch { views: Vec::new(), compressed: 2, aot, heads };
+            keys.push(batch.backend_key());
+        }}
+        assert_eq!(keys, [0, 1, 2, 3]);
         Ok(())
     }
 }

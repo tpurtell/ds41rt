@@ -264,3 +264,16 @@ This completes the native kernel/backend foundation, not TP2 serving. Rust
 bindings, local KV replicas and their lifetime/restore handling, projection
 partitioning, lane integration and end-to-end measurements remain outstanding.
 No serving defaults or performance claims change here.
+
+Rust now exposes a separately prepared `v41_sparse_attention_heads32` binding,
+with local-head query/sink/output validation and half-sized split scratch. Compact
+single-request calls require explicit replay bounds (zero bounds permit the full
+window); both WMMA and optional AOT batch symbols are selected before replay.
+Batch graph identity includes local head geometry while preserving existing
+64-head keys, and launch rejects a batch prepared for the other geometry. The
+original 64-head constructor and static scratch helper remain compatible.
+Two CPU contract tests pass for exact buffer extents, wrong-device rejection,
+scratch limits and graph identity. The daemon compiles against the updated FFI.
+These tests do not establish Rust-to-GPU execution or replicated KV correctness;
+those require the upcoming serving ownership integration. Evidence:
+`rust-tests.log` and `rust-daemon-check.log` in the compact-head evidence bundle.
