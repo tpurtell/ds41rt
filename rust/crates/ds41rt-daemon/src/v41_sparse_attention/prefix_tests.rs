@@ -192,3 +192,75 @@ fn committed_prefix_survives_append_but_private_boundary_stays_exact() -> Result
     }
     Ok(())
 }
+
+#[test]
+fn compact_wave_budget_preserves_full_geometry() -> Result<()> {
+    for capacity in [1,48,80,4096] {
+        let scratch=V41SparseAttention::split_scratch_bytes(capacity.min(48),10)?;
+        let descriptors=V41SparseAttention::batch_descriptor_bytes(capacity.min(48))?;
+        assert_eq!(SparseAttentionWave::device_bytes(capacity)?,capacity*131160+scratch+descriptors);
+        assert_eq!(CompactSparseAttentionWave::device_bytes(capacity)?,capacity*(65536+88)+scratch/2+descriptors);
+    }
+    Ok(())
+}
+
+#[test]
+#[ignore = "requires DS41RT_NATIVE_LIB with compact attention and two CUDA GPUs"]
+fn compact_wave_batch_graph_consumes_local_buffers() -> Result<()> {
+    let lib=unsafe { NativeLibrary::load(std::env::var("DS41RT_NATIVE_LIB")?)? };
+    for gpu in 0..2 {
+        crate::v41_memory::device::Device { library:&lib,id:gpu }.run(|| {
+            let mut wave=CompactSparseAttentionWave::new(&lib,80,CompactSparseAttentionWave::device_bytes(80)?)?;
+            let input=wave.input().ptr;
+            wave.reserve_decode_rows(64)?;
+            assert_eq!(wave.input().ptr,input);
+            assert_eq!(wave.split_scratch.buffer.bytes,64*10*32*514*4);
+            let allocate=|bytes,value|->Result<DeviceAllocation<'_>> {
+                let allocation=DeviceAllocation::new(&lib,bytes)?;
+                lib.copy_h2d(allocation.buffer,&vec![value;bytes])?;Ok(allocation)
+            };
+            let values=allocate(128*512,0x38)?;
+            let scales=allocate(128*16,127)?;
+            let end=allocate(8,0)?;
+            let sink=allocate(32*4,0)?;
+            lib.copy_h2d(wave.query.buffer,&vec![0;wave.query.buffer.bytes])?;
+            lib.copy_h2d(wave.replay_begins.buffer,&vec![0;wave.replay_begins.buffer.bytes])?;
+            let fields:Vec<u64>=[(1,0),(3,0),(3,1),(3,2)].into_iter()
+                .flat_map(|(count,pos)|[0,0,count,pos,0,0,0,0,0,0]).collect();
+            lib.copy_h2d(slice(wave.metadata.buffer,0,4*80),
+                &fields.iter().flat_map(|v|v.to_ne_bytes()).collect::<Vec<_>>())?;
+            let window=||V41SparseWindow { values:values.buffer,scales:scales.buffer,
+                proposals:values.buffer,proposal_scales:scales.buffer,end:end.buffer,
+                proposal_capacity:128,replay_begins:Some(wave.replay_begins.buffer) };
+            let windows=[window(),window()];
+            let batch=wave.kernel.prepare_batch(wave.query.buffer,sink.buffer,wave.metadata.buffer,None,
+                &[(&windows[0],None,1),(&windows[1],None,3)],wave.output.buffer,
+                wave.descriptors.buffer,wave.replay_begins.buffer,wave.split_scratch.buffer)?;
+            assert_eq!(batch.backend_key(),2);
+            lib.copy_h2d(wave.descriptors.buffer,batch.bytes())?;
+            let plan=ColdSparse { layer:0,rows:4,sink:sink.buffer,launches:vec![],selected:None,
+                batch:Some(batch),fingerprint:vec![],needed:0,tail_identity:None };
+            unsafe { wave.enqueue(plan.sink,&plan.launches,None,plan.batch.as_ref())?; }
+            wave.synchronize()?;
+            let graph=unsafe { wave.capture_plan(&plan,&mut None)? };
+            wave.graphs[0].push_back((graph,vec![]));
+            for replay in 0..2 {
+                if replay==1 { lib.copy_h2d(values.buffer,&vec![0;values.buffer.bytes])?; }
+                unsafe { lib.cuda_graph_launch(graph,wave.stream.raw)?; }
+                wave.synchronize()?;
+                let mut output=vec![0u8;4*32768];
+                lib.copy_d2h(&mut output,slice(wave.output.buffer,0,4*32768))?;
+                for (row,value) in [0.5f32,0.5,2.0/3.0,0.75].into_iter().enumerate() {
+                    let bits=value.to_bits();
+                    let expected=if replay==0 { ((bits+0x7fff+((bits>>16)&1))>>16) as u16 } else { 0 };
+                    for item in output[row*32768..(row+1)*32768].chunks_exact(2) {
+                        assert_eq!(u16::from_ne_bytes([item[0],item[1]]),expected);
+                    }
+                }
+            }
+            wave.clear_graph()?;
+            Ok(())
+        })?;
+    }
+    Ok(())
+}

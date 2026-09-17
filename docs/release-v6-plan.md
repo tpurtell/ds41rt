@@ -375,3 +375,24 @@ and `proposal-replica-hardware.log` in the compact attention bundle. Temporary
 container fixtures were removed. Binding these storage components to proposal
 lifetimes, compact attention waves and graph replay is the next integration step;
 there is still no TP2 serving performance claim.
+
+### Compact attention execution wave
+
+The execution wave now has compile-time 64-head and 32-head aliases. Existing
+callers retain the 64-head alias; compact waves allocate half-sized query/output
+and split scratch, retain the same descriptor/metadata capacities, and select the
+compact Rust/native binding. Compact single-request execution always supplies
+replay bounds, including zeros. Query-copy entry points reject mismatched head
+extents before copying, and graph outputs use the wave's local-head row width.
+
+A Rust-to-native hardware fixture passes on each RTX: compact workspace reservation,
+a two-request batch with different row counts, graph capture and replay, exact
+closed-form BF16 outputs, and changed proposal payloads observed by the same graph.
+The unchanged 64-head reservation and committed-prefix/private-boundary hardware
+checks pass too; CPU checks confirm the original 64-head memory formula exactly.
+This fixture uses the new WMMA compact module linked to the v5 library; optimized
+AOT was qualified separately above. Evidence: `compact-wave-hardware.log`,
+`compact-wave-build.log`, `full-wave-reservation.log` and `full-wave-prefix.log` in
+the compact attention bundle. Temporary container files were removed. Live model
+query splitting, replica/proposal ownership binding and dual-wave scheduling remain
+required before an end-to-end attention experiment.
