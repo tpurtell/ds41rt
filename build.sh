@@ -315,7 +315,7 @@ echo "== building Spark development and inference images natively on $seed_host 
 ssh -o BatchMode=yes "$seed_host" bash -s -- \
   "$remote_dir" "$SPARK_EXPERT_DOCKER_DEV" "$SPARK_EXPERT_DOCKER_INFERENCE" \
   "$engine_commit" "$sparkinfer_commit" "$release_version" \
-  "$source_manifest_sha256" "$EXL3_PAIRED_TP4" <<'REMOTE'
+  "$EXL3_PAIRED_TP4" "$source_manifest_sha256" <<'REMOTE'
 set -euo pipefail
 remote_dir="$1"
 dev_image="$2"
@@ -323,8 +323,9 @@ inference_image="$3"
 engine_commit="$4"
 sparkinfer_commit="$5"
 release_version="$6"
-source_manifest_sha256="${7-}"
-exl3_paired_tp4="$8"
+exl3_paired_tp4="$7"
+# SSH reconstructs a shell command and can omit an empty trailing argument.
+source_manifest_sha256="${8-}"
 release_source_label_args=()
 if [[ -n "$source_manifest_sha256" ]]; then
   release_source_label_args+=(

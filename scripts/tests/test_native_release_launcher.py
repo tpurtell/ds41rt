@@ -11,6 +11,44 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class NativeReleaseLauncherTest(unittest.TestCase):
+    def test_spark_build_arguments_survive_ssh_empty_argument_elision(self) -> None:
+        source = (ROOT / 'build.sh').read_text()
+        block = source.split('echo "== building Spark development and inference images natively on $seed_host =="', 1)[1]
+        invocation, remote = block.split("<<'REMOTE'", 1)
+        preamble = remote.split('cd "$remote_dir"', 1)[0]
+        for digest in ('', 'a' * 64):
+            with self.subTest(digest=digest):
+                # OpenSSH joins the command arguments for a remote shell. An
+                # empty local argument is not retained as an empty remote one.
+                harness = '''set -euo pipefail
+ssh() { shift 3; bash -c "$*"; }
+seed_host=fixture
+remote_dir=/fixture
+SPARK_EXPERT_DOCKER_DEV=dev
+SPARK_EXPERT_DOCKER_INFERENCE=inference
+engine_commit=engine
+sparkinfer_commit=fork
+release_version=v5
+EXL3_PAIRED_TP4=on
+source_manifest_sha256="$1"
+'''
+                harness += invocation + "<<'REMOTE'" + preamble
+                harness += 'printf "%s\\n" "$exl3_paired_tp4" "$source_manifest_sha256"\nREMOTE\n'
+                result = subprocess.run(['bash', '-c', harness, 'test', digest],
+                                        cwd=ROOT, text=True, capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.splitlines(), ['on', digest])
+
+    def test_native_api_identity_is_independent_of_checkpoint_repository(self) -> None:
+        for model, expected in [('deepseek-ai/DeepSeek-V4.1-Flash', 0),
+                                ('wrldsuksgo2mars/DeepSeek-V4.1-EXL3-K3.25-v1', 1)]:
+            with self.subTest(model=model):
+                result = subprocess.run(
+                    ['bash', '-c', 'source scripts/release-common.sh; release_native_model_list_matches "$RELEASE_NATIVE_API_MODEL_ID"'],
+                    cwd=ROOT, input=json.dumps({'object': 'list', 'data': [{'id': model}]}),
+                    text=True, capture_output=True)
+                self.assertEqual(result.returncode, expected, result.stderr)
+
     def test_paired_build_setting_is_explicit_and_validated(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             config = Path(temporary) / 'release.config'

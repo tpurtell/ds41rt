@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+# The native API uses the recipe model identity for every supported checkpoint.
+# MODEL_ID selects Hugging Face storage and may name a routed-only quant.
+RELEASE_NATIVE_API_MODEL_ID=deepseek-ai/DeepSeek-V4.1-Flash
 RELEASE_COORDINATOR_CONTAINER_NAME=ds41rt-coordinator
 RELEASE_SPARK_CONTAINER_PREFIX=ds41rt-spark-expert
 

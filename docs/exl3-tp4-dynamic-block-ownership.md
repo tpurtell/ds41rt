@@ -823,3 +823,17 @@ exact reproduction of the summary fields apart from relocated directory paths.
 The archive retains raw responses, startup/worker logs, profiles and package
 manifests. All four calibration configurations and both EXL3 adaptive serving
 comparisons are complete; the fitted profiles remain experimental.
+
+The first clean `build.sh` candidate built the coordinator image from
+`0fbead5c0dbbae3330c459cc479b59e6ab778770`; its 18 EXL3 package variants passed
+provenance verification. The Spark handoff then exposed an SSH argument bug:
+an empty optional source-manifest hash disappeared before the new paired flag.
+The optional argument now comes last, and a regression test executes the actual
+remote argument preamble with both empty and populated hashes. The failed
+attempt restored the original coordinator and seed worker.
+
+Launcher readiness now checks the native API identity
+`deepseek-ai/DeepSeek-V4.1-Flash`, independently of the selected Hugging Face
+checkpoint repository. This avoids rejecting a healthy EXL3 deployment merely
+because its checkpoint name differs from the API model name; both identities
+are printed at startup. The corrected build still needs a complete clean run.

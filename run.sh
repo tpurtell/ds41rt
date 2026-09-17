@@ -212,14 +212,15 @@ docker run -d --name "$coordinator" --restart no --gpus "$gpu_request" --network
   -v "$hf_home:/root/.cache/huggingface:ro" "$COORDINATOR_DOCKER_INFERENCE" ds41rt "${args[@]}" >/dev/null
 api_url="http://127.0.0.1:${ADDR##*:}"
 until curl -fsS "$api_url/health" >/dev/null 2>&1 &&
-  release_api_advertises_native_model "$api_url" "$RELEASE_MODEL_ID"; do
+  release_api_advertises_native_model "$api_url" "$RELEASE_NATIVE_API_MODEL_ID"; do
   [[ "$(docker inspect -f '{{.State.Status}}' "$coordinator" 2>/dev/null)" == running ]] || { docker logs --tail 200 "$coordinator" >&2 || true; release_die "native coordinator exited during startup"; }
   ((SECONDS < deadline)) || { docker logs --tail 200 "$coordinator" >&2 || true; release_die "native API did not become ready"; }
   sleep 1
 done
 trap - EXIT
 echo "DS41RT native API is ready at $api_url/v1/"
-echo "  model: $RELEASE_MODEL_ID@$RELEASE_MODEL_REVISION"
+echo "  API model: $RELEASE_NATIVE_API_MODEL_ID"
+echo "  checkpoint: $RELEASE_MODEL_ID@$RELEASE_MODEL_REVISION"
 echo "  RTX layout: $RELEASE_RTX_GPUS GPU(s), host indices $gpu_index_csv ($gpu_uuid_csv)"
 echo "  cache: FP4 compressed source, FP8 SWA, FP4 index"
 echo "  concurrency: $CONCURRENCY; retained turns: $PREFIX_CACHE_ENTRIES"
