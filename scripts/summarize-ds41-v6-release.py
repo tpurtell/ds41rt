@@ -55,12 +55,17 @@ def summarize_telemetry(path, complete):
     for uuid in sorted({row['uuid'] for row in rows}):
         selected = [row for row in rows if row['uuid'] == uuid]
         assert all(float(row['power.limit [W]'].split()[0]) == 400 for row in selected)
+        thermal = {}
+        for kind, field in [('hardware', 'hw'), ('software', 'sw')]:
+            statuses = [row.get(f'clocks_event_reasons.{field}_thermal_slowdown') for row in selected]
+            # Missing or unsupported telemetry is unknown, not zero slowdown.
+            thermal[f'{kind}_thermal_slowdown_samples'] = (
+                statuses.count('Active') if all(s in ('Active', 'Not Active') for s in statuses) else None)
         devices[uuid] = {
             'samples': len(selected), 'first_timestamp': selected[0]['timestamp'],
             'last_timestamp': selected[-1]['timestamp'],
             'maximum_temperature_c': max(float(row['temperature.gpu']) for row in selected),
-            'hardware_thermal_slowdown_samples': sum(
-                row['clocks_event_reasons.hw_thermal_slowdown'] != 'Not Active' for row in selected),
+            **thermal,
         }
     return {'coverage': 'complete phase' if complete else 'partial phase; began during third direct-decode repeat',
             'devices': devices}
