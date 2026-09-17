@@ -21,7 +21,7 @@ def change(new, old):
     return f'{100 * (new / old - 1):+.1f}%'
 
 
-def render(report, official):
+def render(report, official, historical_native=None):
     assert report['release'] == 'v6' and report['performance_matrix_passed']
     assert set(report['layouts']) == set(LAYOUTS)
     assert set(report['weighted_case_ids']) == set(CASES) - {'counting'}
@@ -115,6 +115,34 @@ def render(report, official):
                            number(launch['deployment']['runtime_headroom_bytes_per_gpu'] / 2**20)])
     table('Memory after readiness', 'GPU allocations include weights, KV and workspaces; later graph capture can consume additional memory.',
           ['Configuration', 'Logical RTX', 'Loaded MiB', 'Free MiB', 'Planned runtime reserve MiB'], memory)
+    if historical_native is not None:
+        acceptance = historical_native['adaptive_acceptance']['summaries']
+        rows = []
+        for case, label in CASES.items():
+            if case == 'counting':
+                continue
+            group = 'grammar_constrained' if case == 'structured-json-schema' else 'unconstrained'
+            values = []
+            for layout in LAYOUTS:
+                result = acceptance[f'full-{layout}']['cases'][case]['acceptance'][group]
+                assert result['verified_drafts'] > 0
+                assert result['acceptance'] == result['accepted_drafts'] / result['verified_drafts']
+                values.append(f"{100 * result['acceptance']:.2f}% ({result['mean_emitted_tokens']:.2f})")
+            rows.append([label, *values])
+        table('Historical native draft acceptance',
+              'V5 measurements, not rerun for v6: C1, three requests per content type. '
+              'Accepted/verified percentage and mean emitted tokens per nonterminal cycle in parentheses. '
+              'Schema JSON is grammar-constrained; reasoning code includes reasoning and final output. '
+              'Adaptive selection omits unverified drafts, so these are serving rates, not fixed-history agreement.',
+              ['Content', 'Historical 1 RTX', 'Historical 2 RTX'], rows)
+        tools = historical_native['tool_calling']['full_fp8_ple']
+        assert len(tools) == 3 and all(row['thinking'] and row['reasoning_effort'] == 'high' for row in tools)
+        table('Historical native tool calling',
+              'The three v4 full-checkpoint campaigns retained in v5; not rerun for v6. '
+              'High-effort thinking was enabled, and failures remain in the scores.',
+              ['Run', 'Basic', 'Hard', 'Total'],
+              [[row['run_id'], *[f"{row[key + '_points']}/{row[key + '_max']}" for key in ['basic', 'hard', 'total']]]
+               for row in tools])
     lines.append('Historical EXL3 performance, acceptance and quantization analysis are preserved in the '
                  '[v5 performance report](https://github.com/tpurtell/ds41rt/blob/v5/docs/release-v5-performance.md); '
                  'they are not v6 measurements.\n')
@@ -130,7 +158,8 @@ def main():
     historical = json.loads((root / 'docs/release-v1-performance.json').read_text())['eight_type_and_counting']['official_flash']
     official = {row['case']: row['observed_decode_tokens_per_second'] for row in historical['cases']}
     official['counting'] = historical['counting']['observed_decode_tokens_per_second']
-    args.output.write_text(render(json.loads(args.summary.read_text()), official))
+    native_history = json.loads((root / 'docs/release-v5-performance.json').read_text())
+    args.output.write_text(render(json.loads(args.summary.read_text()), official, native_history))
 
 
 if __name__ == '__main__':
