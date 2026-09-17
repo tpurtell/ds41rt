@@ -1,20 +1,24 @@
 //! Two local-head waves for one lane; no state is shared with another lane.
 use super::*;
 use crate::v41_memory::device::{Allocation, Device, DeviceOwner, Event};
+use crate::v41_backbone_cache::{BackboneCache,CacheAttention,peer_inputs::PeerAttentionInputs};
 
 pub(crate) struct DualAttentionWave<'a> {
     halves: [DeviceOwner<'a, CompactSparseAttentionWave<'a>>; 2],
     copies: [V41PeerCopy<'a>; 2],
     peer_done: Event<'a>,
     output: Allocation<'a>,
+    inputs: PeerAttentionInputs<'a>,
+    peer_sink: Allocation<'a>,
     capacity: usize,
 }
 impl<'a> DualAttentionWave<'a> {
     /// Budgets are in head-half order: the first device owns the gathered output.
-    /// Cache, proposal and selection replicas are budgeted by their own owners.
+    /// Includes private proposals, selection and sink storage on the peer.
+    /// Committed cache replicas remain budgeted by the backbone bank.
     pub fn device_bytes(capacity: usize) -> Result<[usize; 2]> {
         let half = CompactSparseAttentionWave::device_bytes(capacity)?;
-        Ok([half + capacity*64*1024, half])
+        Ok([half + capacity*64*1024, half+PeerAttentionInputs::device_bytes(capacity)?+128])
     }
     pub fn new(devices: [Device<'a>; 2], capacity: usize, budgets: [usize; 2]) -> Result<Self> {
         ensure!(devices[0].id != devices[1].id
@@ -30,6 +34,8 @@ impl<'a> DualAttentionWave<'a> {
                 devices[1].run(|| devices[1].library.v41_peer_copy())?],
             peer_done: Event::new(devices[1])?,
             output: Allocation::new(devices[0],capacity*64*1024)?, capacity,
+            inputs: PeerAttentionInputs::new(devices[0],devices[1],capacity,PeerAttentionInputs::device_bytes(capacity)?)?,
+            peer_sink: Allocation::new(devices[1],128)?,
         })
     }
     pub fn reserve_decode_rows(&mut self, rows: usize) -> Result<()> {
@@ -48,6 +54,39 @@ impl<'a> DualAttentionWave<'a> {
         let first = devices[0].run(|| self.halves[0].drain_chain());
         let second = devices[1].run(|| self.halves[1].drain_chain());
         first.and(second)
+    }
+    /// # Safety
+    /// Original query/proposal/selection producers and committed replicas are
+    /// complete. Retain bank, cache, query, selection and sink through returned
+    /// completion or cancellation. This owner cannot be reused while consumers
+    /// still read its previous gathered output.
+    pub unsafe fn enqueue_cached<'s>(&'s mut self, query:&AttentionQueryOutput<'_>,
+        sink:Ds41rtDeviceBuffer, bank:&BackboneCache<'_>,cache:&CacheAttention<'_>,
+        selection:Option<&IndexSelectionOutput<'_>>)->Result<PendingDualAttention<'s,'a>> {
+        ensure!(query.rows>0 && query.rows<=self.capacity && sink.bytes>=256
+            && sink.device_id==self.halves[0].device.id,"dual cached attention input differs");
+        let mut pending=PendingDualAttention { wave:Some(self),cold:[false;2],rows:query.rows,layer:query.layer };
+        // Guard precedes every copy; metadata views can drop on error only after
+        // the underlying streams have drained through this pending owner.
+        let wave=pending.wave.as_deref_mut().unwrap();
+        let stream=wave.halves[1].chain_stream();
+        let peer=wave.halves[1].device;
+        let mirrored=unsafe { wave.inputs.enqueue(bank,cache,stream)? };
+        let selected=selection.map(|s|unsafe { wave.inputs.selection(s,stream) }).transpose()?;
+        peer.run(||unsafe { wave.copies[1].launch(wave.peer_sink.buffer,slice(sink,128,128),128,stream) })?;
+        let (original,original_count)=cache.attention_requests_fixed()?;
+        let (requests,count)=mirrored.attention_requests();
+        let request_slices=[&original[..original_count],&requests[..count]];
+        let selections=[selection,selected.as_ref()];
+        let sinks=[slice(sink,0,128),wave.peer_sink.buffer];
+        for i in 0..2 {
+            let device=wave.halves[i].device;
+            pending.cold[i]=device.run(||unsafe {
+                wave.halves[i].enqueue_split_query_prepared(query,i*32,&wave.copies[i],
+                    sinks[i],request_slices[i],selections[i],true,None)
+            })?.is_none();
+        }
+        Ok(pending)
     }
     /// # Safety
     /// Both devices' query/cache/proposal/selection producers have completed or

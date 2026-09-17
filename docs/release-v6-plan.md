@@ -612,3 +612,22 @@ and metadata, repeated consumption and changed producer execution. Evidence:
 the compact attention bundle. Temporary fixtures were removed and serving remains
 healthy. Combining these views with live selection and the dual wave is the next
 step; this fixture does not establish full-model correctness or throughput.
+
+### Combined cached dual-attention submission
+
+The dual-wave owner now owns its peer proposal/selection buffers and sink half.
+One guarded submission copies those inputs onto the peer attention stream, splits
+the original query, and queues both head halves. Partial failure and cancellation
+drain both streams before external owners can be released. Request views use fixed
+stack storage on both sides, and device budgeting includes the new input buffers.
+
+The checkpoint fixture now produces real queries and learned index selections,
+then compares full-head attention with the combined dual path for layers 2 and 20.
+It covers both GPU placements/compression ratios, cold preparation, warm replay,
+changed producer inputs and cancellation followed by immediate reuse. Eight
+comparisons match byte-for-byte using the WMMA kernels and a zero sink fixture.
+This does not exercise the complete backbone, production sink tensors or optimized
+AOT in the combined path. Evidence: `dual-cached-build.log`,
+`dual-cached-native.log`, and `dual-cached-hardware.log` in the compact attention
+bundle. Serving scheduling, projection continuation and end-to-end qualification
+remain required before a performance/default decision.

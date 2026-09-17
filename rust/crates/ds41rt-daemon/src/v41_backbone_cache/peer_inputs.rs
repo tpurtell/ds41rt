@@ -20,7 +20,7 @@ pub(crate) struct PeerAttentionInputs<'a> {
 mod tests {
     use super::*;
     #[test]
-    #[ignore = "requires SM peer copy, DS41RT_SNAPSHOT and two CUDA GPUs"]
+    #[ignore = "requires compact attention, SM peer copy, DS41RT_SNAPSHOT and two CUDA GPUs"]
     fn checkpoint_private_inputs_reach_peer_with_original_bindings()->Result<()> {
         let lib=unsafe { NativeLibrary::load(std::env::var("DS41RT_NATIVE_LIB")?)? };
         let catalog=ds41rt_loader::read_official_v41_catalog(ds41rt_loader::OFFICIAL_V41_MODEL_ID,
@@ -39,6 +39,19 @@ mod tests {
                 crate::v41_compressor::CompressorWeights::device_bytes(&catalog,layer)?,1<<20))?;
             let mut window=source.own(||ww.wave(16,usize::MAX))?;
             let mut compressed=source.own(||cw.wave(16,usize::MAX))?;
+            let qw=source.own(||crate::v41_attention_query::AttentionQueryWeights::load(&lib,&catalog,layer,
+                crate::v41_attention_query::AttentionQueryWeights::device_bytes(&lib,&catalog,layer)?,1<<20))?;
+            let mut query=source.own(||qw.wave(16,usize::MAX))?;
+            let iw=source.own(||crate::v41_index_query::IndexQueryWeights::load(&lib,&catalog,layer,
+                crate::v41_index_query::IndexQueryWeights::device_bytes(&lib,&catalog,layer)?,1<<20))?;
+            let mut index=source.own(||iw.wave(16,usize::MAX))?;
+            let mut selection=source.own(||crate::v41_index_selection::IndexSelectionWave::new(&lib,16,usize::MAX))?;
+            let mut full=source.own(||crate::v41_sparse_attention::SparseAttentionWave::new(&lib,16,usize::MAX))?;
+            let mut dual=crate::v41_sparse_attention::dual::DualAttentionWave::new([source,peer],16,
+                crate::v41_sparse_attention::dual::DualAttentionWave::device_bytes(16)?)?;
+            let sink=Allocation::new(source,256)?;
+            source.run(||lib.copy_h2d(sink.buffer,&[0;256]))?;
+            let runtime=tokio::runtime::Builder::new_current_thread().build()?;
             let inputs=PeerAttentionInputs::new(source,peer,16,PeerAttentionInputs::device_bytes(16)?)?;
             let stream=crate::v41_memory::device::Stream::new(peer)?;
             for seed in [0,7] {
@@ -54,6 +67,42 @@ mod tests {
                     } Ok(())
                 })?;
                 let original=bank.attention(&batch,layer,&window,Some(&compressed))?;
+                source.run(|| {
+                    lib.copy_h2d(query.input(),&host)?;
+                    unsafe { query.execute_tokens(&[0,1,2,3,4])?; }
+                    Ok(())
+                })?;
+                let q=query.output()?;
+                source.run(||unsafe {
+                    let iq=index.execute_attention(&q)?;
+                    selection.execute(&iq,&original.selection_requests()?,None)?; Ok(())
+                })?;
+                let selected=selection.output()?;
+                let requests=original.attention_requests();
+                let expected=source.run(||unsafe {
+                    let output=full.execute_query(&q,sink.buffer,&requests,Some(&selected))?;
+                    let mut bytes=vec![0;output.values.bytes];lib.copy_d2h(&mut bytes,output.values)?;Ok(bytes)
+                })?;
+                // Cancel before completing cold preparation or a warm replay,
+                // then immediately reuse the same copies and both attention waves.
+                drop(unsafe { dual.enqueue_cached(&q,sink.buffer,&bank,&original,Some(&selected))? });
+                for _ in 0..2 {
+                    let pending=unsafe { dual.enqueue_cached(&q,sink.buffer,&bank,&original,Some(&selected))? };
+                    let output=runtime.block_on(pending.complete())?;
+                    let mut actual=vec![0;output.values.bytes];
+                    source.run(||lib.copy_d2h(&mut actual,output.values))?;
+                    assert_eq!(actual.len(),expected.len());
+                    let mut max_error=0f32;
+                    for (a,b) in actual.chunks_exact(2).zip(expected.chunks_exact(2)) {
+                        let decode=|v:&[u8]|f32::from_bits(u32::from(u16::from_ne_bytes([v[0],v[1]]))<<16);
+                        let (a,b)=(decode(a),decode(b));
+                        max_error=max_error.max((a-b).abs());
+                        assert!(a.is_finite() && b.is_finite() && (a-b).abs()<=0.02+0.02*b.abs(),
+                            "dual attention differs: layer={layer} seed={seed} actual={a} expected={b}");
+                    }
+                    eprintln!("dual cached attention layer={layer} seed={seed} max_abs_error={max_error}");
+                    assert_eq!(actual,expected,"compact WMMA attention differs from full-head WMMA");
+                }
                 // Repeated consumption of the same source must preserve its copy.
                 for _ in 0..2 {
                     let mirrored=unsafe { inputs.enqueue(&bank,&original,stream.raw)? };

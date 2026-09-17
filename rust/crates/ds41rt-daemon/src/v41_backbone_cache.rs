@@ -132,6 +132,15 @@ pub(crate) struct CacheAttention<'a> {
     positions: Vec<Vec<u64>>,
 }
 impl CacheAttention<'_> {
+    pub fn attention_requests_fixed(&self)->Result<([AttentionRequest<'_>;16],usize)> {
+        let count=self.windows.len();
+        ensure!((1..=16).contains(&count) && self.positions.len()==count,
+            "invalid fixed attention request count");
+        Ok((std::array::from_fn(|i| {
+            let i=if i<count {i} else {0};
+            AttentionRequest { window:&self.windows[i],source:self.sources.get(i),positions:&self.positions[i] }
+        }),count))
+    }
     pub fn attention_requests(&self) -> Vec<AttentionRequest<'_>> {
         self.windows
             .iter()
