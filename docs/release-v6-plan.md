@@ -690,3 +690,24 @@ and explicit-size rejection/acceptance. Evidence: `tp2-startup-check.log` and
 path launchable in code, but no serving run or full-model qualification has yet
 validated it. A current native build and actual startup/FFN execution checks are
 next, before throughput experiments or any default decision.
+
+### Current native build and checkpoint sinks
+
+The coordinator native library now builds from current source with the release
+feature set, including full/TP2 experts, FP8 projections, EXL3 modules and both
+64/32-head attention AOT exports. The optimized Rust serving binary also builds.
+This development build uses host CUDA 13.3; release-image construction and
+qualification remain separate. Parallel exporters initially exhausted free GPU
+memory beside the running v5 server; serial export/build completed successfully.
+
+The combined checkpoint fixture now loads the actual learned attention sinks for
+layers 2 and 20. Against the newly built native library, all eight attention and
+projection comparisons remain byte-for-byte equal, including cancellation,
+callback failure and immediate reuse. This verifies the current native artifact
+with real sink weights, but does not establish every AOT dispatch shape or
+full-model serving correctness/performance. Evidence in the compact attention
+bundle: `native-configure.log`, `native-production-serial-build.log`,
+`serving-release-build.log`, `checkpoint-sink-test-build.log`, and
+`production-checkpoint-sinks.log`. Native build artifacts are outside the source
+checkout at `~/.cache/ds41rt-v6-native`. Full-model startup/FFN execution and
+retained-context checks are next.

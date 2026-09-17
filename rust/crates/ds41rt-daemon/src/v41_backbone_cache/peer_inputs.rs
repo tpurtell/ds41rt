@@ -53,8 +53,10 @@ mod tests {
             let mut projection=source.own(||ow.wave(16,usize::MAX))?;
             let mut dual=crate::v41_sparse_attention::dual::DualAttentionWave::new([source,peer],16,
                 crate::v41_sparse_attention::dual::DualAttentionWave::device_bytes(16)?)?;
-            let sink=Allocation::new(source,256)?;
-            source.run(||lib.copy_h2d(sink.buffer,&[0;256]))?;
+            let sink_name=format!("layers.{layer}.attn.attn_sink");
+            let sink_weights=source.own(||crate::v41_tensors::NativeRtxTensors::load(
+                &lib,&catalog,&[sink_name.clone()],256,1<<20))?;
+            let sink=sink_weights.get().get(&sink_name)?;
             let runtime=tokio::runtime::Builder::new_current_thread().build()?;
             let inputs=PeerAttentionInputs::new(source,peer,16,PeerAttentionInputs::device_bytes(16)?)?;
             let stream=crate::v41_memory::device::Stream::new(peer)?;
@@ -84,7 +86,7 @@ mod tests {
                 let selected=selection.output()?;
                 let requests=original.attention_requests();
                 let (expected,expected_projection)=source.run(||unsafe {
-                    let output=full.execute_query(&q,sink.buffer,&requests,Some(&selected))?;
+                    let output=full.execute_query(&q,sink,&requests,Some(&selected))?;
                     let mut bytes=vec![0;output.values.bytes];lib.copy_d2h(&mut bytes,output.values)?;
                     let projected=reference_projection.execute_attention(&output)?;
                     let mut projected_bytes=vec![0;projected.projected.bytes];
@@ -93,8 +95,8 @@ mod tests {
                 })?;
                 // Cancel before completing cold preparation or a warm replay,
                 // then immediately reuse the same copies and both attention waves.
-                drop(unsafe { dual.enqueue_cached(&q,sink.buffer,&bank,&original,Some(&selected))? });
-                unsafe { dual.enqueue_cached_owned(&q,sink.buffer,&bank,&original,Some(&selected))?; }
+                drop(unsafe { dual.enqueue_cached(&q,sink,&bank,&original,Some(&selected))? });
+                unsafe { dual.enqueue_cached_owned(&q,sink,&bank,&original,Some(&selected))?; }
                 let failed=runtime.block_on(unsafe { dual.complete_owned_then(|output,stream| {
                     projection.prepare_chain_graph(q.tokens()?,stream)?;
                     projection.enqueue_chain_graph(&output,stream)?;
@@ -102,8 +104,8 @@ mod tests {
                 }) });
                 assert!(failed.unwrap_err().to_string().contains("injected projection continuation error"));
                 for _ in 0..2 {
-                    unsafe { dual.enqueue_cached_owned(&q,sink.buffer,&bank,&original,Some(&selected))?; }
-                    assert!(unsafe { dual.enqueue_cached_owned(&q,sink.buffer,&bank,&original,Some(&selected)) }.is_err());
+                    unsafe { dual.enqueue_cached_owned(&q,sink,&bank,&original,Some(&selected))?; }
+                    assert!(unsafe { dual.enqueue_cached_owned(&q,sink,&bank,&original,Some(&selected)) }.is_err());
                     let (output,projected)=runtime.block_on(unsafe { dual.complete_owned_then(|output,stream| {
                         projection.prepare_chain_graph(q.tokens()?,stream)?;
                         let projected=projection.enqueue_chain_graph(&output,stream)?;
@@ -121,7 +123,7 @@ mod tests {
                             "dual attention differs: layer={layer} seed={seed} actual={a} expected={b}");
                     }
                     eprintln!("dual cached attention layer={layer} seed={seed} max_abs_error={max_error}");
-                    assert_eq!(actual,expected,"compact WMMA attention differs from full-head WMMA");
+                    assert_eq!(actual,expected,"compact attention differs from full-head attention");
                     let mut actual_projection=vec![0;projected.bytes];
                     source.run(||lib.copy_d2h(&mut actual_projection,projected))?;
                     assert_eq!(actual_projection,expected_projection,"dual attention projection continuation differs");
