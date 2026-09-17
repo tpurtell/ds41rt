@@ -634,3 +634,41 @@ record, acceptance observation and lane round is reproduced exactly after
 filtering, and all fitted coefficients/evaluations match the originals. Startup
 logs retain the actual residency and pool reservation alongside run commands.
 Full-model calibration on two RTX cards has started; its one-RTX runs follow.
+
+### Full-model dual-RTX reference calibration
+
+All K1–K7 fixed-width collections passed the same code, topic, high-effort
+reasoning-code and mixed-traffic checks using the full model with FP8 PLE,
+20 RTX expert layers, and the native NVFP4 expert path. There are 26,488 complete
+cost rounds, 26,264 warm rounds, and 2,908 odd-width code/mixed training rounds.
+
+| Held-out workload | Legacy formula median error | Affine fit median error | Affine p90 error |
+| --- | ---: | ---: | ---: |
+| Code, K2/K4/K6 | 23.91% | 12.76% | 28.79% |
+| Mixed, K2/K4/K6 | 10.13% | 11.18% | 21.69% |
+| Topic, K2/K4/K6 | 28.42% | 13.37% | 30.01% |
+| Reasoning code, K2/K4/K6 | 20.14% | 7.51% | 27.43% |
+
+The mixed-traffic median error worsens, even though other cohorts improve.
+This fit remains experimental; no full-model serving default is changed.
+The capped16 diagnostic also leaves mixed median error at 11.18%. All raw
+cost/acceptance records reproduce exactly from the filtered archive in
+`release-v5-full-dual-calibration.json` and its adjacent archive. The fit report
+is `release-v5-full-dual-cost-fit.json`.
+
+The first matched fixed-K7 content comparison is now available:
+
+| Content, dual RTX / K7 | Full accepted / verified | Full acceptance | EXL3 accepted / verified | EXL3 acceptance |
+| --- | ---: | ---: | ---: | ---: |
+| Code | 4,520 / 7,364 | 61.38% | 4,602 / 7,210 | 63.83% |
+| Reasoning code | 25,310 / 54,544 | 46.40% | 20,395 / 44,338 | 46.00% |
+| Topic | 4,038 / 14,882 | 27.13% | 4,924 / 19,866 | 24.79% |
+
+Each cohort has the same prompt, generation limit and 26-request C1/C8/C16
+schedule including warmup. Code/topic corpus hashes differ because reasoning
+code was added later; their original prompts and disabled-thinking payloads
+were checked unchanged. Reasoning code uses the same corpus hash and high-effort
+thinking with a 4,096-token cap. Full/EXL3 residency is 20/25 RTX expert layers;
+generated outputs and cycle counts can differ. These are draft-acceptance
+observations, not teacher-forced top-1 agreement or final throughput evidence.
+EXL3 sources are the earlier paired K7 and reasoning-code acceptance archives.
