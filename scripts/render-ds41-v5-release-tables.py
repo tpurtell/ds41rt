@@ -2,6 +2,8 @@
 """Render matched full/EXL3 release measurements; never substitute old results."""
 import argparse
 import json
+import hashlib
+import runpy
 from pathlib import Path
 
 MODELS = ('full', 'exl3')
@@ -61,7 +63,47 @@ def validate(reports):
                     f'mismatched concurrency prompt: {case}'
 
 
-def render(reports, official=None, tools=None):
+def load_acceptance(directory, reports):
+    """Reproduce rates from saved traces and check the measured engine/corpus."""
+    load = lambda path: json.loads(path.read_text())
+    complete = load(directory / 'complete.json')
+    assert len(complete['results']) == 4 and all(row['passed'] for row in complete['results'])
+    assert not load(directory / 'restoration.json')['errors']
+    here = Path(__file__).parent
+    parse = runpy.run_path(str(here / 'summarize-ds41-native-policy.py'))['parse']
+    summarize = runpy.run_path(str(here / 'collect-ds41-content-acceptance.py'))['summarize_acceptance']
+    result = {}
+    for model in MODELS:
+        for layout, count in [('single', 1), ('dual', 2)]:
+            path = directory / f'{model}-rtx{count}'
+            deployment = load(path / 'deployment.json')
+            summary = load(path / 'content/summary.json')
+            assert deployment['binary_sha256'] == reports[model]['binary_sha256']
+            assert deployment['coordinator']['Config']['Labels']['org.opencontainers.image.revision'] == reports[model]['engine_commit']
+            assert summary['corpus_sha256'] == reports[model]['corpus_sha256']
+            assert summary['passed'] and summary['repeats'] == 3 and summary['concurrency'] == 1
+            assert summary['rtx_gpus'] == count and summary['draft_policy'] == 'adaptive'
+            assert set(summary['cases']) == set(CASES) - {'counting'}
+            for case, row in summary['cases'].items():
+                raw = (path / f'content/{case}-trace.log').read_bytes()
+                assert hashlib.sha256(raw).hexdigest() == row['trace_sha256']
+                observations, _ = parse(raw.decode())
+                assert len({o['request_id'] for o in observations}) == 3
+                assert summarize(observations) == row['acceptance']
+                client = load(path / f'content/{case}.json')
+                assert client['passed'] and len(client['samples']) == 3
+                assert {sample['repeat'] for sample in client['samples']} == {1, 2, 3}
+                for sample in client['samples']:
+                    assert sample['case'] == case and sample['passed']
+                    assert sample['request']['thinking']['type'] == row['thinking']
+                    assert sample['request'].get('reasoning_effort') == row['reasoning_effort']
+                if case == 'code-reasoning':
+                    assert row['thinking'] == 'enabled' and row['reasoning_effort'] == 'high'
+            result[model, layout] = summary
+    return result
+
+
+def render(reports, official=None, tools=None, acceptance=None):
     validate(reports)
     lines = ['RTX measurements use **400 W per card** and **standard memory speed, without a memory overclock**. '
              'All performance tables use FP8 PLE. Reasoning code uses thinking enabled at high effort; '
@@ -148,6 +190,30 @@ def render(reports, official=None, tools=None):
         rows.append(row)
     table('Mixed traffic', 'Matched code/fable/topic mix; median and range across three sweeps.',
           ['Concurrency', 'Full 1 RTX', 'Full 2 RTX', 'EXL3 1 RTX', 'EXL3 2 RTX'], rows)
+    if acceptance is not None:
+        assert set(acceptance) == {(model, layout) for model in MODELS for layout in LAYOUTS}
+        rows = []
+        for case, label in CASES.items():
+            if case == 'counting':
+                continue
+            row = [label + (' (grammar-constrained)' if case == 'structured-json-schema' else '')]
+            group = 'grammar_constrained' if case == 'structured-json-schema' else 'unconstrained'
+            for model in MODELS:
+                for name in LAYOUTS:
+                    q = acceptance[model, name]['cases'][case]['acceptance'][group]
+                    assert q['nonterminal_observations'] > 0 and q['verified_drafts'] > 0
+                    assert 0 <= q['accepted_drafts'] <= q['verified_drafts']
+                    assert q['acceptance'] == q['accepted_drafts'] / q['verified_drafts']
+                    row.append(f"{100*q['acceptance']:.2f}% ({q['mean_emitted_tokens']:.2f})")
+            rows.append(row)
+        table('Adaptive draft acceptance by content',
+              'C1, three requests per category. Each cell shows accepted/verified draft percentage '
+              'and mean emitted tokens per observed nonterminal verification cycle in parentheses. '
+              'Terminal cycles are excluded; schema JSON uses grammar-constrained targets. '
+              'Reasoning code includes both reasoning and final-answer generation. Adaptive selection '
+              'censors unverified drafts, and model continuations differ: these are serving acceptance '
+              'measurements, not teacher-forced quant agreement. Instrumented timings are excluded from TPS tables.',
+              ['Content', 'Full 1 RTX', 'Full 2 RTX', 'EXL3 1 RTX', 'EXL3 2 RTX'], rows)
     deployments, startups, memory = [], [], []
     for model in MODELS:
         for name, count in [('single', 1), ('dual', 2)]:
@@ -185,6 +251,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for option in ('full', 'exl3', 'full-tools', 'exl3-tools', 'fp4ple-tools', 'output'):
         parser.add_argument('--'+option, type=Path, required=True)
+    parser.add_argument('--acceptance-dir', type=Path, required=True)
     args = parser.parse_args()
     if args.output.exists():
         parser.error('output must be new')
@@ -193,8 +260,11 @@ def main():
     reference = load(root/'docs/release-v1-performance.json')['eight_type_and_counting']['official_flash']
     official = {row['case']: row['observed_decode_tokens_per_second'] for row in reference['cases']}
     official['counting'] = reference['counting']['observed_decode_tokens_per_second']
-    text = render({'full': load(args.full), 'exl3': load(args.exl3)}, official,
-                  {'full': load(args.full_tools), 'exl3': load(args.exl3_tools), 'exl3-fp4ple': load(args.fp4ple_tools)})
+    reports = {'full': load(args.full), 'exl3': load(args.exl3)}
+    acceptance = load_acceptance(args.acceptance_dir, reports)
+    text = render(reports, official,
+                  {'full': load(args.full_tools), 'exl3': load(args.exl3_tools), 'exl3-fp4ple': load(args.fp4ple_tools)},
+                  acceptance)
     args.output.write_text(text)
 
 

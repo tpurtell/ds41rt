@@ -1247,3 +1247,13 @@ full-model service passed all nine categories: disabled-thinking cases reused
 2,050 tokens, and reasoning-code reused its complete 2,076-token parent.
 This is collector validation, not new release performance evidence. Preserve
 the failed attempt and reuse only its independently completed performance files.
+
+The final table renderer now requires `--acceptance-dir` pointing to the
+completed four-configuration content-acceptance campaign. It verifies the
+measured binary, engine revision and corpus against the performance reports,
+recomputes each content rate from its hashed trace, and checks the three saved
+requests and their thinking controls. The resulting nine-row table reports
+accepted/verified draft percentage and mean emitted tokens per observed
+nonterminal cycle, with grammar-constrained JSON explicitly distinguished.
+It is part of the same table output to be replicated in README and the report;
+no provisional measurements have replaced the published tables.

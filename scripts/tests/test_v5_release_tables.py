@@ -55,3 +55,22 @@ def test_incomplete_or_unmatched_measurements_are_rejected(defect):
         rows.append(copy.deepcopy(rows[0]))
     with pytest.raises(AssertionError):
         RENDER['render'](data)
+
+
+def test_acceptance_keeps_grammar_targets_separate_and_rejects_invalid_denominator():
+    data = reports()
+    rate = dict(nonterminal_observations=10, verified_drafts=20, accepted_drafts=10,
+                acceptance=.5, mean_emitted_tokens=2.)
+    acceptance = {(model, layout): {'cases': {
+        case: {'acceptance': {'grammar_constrained' if case == 'structured-json-schema'
+                             else 'unconstrained': copy.deepcopy(rate)}}
+        for case in RENDER['CASES'] if case != 'counting'}}
+        for model in ('full', 'exl3') for layout in ('single', 'dual')}
+    text = RENDER['render'](data, acceptance=acceptance)
+    section = text.split('**Adaptive draft acceptance by content.**')[1].split('**Deployment')[0]
+    assert section.count('50.00% (2.00)') == 36
+    assert 'Schema JSON (grammar-constrained)' in section
+    assert 'not teacher-forced quant agreement' in section
+    acceptance['exl3', 'dual']['cases']['code']['acceptance']['unconstrained']['verified_drafts'] = 0
+    with pytest.raises(AssertionError):
+        RENDER['render'](data, acceptance=acceptance)
