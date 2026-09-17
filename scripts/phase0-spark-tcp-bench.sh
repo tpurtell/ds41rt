@@ -121,7 +121,7 @@ EOF
 fi
 
 hosts_csv="${DS41RT_SPARK_HOSTS:-ostrich,dodo,emu,kiwi}"
-model_id="${DS41RT_MODEL_ID:-wrldsuksgo2mars/DeepSeek-V4-Pro-0813-EXL3-K2-calibrated-v1}"
+model_id="${DS41RT_MODEL_ID:-deepseek-ai/DeepSeek-V4.1-Flash}"
 model_revision="${DS41RT_MODEL_REVISION:-}"
 wip_allow_historical_exl3_control="${DS41RT_WIP_ALLOW_HISTORICAL_EXL3_CONTROL:-0}"
 sync_model_cache="${DS41RT_SPARK_SYNC_MODEL_CACHE:-0}"
@@ -1121,7 +1121,7 @@ nccl_p2p_net_chunksize="${57:-131072}"
 protocol_v2_packed_direct_max_rows="${58:-2048}"
 b12x_w4a16_m1_fused_sum="${59:-0}"
 b12x_w4a16_small_m_mode="${60:-wide}"
-model_id="${61:-wrldsuksgo2mars/DeepSeek-V4-Pro-0813-EXL3-K2-calibrated-v1}"
+model_id="${61:-deepseek-ai/DeepSeek-V4.1-Flash}"
 release_config_sha256="${62:-}"
 if [ "$release_config_sha256" = "__unset__" ]; then
   release_config_sha256=""

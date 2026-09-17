@@ -1,6 +1,6 @@
 # V6: dual-RTX parallelism and RAM-backed KV
 
-Status: implementation and review. Baseline: v5 (`2b71d90`).
+Status: publication candidate. Baseline: v5 (`2b71d90`).
 
 Increase useful dual-RTX serving throughput while preserving the winning
 configuration as the default. Evaluate attention, projection, and dSpark TP2
@@ -27,10 +27,14 @@ independently; shipping supported opt-in paths is acceptable when they do not wi
 - [x] Implement independently selectable TP2 projection and attention paths,
   considering head partitioning with replicated KV (DCP1-style). Account for
   reductions, replicated state, graph storage, scratch and host paging bandwidth.
-- [ ] Evaluate TP2 dSpark independently, including its experts, attention,
-  projections and shared embedding/head access. Preserve lane-owned workspaces.
-- [ ] Measure combinations only after individual correctness and timing checks.
-  Recalibrate adaptive drafting for any winning placement/timing configuration.
+- [x] Implement and evaluate an independent dSpark routed-expert TP2 option while
+  preserving lane-owned workspaces. Audit the remaining draft transformer
+  boundaries separately so the release does not imply that attention and
+  projections are split.
+- [x] Run the four opt-in paths together only after their individual correctness
+  and timing checks. No individual path established a default-worthy win, so the
+  combination receives compatibility coverage rather than a new performance
+  campaign, and the existing adaptive profile remains selected.
 
 ## Evidence and release
 
@@ -1553,8 +1557,10 @@ execution. That is a per-lane host transition, not a join between the two lanes.
 Any attempt to remove it needs a separate event/graph handoff assessment.
 
 The unimplemented draft attention/projection splits remain distinct from the
-measured expert option. Release documentation must not describe all draft
-components as evaluated or the entire draft stack as parallelized.
+measured routed-expert option. Their ownership, transfer boundaries, launch
+geometry and corresponding target-projection evidence were reviewed, but no
+serving switch or performance claim exists for them. Release documentation must
+not describe the entire draft stack as parallelized.
 
 The main-model combined query/attention path also has a concrete remaining
 optimization opportunity: `v41_projection_tp2::Wave::execute_after` gathers
@@ -1594,3 +1600,29 @@ The ranges overlap, but this is neither an interleaved control nor proof that
 the decrease is noise. In particular the 256K candidate remains lower overall.
 `retained-repeat-variability.json` records the calculation and archived input
 member hash without extracting the entire old evidence bundle.
+
+### Fresh v5/v6 control
+
+A final same-machine diagnostic ran the published v5 image and the qualified v6
+candidate sequentially with the same fixed 20-layer placement, exact
+13,090,775,040-byte GPU KV allocation, benchmark scripts, prompts, 400 W power
+limits and standard memory clocks. Both arms passed all requests and cache
+checks, and the recipe was restored successfully.
+
+| Workload | Published v5 | V6 candidate | Change |
+|---|---:|---:|---:|
+| C16 mixed, median of three sweeps | 327.02 tok/s | 326.01 tok/s | -0.31% |
+| 256K retained, weighted across 27 samples | 98.23 tok/s | 96.36 tok/s | -1.91% |
+
+The mixed ranges overlap broadly: 258.79–357.71 tok/s for v5 and
+280.86–340.88 tok/s for v6. Retained outputs are not byte-identical between
+arms, so their different completion paths also contribute to the aggregate
+timing. Telemetry recorded no thermal-slowdown rows; maximum temperatures were
+69°C for v5 and 70°C for v6. This direct control replaces the larger apparent
+gaps from separately collected historical campaigns: mixed decode is flat, and
+the remaining 256K difference is small enough that it does not establish a
+material serving regression.
+
+Evidence is in `~/.cache/ds41rt-v6-v5-control/`, including immutable container
+inspection in `execution.json`, raw benchmark reports, server logs, telemetry
+and `comparison.json`.

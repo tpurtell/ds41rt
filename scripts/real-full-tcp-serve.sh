@@ -259,7 +259,7 @@ EOF
 fi
 
 addr="${ADDR:-${DS41RT_REAL_FULL_SERVE_ADDR:-0.0.0.0:8000}}"
-model_id="${DS41RT_MODEL_ID:-wrldsuksgo2mars/DeepSeek-V4-Pro-0813-EXL3-K2-calibrated-v1}"
+model_id="${DS41RT_MODEL_ID:-deepseek-ai/DeepSeek-V4.1-Flash}"
 hosts_csv="${DS41RT_SPARK_HOSTS:-ostrich,dodo,emu,kiwi}"
 expert_port="${DS41RT_SPARK_EXPERT_PORT:-9100}"
 expert_link_suffix="${DS41RT_REAL_FULL_SERVE_EXPERT_LINK_SUFFIX:-}"

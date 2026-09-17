@@ -2,7 +2,7 @@
 set -euo pipefail
 
 role="coordinator"
-model_id="${DS41RT_MODEL_ID:-wrldsuksgo2mars/DeepSeek-V4-Pro-0813-EXL3-K2-calibrated-v1}"
+model_id="${DS41RT_MODEL_ID:-deepseek-ai/DeepSeek-V4.1-Flash}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in

@@ -11,7 +11,7 @@ fi
 
 addr="${ADDR:-127.0.0.1:8000}"
 url="http://${addr}"
-model_id="${DS41RT_MODEL_ID:-wrldsuksgo2mars/DeepSeek-V4-Pro-0813-EXL3-K2-calibrated-v1}"
+model_id="${DS41RT_MODEL_ID:-deepseek-ai/DeepSeek-V4.1-Flash}"
 model="${MODEL:-${model_id}-full}"
 max_tokens="${MAX_TOKENS:-1}"
 hosts_csv="${DS41RT_SPARK_HOSTS:-ostrich,dodo,emu,kiwi}"

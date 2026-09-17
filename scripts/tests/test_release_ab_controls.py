@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 RELEASE_COMMON = ROOT / "scripts" / "release-common.sh"
-PRO_MODEL_ID = "wrldsuksgo2mars/DeepSeek-V4-Pro-0813-EXL3-K2-calibrated-v1"
+FLASH_MODEL_ID = "deepseek-ai/DeepSeek-V4.1-Flash"
 
 BASE_CONFIG = """\
 MODEL_ID=deepseek-ai/DeepSeek-V4.1-Flash
@@ -196,7 +196,7 @@ SPARK_3_LANE_A=10.55.0.4
     ]
 
 
-def test_release_facing_helpers_default_to_public_calibrated_pro_k2() -> None:
+def test_release_facing_helpers_default_to_official_flash() -> None:
     surfaces = (
         ROOT / "justfile",
         ROOT / "scripts/api-smoke.sh",
@@ -213,7 +213,7 @@ def test_release_facing_helpers_default_to_public_calibrated_pro_k2() -> None:
     )
     for surface in surfaces:
         text = surface.read_text(encoding="utf-8")
-        assert PRO_MODEL_ID in text, surface
+        assert FLASH_MODEL_ID in text, surface
         assert "deepseek-ai/DeepSeek-V4-Flash-0731" not in text, surface
 
     just_dry_run = subprocess.run(
@@ -224,14 +224,15 @@ def test_release_facing_helpers_default_to_public_calibrated_pro_k2() -> None:
         text=True,
     )
     rendered = just_dry_run.stdout + just_dry_run.stderr
-    assert PRO_MODEL_ID in rendered
+    assert FLASH_MODEL_ID in rendered
     assert "{{model_id}}" not in rendered
 
 
 def test_release_settings_resolution_has_selected_gpu_access() -> None:
     release = (ROOT / "run.sh").read_text(encoding="utf-8")
     assert "release_resolve_coordinator_gpu_identity" in release
-    assert '--gpus device="$RELEASE_COORDINATOR_GPU_UUID"' in release
+    assert 'gpu_request="device=$gpu_uuid_csv"' in release
+    assert '-e "CUDA_VISIBLE_DEVICES=$gpu_uuid_csv"' in release
 
 
 def test_native_release_has_explicit_startup_timeout() -> None:
@@ -376,14 +377,14 @@ def test_release_readiness_requires_exact_configured_api_identity() -> None:
     assert native_model_list_matches(duplicate_native, model_id).returncode != 0
 
 
-def test_release_config_rejects_native_pro_and_gpu1(tmp_path: Path) -> None:
+def test_release_config_rejects_native_pro_and_accepts_gpu1(tmp_path: Path) -> None:
     native_pro = load_config(tmp_path, "MODEL_VARIANT=pro\n")
     assert native_pro.returncode == 2
     assert "requires EXPERT_FORMAT=exl3" in native_pro.stderr
 
     gpu1 = load_config(tmp_path, "COORDINATOR_GPU=1\n")
-    assert gpu1.returncode == 2
-    assert "GPU 1 is outside DS41RT" in gpu1.stderr
+    assert gpu1.returncode == 0, gpu1.stderr
+    assert gpu1.stdout.splitlines()[7] == "1"
 
     malformed_uuid = load_config(tmp_path, "COORDINATOR_GPU_UUID=GPU-1\n")
     assert malformed_uuid.returncode == 2

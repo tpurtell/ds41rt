@@ -97,11 +97,24 @@ def test_embedded_python_bridge_requires_b12x_namespace() -> None:
 
 def test_standalone_tools_bootstrap_pinned_source_before_b12x_imports() -> None:
     violations: list[str] = []
+    explicit_source_tools = {
+        "compare_v41_expert_upstream.py",
+        "compare_v41_index_topk.py",
+        "compare_v41_mhc_upstream.py",
+        "compare_v41_narrow_projection.py",
+        "compare_v41_upstream_attention.py",
+        "compare_v41_vocab_upstream.py",
+        "compare_v41_wo_b_fusion.py",
+    }
     tools_root = ROOT / "python" / "tools"
     for path in sorted(tools_root.glob("*.py")):
         if path.name == "_pinned_sparkinfer.py":
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        text = path.read_text(encoding="utf-8")
+        if path.name in explicit_source_tools:
+            assert "--b12x-root" in text or "PYTHONPATH pointing at" in text
+            continue
+        tree = ast.parse(text, filename=str(path))
         external_imports = [
             node
             for node in ast.walk(tree)
@@ -507,7 +520,7 @@ def test_release_build_overrides_the_base_image_version_label() -> None:
     assert 'spark_release_version="${SPARK_EXPERT_DOCKER_INFERENCE##*:}"' in build
     assert '[[ "$spark_release_version" == "$release_version" ]]' in build
     assert 'release_version="$6"' in build
-    assert 'source_manifest_sha256="${7-}"' in build
+    assert 'source_manifest_sha256="${8-}"' in build
     assert build.count('--build-arg DS41RT_RELEASE_VERSION="$release_version"') == 2
     assert build.count('org.opencontainers.image.version') == 2
     remote_revision_label = next(

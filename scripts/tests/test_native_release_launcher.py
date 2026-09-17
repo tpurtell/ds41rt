@@ -136,7 +136,7 @@ source_manifest_sha256="$1"
         ):
             self.assertIn(option, help_text)
 
-    def test_first_release_defaults_are_native(self) -> None:
+    def test_standard_release_defaults_are_native(self) -> None:
         script = r'''
 source scripts/release-common.sh
 release_load_config ds41rt.config
@@ -168,13 +168,13 @@ printf '%s\n' "$MODEL_ID" "$MODEL_REVISION" "$EXPERT_FORMAT" "$SPARKINFER_EXL3" 
             ],
         )
 
-    def test_v5_published_images_and_full_model_are_release_defaults(self) -> None:
+    def test_v6_published_images_and_full_model_are_release_defaults(self) -> None:
         config = (ROOT / "ds41rt.config").read_text()
         self.assertIn("MODEL_ID=deepseek-ai/DeepSeek-V4.1-Flash", config)
-        self.assertIn("COORDINATOR_DOCKER_INFERENCE=ghcr.io/tpurtell/ds41rt-coordinator:v5", config)
-        self.assertIn("SPARK_EXPERT_DOCKER_INFERENCE=ghcr.io/tpurtell/ds41rt-spark-expert:v5", config)
+        self.assertIn("COORDINATOR_DOCKER_INFERENCE=ghcr.io/tpurtell/ds41rt-coordinator:v6", config)
+        self.assertIn("SPARK_EXPERT_DOCKER_INFERENCE=ghcr.io/tpurtell/ds41rt-spark-expert:v6", config)
         readme = (ROOT / "README.md").read_text()
-        self.assertIn("docker pull ghcr.io/tpurtell/ds41rt-coordinator:v5", readme)
+        self.assertIn("docker pull ghcr.io/tpurtell/ds41rt-coordinator:v6", readme)
         self.assertIn("The official full checkpoint remains the default", readme)
         self.assertNotIn("docker pull ghcr.io/tpurtell/ds41rt-coordinator:v3", readme)
 

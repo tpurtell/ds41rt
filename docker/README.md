@@ -37,10 +37,10 @@ workflow. Use each script's `--help` for its current options.
 ## Runtime
 
 [`../ds41rt.config`](../ds41rt.config) selects the official V4.1 Flash
-checkpoint and the v5 coordinator/worker images. `./run.sh` validates image,
+checkpoint and the v6 coordinator/worker images. `./run.sh` validates image,
 source, dependency, model, host and device identity before starting all five
 containers. The standard launch uses port 8000, concurrency 16, dSpark, the
-official 1,048,576/393,216 context/output limits, and 24 retained turns.
+official 1,048,576/393,216 context/output limits, and 20 retained turns.
 
 Run `./run.sh --help` for per-launch concurrency, KV pool, total memory,
 retention, context, output, prefill and dSpark controls. Command-line values

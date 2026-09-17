@@ -8,7 +8,7 @@ SUFFIX=${2:?Usage: ask-file.sh FILE SUFFIX [MAX_TOKENS]}
 # regime during the same request. Pass an explicit larger value for long-output
 # tests.
 MAX_TOKENS=${3:-256}
-MODEL=${MODEL:-wrldsuksgo2mars/DeepSeek-V4-Pro-0813-EXL3-K2-calibrated-v1}
+MODEL=${MODEL:-deepseek-ai/DeepSeek-V4.1-Flash}
 
 [[ "$MAX_TOKENS" =~ ^[1-9][0-9]*$ ]] || {
   echo "MAX_TOKENS must be a positive integer" >&2

@@ -36,7 +36,7 @@ docker_args=(
   -e HF_HOME="$hf_home"
   -e HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
   -e TRANSFORMERS_OFFLINE="${TRANSFORMERS_OFFLINE:-1}"
-  -e DS41RT_MODEL_ID="${DS41RT_MODEL_ID:-wrldsuksgo2mars/DeepSeek-V4-Pro-0813-EXL3-K2-calibrated-v1}"
+  -e DS41RT_MODEL_ID="${DS41RT_MODEL_ID:-deepseek-ai/DeepSeek-V4.1-Flash}"
   -e DS41RT_MODEL_REVISION="${DS41RT_MODEL_REVISION:-}"
 )
 

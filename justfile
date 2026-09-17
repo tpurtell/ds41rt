@@ -1,6 +1,6 @@
 set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 
-model_id := env_var_or_default("DS41RT_MODEL_ID", "wrldsuksgo2mars/DeepSeek-V4-Pro-0813-EXL3-K2-calibrated-v1")
+model_id := env_var_or_default("DS41RT_MODEL_ID", "deepseek-ai/DeepSeek-V4.1-Flash")
 expert_roles := env_var_or_default("DS41RT_EXPERT_HOSTS", "spark-0,spark-1,spark-2,spark-3")
 spark_hosts := env_var_or_default("DS41RT_SPARK_HOSTS", "ostrich,dodo,emu,kiwi")
 base_image := env_var_or_default("DS41RT_CONTAINER_BASE", "nvcr.io/nvidia/pytorch:26.05-py3")

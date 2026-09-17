@@ -2,7 +2,7 @@
 set -euo pipefail
 
 url="${1:-${URL:-http://127.0.0.1:8000}}"
-model="${2:-${MODEL:-wrldsuksgo2mars/DeepSeek-V4-Pro-0813-EXL3-K2-calibrated-v1}}"
+model="${2:-${MODEL:-deepseek-ai/DeepSeek-V4.1-Flash}}"
 
 need() {
   command -v "$1" >/dev/null 2>&1 || {
