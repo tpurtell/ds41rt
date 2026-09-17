@@ -816,3 +816,33 @@ Evidence: `~/.cache/ds41rt-v6-tail-capture/` contains the exact launch, concurre
 results, performance requests/SSE results, server log and summary;
 `~/.cache/ds41rt-v6-heads32/tail-capture-build.log` records the build. Normal
 serving was restored after the experiment.
+
+### Retained-context attention-only comparison
+
+Using the same-build 20-layer/5 GiB logical-pool configuration above, the release
+retained-context harness ran only code and topic at exact 32,768 and 131,072
+parent tokens, three samples per case/arm. Both arms used identical request
+messages, tokenizer, context source and corpus subset. All 24 samples completed,
+reused the expected parent frontier, and passed applicable objective checks
+(code); prose quality was not assessed.
+
+| Retained context | Case | Full-head median decode tokens/s | Captured-tail TP2 | Observed change |
+| ---: | --- | ---: | ---: | ---: |
+| 32,768 | Code | 147.1 | 146.6 | -0.4% |
+| 32,768 | Topic | 81.7 | 79.9 | -2.2% |
+| 131,072 | Code | 148.4 | 136.8 | -7.8% |
+| 131,072 | Topic | 85.4 | 76.1 | -10.8% |
+
+Unlike the short-prompt trial, no paired output was text-identical, and topic
+completion lengths differed materially (32K: reference 284/299/296 tokens,
+TP2 242/217/176). Consequently these are observed workload rates, not an isolated
+speedup measurement. They establish no reason to promote attention-only TP2.
+Single cold-parent first-output observations were 4.79 -> 4.85 seconds at 32K and
+17.91 -> 18.50 seconds at 128K; these are not qualified prefill medians.
+
+Evidence: `~/.cache/ds41rt-v6-attention-context/` includes exact launches,
+corpus subset, both complete harness reports and `summary.json`. Normal serving
+was restored. Attention stays opt-in; next implementation work is independently
+selectable query/output projection parallelism, followed by dSpark parallelism.
+Splitting projection work could reduce weight streaming and full-head intermediate
+traffic, but neither a gain nor a default change is presumed.
