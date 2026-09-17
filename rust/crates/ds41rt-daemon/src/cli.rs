@@ -393,7 +393,7 @@ mod tests {
         assert_eq!(args.max_context_tokens, 1_048_576);
         assert_eq!(args.max_output_tokens, 393_216);
         assert_eq!(args.concurrency, 16);
-        assert_eq!(args.prefix_cache_entries, 24);
+        assert_eq!(args.prefix_cache_entries, 20);
         assert_eq!(args.dspark_draft_limit, 5);
         assert!(!args.exl3_paired_tp4);
         let super::Commands::ServeNative(paired) = super::Cli::try_parse_from(
@@ -552,7 +552,7 @@ pub(crate) struct NativeServeArgs {
     pub http_queue_wait_ms: u64,
 
     /// Retained completed turns, plus a separate prompt-repeat bank of this size; zero disables reuse.
-    #[arg(long, default_value_t = 24, value_parser = clap::value_parser!(u32).range(0..=128))]
+    #[arg(long, default_value_t = 20, value_parser = clap::value_parser!(u32).range(0..=128))]
     pub prefix_cache_entries: u32,
 
     /// Pinned host memory for the snapshot cache; zero disables it and leaves every engine path untouched.
