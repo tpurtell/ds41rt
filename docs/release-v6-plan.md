@@ -759,3 +759,34 @@ production budget is unchanged. The original v5 coordinator was restored.
 Evidence: `~/.cache/ds41rt-v6-replica-restore/{launch.json,server.log,check.log,smoke.json}`.
 This targeted check is not another release-wide or randomized torture suite.
 Throughput comparisons and replicated concurrent/cancellation coverage remain.
+
+### First attention-only throughput comparison
+
+Same current optimized Rust/native build, 20 RTX routed expert layers, K7 dSpark,
+2048 prefill rows, concurrency limit 16, 20 retained entries, exact 5 GiB nominal
+KV/index pool (6,003,200 usable tokens), and automatic RAM backing in both arms.
+Only `--tp2-attention` changed. Both cards had 400 W power limits and standard
+13365 MHz memory clocks. Warm release-corpus code/topic prompts used disabled
+thinking and their existing output limits. Three measurements followed a warmup
+at each workload/concurrency. Reference ran before candidate; this is exploratory,
+not alternating final release qualification or retained-long-context coverage.
+
+| Workload | Concurrency | Full-head decode tokens/s per request | TP2 attention | Change |
+| --- | ---: | ---: | ---: | ---: |
+| Code | 1 | 168.9 | 159.4 | -5.6% |
+| Code | 4 | 119.4 | 109.7 | -8.1% |
+| Topic | 1 | 96.1 | 90.2 | -6.2% |
+| Topic | 4 | 68.9 | 63.5 | -7.8% |
+
+Values are medians of each sample's median request decode rate. C4 aggregate
+output/wall-clock throughput was 476.5 -> 439.3 tokens/s for code and
+275.3 -> 252.4 for topic. Every paired response text and completion-token count
+matched. No default is promoted. The dual path still launches projection/FFN
+continuation outside the captured attention graph; investigate that known extra
+launch work and peer-copy costs before deciding whether the attention split can
+win. These timings do not isolate the cause of the regression.
+
+Evidence: `~/.cache/ds41rt-v6-attention-perf/` contains both exact launch commands,
+server logs, per-request SSE measurements, scripts and `summary.json`. Normal
+v5 serving was restored after the experiment. TP2 projection and dSpark still
+require independent implementation/evaluation.
