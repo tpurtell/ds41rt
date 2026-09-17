@@ -3,6 +3,7 @@ use super::*;
 use crate::v41_memory::device::{Allocation, Device};
 
 pub(crate) struct SourceReplica<'a> {
+    copy: ds41rt_ffi::V41PeerCopy<'a>,
     values: Allocation<'a>,
     scales: Allocation<'a>,
     pages: Allocation<'a>,
@@ -28,6 +29,7 @@ impl<'a> SourceReplica<'a> {
         let lengths = Allocation::new(device, source.lengths.buffer.bytes)?;
         device.run(|| device.library.copy_h2d(lengths.buffer, &vec![0; lengths.buffer.bytes]))?;
         Ok(Self {
+            copy: device.run(|| device.library.v41_peer_copy())?,
             values: Allocation::new(device, source.capacity*KV_VALUES)?,
             scales: Allocation::new(device, source.capacity*KV_SCALES)?,
             pages: Allocation::new(device, source.page_table.buffer.bytes)?,
@@ -130,18 +132,18 @@ impl<'a> SourceReplica<'a> {
         ensure!(row <= self.capacity && count <= self.capacity-row, "replica copy outside pool");
         for (dst, src, width) in [(self.values.buffer, source.kv_values.buffer, KV_VALUES),
             (self.scales.buffer, source.kv_scales.buffer, KV_SCALES)] {
-            unsafe { self.values.device.library.copy_peer_async(slice(dst,row*width,count*width),
+            unsafe { self.copy.launch(slice(dst,row*width,count*width),
                 slice(src,row*width,count*width),count*width,stream)?; }
         }
         Ok(())
     }
     unsafe fn copy_metadata(&self, source: &SourceCache<'_>, offset: usize, bytes: usize,
         stream: *mut c_void) -> Result<()> {
-        unsafe { self.values.device.library.copy_peer_async(slice(self.pages.buffer,offset,bytes),
+        unsafe { self.copy.launch(slice(self.pages.buffer,offset,bytes),
             slice(source.page_table.buffer,offset,bytes),bytes,stream) }
     }
     unsafe fn copy_length(&self, source: &SourceCache<'_>, slot: usize, stream: *mut c_void) -> Result<()> {
-        unsafe { self.values.device.library.copy_peer_async(slice(self.lengths.buffer,slot*8,8),
+        unsafe { self.copy.launch(slice(self.lengths.buffer,slot*8,8),
             slice(source.lengths.buffer,slot*8,8),8,stream) }
     }
 }
@@ -170,7 +172,8 @@ mod tests {
                 let replica = SourceReplica::new(&source,peer)?;
                 let producer = LoadStream { library: &lib, raw: lib.cuda_stream_create()? };
                 let consumer = Stream::new(peer)?;
-                let append = |source: &mut SourceCache<'_>, old, new, value| -> Result<()> {
+                let mut publication = crate::v41_memory::peer_publication::PeerPublication::new(owner,peer)?;
+                let mut append = |source: &mut SourceCache<'_>, old, new, value| -> Result<()> {
                     let plan = source.reserve(&[(0,old,new)])?;
                     unsafe { source.copy_shared_tails(&plan,producer.raw)?;
                         lib.cuda_stream_synchronize(producer.raw)?; }
@@ -181,9 +184,8 @@ mod tests {
                         }
                     }
                     unsafe { source.upload(&plan,producer.raw)?;
-                        lib.cuda_stream_synchronize(producer.raw)?;
-                        replica.copy_append(source,&plan,consumer.raw)?; }
-                    consumer.drain()?;
+                        publication.enqueue(producer.raw,|stream| replica.copy_append(source,&plan,stream))?;
+                        lib.cuda_stream_synchronize(producer.raw)?; }
                     source.apply(plan);
                     Ok(())
                 };

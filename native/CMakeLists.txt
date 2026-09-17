@@ -255,6 +255,7 @@ if(DS41RT_ENABLE_CUDA)
     cuda/kernels/v41_vision.cu
     cuda/kernels/v41_kv.cu
     cuda/kernels/v41_sparse_attention.cu
+    cuda/kernels/v41_peer_copy.cu
     cuda/kernels/v41_index_scores.cu
     cuda/kernels/v41_index_topk.cu
     cuda/kernels/v41_candidate_blocks.cu
@@ -965,6 +966,10 @@ if(DS41RT_ENABLE_XGRAMMAR)
 endif()
 
 if(DS41RT_ENABLE_CUDA)
+  add_executable(ds41rt_v41_peer_copy_selftest tests/v41_peer_copy_selftest.cc)
+  target_link_libraries(ds41rt_v41_peer_copy_selftest PRIVATE ds41rt_native CUDA::cudart)
+  add_test(NAME ds41rt_v41_peer_copy_selftest COMMAND ds41rt_v41_peer_copy_selftest)
+  set_tests_properties(ds41rt_v41_peer_copy_selftest PROPERTIES SKIP_RETURN_CODE 77)
   add_executable(ds41rt_v41_fp4_attention_selftest tests/v41_fp4_attention_selftest.cc)
   target_link_libraries(ds41rt_v41_fp4_attention_selftest PRIVATE ds41rt_native CUDA::cudart)
   if(DS41RT_ENABLE_V41_ATTENTION_AOT)

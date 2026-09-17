@@ -31,3 +31,30 @@ impl V41Bf16Add<'_> {
         Ok(())
     }
 }
+
+type PeerCopyFn = unsafe extern "C" fn(*mut c_void,*const c_void,u64,*mut c_void)->i32;
+/// SM-issued peer copy, avoiding DMA queue coupling across lane-local event waits.
+pub struct V41PeerCopy<'a> { _library: &'a NativeLibrary, launch: PeerCopyFn }
+impl NativeLibrary {
+    pub fn v41_peer_copy(&self) -> Result<V41PeerCopy<'_>> {
+        let initialize=unsafe { *self.lib.get::<unsafe extern "C" fn()->i32>(b"ds41rt_v41_peer_copy_initialize")? };
+        ensure!(unsafe { initialize() }==0,"peer copy initialization failed");
+        Ok(V41PeerCopy { _library:self,launch:unsafe { *self.lib.get(b"ds41rt_v41_peer_copy_async")? } })
+    }
+}
+impl V41PeerCopy<'_> {
+    /// # Safety
+    /// Destination is on the current stream device; source peer access is enabled.
+    /// Producers precede this stream, buffers are disjoint and live through
+    /// completion, and no conflicting access occurs. Initialize before capture.
+    pub unsafe fn launch(&self,destination: Ds41rtDeviceBuffer,source: Ds41rtDeviceBuffer,
+        bytes: usize,stream:*mut c_void)->Result<()> {
+        ensure!(destination.device_id>=0 && source.device_id>=0 && destination.device_id!=source.device_id,
+            "peer copy needs distinct device owners");
+        ensure!(bytes>0 && bytes<=destination.bytes && bytes<=source.bytes
+            && destination.flags==0 && source.flags==0,"invalid peer copy extent or buffer flags");
+        let status=unsafe { (self.launch)(destination.ptr,source.ptr,bytes as u64,stream) };
+        ensure!(status==0,"SM peer copy failed with CUDA status {status}");
+        Ok(())
+    }
+}

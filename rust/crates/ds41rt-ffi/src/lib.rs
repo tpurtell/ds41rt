@@ -1,6 +1,6 @@
 mod v41_candidate_blocks;
 mod v41_device_ops;
-pub use v41_device_ops::V41Bf16Add;
+pub use v41_device_ops::{V41Bf16Add, V41PeerCopy};
 pub use v41_candidate_blocks::V41CandidateBlocks;
 mod v41_index_topk;
 pub use v41_index_topk::V41IndexTopK;

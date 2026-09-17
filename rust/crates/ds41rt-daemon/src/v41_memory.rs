@@ -11,6 +11,8 @@ mod download;
 pub(crate) use download::RowDownload;
 #[path = "v41_memory/device.rs"]
 pub(crate) mod device;
+#[path = "v41_memory/peer_publication.rs"]
+pub(crate) mod peer_publication;
 
 pub(crate) struct DeviceAllocation<'a> {
     pub(crate) library: &'a NativeLibrary,

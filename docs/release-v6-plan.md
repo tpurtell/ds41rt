@@ -302,3 +302,37 @@ check also passes. The temporary test executable was removed from the running
 container. Evidence: `replica-hardware.log` and `replica-build.log` in the compact
 attention evidence bundle. Independent-lane event ordering, cancellation handling,
 SWA/proposal replication, memory-plan integration and serving remain required.
+
+### Independent peer publication and DMA scheduling finding
+
+A lane-owned `PeerPublication` preallocates a peer stream and two events. It
+orders producer writes, peer copies and producer completion without host polling,
+allocation or waiting during normal enqueue. The existing producer completion
+and cancellation guard can then cover the round trip. Enqueue failures drain the
+peer stream before releasing callback captures; each lane uses a separate owner.
+
+The held-producer test exposed a hardware scheduling dependency with peer DMA:
+with bidirectional peer access enabled, GPU1-to-GPU0 copies queued behind a stalled
+lane prevented the other lane's copy from completing within three seconds.
+Standalone CUDA probes reproduced the dependency; one-way peer access and
+SM-issued peer reads did not reproduce it. This is an artificial dependency test,
+not evidence of a three-second serving delay or an end-to-end throughput gain.
+
+Added a preinitialized SM peer-copy kernel and Rust binding, and switched the new
+compressed replica storage to that copy path. Its vectorized 16/4-byte paths and
+byte fallback use 64-bit offsets; no DMA operation sits behind the lane-local wait.
+The bidirectional hardware test now passes for independent-lane progress, injected
+enqueue failure and dropping an outstanding publication. Replica append/COW/restore
+checks also pass with producer completion covering peer publication. A native
+48-case alignment/guard/graph-replay test passes under Compute Sanitizer with zero
+errors. The test skips when fewer than two CUDA GPUs are present.
+
+Rust hardware tests used a temporary CUDA 13.2 peer-kernel module linked to the
+running v5 native library; the standalone sanitized test used CUDA 13.3. Temporary
+container files were removed and the serving health check remains successful.
+Evidence is in `publication-sm-hardware.log`, `replica-publication-sm-hardware.log`,
+`peer-copy-memcheck-final.log`, and `publication-probe*.log` in the compact attention
+bundle; failed DMA attempts are retained there. Full native release build and
+serving integration remain outstanding. Existing non-replica peer DMA paths were
+not changed; their sensitivity to this queue dependency is a profiling opportunity,
+not grounds for changing defaults without measurements.
