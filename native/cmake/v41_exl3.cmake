@@ -14,6 +14,30 @@ else()
 endif()
 set(DS41RT_V41_EXL3_CAPACITIES "1;16;80;256;1024;4096" CACHE STRING "EXL3 batch capacities to package")
 set(DS41RT_V41_EXL3_BITS "3;4" CACHE STRING "EXL3 decoder tiers for the packaged checkpoint family")
+option(DS41RT_V41_EXL3_PAIRED_TP4 "Build paired H128 ownership modules for Spark TP4" OFF)
+set(DS41RT_V41_EXL3_RESIDENCY "" CACHE STRING "Explicit paired EXL3 capacity=blocks/SM overrides (for example 80=2)")
+set(DS41RT_EXL3_LAYOUT_ARGS)
+if(DS41RT_V41_EXL3_PAIRED_TP4)
+  list(LENGTH DS41RT_V41_EXL3_BITS DS41RT_EXL3_TIER_COUNT)
+  if(NOT DS41RT_EXL3_ROLE STREQUAL "spark" OR NOT DS41RT_EXL3_TIER_COUNT EQUAL 2)
+    message(FATAL_ERROR "Paired EXL3 TP4 requires SM121 and exactly two decoder tiers")
+  endif()
+  list(APPEND DS41RT_EXL3_LAYOUT_ARGS --paired-tp4)
+elseif(DS41RT_V41_EXL3_RESIDENCY)
+  message(FATAL_ERROR "EXL3 residency overrides require paired TP4")
+endif()
+set(DS41RT_EXL3_OVERRIDE_CAPACITIES)
+foreach(override IN LISTS DS41RT_V41_EXL3_RESIDENCY)
+  if(NOT override MATCHES "^([1-9][0-9]*)=([12])$")
+    message(FATAL_ERROR "EXL3 residency must be capacity=1 or capacity=2")
+  endif()
+  set(capacity "${CMAKE_MATCH_1}")
+  if(NOT capacity IN_LIST DS41RT_V41_EXL3_CAPACITIES OR capacity IN_LIST DS41RT_EXL3_OVERRIDE_CAPACITIES)
+    message(FATAL_ERROR "EXL3 residency requires a selected, nonduplicate capacity")
+  endif()
+  list(APPEND DS41RT_EXL3_OVERRIDE_CAPACITIES "${capacity}")
+  list(APPEND DS41RT_EXL3_LAYOUT_ARGS --residency "${override}")
+endforeach()
 set(DS41RT_EXL3_PACKAGE "${CMAKE_CURRENT_BINARY_DIR}/exl3")
 set(DS41RT_EXL3_BYPRODUCTS)
 foreach(layout IN LISTS DS41RT_EXL3_LAYOUTS)
@@ -37,6 +61,7 @@ add_custom_command(
     "${Python3_EXECUTABLE}" "${DS41RT_EXL3_TOOL}" build
     --role "${DS41RT_EXL3_ROLE}" --capacities "${DS41RT_EXL3_CAPACITIES_ARG}"
     --bits ${DS41RT_V41_EXL3_BITS}
+    ${DS41RT_EXL3_LAYOUT_ARGS}
     --build-dir "${CMAKE_CURRENT_BINARY_DIR}/v41_exl3_exports"
     --output "${DS41RT_EXL3_PACKAGE}"
     --cxx "${CMAKE_CXX_COMPILER}" --cuda-include "${DS41RT_EXL3_CUDA_INCLUDE}"
