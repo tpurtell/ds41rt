@@ -1556,6 +1556,19 @@ The unimplemented draft attention/projection splits remain distinct from the
 measured expert option. Release documentation must not describe all draft
 components as evaluated or the entire draft stack as parallelized.
 
+The main-model combined query/attention path also has a concrete remaining
+optimization opportunity: `v41_projection_tp2::Wave::execute_after` gathers
+query-B output onto the layer owner; `execute_tokens_tp2_prepared_cooperative`
+copies and rotates that full output; `DualAttentionWave::enqueue_cached` then
+copies the two head halves into the attention owners again. Retaining local
+projected/rotated head shards could avoid the peer round trip. It is not enough
+to pass the existing buffers through unchanged: projection ranks use physical
+GPU shard order, whereas attention half zero follows the layer owner, which
+changes across the stack. A fused implementation must preserve checkpoint head
+identity, sink slices, position/frequency ownership and per-lane cancellation
+lifetimes across that owner change. No throughput result yet establishes a win
+for this prospective fusion; independent options retain their tested contracts.
+
 ### Single-RTX launch and historical variability
 
 The clean candidate single-RTX launch passes concurrent text/code/10,824-token
