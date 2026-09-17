@@ -1449,3 +1449,30 @@ TP2 with a single selected GPU, and draft expert TP2 without dSpark or with EXL3
 weights. This changes launcher access, not runtime defaults or the candidate
 binary measured above. Process-boundary tests verify each flag, all flags,
 defaults, CLI overrides and invalid configuration values.
+
+### Packaged native performance qualification in progress
+
+The fresh dual candidate completes all 30 direct-decode requests and the three
+code/topic/counting concurrency sweeps. Median direct weighted throughput is
+109.44 tok/s versus published v5 109.88; code 155.70 versus 155.69; reasoning code
+126.08 versus 126.34; topic 87.10 versus 87.72. C16 aggregate code/topic/counting
+are 1,195.37 / 622.81 / 1,508.81 tok/s, versus historical v5
+1,205.02 / 603.62 / 1,511.84. These are historical comparisons, not interleaved
+A/B controls.
+
+All 135 retained-context requests through 256K pass serving and prefix-reuse
+checks. Weighted 128K/256K decode is 98.40 / 92.78 tok/s, versus historical
+102.39 / 96.22 (-3.9% / -3.6%). This requires investigation before declaring
+performance preserved. A focused same-image, fixed-20-layer/fixed-GPU-pool
+comparison of automatic RAM caching versus disabled RAM caching is prepared
+for code, reasoning code and topic at both depths (three samples). It will run
+after the current prefill campaign, restore the recipe afterward, and preserve
+per-arm cache statistics and GPU telemetry. This is additional diagnosis of an
+observed discrepancy, not another full qualification suite.
+
+Native-only report assembly and a shared README/report table renderer are in
+`scripts/summarize-ds41-v6-release.py` and
+`scripts/render-ds41-v6-release-tables.py`. Assembly requires complete matched
+single/dual campaigns, three-sample coverage, corpus controls, image identity and
+logical GPU-plus-RAM capacity. Reporting tests pass; the complete measured input
+set is still pending. Historical EXL3 data stays separate at publication.
