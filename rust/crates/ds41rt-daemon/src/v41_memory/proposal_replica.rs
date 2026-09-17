@@ -52,12 +52,11 @@ impl<'a> ProposalReplica<'a> {
         let rows=span(self.capacity,offset,count,step)?;
         if rows==0 { return Ok(()); }
         self.values.device.run(|| {
-            // A bounded span also copies stride gaps; those rows remain masked by
-            // the original metadata and need no gather/repacking or new offsets.
+            // Preserve physical offsets while skipping unused stride gaps.
             for (dst,src,width) in [(self.values.buffer,values,value_width),
                 (self.scales.buffer,scales,scale_width)] {
-                unsafe { self.copy.launch(slice(dst,offset*width,rows*width),
-                    slice(src,offset*width,rows*width),rows*width,stream)?; }
+                unsafe { self.copy.launch_rows(slice(dst,offset*width,rows*width),
+                    slice(src,offset*width,rows*width),width,count,step*width,step*width,stream)?; }
             }
             Ok(())
         })
@@ -121,9 +120,10 @@ mod tests {
                 unsafe { publication.enqueue(producer.raw,|stream|replica.copy_rows(
                     source_values.buffer,source_scales.buffer,offset,count,step,stream))?; }
                 producer.drain()?;
-                let rows=span(16,offset,count,step)?;
-                expected_values[offset*vw..(offset+rows)*vw].fill(value);
-                expected_scales[offset*sw..(offset+rows)*sw].fill(value+1);
+                for row in (0..count).map(|i|offset+i*step) {
+                    expected_values[row*vw..(row+1)*vw].fill(value);
+                    expected_scales[row*sw..(row+1)*sw].fill(value+1);
+                }
                 peer.run(|| {
                     let mut actual=vec![0;16*vw];lib.copy_d2h(&mut actual,destination_values)?;
                     assert_eq!(actual,expected_values);

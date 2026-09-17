@@ -34,12 +34,14 @@ impl V41Bf16Add<'_> {
 
 type PeerCopyFn = unsafe extern "C" fn(*mut c_void,*const c_void,u64,*mut c_void)->i32;
 /// SM-issued peer copy, avoiding DMA queue coupling across lane-local event waits.
-pub struct V41PeerCopy<'a> { _library: &'a NativeLibrary, launch: PeerCopyFn }
+type PeerRowsFn = unsafe extern "C" fn(*mut c_void,*const c_void,u64,u64,u64,u64,*mut c_void)->i32;
+pub struct V41PeerCopy<'a> { _library: &'a NativeLibrary, launch: PeerCopyFn, rows: PeerRowsFn }
 impl NativeLibrary {
     pub fn v41_peer_copy(&self) -> Result<V41PeerCopy<'_>> {
         let initialize=unsafe { *self.lib.get::<unsafe extern "C" fn()->i32>(b"ds41rt_v41_peer_copy_initialize")? };
         ensure!(unsafe { initialize() }==0,"peer copy initialization failed");
-        Ok(V41PeerCopy { _library:self,launch:unsafe { *self.lib.get(b"ds41rt_v41_peer_copy_async")? } })
+        Ok(V41PeerCopy { _library:self,launch:unsafe { *self.lib.get(b"ds41rt_v41_peer_copy_async")? },
+            rows:unsafe { *self.lib.get(b"ds41rt_v41_peer_copy_rows_async")? } })
     }
 }
 impl V41PeerCopy<'_> {
@@ -57,4 +59,21 @@ impl V41PeerCopy<'_> {
         ensure!(status==0,"SM peer copy failed with CUDA status {status}");
         Ok(())
     }
+    /// # Safety
+    /// Same publication/lifetime rules as launch; local copies are also allowed.
+    /// Each row has `width` bytes and begins at its buffer's respective pitch.
+    pub unsafe fn launch_rows(&self,destination:Ds41rtDeviceBuffer,source:Ds41rtDeviceBuffer,
+        width:usize,rows:usize,destination_pitch:usize,source_pitch:usize,stream:*mut c_void)->Result<()> {
+        ensure!(destination.device_id>=0 && source.device_id>=0 && destination.flags==0 && source.flags==0,
+            "invalid pitched copy device owner or flags");
+        ensure!((1..=4096).contains(&rows) && width>0,"invalid pitched copy shape");
+        for (buffer,pitch) in [(destination,destination_pitch),(source,source_pitch)] {
+            let bytes=(rows-1).checked_mul(pitch).and_then(|n|n.checked_add(width));
+            ensure!(pitch>=width && bytes.is_some_and(|n|n<=buffer.bytes),"pitched copy exceeds buffer");
+        }
+        let status=unsafe { (self.rows)(destination.ptr,source.ptr,width as u64,rows as u64,
+            destination_pitch as u64,source_pitch as u64,stream) };
+        ensure!(status==0,"SM pitched copy failed with CUDA status {status}");Ok(())
+    }
+
 }

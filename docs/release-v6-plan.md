@@ -396,3 +396,24 @@ AOT was qualified separately above. Evidence: `compact-wave-hardware.log`,
 the compact attention bundle. Temporary container files were removed. Live model
 query splitting, replica/proposal ownership binding and dual-wave scheduling remain
 required before an end-to-end attention experiment.
+
+### SM strided copies for attention boundaries
+
+The preinitialized copy binding now supports pitched rows on either the local GPU
+or a peer. This allows full-width query rows to be split into compact head rows
+and compact outputs to be gathered for the existing full-width projection without
+using peer DMA. Widths, pitches and offsets use 64-bit arithmetic with checked
+buffer extents. Row count remains a runtime launch argument; capture performs no
+allocation or kernel resolution.
+
+Proposal replication now uses this primitive to skip stride-two gaps entirely,
+superseding the bounding-span gap copies described above. Physical offsets and
+metadata remain unchanged. The Rust GPU fixture confirms that gap rows retain
+poison, narrow updates affect only their rows, and empty spans leave storage alone.
+The native sanitized suite passes 72 cases, including two-way head split/gather,
+local splitting, graph replay, byte/word/vector alignments, guards and invalid
+pitch rejection. It includes 32,768-byte head halves at row counts 1, 7 and 64.
+No memory errors are reported. Evidence: `peer-rows-memcheck-final.log`,
+`proposal-strided-hardware.log` and `peer-rows-rust-build.log` in the same bundle.
+Temporary container fixtures were removed. These are prerequisite copy operations;
+live-model attention splitting/gathering and throughput measurement remain pending.
