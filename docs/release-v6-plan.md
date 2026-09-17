@@ -1280,3 +1280,25 @@ reservation. Explicit byte sizes or zero override auto sizing. The direct binary
 continues to accept explicit `--host-cache-bytes auto`; this change is to the
 recipe default. Shell syntax checks and all 12 native release launcher tests
 pass (`recipe-auto-tests.log` in `~/.cache/ds41rt-v6-heads32/`).
+
+Focused C1 content acceptance completed with three runs per case in each arm.
+Reasoning code uses thinking enabled at high effort. Terminal budget/EOS cycles
+are excluded, and these rates describe adaptively selected verified drafts,
+not teacher-forced agreement:
+
+| Content | Full accepted / verified | Full acceptance | TP2 accepted / verified | TP2 acceptance |
+|---|---:|---:|---:|---:|
+| Code | 525 / 701 | 74.8930% | 525 / 701 | 74.8930% |
+| Reasoning code | 2,749 / 3,994 | 68.8282% | 2,748 / 3,997 | 68.7516% |
+| Topic | 398 / 748 | 53.2086% | 398 / 749 | 53.1375% |
+
+Both arms pass the content checks. This is a focused C1 acceptance check, not
+high-concurrency acceptance qualification or a release throughput result: trace
+instrumentation is enabled. Evidence: `~/.cache/ds41rt-v6-dspark-acceptance/`
+(reference/candidate `summary.json`, per-case results and captured traces).
+The initial harness attempt used a tokenizer directory instead of tokenizer.json
+and failed before requests; it is excluded. Normal serving was restored.
+
+Next targeted optimization: fork peer expert work before RTX1's shared expert
+execution, allowing those operations to overlap within the same graph. Current
+implementation enqueues the shared expert before the peer fork.
