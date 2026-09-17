@@ -203,14 +203,7 @@ impl<'w, 'a> DistributedExecution<'w, 'a> {
         let sink = self.weights.sink_views[layer];
         let rows = batch.expert_rows();
         let pending = device.run(|| unsafe {
-            match index {
-                Some(index) => lane
-                    .get_mut()
-                    .enqueue_attention_indexed_ffn(sink, &cache, index),
-                None => lane
-                    .get_mut()
-                    .enqueue_attention_cached_ffn(sink, &cache, None),
-            }
+            lane.get_mut().enqueue_attention_replicated_ffn(sink,bank,&cache,index)
         })?;
         Ok(PlacedPreparedLayer {
             device,

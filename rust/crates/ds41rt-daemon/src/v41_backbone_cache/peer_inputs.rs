@@ -94,16 +94,17 @@ mod tests {
                 // Cancel before completing cold preparation or a warm replay,
                 // then immediately reuse the same copies and both attention waves.
                 drop(unsafe { dual.enqueue_cached(&q,sink.buffer,&bank,&original,Some(&selected))? });
-                let pending=unsafe { dual.enqueue_cached(&q,sink.buffer,&bank,&original,Some(&selected))? };
-                let failed=runtime.block_on(unsafe { pending.complete_then(|output,stream| {
+                unsafe { dual.enqueue_cached_owned(&q,sink.buffer,&bank,&original,Some(&selected))?; }
+                let failed=runtime.block_on(unsafe { dual.complete_owned_then(|output,stream| {
                     projection.prepare_chain_graph(q.tokens()?,stream)?;
                     projection.enqueue_chain_graph(&output,stream)?;
                     Err::<(),_>(anyhow::anyhow!("injected projection continuation error"))
                 }) });
                 assert!(failed.unwrap_err().to_string().contains("injected projection continuation error"));
                 for _ in 0..2 {
-                    let pending=unsafe { dual.enqueue_cached(&q,sink.buffer,&bank,&original,Some(&selected))? };
-                    let (output,projected)=runtime.block_on(unsafe { pending.complete_then(|output,stream| {
+                    unsafe { dual.enqueue_cached_owned(&q,sink.buffer,&bank,&original,Some(&selected))?; }
+                    assert!(unsafe { dual.enqueue_cached_owned(&q,sink.buffer,&bank,&original,Some(&selected)) }.is_err());
+                    let (output,projected)=runtime.block_on(unsafe { dual.complete_owned_then(|output,stream| {
                         projection.prepare_chain_graph(q.tokens()?,stream)?;
                         let projected=projection.enqueue_chain_graph(&output,stream)?;
                         Ok((output,projected))

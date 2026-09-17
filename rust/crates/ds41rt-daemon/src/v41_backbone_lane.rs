@@ -124,10 +124,18 @@ impl<'s, 'w, 'a> PendingLaneFfn<'s, 'w, 'a> {
             let query = lane.query.output()?;
             let mut tail = AttentionTail { projection: &mut lane.projection, block: &mut lane.block,
                 binding: query.binding()?, tokens: query.tokens()? };
-            unsafe { lane.sparse.finish_prepare(Some(&mut tail)).await?; }
+            if let Some(dual)=lane.dual_sparse.as_mut() {
+                use crate::v41_sparse_attention::AttentionGraphTail;
+                unsafe { dual.complete_owned_then(|attention,stream| {
+                    tail.prepare(stream)?;
+                    tail.enqueue(&attention,stream)
+                }).await?; }
+            } else {
+                unsafe { lane.sparse.as_mut().context("attention wave absent")?.finish_prepare(Some(&mut tail)).await?; }
+            }
             self.values = Some(lane.block.graph_normalized_storage(query.rows));
         }
-        self.lane.as_ref().unwrap().sparse.wait_chain().await?;
+        if let Some(sparse)=&self.lane.as_ref().unwrap().sparse { sparse.wait_chain().await?; }
         let lane = self.lane.take().unwrap();
         let input = unsafe { lane.block.complete_queued_ffn(self.values.unwrap())? };
         lane.phase = Phase::Ffn;
@@ -139,7 +147,9 @@ impl<'s, 'w, 'a> PendingLaneFfn<'s, 'w, 'a> {
 impl Drop for PendingLaneFfn<'_, '_, '_> {
     fn drop(&mut self) {
         if let Some(lane) = self.lane.as_deref_mut() {
-            if let Err(error) = lane.sparse.drain_chain() {
+            let drained=if let Some(dual)=lane.dual_sparse.as_mut() { dual.drain() }
+                else { lane.sparse.as_mut().map_or(Ok(()),|sparse|sparse.drain_chain()) };
+            if let Err(error) = drained {
                 tracing::error!(%error, "draining cancelled attention chain");
             }
             lane.block.reset();
@@ -336,7 +346,9 @@ async fn complete_ffn<T>(
 
 pub(crate) struct BackboneLane<'w, 'a> {
     // Destroy containing graphs before their captured consumer allocations.
-    sparse: SparseAttentionWave<'a>,
+    sparse: Option<SparseAttentionWave<'a>>,
+    dual_sparse: Option<crate::v41_sparse_attention::dual::DualAttentionWave<'a>>,
+    capacity: usize,
     weights: &'w BackboneLaneWeights<'a>,
     block: BackboneBlockWave<'w, 'a>,
     query: AttentionQueryWave<'w, 'a>,
@@ -388,7 +400,9 @@ impl<'w, 'a> BackboneLane<'w, 'a> {
             query: first.query.wave(capacity, sizes[1])?,
             projection: first.projection.wave(capacity, sizes[2])?,
             shared: first.shared.as_ref().map(|w| w.wave(capacity,sizes[3])).transpose()?,
-            sparse: SparseAttentionWave::new(weights.library, capacity as usize, sizes[4])?,
+            sparse: Some(SparseAttentionWave::new(weights.library, capacity as usize, sizes[4])?),
+            dual_sparse: None,
+            capacity: capacity as usize,
             router: first.router.wave(capacity, sizes[5])?,
             layer: first_layer,
             phase: Phase::Idle,
@@ -576,7 +590,8 @@ impl<'w, 'a> BackboneLane<'w, 'a> {
         let binding = query.binding()?;
         let tokens = query.tokens()?;
         let mut tail = AttentionTail { projection: &mut self.projection, block: &mut self.block, binding, tokens };
-        let result = unsafe { self.sparse.execute_query_graph(&query, sink, requests, selection, &mut tail) };
+        let result = unsafe { self.sparse.as_mut().context("direct attention requires full-head mode")?
+            .execute_query_graph(&query, sink, requests, selection, &mut tail) };
         if let Err(error) = result { self.block.reset(); self.phase = Phase::Invalid; return Err(error); }
         let values = self.block.graph_normalized_storage(tokens.len());
         let input = unsafe { self.block.complete_queued_ffn(values)? };
@@ -612,6 +627,24 @@ impl<'w, 'a> BackboneLane<'w, 'a> {
         self.enter(Phase::Query)?;
         unsafe { self.enqueue_attention_with_selection(sink,cache,selection) }
     }
+    /// # Safety
+    /// Keep the bank, query, proposals and selection alive until completion or
+    /// cancellation. All producers and committed replica publications are ready.
+    pub unsafe fn enqueue_attention_replicated_ffn(&mut self,sink:Ds41rtDeviceBuffer,
+        bank:&crate::v41_backbone_cache::BackboneCache<'_>,cache:&crate::v41_backbone_cache::CacheAttention<'_>,
+        index:Option<&crate::v41_index_lane::IndexLane<'_, '_>>)->Result<PendingLaneFfn<'_,'w,'a>> {
+        if self.dual_sparse.is_none() {
+            return match index { Some(index)=>unsafe { self.enqueue_attention_indexed_ffn(sink,cache,index) },
+                None=>unsafe { self.enqueue_attention_cached_ffn(sink,cache,None) } };
+        }
+        self.enter(Phase::Query)?;
+        let selection=index.map(|index|index.output(self.layer,cache)).transpose()?;
+        let mut pending=PendingLaneFfn { lane:Some(self),values:None };
+        let lane=pending.lane.as_deref_mut().unwrap();
+        let query=lane.query.output()?;
+        unsafe { lane.dual_sparse.as_mut().unwrap().enqueue_cached_owned(&query,sink,bank,cache,selection.as_ref())?; }
+        Ok(pending)
+    }
     unsafe fn enqueue_attention_with_selection(&mut self,sink:Ds41rtDeviceBuffer,
         cache:&crate::v41_backbone_cache::CacheAttention<'_>,selection:Option<&IndexSelectionOutput<'_>>)
         ->Result<PendingLaneFfn<'_,'w,'a>> {
@@ -627,7 +660,8 @@ impl<'w, 'a> BackboneLane<'w, 'a> {
         let query = lane.query.output()?;
         let mut tail = AttentionTail { projection: &mut lane.projection, block: &mut lane.block,
             binding, tokens: query.tokens()? };
-        if unsafe { lane.sparse.enqueue_query_prepared(&query, sink, &requests, selection, true, Some(&mut tail))? }.is_some() {
+        if unsafe { lane.sparse.as_mut().context("full-head attention wave absent")?
+            .enqueue_query_prepared(&query, sink, &requests, selection, true, Some(&mut tail))? }.is_some() {
             pending.values = Some(lane.block.graph_normalized_storage(query.rows));
         }
         Ok(pending)
@@ -716,7 +750,8 @@ impl<'w, 'a> BackboneLane<'w, 'a> {
         self.capture_routes = enabled;
         if enabled {
             self.query.enable_small_graph_shapes();
-            self.sparse.enable_small_graph_shapes();
+            if let Some(sparse)=&mut self.sparse { sparse.enable_small_graph_shapes(); }
+            if let Some(dual)=&mut self.dual_sparse { dual.enable_small_graph_shapes(); }
             self.projection.enable_small_graph_shapes();
             if let Some(shared) = &mut self.shared { shared.enable_small_graph_shapes(); }
             self.router.enable_small_graph_shapes();
@@ -727,7 +762,18 @@ impl<'w, 'a> BackboneLane<'w, 'a> {
     pub fn captured_routes(&self) -> &[Vec<[u32; 6]>] { &self.route_capture }
     pub fn route_capture_enabled(&self) -> bool { self.capture_routes }
     pub fn reserve_sparse_decode_rows(&mut self, rows: usize) -> Result<()> {
-        self.sparse.reserve_decode_rows(rows)
+        if let Some(dual)=&mut self.dual_sparse { dual.reserve_decode_rows(rows) }
+        else { self.sparse.as_mut().context("attention wave absent")?.reserve_decode_rows(rows) }
+    }
+    /// Replace full-head storage before execution and before final KV sizing.
+    /// The explicit budget includes both local and peer workspaces.
+    pub fn enable_dual_attention(&mut self,peer:Device<'a>,budgets:[usize;2])->Result<()> {
+        ensure!(self.phase==Phase::Idle && self.dual_sparse.is_none(),"dual attention requires an unused lane");
+        let source=Device { library:self.weights.library,id:self.query.input().device_id };
+        let mut dual=crate::v41_sparse_attention::dual::DualAttentionWave::new([source,peer],self.capacity,budgets)?;
+        if self.capture_routes { dual.enable_small_graph_shapes(); }
+        source.run(|| { self.sparse=None; Ok(()) })?;
+        self.dual_sparse=Some(dual);Ok(())
     }
     /// Reserve adaptive route history during planning, before lane execution.
     pub fn reserve_route_capture(&mut self, layers: std::ops::Range<usize>, rows: usize) -> Result<()> {

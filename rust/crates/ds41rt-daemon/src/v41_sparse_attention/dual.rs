@@ -11,7 +11,9 @@ pub(crate) struct DualAttentionWave<'a> {
     inputs: PeerAttentionInputs<'a>,
     peer_sink: Allocation<'a>,
     capacity: usize,
+    pending: Option<OwnedSubmission>,
 }
+struct OwnedSubmission { cold:[bool;2],rows:usize,layer:usize }
 impl<'a> DualAttentionWave<'a> {
     /// Budgets are in head-half order: the first device owns the gathered output.
     /// Includes private proposals, selection and sink storage on the peer.
@@ -36,6 +38,7 @@ impl<'a> DualAttentionWave<'a> {
             output: Allocation::new(devices[0],capacity*64*1024)?, capacity,
             inputs: PeerAttentionInputs::new(devices[0],devices[1],capacity,PeerAttentionInputs::device_bytes(capacity)?)?,
             peer_sink: Allocation::new(devices[1],128)?,
+            pending: None,
         })
     }
     pub fn reserve_decode_rows(&mut self, rows: usize) -> Result<()> {
@@ -48,12 +51,33 @@ impl<'a> DualAttentionWave<'a> {
     pub fn enable_small_graph_shapes(&mut self) {
         for half in &mut self.halves { half.enable_small_graph_shapes(); }
     }
-    fn drain(&mut self) -> Result<()> {
+    pub fn drain(&mut self) -> Result<()> {
         // Always attempt both drains, even if the first device reports an error.
         let devices=[self.halves[0].device,self.halves[1].device];
         let first = devices[0].run(|| self.halves[0].drain_chain());
         let second = devices[1].run(|| self.halves[1].drain_chain());
+        self.pending=None;
         first.and(second)
+    }
+    /// # Safety
+    /// Same external lifetime contract as enqueue_cached. The enclosing lane
+    /// must complete or drain this owner before releasing any input/consumer.
+    pub unsafe fn enqueue_cached_owned(&mut self,query:&AttentionQueryOutput<'_>,sink:Ds41rtDeviceBuffer,
+        bank:&BackboneCache<'_>,cache:&CacheAttention<'_>,selection:Option<&IndexSelectionOutput<'_>>)->Result<()> {
+        ensure!(self.pending.is_none(),"dual attention submission already pending");
+        let mut submission=unsafe { self.enqueue_cached(query,sink,bank,cache,selection)? };
+        let plan=OwnedSubmission { cold:submission.cold,rows:submission.rows,layer:submission.layer };
+        submission.wave=None;
+        drop(submission);
+        self.pending=Some(plan);Ok(())
+    }
+    /// # Safety
+    /// Preserve enqueue_cached_owned's owners and complete_then's consumer contract.
+    pub async unsafe fn complete_owned_then<T>(&mut self,
+        consume:impl FnOnce(QueuedSparseAttention,*mut c_void)->Result<T>)->Result<T> {
+        let plan=self.pending.take().context("dual attention submission absent")?;
+        let pending=PendingDualAttention { wave:Some(self),cold:plan.cold,rows:plan.rows,layer:plan.layer };
+        unsafe { pending.complete_then(consume).await }
     }
     /// # Safety
     /// Original query/proposal/selection producers and committed replicas are
@@ -63,6 +87,7 @@ impl<'a> DualAttentionWave<'a> {
     pub unsafe fn enqueue_cached<'s>(&'s mut self, query:&AttentionQueryOutput<'_>,
         sink:Ds41rtDeviceBuffer, bank:&BackboneCache<'_>,cache:&CacheAttention<'_>,
         selection:Option<&IndexSelectionOutput<'_>>)->Result<PendingDualAttention<'s,'a>> {
+        ensure!(self.pending.is_none(),"dual attention submission already pending");
         ensure!(query.rows>0 && query.rows<=self.capacity && sink.bytes>=256
             && sink.device_id==self.halves[0].device.id,"dual cached attention input differs");
         let mut pending=PendingDualAttention { wave:Some(self),cold:[false;2],rows:query.rows,layer:query.layer };
@@ -97,6 +122,7 @@ impl<'a> DualAttentionWave<'a> {
     pub unsafe fn enqueue<'s>(&'s mut self, query: &AttentionQueryOutput<'_>,
         sinks: [Ds41rtDeviceBuffer; 2], requests: [&[AttentionRequest<'_>]; 2],
         selections: [Option<&IndexSelectionOutput<'_>>; 2]) -> Result<PendingDualAttention<'s,'a>> {
+        ensure!(self.pending.is_none(),"dual attention submission already pending");
         ensure!(query.rows>0 && query.rows<=self.capacity, "dual attention rows exceed capacity");
         ensure!(requests[0].len()==requests[1].len() && requests[0].iter().zip(requests[1]).all(|(a,b)|
             a.window.binding==b.window.binding && a.positions==b.positions

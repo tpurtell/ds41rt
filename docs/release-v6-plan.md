@@ -649,3 +649,22 @@ attention bundle. The fixture uses WMMA attention with zero sink weights and the
 checkpoint's FP8 projection weights. Temporary fixtures were removed and serving
 remains healthy. Full-model serving, captured projection/FFN continuation and
 performance qualification remain required.
+
+### Backbone FFN handoff
+
+The distributed backbone now routes optional dual attention through its existing
+pending-FFN owner. The dual owner retains queued submission metadata until that
+lane completes or cancels it, rejects duplicate submissions, and queues projection
+plus block FFN preparation before its final wait. Full-head mode retains its
+original captured-tail path. Enabling dual mode before execution replaces the
+full-head workspace instead of keeping a second unused allocation; K7 reservation
+and graph-shape configuration dispatch to the selected owner.
+
+Daemon/test builds pass. The checkpoint attention/projection fixture now uses the
+same owned-submission handoff and retains byte-for-byte results, duplicate-submit
+rejection, callback-error cleanup and reuse. Evidence: `dual-backbone-build.log`,
+`dual-backbone-check.log`, and `dual-backbone-hardware.log` in the compact attention
+bundle. This fixture still stops after projection: the new FFN handoff and full
+backbone need execution coverage. Serving does not yet select dual mode; startup
+flags, replicated pool sizing and end-to-end correctness/performance remain.
+Temporary fixtures were removed and the running server remains healthy.
