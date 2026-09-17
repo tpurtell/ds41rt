@@ -143,4 +143,35 @@ cached conversation remains a hit while write-behind copies overlap.
 
 Three budget tests pass, including an allocation test through the real slab-pool
 implementation with a fake pinned-memory provider. CLI parsing and the existing
-launcher checks pass. Full-size pinned allocation and serving measurement follow.
+launcher checks pass. Comparative serving performance remains to be measured.
+
+The full dual-RTX pilot at `9763941` confirmed the planned 7,247,757,312-byte
+(6.75 GiB) allocation and 20,972,032 combined logical tokens. Pinned allocation
+took 1.21 seconds; owners became ready at 26.44 seconds, compared with a preceding
+v5 restart at 22.39 seconds. Only 1.21 seconds is directly attributable to the
+allocation; these isolated launches do not establish a complete startup delta.
+Two 1,060-token code requests completed, with identical 192-token continuations;
+the second reused all 1,060 prompt tokens. This is a startup/reuse smoke check,
+not comparative throughput qualification. Normal v5 serving was restored. Evidence:
+`~/.cache/ds41rt-v6-auto-host/`.
+
+## TP2 implementation constraints from current code
+
+Backbone query B expands 1,280 features to 32,768 (64 heads); the output path
+uses grouped WO-A followed by an 8,192-to-5,120 WO-B projection. A natural TP2
+candidate keeps 32 heads and their output groups on each card, then reduces the
+WO-B partial outputs. Attention-only and projection-only options need explicit
+transfers at their boundaries, so their costs must be measured independently.
+Current sparse attention buffers/FFI assume 64 heads and need a real head-range
+contract; changing weight placement alone cannot implement this split.
+
+The distributed dSpark path currently runs all three transformer stages on GPU1;
+only its vocabulary terminal is already TP2. Draft expert and attention splitting
+must preserve each lane's independent replay and cache ownership.
+
+Flexible RTX expert placement also needs launcher coordination. Spark workers
+currently load from layer 20. Lowering the coordinator's minimum without changing
+worker loading would leave missing experts. Prefer a coordinator-produced memory
+plan before deferred expert loading, letting the launcher start Spark ranks at
+the actual boundary while RTX routed weights load. Avoid loading unused bottom
+experts on every Spark merely to conceal this dependency.
