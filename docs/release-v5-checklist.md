@@ -1,6 +1,6 @@
 # DS41RT v5 release checklist
 
-Status: qualification and publication in progress.
+Status: qualification and publication complete.
 
 - [x] Add generic 2–5 bpw routed-expert EXL3 loading and execution on RTX and
   DGX Spark; verify mixed 3/4-bit projection shapes and reference numerics.
@@ -29,8 +29,8 @@ Status: qualification and publication in progress.
   and token capacities stated up front.
 - [x] Assemble deterministic coordinator and Spark binary packages containing
   the qualified EXL3 AOT payloads and recursive checksums.
-- [ ] Publish verified v5/latest coordinator and Spark images, GitHub release
+- [x] Publish verified v5/latest coordinator and Spark images, GitHub release
   notes, binary packages, qualification evidence, and release checksums.
-- [ ] Create `release/v5` at the exact final `v5` tag commit, verify remote
+- [x] Create `release/v5` at the exact final `v5` tag commit, verify remote
   identities, leave the standard port-8000 service healthy, and clean temporary
   release state.

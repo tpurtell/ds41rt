@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "release": "v5",
+  "engine_revision": "3841117183a399a30bfc2f227b77cacbbefebc38",
+  "sparkinfer_revision": "e685f48c3b941208a8dc5915a742738a3c2de706",
+  "images": {
+    "coordinator": {
+      "v5": "ghcr.io/tpurtell/ds41rt-coordinator:v5",
+      "latest": "ghcr.io/tpurtell/ds41rt-coordinator:latest",
+      "digest": "sha256:73daf9176215d518b69db6a5de3a5896f652210668c07e47ec0b0ad5bdbddd0c"
+    },
+    "spark_expert": {
+      "v5": "ghcr.io/tpurtell/ds41rt-spark-expert:v5",
+      "latest": "ghcr.io/tpurtell/ds41rt-spark-expert:latest",
+      "digest": "sha256:9851d34452cc06755127df833d3cdf4c136de2afa9e028f422de3ad3d25313f5"
+    }
+  },
+  "verification": {
+    "v5_latest_digest_match": true,
+    "version_label": "v5",
+    "release_version_environment": "v5",
+    "spark_hosts": [
+      "ostrich",
+      "dodo",
+      "emu",
+      "kiwi"
+    ],
+    "spark_rootfs_reused_from_qualified_candidate": true
+  }
+}
