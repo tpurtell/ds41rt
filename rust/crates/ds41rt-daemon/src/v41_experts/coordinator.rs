@@ -421,8 +421,8 @@ impl<'w> NativePendingFfn<'w, '_, '_> {
         shared: &crate::v41_backbone_shared::SharedOutput<'_>) -> Result<NativeFfnOutput<'w>> {
         unsafe { self.finish_inner(shared, true).await }
     }
-    /// Run decoder shared TP2 after Spark dispatch, then reduce both results on
-    /// this coordinator's GPU. The pending owner retains all lane workspaces.
+    /// Run shared TP2 after Spark dispatch, reduce on the transport GPU, and
+    /// return the result to the block's GPU. The pending owner retains every lane workspace.
     /// # Safety
     /// Input is the completed normalized FFN input for the dispatched request;
     /// its storage remains immutable through completion or cancellation drain.
@@ -430,18 +430,25 @@ impl<'w> NativePendingFfn<'w, '_, '_> {
         let header = &self.request.request().header;
         ensure!(self.request.binding() == input.binding() && header.layer_id as usize == input.layer
             && header.row_count as usize == input.tokens.len()
-            && input.values.device_id == self.output.device_id,
-            "decoder TP2 shared input/request/device differs");
-        let values = unsafe { self.tp2.as_mut().context("decoder TP2 shared workspace missing")?
-            .execute_shared(input.layer,header.row_count,input.values).await? };
-        unsafe { self.finish_values(values,true).await }
+            && matches!(input.values.device_id, 0 | 1),
+            "TP2 shared input/request/device differs");
+        let values = unsafe { self.tp2.as_mut().context("TP2 shared workspace missing")?
+            .execute_shared_on(input.layer,header.row_count,input.values,self.output.device_id as usize).await? };
+        let destination = input.values.device_id;
+        if destination != self.output.device_id {
+            let device = crate::v41_memory::device::Device { library: self.library, id: self.output.device_id };
+            device.future(unsafe { self.finish_values(values,true,Some(destination)) }).await
+        } else {
+            unsafe { self.finish_values(values,true,Some(destination)).await }
+        }
     }
     async unsafe fn finish_inner(self,
         shared: &crate::v41_backbone_shared::SharedOutput<'_>, cooperative: bool) -> Result<NativeFfnOutput<'w>> {
         validate_shared(self.request, shared, self.shared, self.capacity)?;
-        unsafe { self.finish_values(shared.values,cooperative).await }
+        unsafe { self.finish_values(shared.values,cooperative,None).await }
     }
-    async unsafe fn finish_values(self, values: Ds41rtDeviceBuffer, cooperative: bool) -> Result<NativeFfnOutput<'w>> {
+    async unsafe fn finish_values(mut self, values: Ds41rtDeviceBuffer, cooperative: bool,
+        destination: Option<i32>) -> Result<NativeFfnOutput<'w>> {
         ensure!(values.device_id == self.output.device_id
             && values.bytes == self.request.request().header.row_count as usize * 10240,
             "shared reduction device/extent differs");
@@ -480,6 +487,10 @@ impl<'w> NativePendingFfn<'w, '_, '_> {
         *self.ready_rows = Some(rows);
         let mut values = self.output;
         values.bytes = rows as usize * 10240;
+        if let Some(device) = destination.filter(|&device| device != values.device_id) {
+            values = unsafe { self.tp2.as_mut().context("TP2 return workspace missing")?
+                .return_result(values, device as usize, rows).await? };
+        }
         Ok(NativeFfnOutput {
             values,
             binding: self.request.binding(),

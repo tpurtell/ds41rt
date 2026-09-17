@@ -175,3 +175,33 @@ worker loading would leave missing experts. Prefer a coordinator-produced memory
 plan before deferred expert loading, letting the launcher start Spark ranks at
 the actual boundary while RTX routed weights load. Avoid loading unused bottom
 experts on every Spark merely to conceal this dependency.
+
+### Explicit reduced-layer validation
+
+The binary and launcher now accept explicit dual-RTX routed counts from 1 to 40
+(`--rtx-expert-layers`, `RTX_EXPERT_LAYERS`). The launcher starts Spark workers at
+the selected boundary; the existing nonempty worker requirement keeps layer 39
+loaded when all 40 are local. Single-RTX workers retain their existing full range.
+Automatic selection still uses the old minimum until runtime-plan negotiation is
+implemented; GPU preflight also retains its conservative 20-layer memory estimate.
+
+A full-checkpoint 17-layer run exposed a GPU1-only assumption in remote/shared FFN
+completion for layers 17–19, whose attention still lives on GPU0. Shared reduction
+now targets the transport GPU, collection is polled under that device's scope,
+and the completed result returns to the block GPU in existing lane-owned storage.
+The usual GPU1 path does not perform this peer return. No buffers are added.
+
+The corrected run matched the 20-layer baseline on three concurrent API requests
+(short response, code, and reference lookup), including complete reuse of an
+804-token prompt. The real-weight independent-lane FFN test also passes, extended
+to compare opposite-GPU shared reduction and return byte-for-byte for both input
+GPUs and row-count transitions. These checks establish execution correctness, not
+a performance win from moving experts back to Spark.
+
+With the same 14M usable GPU-token pool and automatic RAM budget, measured device
+occupancy fell from [99,737,665,536; 100,375,199,744] bytes at 20 layers to
+[88,901,681,152; 89,539,215,360] at 17: approximately 10.1 GiB freed per RTX.
+The corrected coordinator initialized in 23.23 seconds (26.44 for the preceding
+20-layer automatic-RAM pilot; isolated launches, not a controlled timing claim).
+Temporary workers on port 19442 were removed and normal v5 serving restored.
+Evidence is in `~/.cache/ds41rt-v6-placement/`, including the initial failing run.

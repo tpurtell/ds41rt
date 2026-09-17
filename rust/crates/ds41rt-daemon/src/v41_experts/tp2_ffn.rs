@@ -115,7 +115,7 @@ impl<'a> Wave<'a> {
         self.shared.contains(layer)
     }
 
-    /// Execute only the shared TP2 contribution while decoder routed experts
+    /// Execute only the shared TP2 contribution while routed experts
     /// run on Sparks. Reuses the encoder FFN's lane-local input/shared storage.
     /// # Safety
     /// Completed normalized input remains immutable through completion or drain.
@@ -125,8 +125,18 @@ impl<'a> Wave<'a> {
         rows: u32,
         values: Ds41rtDeviceBuffer,
     ) -> Result<Ds41rtDeviceBuffer> {
+        unsafe { self.execute_shared_on(layer, rows, values, values.device_id as usize).await }
+    }
+
+    /// Same input lifetime as `execute_shared`; select the reduction owner so
+    /// Spark collection can remain on its transport GPU for encoder layers too.
+    /// # Safety
+    /// Input storage remains complete, immutable and live through completion or drain.
+    pub async unsafe fn execute_shared_on(&mut self, layer: usize, rows: u32,
+        values: Ds41rtDeviceBuffer, destination: usize) -> Result<Ds41rtDeviceBuffer> {
         ensure!(
             self.contains_shared(layer)
+                && destination < 2
                 && rows > 0
                 && rows <= self.capacity
                 && matches!(values.device_id, 0 | 1)
@@ -169,13 +179,32 @@ impl<'a> Wave<'a> {
                 .execute(
                     layer,
                     rows,
-                    local,
+                    destination,
                     inputs,
                     [&self.streams[0], &self.streams[1]],
                 )
                 .await?
         };
         guard.complete = true;
+        Ok(output)
+    }
+
+    /// Return a completed remote-expert reduction to its block's GPU using
+    /// lane-owned scratch. Stream::wait drains this copy on cancellation.
+    /// # Safety
+    /// Source storage remains immutable and live until the transfer completes or drains.
+    pub async unsafe fn return_result(&mut self, source: Ds41rtDeviceBuffer,
+        destination: usize, rows: u32) -> Result<Ds41rtDeviceBuffer> {
+        ensure!(destination < 2 && rows > 0 && rows <= self.capacity
+            && source.bytes >= rows as usize * 10240, "invalid TP2 result transfer");
+        let stream = &self.streams[destination];
+        let mut output = self.output[destination].buffer;
+        output.bytes = rows as usize * 10240;
+        let queued = stream.device.run(|| unsafe {
+            stream.device.library.copy_peer_async(output, source, output.bytes, stream.raw)
+        });
+        let drained = stream.wait().await;
+        queued.and(drained)?;
         Ok(output)
     }
 
@@ -399,6 +428,19 @@ mod tests {
                             left, right,
                             "decoder shared TP2 broadcast/reduction differs"
                         );
+                        Ok(())
+                    })?;
+                    let returned = runtime.block_on(async {
+                        let peer = unsafe { lanes[local].execute_shared_on(layer, rows,
+                            inputs[local].values.buffer, 1-local).await? };
+                        unsafe { lanes[local].return_result(peer, local, rows).await }
+                    })?;
+                    devices[local].run(|| {
+                        let mut left = vec![0; returned.bytes];
+                        let mut right = vec![0; expected.bytes];
+                        lib.copy_d2h(&mut left, returned)?;
+                        lib.copy_d2h(&mut right, expected)?;
+                        ensure!(left == right, "peer-owned shared reduction and return differs");
                         Ok(())
                     })?;
                     assert_eq!(lib.cuda_get_device()?, 0);
