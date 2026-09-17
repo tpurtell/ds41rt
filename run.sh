@@ -19,7 +19,7 @@ Command-line values override ds41rt.config for this launch.
   --http-queue-depth N          buffered jobs and maximum extra waiters (default concurrency)
   --http-queue-wait-ms N        queue-space wait budget (default 25000)
   --kv-pool-size SIZE           exact KV/index pool, e.g. 22.5GB
-  --host-cache-bytes auto|SIZE  pinned RAM cache; 0 disables (default 0)
+  --host-cache-bytes auto|SIZE  pinned RAM cache; 0 disables (default auto)
   --memory-reservation SIZE     total GPU ceiling, e.g. 90% or 80GiB
   --prefix-cache-entries N      turn and prompt retention, 0..128 (default 20)
   --max-context-tokens N        context limit (default 1048576)

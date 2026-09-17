@@ -324,8 +324,9 @@ Command-line values override [`ds41rt.config`](ds41rt.config) for one launch:
 | `--rtx-gpus auto\|1\|2` | `auto` | Select two feasible peer GPUs automatically, or force a layout |
 | `--concurrency N` | `16` | Active requests, 1–16 |
 | `--kv-pool-size SIZE` | automatic | Exact global KV/index pool; B, MB, GB, MiB, or GiB |
+| `--host-cache-bytes auto\|SIZE` | `auto` | Pinned RAM paging sized from GPU capacity, retention slots and context limit; `0` disables |
 | `--memory-reservation SIZE` | device plan | Total GPU occupancy ceiling as bytes or a percentage |
-| `--prefix-cache-entries N` | `24` | Independent limits for retained completed turns and prompt snapshots |
+| `--prefix-cache-entries N` | `20` | Independent limits for retained completed turns and prompt snapshots |
 | `--max-context-tokens N` | `1,048,576` | Per-request context maximum |
 | `--max-output-tokens N` | `393,216` | Model output maximum |
 | `--prefill-batch-tokens N` | `2,048` | Prefill step size, 80–4,096 |
@@ -343,9 +344,12 @@ layer 20, while single mode keeps all 40 layers on every Spark.
 With no explicit pool setting, single-RTX mode uses a **16.681 GB global pool
 for 18,710,016 tokens plus 32,768 private-tail tokens**. Dual-RTX mode targets a
 **13.094 GB global pool with 14,712,832 source-token positions**, including
-32,768 tail/COW positions. The 24 completed-turn and prompt-snapshot limits
+32,768 tail/COW positions. The 20 completed-turn and prompt-snapshot limits
 remain independent of the aggregate token budget. `--kv-pool-size` selects the
-exact global pool; `--memory-reservation` caps total planned device occupancy;
+exact global pool. The recipe defaults to `--host-cache-bytes auto`, which keeps
+usable GPU plus RAM token capacity above `prefix-cache-entries × max-context-tokens`;
+snapshot overhead and restore staging are reserved separately. Explicit RAM sizes
+and `0` override that automatic capacity guarantee. `--memory-reservation` caps total planned device occupancy;
 when both are present, the exact pool must fit under the ceiling. Smaller values
 are useful for side-by-side development servers:
 

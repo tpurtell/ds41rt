@@ -1247,3 +1247,36 @@ GPUs' currently free memory before loading. The serving load reserves the main
 context owner and two draft waves. Serving smoke, content acceptance and decode
 measurements must establish whether this option is useful; stage tracing does
 not establish those properties.
+
+### dSpark serving smoke, initial decode comparison, and recipe RAM default
+
+The release build and opt-in TP2 draft serving smoke pass. Concurrent READY,
+code and 10,824-token identifier requests return the expected answers; repeating
+the identifier prompt hits all 10,824 cached tokens. Startup takes 12.417 seconds.
+With 20 RTX expert layers, the automatic usable GPU pool has 10,147,840 tokens;
+automatic RAM sizing adds 10,824,192 tokens, for 20,972,032 combined tokens.
+Pinned RAM is 11,274,289,152 bytes (10.5 GiB), including overhead/staging.
+Evidence: `~/.cache/ds41rt-v6-dspark-serving-wide/`.
+
+The first same-build comparison holds 20 expert layers, 5 GiB GPU KV allocation,
+K7, automatic host cache and other switches fixed. Three warm samples per cell:
+
+| Case | Concurrency | Full draft experts tok/s/request | TP2 draft experts tok/s/request | Change |
+|---|---:|---:|---:|---:|
+| Code | 1 | 165.90 | 166.39 | +0.29% |
+| Code | 4 | 117.17 | 118.78 | +1.38% |
+| Topic | 1 | 95.68 | 96.75 | +1.12% |
+| Topic | 4 | 68.59 | 69.01 | +0.60% |
+
+These small noisy changes do not establish a performance winner. Code outputs
+and token counts match across all samples; topic C1 also matches, but topic C4
+varies. TP2 draft remains opt-in. Evidence: `~/.cache/ds41rt-v6-dspark-perf/`.
+A focused code/reasoning-code/topic acceptance comparison is still pending.
+
+The standard recipe now defaults `HOST_CACHE_BYTES=auto`, alongside 20 retention
+entries. This sizes RAM to keep combined usable token capacity above retention
+entries times the configured context limit, with separate overhead/staging
+reservation. Explicit byte sizes or zero override auto sizing. The direct binary
+continues to accept explicit `--host-cache-bytes auto`; this change is to the
+recipe default. Shell syntax checks and all 12 native release launcher tests
+pass (`recipe-auto-tests.log` in `~/.cache/ds41rt-v6-heads32/`).
