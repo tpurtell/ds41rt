@@ -870,3 +870,27 @@ This is a kernel prerequisite, not a serving implementation or performance claim
 Weight placement, lane-owned exchange/graph scheduling, query normalization and
 output-stage integration, memory budgeting and independent runtime controls are
 still required before projection TP2 can be evaluated end to end.
+
+### Device-owned projection shard runtime
+
+`v41_projection_tp2` now owns checkpoint output-channel shards for query-B and
+output-B, with separate resident and load-peak budgets. The loader reads each
+contiguous rank half directly and packs its local scales. The Rust FFI accepts
+the two new matrix geometries. A lane wave preallocates each rank's input,
+scratch and output storage plus the owner's gathered result; both rank launches
+precede the owner's completion wait. Peer exchange uses SM copy kernels and
+lane-owned streams/events. An interrupted submission drains both ranks before
+storage reuse; no other lane participates in its completion decision.
+
+The native-checkpoint hardware test runs both projection kinds, layers 2/20,
+rows 1/6/16 with changed inputs, output placement on either GPU, two cooperative
+lanes together, rejected insufficient budgets, and a one-poll drop followed by
+immediate reuse. All 32 output comparisons against the original full-width FP8
+projection pass at absolute tolerance 0.0001. Evidence in the compact attention
+bundle: `projection-owner-check.log`, `projection-owner-test-build.log`, and
+`projection-owner-hardware.log`.
+
+The owner is not yet selected by serving. It currently launches projection and
+exchange operations directly; graph integration, backbone query/output handoffs,
+replacement of full-width weight allocations, startup budgeting/controls and
+end-to-end performance measurements remain. No launch default changed.
