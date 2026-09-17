@@ -493,3 +493,22 @@ other slot remaining valid. Evidence: `window-commit-replica-build.log` and
 `window-commit-replica-hardware.log` in the compact attention bundle. Replica
 creation/budgeting at serving startup, restore publication and the analogous
 compressed-cache commit hooks remain required before enabling TP2 attention.
+
+### Accepted compressed-cache commits publish replicas
+
+Compressor waves now optionally retain the source replica and their own peer
+publication owner. Native index/FP4 writes, copied shared tails and page-table
+uploads precede replica publication; normal commit completion includes the peer
+copies before applying page claims and advancing host slot versions. The original
+commit path remains unchanged when no replica is configured. Replica owner and
+producer device/library are validated before any writes.
+
+The checkpoint-backed fixture passes original and replicated commits for layers
+2 and 20 (both compression ratios), independent request slots, partial acceptance,
+pending carry and abort/revocation. Peer FP4 values/scales, page IDs and committed
+row counts match after the regular commit completes. The bidirectional replica
+append/COW/host-restore fixture also passes. Evidence:
+`source-commit-replica-build.log`, `source-commit-replica-hardware.log`, and
+`source-commit-replica-cow.log` in the compact attention bundle. Serving startup,
+restore/reset publication and the backbone dual-attention switch remain required;
+these checks do not establish an end-to-end TP2 speedup.

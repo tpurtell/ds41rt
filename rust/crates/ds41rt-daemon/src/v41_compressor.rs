@@ -335,6 +335,7 @@ impl<'a> CompressorWeights<'a> {
             ready: None,
             pending_query: None,
             pending_commit: None,
+            replica: None,
             commit_staging: HostAllocation::new(self.library, rows*4+256)?,
         })
     }
@@ -482,6 +483,8 @@ pub(crate) struct CompressorWave<'w, 'a> {
     ready: Option<Prepared>,
     pending_query: Option<(Prepared, bool)>,
     pending_commit: Option<PendingCommit>,
+    replica: Option<(std::rc::Rc<SourceReplica<'a>>,
+        crate::v41_memory::peer_publication::PeerPublication<'a>)>,
     commit_staging: HostAllocation<'a>,
 }
 impl CompressorWave<'_, '_> {

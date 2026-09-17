@@ -6,12 +6,26 @@ pub(super) struct PendingCommit {
     completed: Vec<CompressorLatentRow>,
     accepted: Vec<u32>,
 }
-impl CompressorWave<'_, '_> {
+impl<'a> CompressorWave<'_, 'a> {
+    /// Configure once before production. Each lane owns its publication events;
+    /// replicas share the authoritative pool's physical page identities.
+    pub fn enable_replica(&mut self, state: &CompressorState<'a>,
+        replica: std::rc::Rc<SourceReplica<'a>>) -> Result<()> {
+        ensure!(self.ready.is_none() && self.pending_query.is_none() && self.pending_commit.is_none()
+            && self.replica.is_none(), "source replica requires an unused wave");
+        replica.validate_owner(&state.index)?;
+        ensure!(state.layer==self.weights.layer && state.index.kv_values.buffer.device_id==self.kv_values.buffer.device_id
+            && std::ptr::eq(state.index.kv_values.library,self.stream.library), "source replica producer differs");
+        let source=crate::v41_memory::device::Device { library:self.stream.library,id:self.kv_values.buffer.device_id };
+        let publication=crate::v41_memory::peer_publication::PeerPublication::new(source,replica.device())?;
+        self.replica=Some((replica,publication)); Ok(())
+    }
     /// # Safety
     /// Proposal consumers are complete. Keep wave and state alive and drain on
     /// every error before dropping page claims or releasing participating slots.
     pub unsafe fn enqueue_commit(&mut self, state: &CompressorState<'_>, accepted: &[u32]) -> Result<()> {
         ensure!(self.pending_commit.is_none(), "compressor commit already pending");
+        if let Some((replica,_))=&self.replica { replica.validate_owner(&state.index)?; }
         let prepared = self
             .ready
             .take()
@@ -138,6 +152,9 @@ impl CompressorWave<'_, '_> {
             }
             unsafe {
                 state.index.upload_staged(plan, self.commit_staging.bytes_mut(), self.stream.raw)?;
+                if let Some((replica,publication))=self.replica.as_mut() {
+                    publication.enqueue(self.stream.raw,|stream|replica.copy_append(&state.index,plan,stream))?;
+                }
             }
             Ok(())
         })()
@@ -215,6 +232,14 @@ mod tests {
     #[test]
     #[ignore = "requires DS41RT_NATIVE_LIB, DS41RT_CACHE_COMMIT_MODEL and CUDA"]
     fn native_independent_source_commits_match_direct_values_carry_and_abort() -> Result<()> {
+        source_commits(false)
+    }
+    #[test]
+    #[ignore = "requires SM peer copy, DS41RT_CACHE_COMMIT_MODEL and two CUDA GPUs"]
+    fn native_independent_source_commits_publish_peer_payloads_and_metadata() -> Result<()> {
+        source_commits(true)
+    }
+    fn source_commits(replicated: bool) -> Result<()> {
         let lib = unsafe { NativeLibrary::load(std::env::var("DS41RT_NATIVE_LIB")?)? };
         let model = std::env::var("DS41RT_CACHE_COMMIT_MODEL")?;
         let catalog = ds41rt_loader::read_official_v41_catalog(
@@ -224,9 +249,16 @@ mod tests {
                 CompressorWeights::device_bytes(&catalog, layer)?, 1024*1024)?;
             let mut state = CompressorState::new(&lib, layer, 2, 4, usize::MAX)?;
             let mut reference = CompressorState::new(&lib, layer, 2, 4, usize::MAX)?;
+            let replica=if replicated {
+                Some(std::rc::Rc::new(SourceReplica::new(&state.index,
+                    crate::v41_memory::device::Device { library:&lib,id:1-lib.cuda_get_device()? })?))
+            } else { None };
             let leases = [state.begin_request(0, 11)?, state.begin_request(1, 22)?];
             let originals = [reference.begin_request(0, 11)?, reference.begin_request(1, 22)?];
             let mut waves = [weights.wave(16, usize::MAX)?, weights.wave(16, usize::MAX)?];
+            if let Some(replica)=&replica {
+                for wave in &mut waves { wave.enable_replica(&state,replica.clone())?; }
+            }
             let mut direct = weights.wave(16, usize::MAX)?;
             let chunk = |lease, position| CompressorChunk { lease, position, tokens: 5 };
             for i in 0..2 {
@@ -259,6 +291,30 @@ mod tests {
             for i in 0..2 {
                 assert_eq!(read(&state, i, (i+3)/ratio(layer)?, &lib)?,
                     read(&reference, i, (i+3)/ratio(layer)?, &lib)?);
+                if let Some(replica)=&replica {
+                    let original=state.kv_cache(leases[i])?;
+                    let peer=unsafe { replica.view(&state.index,i,original.rows)? };
+                    for row in 0..original.rows {
+                        let physical=original.pages[row/256] as usize*256+row%256;
+                        for (a,b,width) in [(original.values,peer.values,V41Kv::COMPRESSED_VALUE_BYTES),
+                            (original.scales,peer.scales,V41Kv::COMPRESSED_SCALE_BYTES)] {
+                            let slice=|buffer:Ds41rtDeviceBuffer| Ds41rtDeviceBuffer {
+                                ptr:unsafe { buffer.ptr.cast::<u8>().add(physical*width).cast() },bytes:width,..buffer };
+                            let mut left=vec![0;width];let mut right=left.clone();
+                            lib.copy_d2h(&mut left,slice(a))?;
+                            replica.device().run(||lib.copy_d2h(&mut right,slice(b)))?;
+                            assert_eq!(left,right);
+                        }
+                    }
+                    let mut rows=[0;8];
+                    replica.device().run(||lib.copy_d2h(&mut rows,peer.device_rows))?;
+                    assert_eq!(u64::from_ne_bytes(rows),original.rows as u64);
+                    let mut pages=vec![0;original.pages.len()*4];
+                    let page_bytes=pages.len();
+                    replica.device().run(||lib.copy_d2h(&mut pages,
+                        Ds41rtDeviceBuffer { bytes:page_bytes,..peer.device_pages }))?;
+                    assert_eq!(pages,original.pages.iter().flat_map(|p|p.to_ne_bytes()).collect::<Vec<_>>());
+                }
             }
             if let (Some(actual), Some(expected)) = (&state.pending, &reference.pending) {
                 for (a, b) in actual.iter().zip(expected) {

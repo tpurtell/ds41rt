@@ -13,6 +13,8 @@ pub(crate) struct SourceReplica<'a> {
     stride: usize,
 }
 impl<'a> SourceReplica<'a> {
+    pub fn device(&self) -> Device<'a> { self.values.device }
+    pub fn validate_owner(&self, source: &SourceCache<'_>) -> Result<()> { self.check(source) }
     pub fn device_bytes(pages: usize, slots: usize) -> Result<usize> {
         SourceCache::device_bytes(pages, slots)?;
         Ok(pages * PAGE_ROWS * (KV_VALUES + KV_SCALES) + slots * (pages.min(4096)*4+8))
