@@ -47,10 +47,13 @@ impl<'a> ProposalReplica<'a> {
         ensure!(values.device_id==self.source.id && scales.device_id==self.source.id,
             "proposal source device differs");
         let (value_width,scale_width)=self.format.widths();
-        ensure!(values.bytes>=self.capacity*value_width && scales.bytes>=self.capacity*scale_width,
-            "proposal source capacity differs");
         let rows=span(self.capacity,offset,count,step)?;
         if rows==0 { return Ok(()); }
+        // Producer views expose only this wave's used rows, while the replica
+        // remains provisioned for the maximum batch. Validate the referenced
+        // extent, not the replica's reserved capacity.
+        ensure!(values.bytes>=(offset+rows)*value_width && scales.bytes>=(offset+rows)*scale_width,
+            "proposal source extent differs");
         self.values.device.run(|| {
             // Preserve physical offsets while skipping unused stride gaps.
             for (dst,src,width) in [(self.values.buffer,values,value_width),
@@ -117,8 +120,15 @@ mod tests {
                     lib.copy_h2d(source_values.buffer,&vec![value;16*vw])?;
                     lib.copy_h2d(source_scales.buffer,&vec![value+1;16*sw])
                 })?;
+                let used=if count==0 { 0 } else { offset+(count-1)*step+1 };
+                let values=slice(source_values.buffer,0,used*vw);
+                let scales=slice(source_scales.buffer,0,used*sw);
+                if used>0 {
+                    assert!(unsafe { replica.copy_rows(slice(values,0,used*vw-1),scales,
+                        offset,count,step,producer.raw) }.is_err());
+                }
                 unsafe { publication.enqueue(producer.raw,|stream|replica.copy_rows(
-                    source_values.buffer,source_scales.buffer,offset,count,step,stream))?; }
+                    values,scales,offset,count,step,stream))?; }
                 producer.drain()?;
                 for row in (0..count).map(|i|offset+i*step) {
                     expected_values[row*vw..(row+1)*vw].fill(value);

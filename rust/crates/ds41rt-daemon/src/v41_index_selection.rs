@@ -36,6 +36,20 @@ struct Ready {
     bindings: Vec<(IndexBinding, u64)>,
 }
 impl IndexSelectionOutput<'_> {
+    /// Reuse logical row selections on a peer without changing their snapshot
+    /// identity. Candidate blocks remain private to the original index producer.
+    /// # Safety
+    /// Selected contains an exact copy of this output on the consumer device.
+    /// Order publication before consumption and retain its allocation until all
+    /// consumers drain, including cold graph preparation and cancellation.
+    pub unsafe fn peer_attention(&self, selected: Ds41rtDeviceBuffer) -> Result<IndexSelectionOutput<'_>> {
+        ensure!(selected.device_id >= 0 && selected.device_id != self.selected.device_id
+            && !selected.ptr.is_null() && selected.flags == 0
+            && self.rows.checked_mul(2048) == Some(selected.bytes),
+            "peer selection storage differs");
+        Ok(IndexSelectionOutput { origin: self.origin, selected, rows: self.rows,
+            layer: self.layer, blocks: None, bindings: self.bindings, _sources: PhantomData })
+    }
     #[cfg(test)]
     pub(crate) fn candidate_blocks(&self) -> Option<Ds41rtDeviceBuffer> { self.blocks }
     pub fn validate_query(&self, query: QueryBinding) -> Result<()> {
@@ -560,6 +574,27 @@ impl Drop for IndexSelectionWave<'_> {
 #[cfg(test)]
 mod graph_tests {
     use super::*;
+
+    #[test]
+    fn peer_selection_preserves_query_snapshot_validation() -> Result<()> {
+        let origin=QueryBinding::new(2)?;
+        // Only metadata is inspected; these pointers are never dereferenced.
+        let buffer=Ds41rtDeviceBuffer { ptr: std::ptr::NonNull::<u8>::dangling().as_ptr().cast(),
+            bytes: 2048, device_id: 0, flags: 0 };
+        let original=IndexSelectionOutput { origin: Some(origin), selected: buffer,
+            rows: 1, layer: 2, blocks: Some(buffer), bindings: &[], _sources: PhantomData };
+        let mut destination=buffer; destination.device_id=1;
+        let peer=unsafe { original.peer_attention(destination)? };
+        peer.validate_query(origin)?;
+        assert!(peer.validate_query(QueryBinding::new(2)?).is_err());
+        // Intermediate layers may reuse this producer, as on the original GPU.
+        peer.validate_query(QueryBinding::new(3)?)?;
+        assert!(peer.blocks.is_none());
+        assert!(unsafe { original.peer_attention(buffer) }.is_err());
+        destination.bytes-=1;
+        assert!(unsafe { original.peer_attention(destination) }.is_err());
+        Ok(())
+    }
 
     #[test]
     fn cuda_selection_shapes_replay_current_inputs_after_restart() -> Result<()> {

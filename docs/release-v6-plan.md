@@ -435,3 +435,22 @@ Both adapters preserve the existing asynchronous owner-retention contract.
 attention evidence bundle). These adapters are not yet exercised by serving:
 compressed-source and selection views, scheduler ownership/publication hooks,
 full-model correctness and performance qualification remain outstanding.
+
+### Compressed-source and selection peer views
+
+Added an attention-only compressed proposal view that retains the authoritative
+source lease, request, snapshot and strided metadata while using replica FP4
+payloads. Index keys remain on the producer device. A selection peer view retains
+the original query and source bindings and omits producer-only candidate blocks.
+The CPU selection test verifies that the correct query remains valid and a new
+snapshot at the same layer is rejected after creating the peer view.
+
+Connecting these views exposed a proposal-copy extent mismatch: live producers
+expose used rows, while replicas reserve maximum batch capacity. Copies now check
+the referenced source extent rather than requiring the full reserved capacity.
+The bidirectional GPU fixture passes both FP8 and FP4 with shortened producer
+views, rejects one-byte truncation, preserves stride gaps and handles empty views.
+Evidence: `peer-views-check.log`, `peer-views-tests.log` and
+`proposal-used-rows-hardware.log` in the compact attention bundle. Temporary
+container files were removed; serving health remains successful. End-to-end
+publication/ownership integration and throughput qualification are still pending.

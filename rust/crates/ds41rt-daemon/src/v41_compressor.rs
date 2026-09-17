@@ -15,6 +15,7 @@ mod prefix;
 pub(crate) use prefix::{CompressorPrefix, COMPRESSOR_PREFIX_BYTES};
 use source_cache::SourceCache;
 pub(crate) use source_cache::{IndexCacheView, KvCacheView, SourcePoolExhausted};
+pub(crate) use source_cache::replica::SourceReplica;
 static NEXT_PROPOSAL: AtomicU64 = AtomicU64::new(1);
 pub(crate) fn reserve_source_snapshot() -> Result<u64> {
     NEXT_PROPOSAL.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
@@ -397,6 +398,36 @@ pub(crate) struct IndexProposal<'a> {
     _wave: std::marker::PhantomData<&'a ()>,
 }
 impl IndexProposal<'_> {
+    /// Retain authoritative index keys and identity while substituting the peer's
+    /// FP4 attention payload. Index selection still runs on the original device.
+    /// # Safety
+    /// Replica publication for this source and proposal is complete or ordered
+    /// before every consumer. Retain both proposal plane owners through consumers
+    /// and cold graph preparation; no writes may race these borrowed views.
+    pub unsafe fn peer_attention<'s>(&'s self, state: &'s CompressorState<'_>,
+        replica: &'s SourceReplica<'_>, values: Ds41rtDeviceBuffer,
+        scales: Ds41rtDeviceBuffer) -> Result<IndexProposal<'s>> {
+        let slot = state.validate(self.binding.lease)?;
+        ensure!(state.layer == self.source_layer && state.request_id(self.binding.lease)? == self.request
+            && state.slots[slot].end == self.first_token,
+            "peer compressed proposal snapshot differs");
+        let kv_cache = unsafe { replica.view(&state.index, slot, self.kv_cache.rows)? };
+        ensure!(kv_cache.pages == self.kv_cache.pages && kv_cache.rows == self.start as usize,
+            "peer compressed proposal cache differs");
+        ensure!(values.device_id == kv_cache.values.device_id && scales.device_id == values.device_id
+            && self.capacity.checked_mul(V41Kv::COMPRESSED_VALUE_BYTES).is_some_and(|n| values.bytes >= n)
+            && self.capacity.checked_mul(V41Kv::COMPRESSED_SCALE_BYTES).is_some_and(|n| scales.bytes >= n)
+            && !values.ptr.is_null() && !scales.ptr.is_null(),
+            "peer compressed proposal storage differs");
+        Ok(IndexProposal { binding: self.binding, request: self.request, source_layer: self.source_layer,
+            cache: IndexCacheView { packed: self.cache.packed, scales: self.cache.scales,
+                pages: self.cache.pages, rows: self.cache.rows, device_pages: self.cache.device_pages,
+                device_rows: self.cache.device_rows },
+            kv_cache, kv_values: values, kv_scales: scales, packed: self.packed, scales: self.scales,
+            capacity: self.capacity, first_token: self.first_token, end_token: self.end_token,
+            start: self.start, count: self.count, offset: self.offset, step: self.step,
+            _wave: std::marker::PhantomData })
+    }
     pub fn request_id(&self) -> u64 {
         self.request
     }
