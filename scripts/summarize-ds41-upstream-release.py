@@ -28,6 +28,38 @@ def validate_decode_corpus(report: dict, corpus: dict) -> None:
             assert request.get("reasoning_effort") == definition.get("reasoning_effort")
 
 
+def validate_retained_corpus(report: dict, corpus: dict) -> None:
+    """Check every retained sample and the exact mode-specific parent it reused."""
+    cases = corpus['weighted_case_ids']
+    assert report['cases'] == cases and report['repeats'] == 3
+    expected = {(context, case, repeat) for context in report['contexts']
+                for case in cases for repeat in (1, 2, 3)}
+    keys = [(s['context_tokens'], s['case'], s['repeat']) for s in report['samples']]
+    assert len(keys) == len(set(keys)) and set(keys) == expected
+    parents = {}
+    for prime in report['primes']:
+        request = prime['request']
+        key = (prime['context_tokens'], request['thinking']['type'], request.get('reasoning_effort'))
+        assert key not in parents
+        parents[key] = prime
+    modes = {(corpus['cases'][case].get('thinking', 'disabled'),
+              corpus['cases'][case].get('reasoning_effort')) for case in cases}
+    assert set(parents) == {(context, *mode) for context in report['contexts'] if context for mode in modes}
+    for sample in report['samples']:
+        definition = corpus['cases'][sample['case']]
+        request = sample['request']
+        mode = (definition.get('thinking', 'disabled'), definition.get('reasoning_effort'))
+        assert (request['thinking']['type'], request.get('reasoning_effort')) == mode
+        assert sample['passed'] and sample['cache_valid']
+        if sample['context_tokens']:
+            prime = parents[sample['context_tokens'], *mode]
+            assert request['messages'][0] == prime['request']['messages'][0]
+            assert request['messages'][1]['content'] == prime['result']['text']
+            if mode[0] == 'enabled':
+                assert request['messages'][1]['reasoning_content'] == prime['result']['reasoning']
+            assert sample['result']['usage']['prompt_cache_hit_tokens'] in prime['allowed_parent_frontiers']
+
+
 def summarize_readiness(campaign: dict, build: dict) -> dict:
     """Use post-readiness snapshots from the standard launches, in GPU order."""
     assert campaign.get("measurements_passed") is True and campaign.get("completed_ns")
@@ -264,6 +296,9 @@ def main() -> None:
             if corpus:
                 filename = f"{layout}-{'target-' if key == 'target_decode' else ''}decode.json"
                 validate_decode_corpus(load(args.input / filename), corpus)
+        if corpus:
+            for suffix in ('retained-decode', 'retained-2k'):
+                validate_retained_corpus(load(args.input / f'{layout}-{suffix}.json'), corpus)
         assert result["retained_decode"]["contexts"] == [0, 32768, 65536, 131072, 262144]
         assert result["retained_decode_2k"]["contexts"] == [2048]
         assert result["prefill"]["bases"] == [0, 32768, 65536, 131072, 262144]

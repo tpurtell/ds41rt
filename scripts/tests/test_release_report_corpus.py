@@ -58,3 +58,31 @@ def test_deployment_reads_both_log_formats_and_rejects_partition_gap(tmp_path, f
     metadata['workers'][0]['args'][-1] = '21'
     with pytest.raises(AssertionError, match='partition'):
         MODULE['summarize_deployment'](metadata, path)
+
+
+def test_retained_report_checks_mode_specific_parents_and_all_repeats():
+    report, corpus = measurement()
+    report.update(cases=corpus['weighted_case_ids'], contexts=[2048], repeats=3, primes=[])
+    report['samples'] = [s for s in report['samples'] if s['case'] != 'counting']
+    for case in corpus['weighted_case_ids']:
+        request = copy.deepcopy(next(s['request'] for s in report['samples'] if s['case'] == case))
+        request['messages'] = [dict(role='user', content='parent ' + case)]
+        report['primes'].append(dict(context_tokens=2048, request=request,
+            result=dict(text='OK', reasoning='Checked.'), allowed_parent_frontiers=[2050]))
+    for sample in report['samples']:
+        prime = next(p for p in report['primes']
+                     if p['request']['thinking'] == sample['request']['thinking'])
+        sample.update(context_tokens=2048, passed=True, cache_valid=True,
+                      result={'usage': {'prompt_cache_hit_tokens': 2050}})
+        sample['request']['messages'] = [prime['request']['messages'][0],
+            dict(role='assistant', content='OK', reasoning_content='Checked.'),
+            dict(role='user', content=sample['case'])]
+    MODULE['validate_retained_corpus'](report, corpus)
+    for defect in ('duplicate', 'missing_parent', 'reasoning', 'cache_hit'):
+        broken = copy.deepcopy(report)
+        if defect == 'duplicate': broken['samples'].append(broken['samples'][0])
+        elif defect == 'missing_parent': broken['primes'].pop()
+        elif defect == 'reasoning': broken['samples'][3]['request']['messages'][1]['reasoning_content'] = ''
+        else: broken['samples'][0]['result']['usage']['prompt_cache_hit_tokens'] = 0
+        with pytest.raises(AssertionError):
+            MODULE['validate_retained_corpus'](broken, corpus)

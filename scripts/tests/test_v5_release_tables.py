@@ -74,3 +74,48 @@ def test_acceptance_keeps_grammar_targets_separate_and_rejects_invalid_denominat
     acceptance['exl3', 'dual']['cases']['code']['acceptance']['unconstrained']['verified_drafts'] = 0
     with pytest.raises(AssertionError):
         RENDER['render'](data, acceptance=acceptance)
+
+
+def test_acceptance_loader_reproduces_traces_and_rejects_tampering(tmp_path):
+    import hashlib
+    data = reports()
+    collector = runpy.run_path(str(ROOT/'scripts/collect-ds41-content-acceptance.py'))
+    policy = runpy.run_path(str(ROOT/'scripts/summarize-ds41-native-policy.py'))
+    def write(path, value):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(value))
+    write(tmp_path/'complete.json', {'results': [{'passed': True}] * 4})
+    write(tmp_path/'restoration.json', {'errors': []})
+    for model in ('full', 'exl3'):
+        for count in (1, 2):
+            directory = tmp_path/f'{model}-rtx{count}'
+            write(directory/'deployment.json', {
+                'binary_sha256': data[model]['binary_sha256'],
+                'coordinator': {'Config': {'Labels': {
+                    'org.opencontainers.image.revision': data[model]['engine_commit']}}}})
+            cases = {}
+            for case in set(RENDER['CASES']) - {'counting'}:
+                thinking = 'enabled' if case == 'code-reasoning' else 'disabled'
+                effort = 'high' if thinking == 'enabled' else None
+                constrained = 'true' if case == 'structured-json-schema' else 'false'
+                raw = '\n'.join(
+                    f'native draft policy observation request_id={i} lane=0 generated=10 '
+                    f'verifier_rows=3 matched_prefix=1 raw_confidence=[0,0] constrained={constrained} '
+                    'eos=false length_limit=false' for i in (1, 2, 3)).encode()
+                observations, _ = policy['parse'](raw.decode())
+                cases[case] = dict(thinking=thinking, reasoning_effort=effort,
+                    trace_sha256=hashlib.sha256(raw).hexdigest(),
+                    acceptance=collector['summarize_acceptance'](observations))
+                request = {'thinking': {'type': thinking}, 'reasoning_effort': effort}
+                write(directory/f'content/{case}.json', {'passed': True, 'samples': [
+                    dict(case=case, repeat=i, passed=True, request=request) for i in (1, 2, 3)]})
+                (directory/f'content/{case}-trace.log').write_bytes(raw)
+            write(directory/'content/summary.json', dict(passed=True, repeats=3, concurrency=1,
+                  rtx_gpus=count, draft_policy='adaptive', cases=cases,
+                  corpus_sha256=data[model]['corpus_sha256']))
+    result = RENDER['load_acceptance'](tmp_path, data)
+    assert len(result) == 4
+    trace = tmp_path/'exl3-rtx2/content/code-reasoning-trace.log'
+    trace.write_bytes(trace.read_bytes().replace(b'matched_prefix=1', b'matched_prefix=2'))
+    with pytest.raises(AssertionError):
+        RENDER['load_acceptance'](tmp_path, data)
