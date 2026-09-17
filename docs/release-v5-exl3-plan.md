@@ -137,10 +137,12 @@ histories. Report sample counts, per-category agreement, uncertainty and exact
 protocol. Budget approximately 3–5 minutes of evaluation runtime per quant;
 measure both FP8-PLE and NVFP4-PLE variants. This is not a recurring release suite.
 
-Switch the recipe default to EXL3 with **FP8 PLE** only if measured top-1 agreement
-exceeds 90% and measured serving performance justifies it. Otherwise retain the
-full-model default and report the evidence. Never infer the anticipated expert
-bandwidth benefit from bits alone.
+Keep the official full model as the default launch configuration. The user
+confirmed this decision after reviewing the preliminary performance results on
+September 17; it supersedes the earlier conditional EXL3-default proposal, even
+if top-1 agreement exceeds 90%. EXL3 remains opt-in. Complete and report both
+quant variants’ planned analysis and qualification. Never infer the anticipated
+expert bandwidth benefit from bits alone.
 
 ## Completion gates
 
@@ -151,7 +153,7 @@ bandwidth benefit from bits alone.
 - [ ] Optimized one/two-RTX decode, prefill, startup and memory without clear full-model regression.
 - [ ] Serving and quality qualification, including both PLE variants as specified.
 - [ ] Four-configuration release performance tables and raw evidence.
-- [ ] One-time quant analysis and bounded top-1 comparisons; evidence-based default decision.
+- [ ] One-time quant analysis and bounded top-1 comparisons; retain the user-selected full-model default.
 - [ ] Clean build/run, fork and engine commits pushed, v5 images/assets/notes published and verified.
 - [ ] Create and push `release/v5` at the final v5 release commit, aligned with
   the published `v5` tag; verify both remote refs before calling publication complete.
