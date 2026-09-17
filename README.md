@@ -282,9 +282,9 @@ Install that exact snapshot on the coordinator and all four Sparks. The FP4-PLE 
 To use the published images, pull the coordinator image locally and the Spark image on each worker:
 
 ```bash
-docker pull ghcr.io/tpurtell/ds41rt-coordinator:v5
+docker pull ghcr.io/tpurtell/ds41rt-coordinator:v6
 for host in ostrich dodo emu kiwi; do
-  ssh "$host" docker pull ghcr.io/tpurtell/ds41rt-spark-expert:v5
+  ssh "$host" docker pull ghcr.io/tpurtell/ds41rt-spark-expert:v6
 done
 ./run.sh --dry-run
 ./run.sh
@@ -339,8 +339,7 @@ V6 source builds additionally accept `--tp2-attention`, `--tp2-query-projection`
 require two RTX GPUs and default to off; use `--no-tp2-…` to override an enabled
 recipe setting. Attention replicates KV; draft expert TP2 requires native weights
 and dSpark, and leaves draft attention/projections on RTX1. Current measurements
-do not establish a consistent decode win. The published v5 images do not support
-these new switches.
+do not establish a consistent decode win.
 
 Automatic RTX selection checks physical UUIDs, bidirectional peer reads, the
 requested cache or memory ceiling, and available memory. With `--restart`, it
@@ -385,7 +384,7 @@ records the policy tradeoffs; the release performance tables above measure the s
 
 The coordinator owns attention, mHC residuals, embeddings, mapped Engram lookup, routers, shared experts, vision, all three dSpark stages, the vocabulary head, sampling, cache ownership, and the API. Dual mode splits this work by dependency across the RTX pair, uses TP2 for all shared experts and encoder routed experts, and partitions vocabulary rows for deterministic parallel greedy selection. Four Sparks retain only decoder routed experts in dual mode and all routed experts in single mode.
 
-Compressed global KV uses FP4 E2M1 values with group-16 E4M3 scales. The 128-token sliding windows remain FP8, and the independent selection index uses its own FP4 format. A token radix shares immutable pages, uses copy-on-write for divergent suffixes, and restores retained target/dSpark state. Partial matches replay no more than the final 128 encoder tokens; exact hits can reuse saved first-token logits. The default keeps 24 completed turns and 24 prompt snapshots under LRU eviction.
+Compressed global KV uses FP4 E2M1 values with group-16 E4M3 scales. The 128-token sliding windows remain FP8, and the independent selection index uses its own FP4 format. A token radix shares immutable pages, uses copy-on-write for divergent suffixes, and restores retained target/dSpark state. Partial matches replay no more than the final 128 encoder tokens; exact hits can reuse saved first-token logits. The default keeps 20 completed turns and 20 prompt snapshots under LRU eviction.
 
 The [engineering report](docs/ENGINEERING.md) covers the final kernels, execution lanes, cache transactions, prefix policy, transport, dSpark, vision, constrained decoding, memory planning, and startup path. [`architecture.md`](architecture.md) gives the compact ownership contract.
 
