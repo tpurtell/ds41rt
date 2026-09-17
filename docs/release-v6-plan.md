@@ -1305,16 +1305,30 @@ Next targeted optimization: fork peer expert work before RTX1's shared expert
 execution, allowing those operations to overlap within the same graph. Current
 implementation enqueues the shared expert before the peer fork.
 
-The shared-expert overlap change is implemented: after root quantization and
-peer publication, RTX0 begins its routed expert half while RTX1 enqueues the
-shared expert and its local routed half. The same graph joins before reduction.
-No buffers, host waits or cross-lane dependencies are added. The independent
-K7 lane control still matches sequential execution exactly through C16, including
-cancellation/reuse. Evidence: `dspark-overlap-lanes-hardware.log` under
-`~/.cache/ds41rt-v6-heads32/`. The optimized build and direct before/after
-performance comparison are pending; the previous executable is retained only
-for that comparison in `~/.cache/ds41rt-v6-dspark-overlap-perf/`.
+### Shared-expert overlap experiment rejected
 
-A fresh GitHub check on September 17 finds no open issues or pull requests.
-The earlier PR #4 integration and issue #2/#3 fixes remain the applicable
-request/cache changes for this release.
+Moving the peer expert fork before RTX1 shared-expert execution passes the exact
+independent-lane/cancellation test, but the direct before/after comparison does
+not establish a benefit. Three warm samples per cell, TP2 enabled in both arms,
+20 routed layers, 5 GiB GPU KV and automatic RAM paging:
+
+| Case | Concurrency | Before tok/s/request | Overlap tok/s/request | Change |
+|---|---:|---:|---:|---:|
+| Code | 1 | 165.80 | 166.15 | +0.21% |
+| Code | 4 | 119.76 | 117.70 | -1.72% |
+| Topic | 1 | 96.10 | 96.84 | +0.76% |
+| Topic | 4 | 70.18 | 69.03 | -1.64% |
+
+All paired outputs match. Given no consistent gain and lower C4 results, the
+scheduling experiment is reverted to the previously tested ordering. This does
+not remove TP2 draft support or change defaults. Evidence, including executable
+hashes, is in `~/.cache/ds41rt-v6-dspark-overlap-perf/`. The passing exact control
+is `dspark-overlap-lanes-hardware.log` under `~/.cache/ds41rt-v6-heads32/`.
+The release target executable from this experiment must be rebuilt before later
+serving work; the source has reverted its overlap change. Normal v5 serving was
+restored.
+
+The goal introduction now includes `release-v6-parallelism.svg`, covering the
+independent GPU options, both serving lanes and automatic logical GPU/RAM cache
+capacity. XML parsing and a rendered visual review pass. A fresh GitHub check
+on September 17 finds no open issues or pull requests.

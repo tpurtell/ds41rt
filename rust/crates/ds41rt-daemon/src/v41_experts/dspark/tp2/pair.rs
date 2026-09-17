@@ -93,19 +93,6 @@ impl<'a> Pair<'a> {
         shared: Option<Ds41rtDeviceBuffer>,
         stream: *mut c_void,
     ) -> Result<()> {
-        unsafe { self.enqueue_with_shared(stage, rows, inputs, shared, stream, || Ok(())) }
-    }
-    /// Same lifetime contract as enqueue. The callback enqueues shared work on
-    /// the root stream after the peer fork; it must not allocate or synchronize.
-    pub unsafe fn enqueue_with_shared(
-        &mut self,
-        stage: usize,
-        rows: u32,
-        inputs: [Ds41rtDeviceBuffer; 3],
-        shared: Option<Ds41rtDeviceBuffer>,
-        stream: *mut c_void,
-        enqueue_shared: impl FnOnce() -> Result<()>,
-    ) -> Result<()> {
         ensure!(
             stage < 3 && rows > 0 && rows <= self.capacity,
             "invalid draft TP2 stage/rows"
@@ -151,7 +138,6 @@ impl<'a> Pair<'a> {
             Ok(output)
         })?;
         self.owner.run(|| unsafe {
-            enqueue_shared()?;
             let local = self.ranks[1].enqueue(stage, rows, encoded, stream)?;
             library.cuda_stream_wait_event(stream, self.done.raw)?;
             self.copies[1].launch(
