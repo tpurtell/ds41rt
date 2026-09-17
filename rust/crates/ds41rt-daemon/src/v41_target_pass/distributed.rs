@@ -460,14 +460,15 @@ impl<'w, 'a> DistributedTargetPass<'w, 'a> {
                 }
                 self.trace_records.push((position, layer + 120, bytes));
                 if std::env::var("DS41RT_QUERY_COMPONENT").as_deref() == Ok("qb_pair") {
-                    let bytes = query.qb_scratch.bytes;
+                    let qb_scratch=query.qb_scratch.context("full query-B trace scratch absent")?;
+                    let bytes = qb_scratch.bytes;
                     ensure!(bytes <= 131072, "QB scratch exceeds diagnostic slot");
                     let offset = ((layer + 40) * 16 + position as usize) * 131072;
                     let destination = ds41rt_ffi::Ds41rtDeviceBuffer {
                         ptr: unsafe { buffer.ptr.cast::<u8>().add(offset).cast() }, bytes, ..buffer
                     };
                     device.run(|| unsafe { device.library.copy_d2d_async(destination,
-                        query.qb_scratch, bytes, trace_stream) })?;
+                        qb_scratch, bytes, trace_stream) })?;
                     self.trace_records.push((position, layer + 160, bytes));
                 }
             }

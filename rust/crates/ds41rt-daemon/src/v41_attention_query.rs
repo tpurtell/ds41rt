@@ -21,6 +21,7 @@ pub(crate) struct AttentionQueryWeights<'a> {
     names: [String; 5],
     tensors: NativeRtxTensors<'a>,
     scales: Vec<DeviceAllocation<'a>>,
+    split_query_b: bool,
 }
 impl<'a> AttentionQueryWeights<'a> {
     fn names(layer: usize) -> Result<[String; 5]> {
@@ -38,11 +39,16 @@ impl<'a> AttentionQueryWeights<'a> {
         catalog: &OfficialV41Catalog,
         layer: usize,
     ) -> Result<usize> {
-        let mut bytes = NativeRtxTensors::plan(catalog, &Self::names(layer)?)?;
-        for (k, n) in MATRICES {
-            bytes += library
-                .v41_fp8_matrix_info(1, k, n)?
-                .packed_weight_scale_bytes as usize;
+        Self::device_bytes_with_split(library,catalog,layer,false)
+    }
+    pub fn device_bytes_with_split(library:&NativeLibrary,catalog:&OfficialV41Catalog,
+        layer:usize,split_query_b:bool)->Result<usize> {
+        let names=Self::names(layer)?;
+        let selected:Vec<_>=names.iter().enumerate().filter(|(i,_)|!split_query_b || !matches!(i,2|3))
+            .map(|(_,name)|name.clone()).collect();
+        let mut bytes=NativeRtxTensors::plan(catalog,&selected)?;
+        for (k,n) in MATRICES.into_iter().take(if split_query_b {1} else {2}) {
+            bytes+=library.v41_fp8_matrix_info(1,k,n)?.packed_weight_scale_bytes as usize;
         }
         Ok(bytes)
     }
@@ -53,18 +59,24 @@ impl<'a> AttentionQueryWeights<'a> {
         budget: usize,
         staging: usize,
     ) -> Result<Self> {
+        Self::load_with_split(library,catalog,layer,budget,staging,false)
+    }
+    pub fn load_with_split(library:&'a NativeLibrary,catalog:&OfficialV41Catalog,layer:usize,
+        budget:usize,staging:usize,split_query_b:bool)->Result<Self> {
         ensure!(
-            Self::device_bytes(library, catalog, layer)? <= budget,
+            Self::device_bytes_with_split(library, catalog, layer,split_query_b)? <= budget,
             "attention query weights exceed budget"
         );
         let names = Self::names(layer)?;
-        let tensors = NativeRtxTensors::load(library, catalog, &names, budget, staging)?;
+        let selected:Vec<_>=names.iter().enumerate().filter(|(i,_)|!split_query_b || !matches!(i,2|3))
+            .map(|(_,name)|name.clone()).collect();
+        let tensors = NativeRtxTensors::load(library, catalog, &selected, budget, staging)?;
         let stream = LoadStream {
             library,
             raw: library.cuda_stream_create()?,
         };
         let mut scales = vec![];
-        for (i, (k, n)) in MATRICES.into_iter().enumerate() {
+        for (i, (k, n)) in MATRICES.into_iter().take(if split_query_b {1} else {2}).enumerate() {
             let kernel = library.v41_fp8_matrix_kernel(1, k, n)?;
             let scale =
                 DeviceAllocation::new(library, kernel.info().packed_weight_scale_bytes as usize)?;
@@ -80,11 +92,12 @@ impl<'a> AttentionQueryWeights<'a> {
             names,
             tensors,
             scales,
+            split_query_b,
         })
     }
     pub fn wave(&self, capacity: u32, budget: usize) -> Result<AttentionQueryWave<'_, 'a>> {
         ensure!(
-            AttentionQueryWave::device_bytes(self.library, capacity)? <= budget,
+            AttentionQueryWave::device_bytes_with_split(self.library, capacity,self.split_query_b)? <= budget,
             "attention query wave exceeds budget"
         );
         let stream = LoadStream {
@@ -92,7 +105,7 @@ impl<'a> AttentionQueryWeights<'a> {
             raw: self.library.cuda_stream_create()?,
         };
         let kernels = MATRICES
-            .into_iter()
+            .into_iter().take(if self.split_query_b {1} else {2})
             .map(|(k, n)| self.library.v41_fp8_matrix_plan(capacity, k, n))
             .collect::<Result<Vec<_>>>()?;
         let scratch = kernels
@@ -125,7 +138,7 @@ impl<'a> AttentionQueryWeights<'a> {
             value.b(0).device_id == self.tensors.get(&self.names[0])?.device_id,
             "query weight device differs"
         );
-        for i in 0..2 {
+        for i in 0..value.kernels.len() {
             let launched = unsafe {
                 value.kernels[i].initialize_scratch(
                     value.scratch[i].buffer,
@@ -149,7 +162,7 @@ pub(crate) struct AttentionQueryOutput<'a> {
     #[cfg(test)]
     pub projected: Ds41rtDeviceBuffer,
     #[cfg(test)]
-    pub qb_scratch: Ds41rtDeviceBuffer,
+    pub qb_scratch: Option<Ds41rtDeviceBuffer>,
     pub rotated: Ds41rtDeviceBuffer,
     pub positions: Ds41rtDeviceBuffer,
     pub frequencies: Ds41rtDeviceBuffer,
@@ -189,6 +202,7 @@ impl<'w, 'a> AttentionQueryWave<'w, 'a> {
         self.tokens.clear();
         ensure!(
             std::ptr::eq(self.stream.library, weights.library)
+                && self.kernels.len()==weights.scales.len()
                 && weights.tensors.get(&weights.names[0])?.device_id == self.b(0).device_id,
             "attention rebound weight library or device differs"
         );
@@ -199,9 +213,12 @@ impl<'w, 'a> AttentionQueryWave<'w, 'a> {
 }
 impl AttentionQueryWave<'_, '_> {
     pub fn device_bytes(library: &NativeLibrary, capacity: u32) -> Result<usize> {
+        Self::device_bytes_with_split(library,capacity,false)
+    }
+    pub fn device_bytes_with_split(library:&NativeLibrary,capacity:u32,split_query_b:bool)->Result<usize> {
         let mut bytes = 4 + capacity as usize * ROW_BYTES.iter().enumerate()
             .filter(|(i, _)| *i != 4 || cfg!(test)).map(|(_, bytes)| bytes).sum::<usize>();
-        for (k, n) in MATRICES {
+        for (k, n) in MATRICES.into_iter().take(if split_query_b {1} else {2}) {
             bytes += library.v41_fp8_matrix_plan_info(capacity, k, n)?.scratch_bytes as usize;
         }
         Ok(bytes)
@@ -263,6 +280,7 @@ impl AttentionQueryWave<'_, '_> {
         Ok(())
     }
     unsafe fn enqueue(&self, rows: u32) -> Result<()> {
+        ensure!(!self.weights.split_query_b,"split query-B weights require TP2 execution");
         unsafe {
             self.enqueue_rank(rows)?;
             self.kernels[1].launch(
@@ -548,7 +566,7 @@ impl AttentionQueryWave<'_, '_> {
             #[cfg(test)]
             projected: b(4),
             #[cfg(test)]
-            qb_scratch: self.scratch[1].buffer,
+            qb_scratch: self.scratch.get(1).map(|scratch|scratch.buffer),
             rotated: b(3),
             positions: b(5),
             frequencies: b(6),
@@ -606,7 +624,13 @@ mod tp2_tests {
             let weights=device.own(||AttentionQueryWeights::load(&library,&catalog,layer,
                 AttentionQueryWeights::device_bytes(&library,&catalog,layer)?,1<<20))?;
             let mut reference=device.own(||weights.wave(capacity,usize::MAX))?;
-            let mut query=device.own(||weights.wave(capacity,usize::MAX))?;
+            let split_weights=device.own(||AttentionQueryWeights::load_with_split(&library,&catalog,layer,
+                AttentionQueryWeights::device_bytes_with_split(&library,&catalog,layer,true)?,1<<20,true))?;
+            assert!(split_weights.tensors.get(&split_weights.names[2]).is_err());
+            assert_eq!(split_weights.scales.len(),1);
+            let mut query=device.own(||split_weights.wave(capacity,usize::MAX))?;
+            assert_eq!(query.scratch.len(),1);
+            assert!(query.rebind(&weights).is_err());
             let halves=[vec![Weights::load(devices[0],&catalog,layer,Kind::QueryB,0,
                 Weights::load_peak_device_bytes(Kind::QueryB))?],
                 vec![Weights::load(devices[1],&catalog,layer,Kind::QueryB,1,

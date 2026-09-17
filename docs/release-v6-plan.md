@@ -921,3 +921,24 @@ weights/workspace are still present in the fixture; they must be removed from
 the split serving configuration. Backbone selection, output-B integration,
 projection graph scheduling, startup budgets/options and performance evaluation
 remain. No new throughput result or default change is claimed.
+
+### Remove redundant full-width query-B storage
+
+The split query configuration now loads only query-A and normalization weights,
+with one packed-scale allocation and one projection scratch buffer. Query-B's
+replacement shards remain owned by the TP2 projection runtime. Memory planning
+uses the same split selection as loading; full-width callers keep their existing
+allocation path. Rebinding between full and split waves is rejected, and the
+full-width execution path rejects split weights.
+
+All ten checkpoint query cases still match the reference exactly after removing
+the redundant full-width weights, including warm prefix graphs, changed token
+positions, cancellation and reuse. The full-width preparation regression also
+reports all 56 real-weight cases bit-exact, including producer failure and reuse.
+The daemon test targets compile. Evidence in the compact attention bundle:
+`query-split-weights-build.log`, `query-split-weights-hardware.log`, and
+`query-split-weights-baseline.log`.
+
+This removes duplicate component storage; the distributed replacement shards
+still consume memory. Serving selection and startup accounting remain to be
+connected, so this is not a serving memory-saving or performance claim.
