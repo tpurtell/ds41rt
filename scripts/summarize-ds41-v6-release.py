@@ -123,7 +123,10 @@ def assemble(directory):
         target = int(argv[argv.index('--prefix-cache-entries') + 1]) * int(argv[argv.index('--max-context-tokens') + 1])
         assert capacity['target_tokens'] == target and capacity['combined_tokens'] > target
         artifacts.add(server_log)
-        launches[layout] = {'startup_seconds': launch['startup_seconds'],
+        gpu_uuids = [uuid for request in launch['coordinator']['HostConfig']['DeviceRequests']
+                     for uuid in request['DeviceIDs']]
+        assert len(gpu_uuids) == len(set(gpu_uuids)) == count
+        launches[layout] = {'startup_seconds': launch['startup_seconds'], 'gpu_uuids': gpu_uuids,
                            'deployment': deployment, 'ram_capacity': capacity,
                            'gpu_memory': launch['gpu_memory'], 'placement': launch.get('placement'),
                            'worker_image_id': next(iter(workers.values()))['Image']}
