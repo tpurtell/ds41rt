@@ -1178,3 +1178,22 @@ workspaces. Workspace budgeting accounts separately for both GPUs.
 This is compiled implementation only: checkpoint expert execution comparison,
 whole-chain graph integration and serving measurements remain unverified.
 Evidence: `~/.cache/ds41rt-v6-heads32/dspark-tp2-pair-check.log`.
+
+### dSpark TP2 checkpoint execution verified
+
+The actual checkpoint expert halves now execute in a single cross-GPU CUDA
+graph and pass comparison with the existing full dSpark expert path. The test
+loads all three stages, exercises rows 1/7/16/65/112/1, toggles shared expert
+addition, and replays each graph with three changed BF16 inputs and top-3 route
+sets. All 108 comparisons pass a 0.0001 relative RMS bound. Worst observed
+relative RMS is 0.0000171 (0.00171%); all single-row comparisons are exact.
+Larger batches have only sparse rounding differences, with maximum absolute
+difference 0.0078125. This verifies expert execution, packing, peer broadcast,
+rank reduction and graph replay, but not the surrounding transformer or serving
+acceptance/performance. Resident routed-expert weight bytes are 3,609,722,880
+on each GPU (all three stages).
+
+Evidence: `~/.cache/ds41rt-v6-heads32/dspark-tp2-checkpoint-hardware.log`; durable
+test: `v41_experts::dspark::tp2::checkpoint_tests::cuda_dspark_tp2_checkpoint_experts_and_graph`.
+The normal v5 server was stopped for GPU memory and restored after the test.
+Whole-chain integration and independent lane/cancellation validation remain.
