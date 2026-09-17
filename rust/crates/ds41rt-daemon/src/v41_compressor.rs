@@ -64,6 +64,11 @@ pub(crate) struct CompressorState<'a> {
     owner: u64,
 }
 impl<'a> CompressorState<'a> {
+    pub fn enable_replica(&mut self,peer:crate::v41_memory::device::Device<'a>)
+        ->Result<std::rc::Rc<SourceReplica<'a>>> {
+        ensure!(self.slots.iter().all(|slot|slot.request.is_none()),"source replica requires no live requests");
+        self.index.enable_replica(peer)
+    }
     /// Fully provision every admitted slot, rounding each slot to physical pages.
     pub fn pages_for_context(layer: usize, slots: usize, context: usize) -> Result<usize> {
         ensure!((1..=16).contains(&slots), "invalid compressor slot count");

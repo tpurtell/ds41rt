@@ -25,6 +25,10 @@ impl<'a> CompressorWave<'_, 'a> {
     /// every error before dropping page claims or releasing participating slots.
     pub unsafe fn enqueue_commit(&mut self, state: &CompressorState<'_>, accepted: &[u32]) -> Result<()> {
         ensure!(self.pending_commit.is_none(), "compressor commit already pending");
+        if let Some(configured)=&state.index.replica {
+            ensure!(self.replica.as_ref().is_some_and(|(storage,_)|
+                std::rc::Rc::ptr_eq(storage,&configured.storage)),"compressor producer replica is not configured");
+        }
         if let Some((replica,_))=&self.replica { replica.validate_owner(&state.index)?; }
         let prepared = self
             .ready
@@ -250,8 +254,8 @@ mod tests {
             let mut state = CompressorState::new(&lib, layer, 2, 4, usize::MAX)?;
             let mut reference = CompressorState::new(&lib, layer, 2, 4, usize::MAX)?;
             let replica=if replicated {
-                Some(std::rc::Rc::new(SourceReplica::new(&state.index,
-                    crate::v41_memory::device::Device { library:&lib,id:1-lib.cuda_get_device()? })?))
+                Some(state.enable_replica(
+                    crate::v41_memory::device::Device { library:&lib,id:1-lib.cuda_get_device()? })?)
             } else { None };
             let leases = [state.begin_request(0, 11)?, state.begin_request(1, 22)?];
             let originals = [reference.begin_request(0, 11)?, reference.begin_request(1, 22)?];

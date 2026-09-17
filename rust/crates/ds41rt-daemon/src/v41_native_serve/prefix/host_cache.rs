@@ -629,6 +629,11 @@ impl<'a> HostCacheBinding<'a> {
                 return Ok(None);
             }
         }
+        for (cache,prefix) in caches.iter().zip(&sources) {
+            // RestoreOutcome::Done means the host upload completed. Publish FP4
+            // replica pages before the rebuilt prefix can enter the GPU cache.
+            unsafe { cache.get().source_cache().publish_restored_prefix(prefix.parts().2)?; }
+        }
         let windows = windows
             .iter()
             .map(|&(o, e, b)| WindowPrefix::from_parts(o, e, b))

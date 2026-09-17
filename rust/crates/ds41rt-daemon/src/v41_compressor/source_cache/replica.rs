@@ -2,6 +2,31 @@
 use super::*;
 use crate::v41_memory::device::{Allocation, Device};
 
+pub(crate) struct SourceCacheReplica<'a> {
+    pub storage: Rc<SourceReplica<'a>>,
+    restore: crate::v41_memory::device::Stream<'a>,
+}
+impl<'a> SourceCache<'a> {
+    pub fn enable_replica(&mut self,peer:Device<'a>)->Result<Rc<SourceReplica<'a>>> {
+        ensure!(self.replica.is_none(),"source replica already configured");
+        let storage=Rc::new(SourceReplica::new(self,peer)?);
+        let restore=crate::v41_memory::device::Stream::new(peer)?;
+        self.replica=Some(SourceCacheReplica { storage:storage.clone(),restore });
+        Ok(storage)
+    }
+    /// Complete RAM-restored payload publication before exposing the rebuilt
+    /// prefix. This admission path already waits for the host-cache upload.
+    /// # Safety
+    /// Host uploads are complete and the prefix's pages remain exclusively owned.
+    pub unsafe fn publish_restored_prefix(&self,prefix:&SourcePrefix)->Result<()> {
+        let Some(replica)=&self.replica else { return Ok(()); };
+        let copied=unsafe { replica.storage.copy_restored_pages(self,prefix,replica.restore.raw) };
+        // A partial copy must finish before the caller can release its pages.
+        let drained=replica.restore.drain();
+        copied.and(drained)
+    }
+}
+
 pub(crate) struct SourceReplica<'a> {
     copy: ds41rt_ffi::V41PeerCopy<'a>,
     values: Allocation<'a>,
@@ -13,6 +38,16 @@ pub(crate) struct SourceReplica<'a> {
     stride: usize,
 }
 impl<'a> SourceReplica<'a> {
+    pub(super) fn install_metadata(&self,slot:usize,pages:&[u8],rows:usize)->Result<()> {
+        ensure!(slot<self.lengths.buffer.bytes/8 && pages.len()<=self.stride*4
+            && pages.len()%4==0 && rows.div_ceil(PAGE_ROWS)<=pages.len()/4,
+            "source replica metadata extent differs");
+        self.values.device.run(|| {
+            if !pages.is_empty() { self.values.device.library.copy_h2d(
+                slice(self.pages.buffer,slot*self.stride*4,pages.len()),pages)?; }
+            self.values.device.library.copy_h2d(slice(self.lengths.buffer,slot*8,8),&(rows as u64).to_ne_bytes())
+        })
+    }
     pub fn device(&self) -> Device<'a> { self.values.device }
     pub fn validate_owner(&self, source: &SourceCache<'_>) -> Result<()> { self.check(source) }
     pub fn device_bytes(pages: usize, slots: usize) -> Result<usize> {
@@ -153,7 +188,7 @@ impl<'a> SourceReplica<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::v41_memory::{LoadStream, device::Stream};
+    use crate::v41_memory::LoadStream;
 
     #[test]
     fn replica_budget_counts_only_fp4_payload_and_metadata() -> Result<()> {
@@ -171,9 +206,8 @@ mod tests {
             let peer = Device { library: &lib, id: 1-gpu };
             owner.run(|| {
                 let mut source = SourceCache::new(&lib,8,3)?;
-                let replica = SourceReplica::new(&source,peer)?;
+                let replica = source.enable_replica(peer)?;
                 let producer = LoadStream { library: &lib, raw: lib.cuda_stream_create()? };
-                let consumer = Stream::new(peer)?;
                 let mut publication = crate::v41_memory::peer_publication::PeerPublication::new(owner,peer)?;
                 let mut append = |source: &mut SourceCache<'_>, old, new, value| -> Result<()> {
                     let plan = source.reserve(&[(0,old,new)])?;
@@ -213,8 +247,6 @@ mod tests {
                 check(&source,0,&vec![0x22;255])?;
                 let retained=source.retain_prefix(0,255)?;
                 source.restore_prefix(1,&retained)?;
-                unsafe { replica.copy_slot_metadata(&source,1,consumer.raw)?; }
-                consumer.drain()?;
                 append(&mut source,255,258,0x44)?;
                 let mut expected=vec![0x22;255];expected.extend([0x44;3]);
                 check(&source,0,&expected)?;
@@ -223,12 +255,12 @@ mod tests {
                 for &page in &restored.pages {
                     for b in &source.page_segments(page)[2..] { lib.copy_h2d(*b,&vec![0x66;b.bytes])?; }
                 }
-                unsafe { replica.copy_restored_pages(&source,&restored,consumer.raw)?; }
-                consumer.drain()?;
+                unsafe { source.publish_restored_prefix(&restored)?; }
                 source.restore_prefix(2,&restored)?;
-                unsafe { replica.copy_slot_metadata(&source,2,consumer.raw)?; }
-                consumer.drain()?;
                 check(&source,2,&vec![0x66;300])?;
+                source.release(2)?;
+                source.reset(2)?;
+                check(&source,2,&[])?;
                 assert!(SourceReplica::new(&source,peer).is_err());
                 Ok(())
             })?;

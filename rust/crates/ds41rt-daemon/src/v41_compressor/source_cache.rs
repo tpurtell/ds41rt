@@ -45,6 +45,7 @@ pub(crate) struct SourceCache<'a> {
     rows: [usize; 16],
     pool: Rc<RefCell<PagePool>>,
     writing: Rc<std::cell::Cell<u16>>,
+    pub(super) replica: Option<replica::SourceCacheReplica<'a>>,
 }
 pub(super) struct IndexPlan {
     additions: Vec<(usize, Vec<u32>)>,
@@ -103,6 +104,7 @@ impl<'a> SourceCache<'a> {
             rows: [0; 16],
             pool: Rc::new(RefCell::new(PagePool::new(pages))),
             writing: Default::default(),
+            replica: None,
         })
     }
     pub fn view(&self, slot: usize, rows: usize) -> IndexCacheView<'_> {
@@ -149,7 +151,9 @@ impl<'a> SourceCache<'a> {
         self.ensure_idle(slot)?;
         self.lengths
             .library
-            .copy_h2d(slice(self.lengths.buffer, slot * 8, 8), &[0; 8])
+            .copy_h2d(slice(self.lengths.buffer, slot * 8, 8), &[0; 8])?;
+        if let Some(replica)=&self.replica { replica.storage.install_metadata(slot,&[],0)?; }
+        Ok(())
     }
     /// The four device segments holding `page`'s rows (packed index, index scales, KV values,
     /// KV scales), in the order the host cache stores them.
@@ -224,6 +228,9 @@ impl<'a> SourceCache<'a> {
             slice(self.lengths.buffer, slot * 8, 8),
             &(prefix.rows as u64).to_ne_bytes(),
         )?;
+        if let Some(replica)=&self.replica {
+            replica.storage.install_metadata(slot,&bytes,prefix.rows)?;
+        }
         self.pool.borrow_mut().retain(&prefix.pages);
         self.pages[slot] = prefix.pages.clone();
         self.rows[slot] = prefix.rows;

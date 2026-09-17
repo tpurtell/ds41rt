@@ -531,3 +531,25 @@ state-owned replica configuration. Evidence: `window-restore-replica-build.log`,
 compact attention bundle. Temporary fixtures were removed and serving is healthy.
 Compressed-cache restore/reset integration, startup budgeting/configuration and
 backbone scheduling still remain before full-model TP2 qualification.
+
+### Compressed replica reset, retained attach and RAM publication
+
+Source caches can now own their replica and share it with producer waves. Reset
+installs zero peer length; attaching a retained prefix installs peer page IDs and
+length before publishing host references. Replicated states reject unconfigured
+commit waves. Neither operation creates a second logical page pool.
+
+The RAM-cache restore path publishes newly uploaded FP4 pages before exposing its
+rebuilt prefix. `RestoreOutcome::Done` is emitted only after the host-cache engine
+wait completes (`ds41rt-hostcache/src/cache.rs`); a preallocated peer stream then
+copies and drains those pages, including on copy error. This is admission work,
+not a decode-loop host wait. Retained GPU prefixes need only metadata attachment.
+
+The bidirectional GPU fixture passes append/COW, retained attachment, reset and
+publication of pages filled as a simulated host upload. Checkpoint-backed original
+and replicated compressor commit tests also pass with state-owned configuration.
+Evidence: `source-restore-replica-build.log`, `source-restore-replica-hardware.log`,
+and `source-state-replica-commit.log` in the compact attention bundle. Actual RAM
+eviction/restore with replicas still needs serving-level coverage once startup
+and dual-attention scheduling are wired. Temporary fixtures were removed and the
+running server remains healthy; defaults are unchanged.
