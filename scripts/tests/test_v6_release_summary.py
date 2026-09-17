@@ -14,6 +14,13 @@ class V6SummaryTest(unittest.TestCase):
             with self.assertRaises(FileNotFoundError):
                 MODULE['assemble'](Path(directory))
 
+    def test_checkpoint_must_be_the_pinned_native_model(self):
+        path = '/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/' + MODULE['MODEL_REVISION']
+        MODULE['validate_native_snapshot'](['serve-native', '--snapshot', path])
+        for wrong in [path.replace('deepseek-ai', 'another-owner'), path[:-1] + '0']:
+            with self.subTest(path=wrong), self.assertRaises(AssertionError):
+                MODULE['validate_native_snapshot'](['serve-native', '--snapshot', wrong])
+
     def test_power_controls_are_evidence_not_constants(self):
         header = 'uuid, power.limit [W], clocks.max.memory [MHz]\n'
         MODULE['validate_settings'](header + 'GPU-0, 400.00 W, 14001 MHz\n')

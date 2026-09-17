@@ -12,6 +12,8 @@ import re
 HERE = Path(__file__).resolve().parent
 BASES = [0, 32768, 65536, 131072, 262144]
 SUFFIXES = [1024, 2048, 4096, 8192, 16384, 32768]
+MODEL_ID = 'deepseek-ai/DeepSeek-V4.1-Flash'
+MODEL_REVISION = 'dba1be0a40aa45a94ad051997016db3960a90277'
 
 
 def read(path):
@@ -20,6 +22,11 @@ def read(path):
 
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def validate_native_snapshot(argv):
+    suffix = f"/hub/models--{MODEL_ID.replace('/', '--')}/snapshots/{MODEL_REVISION}"
+    assert argv[argv.index('--snapshot') + 1].endswith(suffix), 'unexpected qualification checkpoint'
 
 
 def validate_settings(settings):
@@ -69,6 +76,7 @@ def assemble(directory):
             assert container['Image'] == image['image_id'], path
             assert container['Config']['Labels']['org.opencontainers.image.revision'] == image['engine_commit']
             argv = container['Config']['Cmd']
+            validate_native_snapshot(argv)
             assert argv[argv.index('--rtx-gpus') + 1] == str(count)
             assert ('--dspark' in argv) == (phase != 'target')
             assert argv[argv.index('--prefix-cache-entries') + 1] == '20'
@@ -107,6 +115,8 @@ def assemble(directory):
         assert all(worker['State']['Running'] and
                    worker['Config']['Labels']['org.opencontainers.image.revision'] == image['engine_commit']
                    for worker in workers.values())
+        assert all(worker['Config']['Labels']['io.ds41rt.sparkinfer.revision'] ==
+                   image['labels']['io.ds41rt.sparkinfer.revision'] for worker in workers.values())
         server_log = directory / f'{layout}-launch-server.log'
         deployment = checks['summarize_deployment']({
             'layout': layout, 'arguments': launch['coordinator']['Config']['Cmd'],
@@ -154,6 +164,8 @@ def assemble(directory):
     artifacts.add(directory / 'coordinator-image.json')
     return {'schema': 1, 'release': 'v6', 'scope': 'Native checkpoint performance; EXL3 results are historical and separate.',
             'engine_commit': image['engine_commit'], 'coordinator_image_id': image['image_id'],
+            'model_id': MODEL_ID, 'model_revision': MODEL_REVISION,
+            'sparkinfer_commit': image['labels']['io.ds41rt.sparkinfer.revision'],
             'binary_sha256': image['artifacts']['ds41rt'],
             'native_library_sha256': image['artifacts']['libds41rt_native.so'], 'corpus_sha256': corpus_hash,
             'context_sha256': context_hash, 'weighted_case_ids': corpus['weighted_case_ids'],
