@@ -3,6 +3,8 @@
 mod v41_attention_binding;
 #[path = "../src/v41_attention_query.rs"]
 mod v41_attention_query;
+#[path = "../src/v41_projection_tp2.rs"]
+mod v41_projection_tp2;
 #[path = "../src/v41_hc.rs"]
 mod v41_hc;
 #[path = "../src/v41_layer_graphs.rs"]

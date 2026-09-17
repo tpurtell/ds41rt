@@ -91,6 +91,7 @@ pub(crate) struct Wave<'w,'a> {
     ranks: [Rank<'w,'a>;2],
     output: Allocation<'a>,
     peer_done: Event<'a>,
+    input_ready: [Event<'a>;2],
     owner: usize,
     capacity: u32,
     kind: Kind,
@@ -104,6 +105,8 @@ impl Drop for Drain<'_,'_,'_> {
     }
 }
 impl<'w,'a> Wave<'w,'a> {
+    pub fn kind(&self) -> Kind { self.kind }
+    pub fn output_device(&self) -> Device<'a> { self.output.device }
     pub fn device_bytes(library: &ds41rt_ffi::NativeLibrary,kind: Kind,capacity: u32,owner: usize) -> Result<[usize;2]> {
         ensure!(owner<2 && (1..=4096).contains(&capacity),"invalid projection wave geometry");
         let (k,n)=kind.geometry();
@@ -126,7 +129,8 @@ impl<'w,'a> Wave<'w,'a> {
         let devices=[a.device,b.device];let (_,n)=a.kind.geometry();
         Ok(Self { ranks:[Rank::new(weights[0],capacity)?,Rank::new(weights[1],capacity)?],
             output:Allocation::new(devices[owner],capacity as usize*n*2)?,
-            peer_done:Event::new(devices[1-owner])?,owner,capacity,kind:a.kind })
+            peer_done:Event::new(devices[1-owner])?,
+            input_ready:[Event::new(devices[0])?,Event::new(devices[1])?],owner,capacity,kind:a.kind })
     }
     fn drain(&self) -> Result<()> {
         let first=self.ranks[0].stream.drain();let second=self.ranks[1].stream.drain();first.and(second)
@@ -135,14 +139,35 @@ impl<'w,'a> Wave<'w,'a> {
     /// Input production is complete. Keep input live/unchanged until completion
     /// or cancellation drains both ranks. Consume the result before reusing wave.
     pub async unsafe fn execute(&mut self,layer: usize,rows: u32,input: Ds41rtDeviceBuffer) -> Result<Ds41rtDeviceBuffer> {
+        unsafe { self.execute_after(layer,rows,input,None,|output,_|Ok(output)).await }
+    }
+    /// Enqueue after an optional producer stream and append a same-device
+    /// consumer before the one final cooperative wait.
+    /// # Safety
+    /// Producer belongs to input.device_id; absent producer means input is ready.
+    /// Retain producer/input/consumer storage through completion or cancellation.
+    /// Consumer queues only on the supplied stream and must not publish results
+    /// before this future completes. It runs on the gathered output's device.
+    pub async unsafe fn execute_after<T>(&mut self,layer: usize,rows: u32,input: Ds41rtDeviceBuffer,
+        producer: Option<*mut std::ffi::c_void>,
+        consume: impl FnOnce(Ds41rtDeviceBuffer,*mut std::ffi::c_void)->Result<T>) -> Result<T> {
         let (k,n)=self.kind.geometry();
         ensure!(rows>0 && rows<=self.capacity && input.bytes>=rows as usize*k*2
             && !input.ptr.is_null() && self.ranks.iter().any(|r|r.stream.device.id==input.device_id),
             "projection input differs");
         let mut guard=Drain { wave:self,complete:false };let wave=&mut *guard.wave;
+        let input_rank=wave.ranks.iter().position(|r|r.stream.device.id==input.device_id).unwrap();
+        if let Some(producer)=producer {
+            wave.ranks[input_rank].stream.device.run(||unsafe {
+                wave.ranks[input_rank].stream.device.library.cuda_event_record(wave.input_ready[input_rank].raw,producer)
+            })?;
+        }
         for rank in &wave.ranks {
             let weights=rank.weights.iter().find(|w|w.layer==layer).context("projection layer absent")?;
             rank.stream.device.run(||unsafe {
+                if producer.is_some() {
+                    rank.stream.device.library.cuda_stream_wait_event(rank.stream.raw,wave.input_ready[input_rank].raw)?;
+                }
                 rank.copy.launch_rows(rank.input.buffer,input,k*2,rows as usize,k*2,k*2,rank.stream.raw)?;
                 rank.plan.launch(rank.input.buffer,weights.weight.buffer,weights.scales.buffer,
                     rank.scratch.buffer,rank.alpha.buffer,rank.output.buffer,rows,rank.stream.raw)
@@ -158,9 +183,10 @@ impl<'w,'a> Wave<'w,'a> {
                 owner.copy.launch_rows(dst,rank.output.buffer,n,rows as usize,n*2,n,owner.stream.raw)?;
             }Ok(())
         })?;
-        owner.stream.wait().await?;
         let output=Ds41rtDeviceBuffer { bytes:rows as usize*n*2,..wave.output.buffer };
-        guard.complete=true;Ok(output)
+        let result=owner.stream.device.run(||consume(output,owner.stream.raw))?;
+        owner.stream.wait().await?;
+        guard.complete=true;Ok(result)
     }
 }
 impl Drop for Wave<'_,'_> {

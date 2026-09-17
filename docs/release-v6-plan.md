@@ -894,3 +894,30 @@ The owner is not yet selected by serving. It currently launches projection and
 exchange operations directly; graph integration, backbone query/output handoffs,
 replacement of full-width weight allocations, startup budgeting/controls and
 end-to-end performance measurements remain. No launch default changed.
+
+### Query-A/norm to TP2 query-B and rotary handoff
+
+The query wave now exposes a cooperative TP2 execution path: its normal
+query-A/normalization prefix runs on the layer owner, both query-B ranks wait on
+that producer event, and the gathered output receives rotary on the owner's
+stream before the final completion wait. Prefix graphs are cached separately
+from full-query graphs, so alternating modes cannot replay the wrong operations.
+The projection wave supports an optional producer dependency and a same-stream
+consumer callback; all dependency events remain lane-owned. Error/cancellation
+cleanup drains queued producer and rank work before external owners can be reused.
+
+Ten checkpoint cases (layers 2/20 on their respective devices, rows 1/6/16,
+changed inputs/positions, warm prefix reuse, one-poll drop and immediate reuse)
+match full query-B and rotated output exactly. Hidden/rank/position/frequency
+buffers and published token identity also match their reference contracts. The
+existing full-width query-preparation regression passes all 56 real-weight cases
+bit-for-bit, including partial-producer failure and reuse. Build checks pass.
+Evidence in the compact attention bundle: `query-tp2-check.log`,
+`query-tp2-test-build.log`, `query-tp2-hardware.log`, and
+`query-tp2-baseline-regression.log`.
+
+This completes the component handoff, not serving selection. Full-width query-B
+weights/workspace are still present in the fixture; they must be removed from
+the split serving configuration. Backbone selection, output-B integration,
+projection graph scheduling, startup budgets/options and performance evaluation
+remain. No new throughput result or default change is claimed.

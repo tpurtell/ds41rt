@@ -116,6 +116,7 @@ impl<'a> AttentionQueryWeights<'a> {
             weights: self,
             capacity,
             graphs: LayerGraphs::new(self.library),
+            tp2_prefix_graphs: LayerGraphs::new(self.library),
             ready: None,
             binding: None,
             tokens: Vec::new(),
@@ -174,6 +175,7 @@ pub(crate) struct AttentionQueryWave<'w, 'a> {
     weights: &'w AttentionQueryWeights<'a>,
     capacity: u32,
     graphs: LayerGraphs<'w, 'a, AttentionQueryWeights<'a>>,
+    tp2_prefix_graphs: LayerGraphs<'w, 'a, AttentionQueryWeights<'a>>,
     ready: Option<u32>,
     binding: Option<QueryBinding>,
     tokens: Vec<u64>,
@@ -229,7 +231,7 @@ impl AttentionQueryWave<'_, '_> {
         );
         Ok(())
     }
-    unsafe fn enqueue(&self, rows: u32) -> Result<()> {
+    unsafe fn enqueue_rank(&self, rows: u32) -> Result<()> {
         unsafe {
             self.norm.backbone_frequencies(
                 self.b(5),
@@ -257,6 +259,12 @@ impl AttentionQueryWave<'_, '_> {
                 1280,
                 self.stream.raw,
             )?;
+        }
+        Ok(())
+    }
+    unsafe fn enqueue(&self, rows: u32) -> Result<()> {
+        unsafe {
+            self.enqueue_rank(rows)?;
             self.kernels[1].launch(
                 self.b(2),
                 self.weights.tensors.get(&self.weights.names[2])?,
@@ -461,6 +469,71 @@ impl AttentionQueryWave<'_, '_> {
         self.binding = Some(binding);
         self.output()
     }
+    /// Query-A/norm stays on the layer owner; query-B uses both RTX shards.
+    /// The projection owner appends rotary before its final wait, preserving
+    /// the ordinary query output/binding contract for attention and the indexer.
+    /// # Safety
+    /// Same producer ownership contract as execute_tokens_prepared_cooperative.
+    /// Projection weights must be this layer's checkpoint query-B shards and
+    /// its gathered output device must match this query owner.
+    pub(crate) async unsafe fn execute_tokens_tp2_prepared_cooperative(
+        &mut self, tokens: &[u64], projection: &mut crate::v41_projection_tp2::Wave<'_, '_>,
+        prepare: impl FnOnce(*mut std::ffi::c_void, Ds41rtDeviceBuffer)->Result<()>)
+        ->Result<AttentionQueryOutput<'_>> {
+        ensure!(tokens.len()<=self.capacity as usize,"query rows exceed capacity");
+        self.validate(tokens.len() as u32)?;
+        ensure!(tokens.iter().all(|&p|p<1048576)
+            && projection.kind()==crate::v41_projection_tp2::Kind::QueryB
+            && projection.output_device().id==self.input().device_id
+            && std::ptr::eq(projection.output_device().library,self.stream.library),"TP2 query origin differs");
+        let rows=tokens.len() as u32;
+        let binding=QueryBinding::new(self.weights.layer)?;
+        for (dst,token) in self.position_staging.bytes_mut().chunks_exact_mut(8).zip(tokens) {
+            dst.copy_from_slice(&token.to_ne_bytes());
+        }
+        struct Drain<'s,'a> { stream:&'s LoadStream<'a>, complete:bool }
+        impl Drop for Drain<'_,'_> {
+            fn drop(&mut self) {
+                if !self.complete {
+                    if let Err(error)=unsafe { self.stream.library.cuda_stream_synchronize(self.stream.raw) } {
+                        tracing::error!(%error,"draining interrupted TP2 query prefix");
+                    }
+                }
+            }
+        }
+        let mut guard=Drain { stream:&self.stream,complete:false };
+        let graph=self.tp2_prefix_graphs.get_shape(self.weights.layer,self.weights,rows);
+        unsafe {
+            self.stream.library.copy_host_buffer_h2d_async(self.positions(),self.position_staging.buffer,
+                tokens.len()*8,self.stream.raw)?;
+            prepare(self.stream.raw,self.input())?;
+            if let Some((graph,_))=graph { self.stream.library.cuda_graph_launch(graph,self.stream.raw)?; }
+            else { self.enqueue_rank(rows)?; }
+            projection.execute_after(self.weights.layer,rows,self.b(2),Some(self.stream.raw),|projected,stream| {
+                self.stream.library.copy_d2d_async(self.b(3),projected,rows as usize*ROW_BYTES[3],stream)?;
+                #[cfg(test)]
+                self.stream.library.copy_d2d_async(self.b(4),projected,rows as usize*ROW_BYTES[3],stream)?;
+                self.norm.rope(self.b(3),self.b(6),self.b(3),rows,64,false,stream)
+            }).await?;
+        }
+        if graph.is_none() {
+            unsafe { self.stream.library.cuda_graph_begin_capture(self.stream.raw)?; }
+            let queued=unsafe { self.enqueue_rank(rows) };
+            let captured=unsafe { self.stream.library.cuda_graph_end_capture(self.stream.raw) };
+            match (queued,captured) {
+                (Ok(()),Ok(graph))=> {
+                    if let Err(error)=unsafe { self.tp2_prefix_graphs.insert(self.weights.layer,self.weights,rows,graph) } {
+                        unsafe { self.stream.library.cuda_graph_exec_destroy(graph)?; }return Err(error);
+                    }
+                },
+                (Err(error),Ok(graph))=> { unsafe { self.stream.library.cuda_graph_exec_destroy(graph)?; }return Err(error); },
+                (Err(error),Err(_)) | (Ok(()),Err(error))=>return Err(error),
+            }
+        }
+        guard.complete=true;drop(guard);
+        self.ready=Some(rows);self.tokens.extend_from_slice(tokens);self.binding=Some(binding);
+        self.output()
+    }
     pub fn output(&self) -> Result<AttentionQueryOutput<'_>> {
         let rows = self.ready.context("attention query output unpublished")? as usize;
         let b = |i| part(self.b(i), 0, rows * ROW_BYTES[i]);
@@ -482,7 +555,7 @@ impl AttentionQueryWave<'_, '_> {
             _owner: PhantomData,
         })
     }
-    pub fn enable_small_graph_shapes(&mut self) { self.graphs.enable_small_shapes(); }
+    pub fn enable_small_graph_shapes(&mut self) { self.graphs.enable_small_shapes(); self.tp2_prefix_graphs.enable_small_shapes(); }
     /// Evict all shapes for the current layer; other layers remain cached.
     pub fn clear_graph(&mut self) -> Result<()> {
         self.ready = None;
@@ -491,6 +564,7 @@ impl AttentionQueryWave<'_, '_> {
         self.synchronize()?;
         unsafe {
             self.graphs.remove(self.weights.layer)?;
+            self.tp2_prefix_graphs.remove(self.weights.layer)?;
         }
         Ok(())
     }
@@ -499,9 +573,93 @@ impl Drop for AttentionQueryWave<'_, '_> {
     fn drop(&mut self) {
         if let Err(error) = self
             .synchronize()
-            .and_then(|()| unsafe { self.graphs.clear() })
+            .and_then(|()| unsafe {
+                let first=self.graphs.clear();let second=self.tp2_prefix_graphs.clear();first.and(second)
+            })
         {
             tracing::error!(%error,"draining attention query graph");
         }
+    }
+}
+
+#[cfg(test)]
+mod tp2_tests {
+    use super::*;
+    use crate::v41_memory::device::{Allocation,Device};
+    use crate::v41_projection_tp2::{Kind,Weights,Wave};
+    #[test]
+    #[ignore = "requires checkpoint, two GPUs and projection shard AOT"]
+    fn checkpoint_tp2_query_preserves_rank_and_rotary() -> Result<()> {
+        let library=unsafe { NativeLibrary::load(std::env::var("DS41RT_NATIVE_LIB")?)? };
+        let catalog=ds41rt_loader::read_official_v41_catalog(ds41rt_loader::OFFICIAL_V41_MODEL_ID,
+            std::path::Path::new(&std::env::var("DS41RT_SNAPSHOT")?))?;
+        let devices=[Device { library:&library,id:0 },Device { library:&library,id:1 }];
+        let runtime=tokio::runtime::Builder::new_current_thread().build()?;
+        let read=|device:Device,output:AttentionQueryOutput<'_>|->Result<Vec<Vec<u8>>> {
+            [output.hidden,output.raw_rank,output.normalized_rank,output.projected,
+                output.rotated,output.positions,output.frequencies].into_iter().map(|view| {
+                    let mut bytes=vec![0;view.bytes];device.run(||library.copy_d2h(&mut bytes,view))?;Ok(bytes)
+                }).collect()
+        };
+        for (owner,layer) in [(0,2),(1,20)] {
+            let device=devices[owner];let capacity=16;
+            let weights=device.own(||AttentionQueryWeights::load(&library,&catalog,layer,
+                AttentionQueryWeights::device_bytes(&library,&catalog,layer)?,1<<20))?;
+            let mut reference=device.own(||weights.wave(capacity,usize::MAX))?;
+            let mut query=device.own(||weights.wave(capacity,usize::MAX))?;
+            let halves=[vec![Weights::load(devices[0],&catalog,layer,Kind::QueryB,0,
+                Weights::load_peak_device_bytes(Kind::QueryB))?],
+                vec![Weights::load(devices[1],&catalog,layer,Kind::QueryB,1,
+                Weights::load_peak_device_bytes(Kind::QueryB))?]];
+            let mut projection=Wave::new([&halves[0],&halves[1]],capacity,owner,
+                Wave::device_bytes(&library,Kind::QueryB,capacity,owner)?)?;
+            let input=Allocation::new(device,capacity as usize*10240)?;
+            query.enable_small_graph_shapes();
+            for (cycle,rows) in [1,6,16,6,1].into_iter().enumerate() {
+                let host:Vec<u8>=(0..capacity as usize*5120).flat_map(|i| {
+                    let value=((i+cycle*3)%23) as f32/32.0-0.25;
+                    ((value.to_bits()>>16) as u16).to_ne_bytes()
+                }).collect();
+                device.run(||library.copy_h2d(input.buffer,&host))?;
+                let tokens:Vec<u64>=(0..rows).map(|i|(cycle*8192+i) as u64).collect();
+                let prepare=|stream,destination|unsafe {
+                    library.copy_d2d_async(destination,input.buffer,rows*10240,stream)
+                };
+                let full=runtime.block_on(device.future(unsafe {
+                    reference.execute_tokens_prepared_cooperative(&tokens,prepare)
+                }))?;
+                let expected=read(device,full)?;
+                // A dropped future cannot publish a partially completed query.
+                let cancelled=runtime.block_on(async {
+                    let mut pending=std::pin::pin!(device.future(unsafe {
+                        query.execute_tokens_tp2_prepared_cooperative(&tokens,&mut projection,prepare)
+                    }));
+                    std::future::poll_fn(|cx| {
+                        use std::future::Future;
+                        std::task::Poll::Ready(pending.as_mut().poll(cx).is_pending())
+                    }).await
+                });
+                if cancelled { assert!(query.output().is_err()); }
+                let actual=runtime.block_on(device.future(unsafe {
+                    query.execute_tokens_tp2_prepared_cooperative(&tokens,&mut projection,prepare)
+                }))?;
+                assert_eq!(actual.tokens()?,tokens);
+                actual.binding()?;
+                let actual=read(device,actual)?;
+                for index in [0,1,2,5,6] { assert_eq!(actual[index],expected[index]); }
+                let mut max_error=0f32;
+                for index in [3,4] {
+                    for (a,b) in actual[index].chunks_exact(2).zip(expected[index].chunks_exact(2)) {
+                        let decode=|v:&[u8]|f32::from_bits(u32::from(u16::from_ne_bytes([v[0],v[1]]))<<16);
+                        let (a,b)=(decode(a),decode(b));
+                        ensure!(a.is_finite() && b.is_finite() && (a-b).abs()<=1e-4,
+                            "TP2 query differs: layer={layer} rows={rows} output={index} {a} vs {b}");
+                        max_error=max_error.max((a-b).abs());
+                    }
+                }
+                eprintln!("TP2 complete query layer={layer} rows={rows} cycle={cycle} max_error={max_error}");
+            }
+        }
+        Ok(())
     }
 }
