@@ -129,6 +129,16 @@ fn retire_request<'a, C: DraftChain<'a>>(request: Active<'a>, requests: &mut Req
     target.and(speculative.map(|_| ()))
 }
 
+/// Allocate the optional pinned pool before signalling HTTP readiness. A bad
+/// cache configuration or allocation failure must fail startup, not leave a
+/// healthy-looking front door whose worker has already exited.
+pub(super) fn prepare_prefix_cache<'a>(lib: &'a NativeLibrary, args: &crate::cli::NativeServeArgs,
+    requests: &Requests<'a>) -> Result<PrefixCache<'a>> {
+    let template = requests.cache().sources()[0].get().source_cache().page_segments(0)[0];
+    let host_cache = super::prefix::HostCacheBinding::new(lib, args.host_cache_config()?, template)?;
+    Ok(PrefixCache::new(args.prefix_cache_entries as usize).with_host_cache(host_cache))
+}
+
 pub(super) fn serve<'w, 'a, P: ServingTarget<'w, 'a>>(lib: &'a NativeLibrary, args: &crate::cli::NativeServeArgs,
     runtime: &tokio::runtime::Runtime, receive: &mut mpsc::Receiver<NativeRequest>,
     first: &mut P, second: &mut P,
@@ -136,15 +146,13 @@ pub(super) fn serve<'w, 'a, P: ServingTarget<'w, 'a>>(lib: &'a NativeLibrary, ar
     second_transport: &mut P::Transport, mut draft: Option<&mut DraftRuntime<'w, 'a, P::Chain>>,
     vision: &mut crate::v41_vision::VisionRuntime<'a>,
     stats: std::sync::Arc<std::sync::Mutex<serde_json::Value>>,
+    mut prefixes: PrefixCache<'a>,
 ) -> Result<()> {
     let mut active: Vec<Option<Active<'a>>> = (0..args.concurrency).map(|_| None).collect();
     let mut compiler = super::constraints::Compiler::new(lib, args.snapshot.join("tokenizer.json"));
     let mut id = 0u64;
     let mut closed = false;
     let mut pending: Option<admission::Pending> = None;
-    let template = requests.cache().sources()[0].get().source_cache().page_segments(0)[0];
-    let host_cache = super::prefix::HostCacheBinding::new(lib, args.host_cache_config()?, template)?;
-    let mut prefixes = PrefixCache::new(args.prefix_cache_entries as usize).with_host_cache(host_cache);
     let mut stats_published = Instant::now();
     let limits = ds41rt_api::native_v41::NativeLimits::new(args.max_context_tokens, args.max_output_tokens)?;
     loop {

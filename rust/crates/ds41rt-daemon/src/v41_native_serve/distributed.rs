@@ -299,11 +299,12 @@ pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Recei
     if let Some(pool) = target_prefix_pool { requests.install_prefix_pool(pool)?; }
     memory_checkpoint("allocated KV cache")?;
     let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
+    let prefixes = scheduler::prepare_prefix_cache(&lib, &args, &requests)?;
     tracing::info!(elapsed_ms=started.elapsed().as_millis(), "dual RTX serving owners ready");
     ready.take().context("startup readiness missing")?.send(Ok(()))
         .map_err(|_| anyhow::anyhow!("API startup cancelled"))?;
     scheduler::serve(&lib, &args, &runtime, &mut receive, &mut pass, &mut second, &mut requests,
-        &mut transport, &mut second_transport, draft.as_mut().map(|d| d.get_mut()), &mut vision, stats)
+        &mut transport, &mut second_transport, draft.as_mut().map(|d| d.get_mut()), &mut vision, stats, prefixes)
 }
 
 

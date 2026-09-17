@@ -38,6 +38,7 @@ use tokio::sync::{mpsc, oneshot};
 
 pub(crate) async fn run(args: crate::cli::NativeServeArgs) -> Result<()> {
     ensure!(args.peers.len() == 4, "four Spark peers required");
+    args.host_cache_config()?;
     let listen = args.listen.clone();
     let limits = ds41rt_api::native_v41::NativeLimits::new(args.max_context_tokens, args.max_output_tokens)?;
     let (send, receive) = mpsc::channel(args.http_queue_depth.unwrap_or(args.concurrency) as usize);
@@ -353,13 +354,14 @@ fn worker(
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
+    let prefixes = scheduler::prepare_prefix_cache(&lib, &args, &requests)?;
     ready
         .take()
         .context("startup readiness missing")?
         .send(Ok(()))
         .map_err(|_| anyhow::anyhow!("API startup cancelled"))?;
     scheduler::serve(&lib, &args, &runtime, &mut receive, &mut pass, &mut prefill_pass,
-        &mut requests, &mut transport, &mut prefill_transport, draft.as_mut(), &mut vision, stats)
+        &mut requests, &mut transport, &mut prefill_transport, draft.as_mut(), &mut vision, stats, prefixes)
 }
 
 /// The HC-9 prefill pacing hold at a chunk boundary: bounded by the host cache's store

@@ -8,12 +8,12 @@ independently; shipping supported opt-in paths is acceptable when they do not wi
 
 ## Implementation sequence
 
-- [ ] Review and port PR #4 onto current dev, preserving contributor attribution,
+- [x] Review and port PR #4 onto current dev, preserving contributor attribution,
   current SparkInfer interfaces, and independent execution lanes.
-- [ ] Resolve issue #2: token-aware admission, pressure waiting, and safe progress
+- [x] Resolve issue #2: token-aware admission, pressure waiting, and safe progress
   when decode needs additional pages. Distinguish retained-prefix offload from
   active-request parking; host snapshots alone do not guarantee active capacity.
-- [ ] Resolve issue #3: bounded HTTP admission, default queue depth equal to
+- [x] Resolve issue #3: bounded HTTP admission, default queue depth equal to
   concurrency, 25-second wait budget, 429 with Retry-After for overload and 503
   for shutdown. Bound waiting request memory and support cancellation.
 - [ ] Map current retention/SWA controls and set the requested leading-edge
@@ -61,6 +61,10 @@ Sources: [PR #4](https://github.com/tpurtell/ds41rt/pull/4),
 [issue #3](https://github.com/tpurtell/ds41rt/issues/3).
 
 ## Integration progress (September 17)
+
+Merged and pushed to `dev` at `85e2be4`; GitHub records PR #4 as merged and issues
+#2 and #3 as completed. Subsequent startup hardening validates host-cache options
+before model loading and allocates the pinned pool before signalling API readiness.
 
 The `work/v6-hostcache` branch merges PR #4's original commits onto v5,
 preserving attribution. Its host cache remains disabled by default pending
