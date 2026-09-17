@@ -738,3 +738,24 @@ comparison. The original v5 coordinator was restored after testing.
 Evidence: `~/.cache/ds41rt-v6-serving-tp2/{launch.json,server.log,check.log,smoke.json}`;
 `first-server.log` records the discovered index bug. No default changed and no
 TPS claim is made from these short checks.
+
+### Replicated attention RAM restore under small-pool pressure
+
+A targeted full-model run used TP2 attention, dSpark, 20 RTX expert layers,
+concurrency 2, two retained entries, a 6 MiB nominal GPU KV/index pool (13 source
+page groups; 6,656 gross token positions before admission/COW allowances), and
+256 MiB pinned RAM with 8 MiB chunks. Eight distinct 1,899-token documents forced
+GPU eviction; revisiting documents 0, 1 and 2 returned the correct unique
+identifiers with all 1,899 prompt tokens reused for each. Fresh counters confirm
+three RAM restores, 24 device evictions, zero restore failures/timeouts and zero
+failed stores. This exercises restoration/publication to both replicated caches
+through full-model serving rather than only a cache fixture.
+
+The test accounts for `/v1/stats`' one-second publication cadence by waiting and
+waking the scheduler before reading counters. A preliminary 256 MiB host pool
+with a single default-sized chunk could not cover the separate slab classes;
+8 MiB chunks made the deliberately small test pool usable. The large automatic
+production budget is unchanged. The original v5 coordinator was restored.
+Evidence: `~/.cache/ds41rt-v6-replica-restore/{launch.json,server.log,check.log,smoke.json}`.
+This targeted check is not another release-wide or randomized torture suite.
+Throughput comparisons and replicated concurrent/cancellation coverage remain.
