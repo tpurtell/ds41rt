@@ -1476,3 +1476,21 @@ Native-only report assembly and a shared README/report table renderer are in
 single/dual campaigns, three-sample coverage, corpus controls, image identity and
 logical GPU-plus-RAM capacity. Reporting tests pass; the complete measured input
 set is still pending. Historical EXL3 data stays separate at publication.
+
+The default dual-dSpark phase has now completed all nine benchmark commands
+successfully. Prefill passes all 30 cells (90 timed samples plus 30 warmups),
+with a best median of 8,355.22 tok/s versus historical v5 8,366.20. Individual
+prefill-cell differences range from -3.29% to +0.86%. C16 mixed throughput is
+284.69 tok/s (281.08–296.28 across three sweeps), versus historical v5 295.71
+(292.81–298.34). The focused RAM-cache comparison therefore also includes three
+C16 mixed runs per arm, with matching prompts between arms, in addition to the
+128K/256K retained-context checks. It remains in progress.
+
+The captured dual-campaign GPU telemetry contains 2,298 observations per card
+and no hardware thermal-slowdown flags. Maximum temperatures are 71°C / 81°C
+for logical RTX0 / RTX1. Collection began during the third direct-decode repeat;
+it covers the subsequent concurrency, mixed, retained-context and prefill work,
+not the entire direct-decode phase. Remaining measurement phases now start and
+stop their own telemetry process and record whether it survived through phase
+completion. Historical comparisons alone do not isolate the cause of the
+mixed/long-context discrepancy.

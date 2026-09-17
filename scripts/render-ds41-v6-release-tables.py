@@ -115,7 +115,9 @@ def render(report, official):
                            number(launch['deployment']['runtime_headroom_bytes_per_gpu'] / 2**20)])
     table('Memory after readiness', 'GPU allocations include weights, KV and workspaces; later graph capture can consume additional memory.',
           ['Configuration', 'Logical RTX', 'Loaded MiB', 'Free MiB', 'Planned runtime reserve MiB'], memory)
-    lines.append('Historical EXL3 performance, acceptance and quantization analysis are preserved in the v5 performance report; they are not v6 measurements.\n')
+    lines.append('Historical EXL3 performance, acceptance and quantization analysis are preserved in the '
+                 '[v5 performance report](https://github.com/tpurtell/ds41rt/blob/v5/docs/release-v5-performance.md); '
+                 'they are not v6 measurements.\n')
     return '\n'.join(lines)
 
 
