@@ -1526,3 +1526,32 @@ retained-phase telemetry, cache statistics, server logs and `comparison.json`.
 The original historical discrepancy remains unresolved; this experiment does
 not justify disabling the requested automatic RAM cache. The remaining dual
 2K-context and target-only measurements are now proceeding sequentially.
+
+### Remaining dSpark component assessment
+
+The implemented `--tp2-dspark-experts` option splits routed experts in each of
+the three draft stages. It does not imply that the whole draft transformer is
+TP2. The current source gives the following boundaries:
+
+| Component | Current execution | Remaining evaluation |
+|---|---|---|
+| Routed experts | Optional two-GPU shards, measured above | No consistent serving winner; default off |
+| Query-A, query-B and KV projection | RTX1, one draft-stage stream | Query-B has the same 1280→32768 geometry as the target projection experiment, but draft row counts differ; target timings cannot substitute for draft timings |
+| Draft attention | RTX1, 64 heads; up to 128 committed keys plus draft positions | A head split needs its own kernel geometry and cache ownership; the target sparse-attention result is not a draft-attention measurement |
+| Grouped output-A and output-B | RTX1; output-B is 8192→5120 | A useful combined split should retain head shards through output-A instead of gathering and repartitioning between operations |
+| Shared embedding | RTX0 table, read by RTX1 for seed/mask embedding | This is selected-row access, not full-table transfer; any staging experiment must preserve lane ownership and measure its launch overhead |
+| Vocabulary head | Already split across the two GPUs | Existing behavior, not a new v6 improvement |
+
+Sources: `v41_experts/dspark/projection.rs`, `attention_wave.rs`,
+`attention_output.rs`, `chain.rs`, `chain/distributed.rs`, and
+`native/cuda/kernels/v41_dspark_attention.cu`. The draft attention kernel launches
+four 16-head groups per query row. With K7 and one request this is only 28 blocks;
+splitting those blocks alone does not establish that two GPUs will run faster.
+This is an occupancy consideration, not a measured rejection of draft TP2.
+The distributed chain also polls completion between transformer and terminal
+execution. That is a per-lane host transition, not a join between the two lanes.
+Any attempt to remove it needs a separate event/graph handoff assessment.
+
+The unimplemented draft attention/projection splits remain distinct from the
+measured expert option. Release documentation must not describe all draft
+components as evaluated or the entire draft stack as parallelized.
