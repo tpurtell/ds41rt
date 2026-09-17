@@ -1213,3 +1213,21 @@ expert stages remain the largest measured verification component. These elapsed
 times are not standalone kernel timings. The next optimization investigation
 targets that Spark path, followed by the required adaptive cost fit and held-out
 acceptance/performance checks. Production serving is restored.
+
+### Final performance campaign and content acceptance collection
+
+The clean candidate images are now collecting the four FP8-PLE release
+configurations with three repeats. The frozen collector includes the ninth
+high-effort `code-reasoning` category and records live Spark arguments, image
+identities, startup timing and 400 W / stock-memory telemetry. This campaign is
+still in progress; its measurements are not yet published release results.
+
+`scripts/collect-ds41-content-acceptance.py` prepares the separate C1 adaptive
+acceptance collection for all nine weighted categories. It retains the exact
+requests, responses and per-category trace slices, reports accepted/verified
+draft counts and selected widths, and separates grammar-constrained targets
+from unconstrained targets. Terminal observations are excluded. It requires
+three completed request snapshots before accepting a trace slice, including
+requests whose final cycle has no draft. These instrumented timings must not be
+used for the release throughput tables. Aggregation tests pass; the live
+acceptance campaign remains to run after performance collection.
