@@ -336,6 +336,17 @@ mod tests {
             assert_eq!(prefix.cache.rows, 3 / ratio(layer)?);
             assert_eq!(prefix.metadata(2)?[1], 3 / ratio(layer)? as u64);
             assert!(state.committed_proposal(leases[0], 0..4, reserve_source_snapshot()?).is_err());
+            if let Some(replica)=&replica {
+                let peer=unsafe { prefix.peer_attention(&state,replica,prefix.kv_values,prefix.kv_scales)? };
+                assert_eq!(peer.binding(),prefix.binding());
+                assert_eq!(peer.metadata(2)?,prefix.metadata(2)?);
+                assert_eq!(peer.kv_cache.rows,prefix.kv_cache.rows);
+                assert_eq!(peer.kv_values.device_id,replica.device().id);
+                assert_eq!(peer.kv_scales.device_id,replica.device().id);
+                assert!(peer.metadata(3).is_err());
+                // Ordinary mutable/current-proposal views still reject the writer.
+                assert!(unsafe { replica.view(&state.index,0,prefix.kv_cache.rows) }.is_err());
+            }
             drop(prefix);
             assert!(state.index_cache(leases[0]).is_err());
             assert!(state.release(leases[0]).is_err());

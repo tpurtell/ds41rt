@@ -156,8 +156,17 @@ impl<'a> SourceReplica<'a> {
     /// additional page references; it never increases logical token capacity.
     pub unsafe fn view<'s>(&'s self, source: &'s SourceCache<'_>, slot: usize,
         rows: usize) -> Result<KvCacheView<'s>> {
-        self.check(source)?;
         source.ensure_idle(slot)?;
+        unsafe { self.committed_view(source,slot,rows) }
+    }
+    /// # Safety
+    /// As for view, but a follower may append beyond these committed rows.
+    /// Its publication must copy replacement-page payload before page IDs and
+    /// lengths; consumers must retain their causal bounds and authoritative lease.
+    pub unsafe fn committed_view<'s>(&'s self, source:&'s SourceCache<'_>,slot:usize,
+        rows:usize)->Result<KvCacheView<'s>> {
+        self.check(source)?;
+        ensure!(slot<source.lengths.buffer.bytes/8,"replica slot out of range");
         ensure!(rows <= source.rows[slot], "replica view exceeds committed rows");
         Ok(KvCacheView { values: self.values.buffer, scales: self.scales.buffer,
             pages: &source.pages[slot], rows,

@@ -574,3 +574,22 @@ and release, and zero ends on both GPUs after reset. Daemon build checks pass.
 Evidence: `replicated-bank-build.log`, `replicated-bank-check.log`, and
 `replicated-bank-hardware.log` in the compact attention bundle. Temporary fixtures
 were removed and serving remains healthy. No performance result is implied.
+
+### Committed-prefix peer views during follower append
+
+Integration exposed a distinction missing from the initial peer adapter: replay
+and encoder attention may use a committed-only source view whose query begins
+before the committed frontier, including while a follower reserves an append.
+Such views now retain an explicit committed-only marker. The peer adapter keeps
+their original causal range and snapshot, uses replica backing for the empty
+private overlay, and permits the same bounded committed-prefix reads as the
+authoritative path. Ordinary private-proposal views still require an idle slot.
+
+The checkpoint-backed compressor fixture passes both ratios with a peer committed
+view created while the follower commit is pending. It checks unchanged binding,
+metadata and row extent, peer-local empty-overlay buffers, rejection beyond the
+query range, and continued rejection of ordinary views during the write. Existing
+commit/abort checks also pass. Evidence: `peer-committed-build.log` and
+`peer-committed-hardware.log` in the compact attention bundle. This validates the
+adapter contract, not concurrent full-model attention results; combined dual-wave
+and private-proposal integration remains outstanding.

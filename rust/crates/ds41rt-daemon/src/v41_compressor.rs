@@ -219,6 +219,7 @@ impl<'a> CompressorState<'a> {
             packed: cache.packed, scales: cache.scales, capacity: 1,
             cache, kv_cache, first_token: positions.start, end_token: positions.end,
             start: end / step, count: 0, offset: 0, step,
+            committed: true,
             _wave: std::marker::PhantomData,
         })
     }
@@ -404,6 +405,7 @@ pub(crate) struct IndexProposal<'a> {
     count: u64,
     offset: u64,
     step: u64,
+    committed: bool,
     _wave: std::marker::PhantomData<&'a ()>,
 }
 impl IndexProposal<'_> {
@@ -413,14 +415,21 @@ impl IndexProposal<'_> {
     /// Replica publication for this source and proposal is complete or ordered
     /// before every consumer. Retain both proposal plane owners through consumers
     /// and cold graph preparation; no writes may race these borrowed views.
+    /// For a committed-only view, followers may append beyond its causal extent
+    /// using ordered replica publication. No private proposal planes are read.
     pub unsafe fn peer_attention<'s>(&'s self, state: &'s CompressorState<'_>,
         replica: &'s SourceReplica<'_>, values: Ds41rtDeviceBuffer,
         scales: Ds41rtDeviceBuffer) -> Result<IndexProposal<'s>> {
-        let slot = state.validate(self.binding.lease)?;
+        let slot = if self.committed { state.validate_identity(self.binding.lease)? }
+            else { state.validate(self.binding.lease)? };
         ensure!(state.layer == self.source_layer && state.request_id(self.binding.lease)? == self.request
-            && state.slots[slot].end == self.first_token,
+            && if self.committed { self.end_token<=state.slots[slot].end }
+                else { state.slots[slot].end == self.first_token },
             "peer compressed proposal snapshot differs");
-        let kv_cache = unsafe { replica.view(&state.index, slot, self.kv_cache.rows)? };
+        let kv_cache = unsafe { if self.committed {
+            replica.committed_view(&state.index, slot, self.kv_cache.rows)?
+        } else { replica.view(&state.index, slot, self.kv_cache.rows)? } };
+        let (values,scales)=if self.committed { (kv_cache.values,kv_cache.scales) } else { (values,scales) };
         ensure!(kv_cache.pages == self.kv_cache.pages && kv_cache.rows == self.start as usize,
             "peer compressed proposal cache differs");
         ensure!(values.device_id == kv_cache.values.device_id && scales.device_id == values.device_id
@@ -435,6 +444,7 @@ impl IndexProposal<'_> {
             kv_cache, kv_values: values, kv_scales: scales, packed: self.packed, scales: self.scales,
             capacity: self.capacity, first_token: self.first_token, end_token: self.end_token,
             start: self.start, count: self.count, offset: self.offset, step: self.step,
+            committed: self.committed,
             _wave: std::marker::PhantomData })
     }
     pub fn request_id(&self) -> u64 {
@@ -1000,6 +1010,7 @@ impl CompressorWave<'_, '_> {
             count,
             offset,
             step,
+            committed: false,
             _wave: std::marker::PhantomData,
         })
     }
