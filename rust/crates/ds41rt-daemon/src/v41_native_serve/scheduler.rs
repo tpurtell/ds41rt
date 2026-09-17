@@ -135,7 +135,22 @@ fn retire_request<'a, C: DraftChain<'a>>(request: Active<'a>, requests: &mut Req
 pub(super) fn prepare_prefix_cache<'a>(lib: &'a NativeLibrary, args: &crate::cli::NativeServeArgs,
     requests: &Requests<'a>) -> Result<PrefixCache<'a>> {
     let template = requests.cache().sources()[0].get().source_cache().page_segments(0)[0];
-    let host_cache = super::prefix::HostCacheBinding::new(lib, args.host_cache_config()?, template)?;
+    let mut config = args.host_cache_config()?;
+    if matches!(args.host_cache_bytes, super::memory::HostBudget::Auto) {
+        // Logical source capacity, irrespective of which GPU owns each source.
+        // Do not count replicated storage or private COW/tail pages as tokens.
+        let raw_tokens = requests.cache().sources().iter().zip([2u64, 2, 2, 1])
+            .map(|(source, ratio)| source.get().source_cache().capacity as u64 * ratio)
+            .min().context("missing compressed cache sources")?;
+        let spare_tokens = (u64::from(args.concurrency) + 2*u64::from(args.prefix_cache_entries))*512;
+        let budget = ds41rt_hostcache::budget::plan(raw_tokens.saturating_sub(spare_tokens),
+            args.prefix_cache_entries, args.max_context_tokens, config.chunk_bytes, args.dspark)?;
+        config.bytes = budget.pinned_bytes;
+        config.validate()?;
+        tracing::info!(target: "ds41rt::host_cache", capacity=?budget,
+            "automatic host cache budget (staging and snapshot overhead excluded from token capacity)");
+    }
+    let host_cache = super::prefix::HostCacheBinding::new(lib, config, template)?;
     Ok(PrefixCache::new(args.prefix_cache_entries as usize).with_host_cache(host_cache))
 }
 

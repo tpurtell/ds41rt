@@ -383,6 +383,28 @@ pub(crate) struct SchedulerRowAuditArgs {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn native_host_cache_accepts_auto_and_legacy_byte_counts() {
+        use clap::Parser;
+        use crate::v41_native_serve::memory::HostBudget;
+        let base = ["ds41rt", "serve-native", "--snapshot", "/model", "--native-lib", "/native.so",
+            "--peers", "127.0.0.1:19441"];
+        for (value, bytes) in [("auto", None), ("0", Some(0)), ("1GiB", Some(1<<30)),
+            ("4294967296", Some(1u64<<32))] {
+            let super::Commands::ServeNative(args) = super::Cli::try_parse_from(
+                base.into_iter().chain(["--host-cache-bytes", value])).unwrap().command else {
+                panic!("expected native serving");
+            };
+            match (args.host_cache_bytes, bytes) {
+                (HostBudget::Auto, None) => (),
+                (HostBudget::Bytes(actual), Some(expected)) => assert_eq!(actual, expected),
+                _ => panic!("incorrect host budget mode"),
+            }
+        }
+        assert!(super::Cli::try_parse_from(base.into_iter()
+            .chain(["--host-cache-bytes", "-1"])).is_err());
+    }
+
+    #[test]
     fn native_limits_default_to_model_maximum_and_allow_smaller_launches() {
         use clap::Parser;
         let base = ["ds41rt", "serve-native", "--snapshot", "/model", "--native-lib", "/native.so",
@@ -555,9 +577,9 @@ pub(crate) struct NativeServeArgs {
     #[arg(long, default_value_t = 20, value_parser = clap::value_parser!(u32).range(0..=128))]
     pub prefix_cache_entries: u32,
 
-    /// Pinned host memory for the snapshot cache; zero disables it and leaves every engine path untouched.
-    #[arg(long, default_value_t = 0, env = "DS41RT_HOST_CACHE_BYTES")]
-    pub host_cache_bytes: u64,
+    /// Pinned snapshot memory: auto sizes logical GPU+RAM capacity above retained entries * context; 0 disables it.
+    #[arg(long, default_value = "0", env = "DS41RT_HOST_CACHE_BYTES")]
+    pub host_cache_bytes: crate::v41_native_serve::memory::HostBudget,
     /// Pinned allocation and registration granularity for the snapshot cache.
     #[arg(long, default_value_t = 256 << 20, env = "DS41RT_HOST_CACHE_CHUNK_BYTES")]
     pub host_cache_chunk_bytes: u64,
@@ -649,7 +671,7 @@ impl NativeServeArgs {
             }
         }
         let config = Config {
-            bytes: self.host_cache_bytes,
+            bytes: self.host_cache_bytes.explicit_bytes(),
             chunk_bytes: self.host_cache_chunk_bytes,
             store: match self.host_cache_store {
                 HostCacheStore::OnRetain => StoreMode::OnRetain,

@@ -18,6 +18,7 @@ Command-line values override ds41rt.config for this launch.
   --http-queue-depth N          buffered jobs and maximum extra waiters (default concurrency)
   --http-queue-wait-ms N        queue-space wait budget (default 25000)
   --kv-pool-size SIZE           exact KV/index pool, e.g. 22.5GB
+  --host-cache-bytes auto|SIZE  pinned RAM cache; 0 disables (default 0)
   --memory-reservation SIZE     total GPU ceiling, e.g. 90% or 80GiB
   --prefix-cache-entries N      turn and prompt retention, 0..128 (default 20)
   --max-context-tokens N        context limit (default 1048576)
@@ -41,6 +42,7 @@ while [[ $# -gt 0 ]]; do
     --http-queue-depth) overrides[HTTP_QUEUE_DEPTH]="${2:?$1 requires N}"; shift 2 ;;
     --http-queue-wait-ms) overrides[HTTP_QUEUE_WAIT_MS]="${2:?$1 requires N}"; shift 2 ;;
     --concurrency) overrides[CONCURRENCY]="${2:?$1 requires N}"; shift 2 ;;
+    --host-cache-bytes) overrides[HOST_CACHE_BYTES]="${2:?$1 requires auto or SIZE}"; shift 2 ;;
     --kv-pool-size) overrides[KV_POOL_SIZE]="${2:?$1 requires SIZE}"; shift 2 ;;
     --memory-reservation) overrides[MEMORY_RESERVATION]="${2:?$1 requires SIZE}"; shift 2 ;;
     --prefix-cache-entries) overrides[PREFIX_CACHE_ENTRIES]="${2:?$1 requires N}"; shift 2 ;;
@@ -60,6 +62,7 @@ release_load_config "$config"
 for name in "${!overrides[@]}"; do printf -v "$name" '%s' "${overrides[$name]}"; done
 [[ -z "$HTTP_QUEUE_DEPTH" || ( "$HTTP_QUEUE_DEPTH" =~ ^[1-9][0-9]*$ && "$HTTP_QUEUE_DEPTH" -le 4096 ) ]] || release_die "HTTP_QUEUE_DEPTH must be in 1..4096"
 [[ "$HTTP_QUEUE_WAIT_MS" =~ ^[0-9]+$ ]] || release_die "HTTP_QUEUE_WAIT_MS must be non-negative"
+[[ "$HOST_CACHE_BYTES" == auto || "$HOST_CACHE_BYTES" =~ ^[0-9]+([.][0-9]{1,6})?(B|MB|GB|MiB|GiB)?$ ]] || release_die "HOST_CACHE_BYTES must be auto, 0, or a byte size"
 case "$DSPARK" in on|off) ;; *) release_die "DSPARK must be on or off" ;; esac
 case "$RTX_GPUS" in auto|1|2) ;; *) release_die "RTX_GPUS must be auto, 1, or 2" ;; esac
 [[ "$CONCURRENCY" =~ ^([1-9]|1[0-6])$ ]] || release_die "CONCURRENCY must be in 1..16"
@@ -148,7 +151,7 @@ elif ((PREFILL_BATCH_TOKENS <= 256)); then expert_capacity=256
 elif ((PREFILL_BATCH_TOKENS <= 1024)); then expert_capacity=1024
 fi
 peers="${lanes[0]}:$EXPERT_PORT,${lanes[1]}:$EXPERT_PORT,${lanes[2]}:$EXPERT_PORT,${lanes[3]}:$EXPERT_PORT"
-fingerprint="$(printf '%s\n' "$engine_commit" "$RELEASE_MODEL_ID" "$RELEASE_MODEL_REVISION" "$ADDR" "$RELEASE_RTX_GPUS" "$gpu_uuid_csv" "$gpu_pci_csv" "$CONCURRENCY" "${HTTP_QUEUE_DEPTH:-$CONCURRENCY}" "$HTTP_QUEUE_WAIT_MS" "$KV_POOL_SIZE" "$MEMORY_RESERVATION" "$PREFIX_CACHE_ENTRIES" "$MAX_CONTEXT_TOKENS" "$MAX_OUTPUT_TOKENS" "$PREFILL_BATCH_TOKENS" "$DSPARK" "$SPARK_DEVICE_BUDGET_BYTES" "$spark_first_layer" "$peers" "$spark_exl3_identity" | sha256sum | awk '{print $1}')"
+fingerprint="$(printf '%s\n' "$engine_commit" "$RELEASE_MODEL_ID" "$RELEASE_MODEL_REVISION" "$ADDR" "$RELEASE_RTX_GPUS" "$gpu_uuid_csv" "$gpu_pci_csv" "$CONCURRENCY" "${HTTP_QUEUE_DEPTH:-$CONCURRENCY}" "$HTTP_QUEUE_WAIT_MS" "$HOST_CACHE_BYTES" "$KV_POOL_SIZE" "$MEMORY_RESERVATION" "$PREFIX_CACHE_ENTRIES" "$MAX_CONTEXT_TOKENS" "$MAX_OUTPUT_TOKENS" "$PREFILL_BATCH_TOKENS" "$DSPARK" "$SPARK_DEVICE_BUDGET_BYTES" "$spark_first_layer" "$peers" "$spark_exl3_identity" | sha256sum | awk '{print $1}')"
 spark_prefix="$RELEASE_SPARK_CONTAINER_PREFIX"
 
 if ((dry_run)); then
@@ -209,6 +212,7 @@ done
 echo "== starting native RTX coordinator =="
 args=(serve-native --snapshot "/root/.cache/huggingface/$snapshot_rel" --native-lib /opt/ds41rt/lib/libds41rt_native.so --peers "$peers" --rtx-gpus "$RELEASE_RTX_GPUS" --listen "$ADDR" --prefill-batch-tokens "$PREFILL_BATCH_TOKENS" --concurrency "$CONCURRENCY" --prefix-cache-entries "$PREFIX_CACHE_ENTRIES" --max-context-tokens "$MAX_CONTEXT_TOKENS" --max-output-tokens "$MAX_OUTPUT_TOKENS")
 args+=(--http-queue-depth "${HTTP_QUEUE_DEPTH:-$CONCURRENCY}" --http-queue-wait-ms "$HTTP_QUEUE_WAIT_MS")
+[[ "$HOST_CACHE_BYTES" == 0 ]] || args+=(--host-cache-bytes "$HOST_CACHE_BYTES")
 [[ -z "$KV_POOL_SIZE" ]] || args+=(--kv-pool-size "$KV_POOL_SIZE")
 [[ -z "$MEMORY_RESERVATION" ]] || args+=(--memory-reservation "$MEMORY_RESERVATION")
 [[ "$DSPARK" != on ]] || args+=(--dspark)

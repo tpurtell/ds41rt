@@ -17,6 +17,23 @@ pub(super) const RUNTIME_HEADROOM: usize = 2 * 1024 * 1024 * 1024;
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ByteSize(pub usize);
 #[derive(Clone, Copy, Debug)]
+pub(crate) enum HostBudget { Auto, Bytes(u64) }
+impl FromStr for HostBudget {
+    type Err = anyhow::Error;
+    fn from_str(value: &str) -> Result<Self> {
+        match value.trim() {
+            "auto" => Ok(Self::Auto),
+            "0" => Ok(Self::Bytes(0)),
+            value => Ok(Self::Bytes(value.parse::<ByteSize>()?.0 as u64)),
+        }
+    }
+}
+impl HostBudget {
+    pub fn explicit_bytes(self) -> u64 {
+        match self { Self::Auto => 0, Self::Bytes(bytes) => bytes }
+    }
+}
+#[derive(Clone, Copy, Debug)]
 pub(crate) enum Reservation {
     Bytes(ByteSize),
     Percent(u64), // millionths of one percent

@@ -122,3 +122,25 @@ deliberately not part of recurring release qualification.
 This admission policy reserves future GPU capacity; it does not implement active
 request parking in RAM. RAM sizing, complete cache qualification, flexible expert
 placement, all TP2 experiments and v6 publication remain required.
+
+## Automatic RAM budget candidate
+
+`--host-cache-bytes auto` is implemented in the binary and launcher (also
+`HOST_CACHE_BYTES=auto`). Explicit integer byte counts remain compatible, and
+unit sizes such as `8GiB` are accepted. The current default remains zero pending
+startup and performance assessment; enabling the recipe's automatic policy is
+still required before publication.
+
+The planner subtracts private GPU page headroom and counts each logical source
+once. It fills the shortfall above `retained_entries * max_context` with whole
+512-token groups. An additional full-context store, boundary pages for both
+retention banks, separate tail/draft slab chunks and chunk fragmentation are
+reserved without advertising them as token capacity. At 14M usable device tokens,
+20 retained entries and a 1M context limit, the candidate requests 6.75 GiB pinned
+RAM: 6M + 512 logical host tokens plus these reserves. This describes storage
+capacity after reclaiming redundant GPU snapshots, not a guarantee that every
+cached conversation remains a hit while write-behind copies overlap.
+
+Three budget tests pass, including an allocation test through the real slab-pool
+implementation with a fake pinned-memory provider. CLI parsing and the existing
+launcher checks pass. Full-size pinned allocation and serving measurement follow.

@@ -21,6 +21,7 @@
 //! functional, performance, concurrency and stability suites).
 
 pub mod cache;
+pub mod budget;
 pub mod config;
 pub mod copy;
 pub mod metrics;
