@@ -1,4 +1,6 @@
 //! Native TP2 draft expert ownership and graph integration.
+mod rank;
+mod pair;
 
 #[cfg(test)]
 mod tests {

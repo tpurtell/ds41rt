@@ -1164,3 +1164,17 @@ per-rank rounding. The daemon test build passes. Evidence:
 This verifies module initialization and reduction, not expert GEMM execution
 or serving performance. Pair-owned weights/workspaces, input broadcast and
 full draft-chain graph integration remain before a serving comparison.
+
+The draft TP2 rank/pair implementation now checks successfully with the daemon.
+It alternates rank weight loads within each stage, owns legacy weights under
+explicit device scopes, and preallocates per-lane rank scratch. The pair quantizes
+BF16 input once on RTX1, broadcasts FP8 rows plus top-3 IDs/weights to RTX0 using
+SM peer copies, launches both expert halves, and joins their FP32 route planes
+through GPU events before ordered reduction on RTX1. Enqueue performs no host
+wait or allocation. The API permits capture in the containing draft graph and
+requires its owner to drain external streams and destroy graphs before releasing
+workspaces. Workspace budgeting accounts separately for both GPUs.
+
+This is compiled implementation only: checkpoint expert execution comparison,
+whole-chain graph integration and serving measurements remain unverified.
+Evidence: `~/.cache/ds41rt-v6-heads32/dspark-tp2-pair-check.log`.
