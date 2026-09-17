@@ -631,3 +631,21 @@ AOT in the combined path. Evidence: `dual-cached-build.log`,
 `dual-cached-native.log`, and `dual-cached-hardware.log` in the compact attention
 bundle. Serving scheduling, projection continuation and end-to-end qualification
 remain required before a performance/default decision.
+
+### Projection continuation after dual attention
+
+Dual completion now accepts a same-stream consumer before its final cooperative
+wait. Projection can queue immediately behind the gathered output without a host
+wait between attention and projection. The existing pending owner drains both
+attention halves and downstream work on callback errors or cancellation. This is
+the continuation mechanism; backbone FFN state integration remains outstanding.
+
+The combined checkpoint fixture now compares both output-projection stages as
+well as attention. All eight results match byte-for-byte across layers 2 and 20,
+changed inputs and repeated execution. It also injects an error after projection
+enqueue and verifies immediate reuse. Evidence: `dual-continuation-build.log`,
+`dual-continuation-native.log`, and `dual-continuation-hardware.log` in the compact
+attention bundle. The fixture uses WMMA attention with zero sink weights and the
+checkpoint's FP8 projection weights. Temporary fixtures were removed and serving
+remains healthy. Full-model serving, captured projection/FFN continuation and
+performance qualification remain required.

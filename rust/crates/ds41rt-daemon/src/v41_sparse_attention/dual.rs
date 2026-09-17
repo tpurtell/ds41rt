@@ -123,7 +123,17 @@ pub(crate) struct PendingDualAttention<'s,'a> {
     layer: usize,
 }
 impl PendingDualAttention<'_,'_> {
-    pub async fn complete(mut self) -> Result<QueuedSparseAttention> {
+    pub async fn complete(self) -> Result<QueuedSparseAttention> {
+        unsafe { self.complete_then(|output,_|Ok(output)).await }
+    }
+    /// Queue consumers after gathering and wait once for the entire lane chain.
+    /// # Safety
+    /// The callback enqueues only on the supplied stream, on the output device.
+    /// External consumer allocations must remain alive through this future's
+    /// completion or cancellation, including callback errors. The callback must
+    /// not expose GPU results before completion and must not suspend.
+    pub async unsafe fn complete_then<T>(mut self,
+        consume:impl FnOnce(QueuedSparseAttention,*mut c_void)->Result<T>)->Result<T> {
         let wave = self.wave.as_deref_mut().unwrap();
         // Both warmups were submitted before either wait. Warm graph hits never
         // enter this branch and require no host rendezvous between the halves.
@@ -147,10 +157,11 @@ impl PendingDualAttention<'_,'_> {
             wave.copies[0].launch_rows(slice(wave.output.buffer,32*1024,wave.output.buffer.bytes-32*1024),
                 wave.halves[1].output.buffer,32*1024,self.rows,64*1024,32*1024,stream)
         })?;
-        owner.future(wave.halves[0].wait_chain()).await?;
         let values = slice(wave.output.buffer,0,self.rows*64*1024);
+        let result=owner.run(||consume(QueuedSparseAttention { values,rows:self.rows,layer:self.layer },stream))?;
+        owner.future(wave.halves[0].wait_chain()).await?;
         self.wave = None;
-        Ok(QueuedSparseAttention { values, rows:self.rows, layer:self.layer })
+        Ok(result)
     }
 }
 impl Drop for PendingDualAttention<'_,'_> {

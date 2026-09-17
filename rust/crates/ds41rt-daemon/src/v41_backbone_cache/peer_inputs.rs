@@ -47,6 +47,10 @@ mod tests {
             let mut index=source.own(||iw.wave(16,usize::MAX))?;
             let mut selection=source.own(||crate::v41_index_selection::IndexSelectionWave::new(&lib,16,usize::MAX))?;
             let mut full=source.own(||crate::v41_sparse_attention::SparseAttentionWave::new(&lib,16,usize::MAX))?;
+            let ow=source.own(||crate::v41_attention_output::AttentionOutputWeights::load(&lib,&catalog,layer,
+                crate::v41_attention_output::AttentionOutputWeights::device_bytes(&lib,&catalog,layer)?,1<<20))?;
+            let mut reference_projection=source.own(||ow.wave(16,usize::MAX))?;
+            let mut projection=source.own(||ow.wave(16,usize::MAX))?;
             let mut dual=crate::v41_sparse_attention::dual::DualAttentionWave::new([source,peer],16,
                 crate::v41_sparse_attention::dual::DualAttentionWave::device_bytes(16)?)?;
             let sink=Allocation::new(source,256)?;
@@ -79,16 +83,31 @@ mod tests {
                 })?;
                 let selected=selection.output()?;
                 let requests=original.attention_requests();
-                let expected=source.run(||unsafe {
+                let (expected,expected_projection)=source.run(||unsafe {
                     let output=full.execute_query(&q,sink.buffer,&requests,Some(&selected))?;
-                    let mut bytes=vec![0;output.values.bytes];lib.copy_d2h(&mut bytes,output.values)?;Ok(bytes)
+                    let mut bytes=vec![0;output.values.bytes];lib.copy_d2h(&mut bytes,output.values)?;
+                    let projected=reference_projection.execute_attention(&output)?;
+                    let mut projected_bytes=vec![0;projected.projected.bytes];
+                    lib.copy_d2h(&mut projected_bytes,projected.projected)?;
+                    Ok((bytes,projected_bytes))
                 })?;
                 // Cancel before completing cold preparation or a warm replay,
                 // then immediately reuse the same copies and both attention waves.
                 drop(unsafe { dual.enqueue_cached(&q,sink.buffer,&bank,&original,Some(&selected))? });
+                let pending=unsafe { dual.enqueue_cached(&q,sink.buffer,&bank,&original,Some(&selected))? };
+                let failed=runtime.block_on(unsafe { pending.complete_then(|output,stream| {
+                    projection.prepare_chain_graph(q.tokens()?,stream)?;
+                    projection.enqueue_chain_graph(&output,stream)?;
+                    Err::<(),_>(anyhow::anyhow!("injected projection continuation error"))
+                }) });
+                assert!(failed.unwrap_err().to_string().contains("injected projection continuation error"));
                 for _ in 0..2 {
                     let pending=unsafe { dual.enqueue_cached(&q,sink.buffer,&bank,&original,Some(&selected))? };
-                    let output=runtime.block_on(pending.complete())?;
+                    let (output,projected)=runtime.block_on(unsafe { pending.complete_then(|output,stream| {
+                        projection.prepare_chain_graph(q.tokens()?,stream)?;
+                        let projected=projection.enqueue_chain_graph(&output,stream)?;
+                        Ok((output,projected))
+                    }) })?;
                     let mut actual=vec![0;output.values.bytes];
                     source.run(||lib.copy_d2h(&mut actual,output.values))?;
                     assert_eq!(actual.len(),expected.len());
@@ -102,6 +121,9 @@ mod tests {
                     }
                     eprintln!("dual cached attention layer={layer} seed={seed} max_abs_error={max_error}");
                     assert_eq!(actual,expected,"compact WMMA attention differs from full-head WMMA");
+                    let mut actual_projection=vec![0;projected.bytes];
+                    source.run(||lib.copy_d2h(&mut actual_projection,projected))?;
+                    assert_eq!(actual_projection,expected_projection,"dual attention projection continuation differs");
                 }
                 // Repeated consumption of the same source must preserve its copy.
                 for _ in 0..2 {
