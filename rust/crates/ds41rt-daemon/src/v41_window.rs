@@ -11,6 +11,7 @@ use std::{
 };
 static NEXT_OWNER: AtomicU64 = AtomicU64::new(1);
 mod prefix;
+pub(crate) mod replica;
 mod commit;
 use commit::PendingCommit;
 pub(crate) use prefix::{WindowPrefix, WINDOW_PREFIX_BYTES};

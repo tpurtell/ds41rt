@@ -9,19 +9,12 @@ pub(crate) struct WindowPrefix {
 
 // Valid ring positions can wrap once. Never copy uninitialized padding from a
 // short request or the unpopulated beginning of a bounded decoder replay.
-fn spans(begin: u64, end: u64) -> Vec<(usize, usize)> {
+pub(super) fn spans(begin: u64, end: u64) -> impl Iterator<Item = (usize, usize)> {
     let first = begin.max(end.saturating_sub(128));
     let count = (end - first) as usize;
-    if count == 0 {
-        return Vec::new();
-    }
     let offset = first as usize % 128;
     let initial = count.min(128 - offset);
-    let mut spans = vec![(offset, initial)];
-    if initial < count {
-        spans.push((0, count - initial));
-    }
-    spans
+    [(offset, initial), (0, count-initial)].into_iter().filter(|&(_, rows)| rows != 0)
 }
 
 impl WindowState<'_> {
@@ -123,12 +116,12 @@ mod tests {
     use super::*;
     #[test]
     fn retained_window_spans_cover_only_initialized_ring_positions() {
-        assert!(spans(0, 0).is_empty());
-        assert_eq!(spans(0, 5), vec![(0, 5)]);
-        assert_eq!(spans(0, 128), vec![(0, 128)]);
-        assert_eq!(spans(0, 130), vec![(2, 126), (0, 2)]);
-        assert_eq!(spans(125, 130), vec![(125, 3), (0, 2)]);
-        assert!(spans(1000, 1000).is_empty());
+        assert!(spans(0, 0).next().is_none());
+        assert_eq!(spans(0, 5).collect::<Vec<_>>(), vec![(0, 5)]);
+        assert_eq!(spans(0, 128).collect::<Vec<_>>(), vec![(0, 128)]);
+        assert_eq!(spans(0, 130).collect::<Vec<_>>(), vec![(2, 126), (0, 2)]);
+        assert_eq!(spans(125, 130).collect::<Vec<_>>(), vec![(125, 3), (0, 2)]);
+        assert!(spans(1000, 1000).next().is_none());
     }
 
     #[test]

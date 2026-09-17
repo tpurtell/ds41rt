@@ -336,3 +336,23 @@ bundle; failed DMA attempts are retained there. Full native release build and
 serving integration remain outstanding. Existing non-replica peer DMA paths were
 not changed; their sensitivity to this queue dependency is a profiling opportunity,
 not grounds for changing defaults without measurements.
+
+### Peer SWA ring storage
+
+Added `WindowReplica` with peer FP8 value/scale rings and committed ends. It is
+bound to the authoritative window owner and validates request generations.
+Accepted commits copy only the changed suffix, capped at the last 128 rows;
+wraparound needs at most two spans. End publication follows payload writes via
+the SM-copy/event path. Restores copy only initialized ring positions, and empty
+bounded replay publishes its end without copying stale ring contents. The shared
+ring-span iterator now uses fixed inline storage instead of allocating a Vec.
+
+The bidirectional GPU fixture passes short prefixes, wraparound at 128, an append
+longer than the ring, retained-prefix restore to another slot, stale/foreign lease
+rejection and an empty replay beginning at token 900. Poisoned untouched bytes
+remain unchanged. The existing native prefix/slot-reuse test and CPU ring-span
+checks also pass. Evidence: `window-replica-hardware.log`,
+`window-prefix-hardware.log`, and `window-replica-build.log` in the compact attention
+bundle. Temporary container fixtures were removed. This remains an explicit
+storage component: private proposal replication, attention-wave integration,
+startup budgeting and full serving qualification are still outstanding.
