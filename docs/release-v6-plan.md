@@ -997,3 +997,48 @@ and the repeat reused all 10,824 prompt tokens. This exercises the large query
 projection AOT path in serving, including chunked prefill and retained-context
 reuse. Evidence: `~/.cache/ds41rt-v6-query-serving-wide/`. The standard coordinator
 was restored after both smoke checks and the performance comparison.
+
+### Graph replay for TP2 projection ranks and gather
+
+Each projection rank now captures its FP8 plan against resident rank-local input,
+output and scratch storage. External input copies and producer events remain
+outside the graph, so changing the input allocation/device cannot replay a stale
+pointer or dependency. The owner captures the two-half gather separately against
+wave-owned storage. Cold execution completes once before capture records future
+work; it does not replay the cold result. Graph caches retain small decode shapes
+and one current large shape, and are drained and destroyed on the owning device
+before their allocations are freed. Lane completion remains independent.
+
+The 32 real-checkpoint projection comparisons pass with simultaneous lanes,
+changed inputs, both output devices, cancellation/reuse, and assertions that the
+same graph handles survive intervening decode shapes. All ten complete-query
+comparisons remain exact. Test targets and the release binary build. Evidence:
+`projection-graphs-build.log`, `projection-graphs-release-build.log`,
+`projection-graphs-hardware.log`, and `projection-graphs-query.log` in
+`~/.cache/ds41rt-v6-heads32/`.
+
+The graph-enabled server also passed the concurrent short requests and the
+10,824-token chunked-prefill identifier request; the repeat reused all 10,824
+prompt tokens. Evidence: `~/.cache/ds41rt-v6-query-graphs-wide/`.
+
+The repeated same-build comparison used the preceding query-only experiment's
+fixed 5 GiB KV budget, launch settings and three warm samples per point:
+
+| Workload | Concurrency | Full query-B | TP2 query-B with graphs | Change |
+|---|---:|---:|---:|---:|
+| Code | 1 | 166.3 | 165.6 | -0.5% |
+| Code | 4 | 116.9 | 117.8 | +0.8% |
+| Topic | 1 | 95.5 | 95.5 | +0.0% |
+| Topic | 4 | 69.0 | 68.4 | -1.0% |
+
+These are median per-request decode tokens/s with thinking disabled. Code and
+C1 topic outputs match exactly. C4 topic varies slightly in the reference arm
+(263/264 output tokens versus 264 in the candidate), so it remains a mixed timing
+and output comparison. Observed power limits were 400 W, memory 13,365 MHz, and
+neither GPU reported active hardware thermal slowdown at the sampled check.
+Evidence: `~/.cache/ds41rt-v6-query-graphs-perf/` contains launch commands, logs,
+and all request results. The candidate is now approximately tied with baseline;
+this does not establish a default-worthy speedup. The earlier direct-launch
+candidate was roughly 2–3% behind on code, but those separate trials are not a
+paired direct-versus-graph estimate. Query TP2 stays opt-in. Output projection
+and dSpark remain the next independent work items. The normal server was restored.

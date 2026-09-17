@@ -1,6 +1,7 @@
 //! Output-channel FP8 projection shards with lane-owned exchange storage.
 use crate::v41_memory::{HostAllocation, device::{Allocation, Device, Event, Stream}};
 use anyhow::{ensure, Context, Result};
+use crate::v41_layer_graphs::LayerGraphs;
 use ds41rt_ffi::{Ds41rtDeviceBuffer, V41Fp8Plan, V41PeerCopy};
 use ds41rt_loader::OfficialV41Catalog;
 
@@ -56,6 +57,7 @@ impl<'a> Weights<'a> {
 }
 
 struct Rank<'w,'a> {
+    graphs: LayerGraphs<'w,'a,Weights<'a>>,
     weights: &'w [Weights<'a>],
     stream: Stream<'a>,
     plan: V41Fp8Plan<'a>,
@@ -81,13 +83,53 @@ impl<'w,'a> Rank<'w,'a> {
         let alpha=Allocation::new(device,16)?;
         let initialized=device.run(||unsafe { plan.initialize_scratch(scratch.buffer,alpha.buffer,stream.raw) });
         let drained=stream.drain();initialized.and(drained)?;
-        Ok(Self { weights,stream,plan,copy:device.run(||device.library.v41_peer_copy())?,
+        let mut graphs=LayerGraphs::new(device.library);graphs.enable_small_shapes();
+        Ok(Self { graphs,weights,stream,plan,copy:device.run(||device.library.v41_peer_copy())?,
             input:Allocation::new(device,capacity as usize*k*2)?,
             output:Allocation::new(device,capacity as usize*n)?,scratch,alpha })
     }
 }
 
+impl<'w,'a> Rank<'w,'a> {
+    unsafe fn enqueue(&self,weights:&Weights<'a>,rows:u32)->Result<()> {
+        unsafe { self.plan.launch(self.input.buffer,weights.weight.buffer,weights.scales.buffer,
+            self.scratch.buffer,self.alpha.buffer,self.output.buffer,rows,self.stream.raw) }
+    }
+    // Called only after the gathered result has completed, which also covers
+    // the peer rank. Capture records the next invocation without repeating work.
+    fn capture_ready(&mut self,layer:usize,rows:u32)->Result<()> {
+        let weights=self.weights.iter().find(|w|w.layer==layer).context("projection layer absent")?;
+        if self.graphs.get_shape(layer,weights,rows).is_some() { return Ok(()); }
+        let device=self.stream.device;
+        device.run(||unsafe {
+            device.library.cuda_graph_begin_capture(self.stream.raw)?;
+            let queued=self.enqueue(weights,rows);
+            let captured=device.library.cuda_graph_end_capture(self.stream.raw);
+            match (queued,captured) {
+                (Ok(()),Ok(graph)) => {
+                    if let Err(error)=self.graphs.insert(layer,weights,rows,graph) {
+                        device.library.cuda_graph_exec_destroy(graph)?;return Err(error);
+                    }
+                    Ok(())
+                },
+                (Err(error),Ok(graph)) => { device.library.cuda_graph_exec_destroy(graph)?;Err(error) },
+                (Err(error),Err(_)) | (Ok(()),Err(error)) => Err(error),
+            }
+        })
+    }
+}
+impl Drop for Rank<'_,'_> {
+    fn drop(&mut self) {
+        if let Err(error)=self.stream.drain() { tracing::error!(%error,"draining projection rank"); }
+        let device=self.stream.device;
+        if let Err(error)=device.run(||unsafe { self.graphs.clear() }) {
+            tracing::error!(%error,"destroying projection rank graphs");
+        }
+    }
+}
+
 pub(crate) struct Wave<'w,'a> {
+    gather_graphs: LayerGraphs<'w,'a,Weights<'a>>,
     ranks: [Rank<'w,'a>;2],
     output: Allocation<'a>,
     peer_done: Event<'a>,
@@ -127,10 +169,41 @@ impl<'w,'a> Wave<'w,'a> {
             device.run(||device.library.cuda_enable_peer(peer.id))?;
         }
         let devices=[a.device,b.device];let (_,n)=a.kind.geometry();
-        Ok(Self { ranks:[Rank::new(weights[0],capacity)?,Rank::new(weights[1],capacity)?],
+        let mut gather_graphs=LayerGraphs::new(a.device.library);gather_graphs.enable_small_shapes();
+        Ok(Self { gather_graphs,ranks:[Rank::new(weights[0],capacity)?,Rank::new(weights[1],capacity)?],
             output:Allocation::new(devices[owner],capacity as usize*n*2)?,
             peer_done:Event::new(devices[1-owner])?,
             input_ready:[Event::new(devices[0])?,Event::new(devices[1])?],owner,capacity,kind:a.kind })
+    }
+    unsafe fn enqueue_gather(&self,rows:u32)->Result<()> {
+        let (_,n)=self.kind.geometry();let owner=&self.ranks[self.owner];
+        for (i,rank) in self.ranks.iter().enumerate() {
+            let mut dst=self.output.buffer;
+            dst.ptr=unsafe { dst.ptr.cast::<u8>().add(i*n).cast() };dst.bytes-=i*n;
+            unsafe { owner.copy.launch_rows(dst,rank.output.buffer,n,rows as usize,n*2,n,owner.stream.raw)?; }
+        }
+        Ok(())
+    }
+    fn capture_gather_ready(&mut self,rows:u32)->Result<()> {
+        // The gather uses only this wave's fixed storage, independent of layer.
+        let weights=&self.ranks[self.owner].weights[0];
+        if self.gather_graphs.get_shape(0,weights,rows).is_some() { return Ok(()); }
+        let stream=self.ranks[self.owner].stream.raw;let device=self.output.device;
+        device.run(||unsafe {
+            device.library.cuda_graph_begin_capture(stream)?;
+            let queued=self.enqueue_gather(rows);
+            let captured=device.library.cuda_graph_end_capture(stream);
+            match (queued,captured) {
+                (Ok(()),Ok(graph)) => {
+                    if let Err(error)=self.gather_graphs.insert(0,weights,rows,graph) {
+                        device.library.cuda_graph_exec_destroy(graph)?;return Err(error);
+                    }
+                    Ok(())
+                },
+                (Err(error),Ok(graph)) => { device.library.cuda_graph_exec_destroy(graph)?;Err(error) },
+                (Err(error),Err(_)) | (Ok(()),Err(error)) => Err(error),
+            }
+        })
     }
     fn drain(&self) -> Result<()> {
         let first=self.ranks[0].stream.drain();let second=self.ranks[1].stream.drain();first.and(second)
@@ -169,28 +242,35 @@ impl<'w,'a> Wave<'w,'a> {
                     rank.stream.device.library.cuda_stream_wait_event(rank.stream.raw,wave.input_ready[input_rank].raw)?;
                 }
                 rank.copy.launch_rows(rank.input.buffer,input,k*2,rows as usize,k*2,k*2,rank.stream.raw)?;
-                rank.plan.launch(rank.input.buffer,weights.weight.buffer,weights.scales.buffer,
-                    rank.scratch.buffer,rank.alpha.buffer,rank.output.buffer,rows,rank.stream.raw)
+                if let Some((graph,_))=rank.graphs.get_shape(layer,weights,rows) {
+                    rank.stream.device.library.cuda_graph_launch(graph,rank.stream.raw)
+                } else { rank.enqueue(weights,rows) }
             })?;
         }
         let owner=&wave.ranks[wave.owner];let peer=&wave.ranks[1-wave.owner];
         wave.peer_done.record(&peer.stream)?;
         owner.stream.device.run(||unsafe {
             owner.stream.device.library.cuda_stream_wait_event(owner.stream.raw,wave.peer_done.raw)?;
-            for (i,rank) in wave.ranks.iter().enumerate() {
-                let mut dst=wave.output.buffer;
-                dst.ptr=dst.ptr.cast::<u8>().add(i*n).cast();dst.bytes-=i*n;
-                owner.copy.launch_rows(dst,rank.output.buffer,n,rows as usize,n*2,n,owner.stream.raw)?;
-            }Ok(())
+            if let Some((graph,_))=wave.gather_graphs.get_shape(0,&owner.weights[0],rows) {
+                owner.stream.device.library.cuda_graph_launch(graph,owner.stream.raw)
+            } else { wave.enqueue_gather(rows) }
         })?;
         let output=Ds41rtDeviceBuffer { bytes:rows as usize*n*2,..wave.output.buffer };
         let result=owner.stream.device.run(||consume(output,owner.stream.raw))?;
         owner.stream.wait().await?;
+        for rank in &mut wave.ranks { rank.capture_ready(layer,rows)?; }
+        wave.capture_gather_ready(rows)?;
         guard.complete=true;Ok(result)
     }
 }
 impl Drop for Wave<'_,'_> {
-    fn drop(&mut self) { if let Err(error)=self.drain() { tracing::error!(%error,"draining projection wave"); } }
+    fn drop(&mut self) {
+        if let Err(error)=self.drain() { tracing::error!(%error,"draining projection wave"); }
+        let device=self.output.device;
+        if let Err(error)=device.run(||unsafe { self.gather_graphs.clear() }) {
+            tracing::error!(%error,"destroying projection gather graphs");
+        }
+    }
 }
 
 #[cfg(test)]
@@ -233,6 +313,7 @@ mod tests {
                 devices[0].run(||unsafe { lib.v41_fp8_matrix_kernel(1,k as u32,n as u32)?
                     .pack_scales(full.get().get(&names[1])?,scales.buffer,stream.raw) })?;
                 stream.drain()?;
+                let mut first_graphs=None;
                 for (rows,seed) in [(1,0),(6,7),(16,3),(1,5)] {
                     let host:Vec<u8>=(0..capacity as usize*k).flat_map(|i| {
                         let value=((i+seed)%31) as f32/32.0-0.5;
@@ -257,6 +338,17 @@ mod tests {
                     let (a,b)=runtime.block_on(async { tokio::join!(
                         unsafe { left.execute(layer,rows,inputs[1].buffer) },
                         unsafe { right.execute(layer,rows,inputs[0].buffer) }) });
+                    let graph_handles:Vec<_>=lanes.iter().flat_map(|lane| {
+                        lane.ranks.iter().map(|rank| {
+                            let weights=rank.weights.iter().find(|w|w.layer==layer).unwrap();
+                            rank.graphs.get_shape(layer,weights,rows).unwrap().0
+                        }).chain(std::iter::once(lane.gather_graphs.get_shape(0,
+                            &lane.ranks[lane.owner].weights[0],rows).unwrap().0))
+                    }).collect();
+                    if rows==1 {
+                        if let Some(first)=&first_graphs { assert_eq!(first,&graph_handles); }
+                        else { first_graphs=Some(graph_handles); }
+                    }
                     for (device,result) in devices.into_iter().zip([a?,b?]) {
                         let mut actual=vec![0;expected.len()];device.run(||lib.copy_d2h(&mut actual,result))?;
                         let mut max_error=0f32;
