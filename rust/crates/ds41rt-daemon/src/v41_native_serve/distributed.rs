@@ -34,6 +34,7 @@ pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Recei
     };
     memory_checkpoint("CUDA contexts and peer access")?;
     let catalog = ds41rt_loader::read_official_v41_catalog(ds41rt_loader::OFFICIAL_V41_MODEL_ID, &args.snapshot)?;
+    let paired_profile = crate::v41_experts::paired::PairedProfile::for_serving(&catalog, args.exl3_paired_tp4)?;
     let map = CachePlacement::encoder_decoder();
     let started = Instant::now();
     // Sum resident storage plus the largest transient loading excess.
@@ -264,7 +265,6 @@ pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Recei
         [Rc::new(RankWeights::load(devices[0], &catalog, expert_layers, rank_budgets[0])?),
          Rc::new(RankWeights::load(devices[1], &catalog, expert_layers, rank_budgets[1])?)]
     };
-    let paired_profile = crate::v41_experts::paired::PairedProfile::from_env(compressed)?;
     let make_transport = || {
         let mut transport = devices[1].own(|| NativeTp4Wave::new(&lib,
             V41Tp4Roce::new(args.peers.clone().try_into().map_err(|_| anyhow::anyhow!("four Spark peers required"))?,

@@ -72,6 +72,7 @@ hf_home="${HF_HOME:-$HOME/.cache/huggingface}"
 release_resolve_local_model_revision "$hf_home"
 release_resolve_coordinator_gpu_identity
 snapshot_rel="hub/models--${RELEASE_MODEL_ID//\//--}/snapshots/$RELEASE_MODEL_REVISION"
+model_is_exl3="$(jq -r '.quantization_config.quant_method == "exl3"' "$hf_home/$snapshot_rel/config.json")"
 coordinator="$RELEASE_COORDINATOR_CONTAINER_NAME"
 
 reclaim_args=()
@@ -111,8 +112,9 @@ image_sparkinfer="$(docker image inspect -f '{{index .Config.Labels "io.ds41rt.s
 
 hosts=("$SPARK_0_HOST" "$SPARK_1_HOST" "$SPARK_2_HOST" "$SPARK_3_HOST")
 lanes=("$SPARK_0_LANE_A" "$SPARK_1_LANE_A" "$SPARK_2_LANE_A" "$SPARK_3_LANE_A")
+spark_exl3_identity=""
 for host in "${hosts[@]}"; do
-  ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" bash -s -- "$SPARK_EXPERT_DOCKER_INFERENCE" "$engine_commit" "$sparkinfer_commit" "$snapshot_rel" <<'REMOTE'
+  spark_manifest="$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" bash -s -- "$SPARK_EXPERT_DOCKER_INFERENCE" "$engine_commit" "$sparkinfer_commit" "$snapshot_rel" "$model_is_exl3" <<'REMOTE'
 set -euo pipefail
 image="$1"; engine="$2"; sparkinfer="$3"; snapshot_rel="$4"
 docker info >/dev/null
@@ -121,7 +123,17 @@ test "$(docker image inspect -f '{{index .Config.Labels "io.ds41rt.sparkinfer.re
 hf_home="${HF_HOME:-$HOME/.cache/huggingface}"
 test -d "$hf_home/$snapshot_rel"
 ! find "$hf_home/$snapshot_rel" -xtype l -print -quit | grep -q .
+if [[ "$5" == true ]]; then
+  docker run --rm --network none --entrypoint /bin/cat "$image" /opt/ds41rt/lib/exl3/manifest.json
+fi
 REMOTE
+)"
+  if [[ "$model_is_exl3" == true ]]; then
+    identity="$(release_exl3_package_identity "$sparkinfer_commit" <<<"$spark_manifest")"
+    [[ -z "$spark_exl3_identity" || "$spark_exl3_identity" == "$identity" ]] ||
+      release_die "Spark EXL3 packages differ across hosts; rebuild/distribute matching images"
+    spark_exl3_identity="$identity"
+  fi
 done
 
 expert_capacity=4096
@@ -130,7 +142,7 @@ elif ((PREFILL_BATCH_TOKENS <= 256)); then expert_capacity=256
 elif ((PREFILL_BATCH_TOKENS <= 1024)); then expert_capacity=1024
 fi
 peers="${lanes[0]}:$EXPERT_PORT,${lanes[1]}:$EXPERT_PORT,${lanes[2]}:$EXPERT_PORT,${lanes[3]}:$EXPERT_PORT"
-fingerprint="$(printf '%s\n' "$engine_commit" "$RELEASE_MODEL_ID" "$RELEASE_MODEL_REVISION" "$ADDR" "$RELEASE_RTX_GPUS" "$gpu_uuid_csv" "$gpu_pci_csv" "$CONCURRENCY" "$KV_POOL_SIZE" "$MEMORY_RESERVATION" "$PREFIX_CACHE_ENTRIES" "$MAX_CONTEXT_TOKENS" "$MAX_OUTPUT_TOKENS" "$PREFILL_BATCH_TOKENS" "$DSPARK" "$SPARK_DEVICE_BUDGET_BYTES" "$spark_first_layer" "$peers" | sha256sum | awk '{print $1}')"
+fingerprint="$(printf '%s\n' "$engine_commit" "$RELEASE_MODEL_ID" "$RELEASE_MODEL_REVISION" "$ADDR" "$RELEASE_RTX_GPUS" "$gpu_uuid_csv" "$gpu_pci_csv" "$CONCURRENCY" "$KV_POOL_SIZE" "$MEMORY_RESERVATION" "$PREFIX_CACHE_ENTRIES" "$MAX_CONTEXT_TOKENS" "$MAX_OUTPUT_TOKENS" "$PREFILL_BATCH_TOKENS" "$DSPARK" "$SPARK_DEVICE_BUDGET_BYTES" "$spark_first_layer" "$peers" "$spark_exl3_identity" | sha256sum | awk '{print $1}')"
 spark_prefix="$RELEASE_SPARK_CONTAINER_PREFIX"
 
 if ((dry_run)); then
@@ -138,6 +150,7 @@ if ((dry_run)); then
   echo "  RTX layout: $RELEASE_RTX_GPUS GPU(s), host indices $gpu_index_csv"
   echo "  physical GPUs: $gpu_uuid_csv"
   echo "  Spark first routed layer: $spark_first_layer"
+  [[ -z "$spark_exl3_identity" ]] || echo "  Spark EXL3 package: $spark_exl3_identity"
   exit 0
 fi
 if ((restart)); then
@@ -192,6 +205,7 @@ args=(serve-native --snapshot "/root/.cache/huggingface/$snapshot_rel" --native-
 [[ -z "$KV_POOL_SIZE" ]] || args+=(--kv-pool-size "$KV_POOL_SIZE")
 [[ -z "$MEMORY_RESERVATION" ]] || args+=(--memory-reservation "$MEMORY_RESERVATION")
 [[ "$DSPARK" != on ]] || args+=(--dspark)
+[[ "$spark_exl3_identity" != paired:* ]] || args+=(--exl3-paired-tp4)
 docker run -d --name "$coordinator" --restart no --gpus "$gpu_request" --network host --ipc host --ulimit memlock=-1:-1 --device=/dev/infiniband \
   -e "CUDA_VISIBLE_DEVICES=$gpu_uuid_csv" \
   -e "DS41RT_RELEASE_CONFIG_SHA256=$fingerprint" -e "RUST_LOG=${RUST_LOG:-info}" \

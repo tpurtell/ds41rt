@@ -395,6 +395,12 @@ mod tests {
         assert_eq!(args.concurrency, 16);
         assert_eq!(args.prefix_cache_entries, 24);
         assert_eq!(args.dspark_draft_limit, 5);
+        assert!(!args.exl3_paired_tp4);
+        let super::Commands::ServeNative(paired) = super::Cli::try_parse_from(
+            base.into_iter().chain(["--exl3-paired-tp4"])).unwrap().command else {
+            panic!("expected native serving");
+        };
+        assert!(paired.exl3_paired_tp4);
         assert!(!args.adaptive_dspark()); // Target-only remains target-only.
         for (flags, adaptive) in [
             (vec!["--dspark"], true),
@@ -416,7 +422,9 @@ mod tests {
         for (flags, expected) in [
             (vec!["--dspark"], 5),
             (vec!["--dspark", "--rtx-gpus", "1"], 5),
-            (vec!["--dspark", "--rtx-gpus", "2"], 5),
+            (vec!["--dspark", "--rtx-gpus", "2"], 7),
+            (vec!["--dspark", "--rtx-gpus", "2", "--dspark-draft-limit", "5"], 5),
+            (vec!["--dspark", "--dspark-draft-limit", "5", "--rtx-gpus", "2"], 5),
             (vec!["--dspark", "--dspark-draft-limit", "5"], 5),
             (vec!["--dspark", "--rtx-gpus", "2", "--dspark-draft-limit", "7"], 7),
         ] {
@@ -527,6 +535,9 @@ pub(crate) struct NativeServeArgs {
     #[arg(long, default_value = "auto")]
     pub rtx_expert_layers: crate::v41_native_serve::memory::LocalLayers,
 
+    /// Use paired H128 EXL3 ownership; requires paired AOT packages on all four Spark peers.
+    #[arg(long)]
+    pub exl3_paired_tp4: bool,
 
     /// Maximum active requests, shared by both execution lanes.
     #[arg(long, default_value_t = 16, value_parser = clap::value_parser!(u32).range(1..=16))]
@@ -538,8 +549,8 @@ pub(crate) struct NativeServeArgs {
 
     /// Enable greedy RTX dSpark proposal generation and target verification.
     #[arg(long)] pub dspark: bool,
-    /// Maximum draft tokens per request, for adaptive or fixed verification.
-    #[arg(long, default_value_t = 5, value_parser = clap::value_parser!(u8).range(1..=7))]
+    /// Maximum draft tokens per request: defaults to 5 with one RTX, 7 with two.
+    #[arg(long, default_value_t = 5, default_value_if("rtx_gpus", "2", "7"), value_parser = clap::value_parser!(u8).range(1..=7))]
     pub dspark_draft_limit: u8,
     /// Compatibility spelling: dSpark uses lane-local adaptive selection by default.
     #[arg(long, requires = "dspark", hide = true)]

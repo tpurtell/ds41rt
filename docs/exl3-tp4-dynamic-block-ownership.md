@@ -741,9 +741,8 @@ other than two, duplicate or unselected capacities, and residency other than
 one or two blocks per SM. B12X still validates actual kernel resource limits.
 The default remains disjoint, with no residency override. CPU-only tests
 configure the actual CMake rules and inspect generated export commands; they
-do not substitute for a fresh GPU build. Coordinator ownership selection and
-standard build/run integration remain required before publishing the paired
-package.
+do not substitute for a fresh GPU build. Clean-container build and serving
+validation remain required before publishing the paired package.
 
 The release source pin now matches the measured candidate's SparkInfer revision
 `e685f48c3b941208a8dc5915a742738a3c2de706` (tree SHA-256
@@ -753,3 +752,74 @@ pass provenance verification against this pin. This brings the previously
 qualified paired kernel implementation into reproducible source builds;
 paired serving and residency are still explicit choices. It does not claim a
 new performance result or a completed clean-container build.
+
+`EXL3_PAIRED_TP4=on` in the build configuration now requests the paired Spark
+package and the measured `80=2` residency override through `build.sh` and the
+normal CMake exporter. The setting defaults to `off` pending final selection.
+For EXL3 checkpoints, `run.sh` reads the four Spark images' package manifests
+before stopping services, verifies their role/source revision, and rejects
+different manifest identities. Matching paired images select
+`serve-native --exl3-paired-tp4`; matching disjoint images use ordinary ownership.
+Full-model launches do not request the EXL3 package preflight or paired mode.
+The package identity is included in the deployment fingerprint. Launcher,
+configuration and package tests pass; this is not yet a clean-container
+serving result. A test of the actual launcher with mocked Docker/SSH/GPU
+commands also covers matching paired and disjoint packages, a mismatched
+`--restart` failing before any service changes, and native launches skipping
+EXL3 package reads.
+
+The new serving flag derives per-expert H128 streaming bytes from the already
+validated checkpoint tensor catalog at startup. It requires no additional
+weight reads and retains zero per-row cost, matching the independent streaming
+profile used in the candidate measurements. Explicit calibrated profile files
+remain supported. Rust compilation and three planner/profile tests passed.
+The checkpoint test also passed: all 15,360 expert cost entries exactly match
+the independently generated profile used for measurement. These tests ran
+through `scripts/run-with-python-env.sh` to resolve the local Python shared
+library. A new GPU serving launch is still required to validate the complete
+integration.
+
+Release integration also found that the binary still defaulted to K5 for an
+explicit two-RTX launch, although dual qualification uses K7. The CLI now
+selects K5 for one RTX and K7 for two; an explicit `--dspark-draft-limit` keeps
+precedence regardless of argument order. The CLI test passed. The completed
+single-RTX comparison explicitly selected K5 and is unaffected by this fix.
+
+### Completed single-RTX adaptive serving comparison
+
+The four arms (built-in / fitted / fitted / built-in) completed with the same
+binary, paired capacity-80 two-block package, six RTX expert layers, K5 limit
+and single-RTX default pool. Each concurrency point has six measured samples
+per profile. Debug cost tracing was disabled. These are profile-selection
+measurements, not final release performance tables.
+
+| Content | Concurrency | Built-in tok/s | Fitted tok/s | Change |
+| --- | ---: | ---: | ---: | ---: |
+| Code | 1 | 138.88 | 139.07 | +0.14% |
+| Code | 8 | 673.02 | 672.09 | −0.14% |
+| Code | 16 | 1,130.77 | 1,146.14 | +1.36% |
+| Topic | 1 | 76.77 | 76.90 | +0.17% |
+| Topic | 8 | 383.70 | 387.54 | +1.00% |
+| Topic | 16 | 624.56 | 638.59 | +2.25% |
+| Reasoning code | 1 | 114.74 | 102.35 | −10.79% |
+| Reasoning code | 8 | 446.67 | 421.24 | −5.69% |
+| Reasoning code | 16 | 748.31 | 664.32 | −11.22% |
+| Mixed traffic | 4 | 129.17 | 127.58 | −1.23% |
+| Mixed traffic | 16 | 195.40 | 199.83 | +2.27% |
+
+Keep the built-in single-RTX profile. The affine fit's small code/topic gains
+do not justify the observed reasoning-code slowdown. Code C1 and C16 have
+identical reasoning-plus-answer output identities in all twelve samples at
+each point. Other workloads can generate different continuations: reasoning
+C1 consistently generated 839 tokens with the built-in profile and a different
+900-token trace with the fit. These are observed serving outcomes, not proof
+of an isolated kernel-time regression. The main table includes every sample;
+conditional same-output diagnostics remain separately labelled in the JSON.
+
+Evidence: `release-v5-exl3-single-adaptive-serving-comparison.json` and its
+archive. Archive validation checked all arm restoration records, the thinking
+and effort controls, corpus/generation limits, binary/profile/fit hashes, and
+exact reproduction of the summary fields apart from relocated directory paths.
+The archive retains raw responses, startup/worker logs, profiles and package
+manifests. All four calibration configurations and both EXL3 adaptive serving
+comparisons are complete; the fitted profiles remain experimental.

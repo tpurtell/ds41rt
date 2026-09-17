@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import subprocess
+import json
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -9,6 +11,50 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class NativeReleaseLauncherTest(unittest.TestCase):
+    def test_paired_build_setting_is_explicit_and_validated(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            config = Path(temporary) / 'release.config'
+            for setting in ('on', 'off', 'invalid'):
+                with self.subTest(setting=setting):
+                    config.write_text((ROOT / 'ds41rt.config').read_text()
+                                      + f'\nEXL3_PAIRED_TP4={setting}\n')
+                    result = subprocess.run(
+                        ['bash', '-c', 'source scripts/release-common.sh; release_load_config "$1"; printf "%s" "$EXL3_PAIRED_TP4"',
+                         'test', str(config)], cwd=ROOT, capture_output=True, text=True)
+                    if setting == 'invalid':
+                        self.assertEqual(result.returncode, 2)
+                        self.assertIn('EXL3_PAIRED_TP4 must be on or off', result.stderr)
+                    else:
+                        self.assertEqual(result.returncode, 0, result.stderr)
+                        self.assertEqual(result.stdout, setting)
+
+    def package_identity(self, manifest: dict) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ['bash', '-c', 'source scripts/release-common.sh; release_exl3_package_identity test-revision'],
+            cwd=ROOT, input=json.dumps(manifest), text=True, capture_output=True,
+        )
+
+    def test_exl3_preflight_identity_binds_layout_and_package(self) -> None:
+        manifest = dict(schema='ds41rt.exl3-package.v1', role='spark',
+                        sparkinfer_revision='test-revision', files={'kernel': 'first'})
+        disjoint = self.package_identity(manifest)
+        self.assertEqual(disjoint.returncode, 0, disjoint.stderr)
+        self.assertTrue(disjoint.stdout.startswith('disjoint:'))
+        manifest['paired_tp4'] = True
+        paired = self.package_identity(manifest)
+        self.assertEqual(paired.returncode, 0, paired.stderr)
+        self.assertTrue(paired.stdout.startswith('paired:'))
+        self.assertNotEqual(disjoint.stdout, paired.stdout)
+        manifest['files']['kernel'] = 'second'
+        self.assertNotEqual(paired.stdout, self.package_identity(manifest).stdout)
+        for field, value in [('paired_tp4', 'true'), ('paired_tp4', None),
+                             ('role', 'coordinator'), ('schema', 'wrong'),
+                             ('sparkinfer_revision', 'another-build')]:
+            with self.subTest(field=field, value=value):
+                result = self.package_identity({**manifest, field: value})
+                self.assertEqual(result.returncode, 2)
+                self.assertIn('invalid Spark EXL3 package identity', result.stderr)
+
     def test_shell_is_valid_and_help_exposes_native_controls(self) -> None:
         subprocess.run(
             ["bash", "-n", "run.sh", "scripts/release-common.sh"],

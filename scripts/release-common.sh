@@ -12,6 +12,22 @@ release_need() {
   command -v "$1" >/dev/null 2>&1 || release_die "required command not found: $1"
 }
 
+# Inference images verify package payload hashes when built. Compare their
+# immutable manifests before changing services so all peers select one layout.
+release_exl3_package_identity() {
+  local revision="$1" manifest layout digest
+  manifest="$(cat)"
+  layout="$(jq -er --arg revision "$revision" '
+    if .schema == "ds41rt.exl3-package.v1" and .role == "spark"
+      and .sparkinfer_revision == $revision
+      and ((has("paired_tp4") | not) or (.paired_tp4 | type) == "boolean")
+    then (if .paired_tp4 == true then "paired" else "disjoint" end)
+    else error("invalid Spark EXL3 package identity") end
+  ' <<<"$manifest")" || release_die "invalid Spark EXL3 package identity"
+  digest="$(printf '%s' "$manifest" | sha256sum | awk '{print $1}')"
+  printf '%s:%s\n' "$layout" "$digest"
+}
+
 release_model_list_matches() {
   local model_id="$1"
   local full_model_id="${model_id}-full"
@@ -65,6 +81,7 @@ release_trim() {
 
 release_known_key() {
   case "$1" in
+    EXL3_PAIRED_TP4) return 0 ;;
     MODEL_ID|MODEL_VARIANT|MODEL_REVISION|EXPERT_FORMAT|DSPARK|DSPARK_DRAFT_POLICY|RTX_GPUS|COORDINATOR_GPU|COORDINATOR_GPU_UUID|COORDINATOR_GPU_PCI_BUS_ID|COORDINATOR_GPU_HEADROOM_GIB|KV_POOL_TOKENS|KV_POOL_SIZE|MEMORY_RESERVATION|MAX_CONTEXT_TOKENS|MAX_OUTPUT_TOKENS|CONCURRENCY|PREFIX_CACHE_ENTRIES|PREFILL_BATCH_TOKENS|SPARK_DEVICE_BUDGET_BYTES|SPARK_REDUCTION_MIN_ROWS|SPARKINFER_EXL3|ADDR|EXPERT_PORT|SPARK_[0-3]_HOST|SPARK_[0-3]_LANE_A|SPARK_[0-3]_LANE_B|COORDINATOR_DOCKER_DEV|COORDINATOR_DOCKER_INFERENCE|SPARK_EXPERT_DOCKER_DEV|SPARK_EXPERT_DOCKER_INFERENCE)
       return 0
       ;;
@@ -101,6 +118,7 @@ release_load_config() {
   SPARK_DEVICE_BUDGET_BYTES=107374182400
   SPARK_REDUCTION_MIN_ROWS=16
   SPARKINFER_EXL3=disable
+  EXL3_PAIRED_TP4=off
   ADDR=0.0.0.0:8000
   EXPERT_PORT=19441
   COORDINATOR_DOCKER_DEV=ds41rt-coordinator-dev
@@ -142,6 +160,7 @@ release_load_config() {
 
   case "$MODEL_VARIANT" in flash|pro) ;; *) release_die "MODEL_VARIANT must be flash or pro" ;; esac
   case "$EXPERT_FORMAT" in native|exl3) ;; *) release_die "EXPERT_FORMAT must be native or exl3" ;; esac
+  case "$EXL3_PAIRED_TP4" in on|off) ;; *) release_die "EXL3_PAIRED_TP4 must be on or off" ;; esac
   [[ "$MODEL_VARIANT" != pro || "$EXPERT_FORMAT" == exl3 ]] ||
     release_die "DeepSeek V4 Pro requires EXPERT_FORMAT=exl3"
   case "$DSPARK" in on|off) ;; *) release_die "DSPARK must be on or off" ;; esac

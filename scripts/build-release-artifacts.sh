@@ -32,6 +32,17 @@ case "$role" in
     exit 2
     ;;
 esac
+exl3_paired_tp4=OFF
+exl3_residency=""
+case "${DS41RT_RELEASE_EXL3_PAIRED_TP4:-off}" in
+  on)
+    [[ "$role" == expert ]] || { echo "Paired EXL3 package requires expert role" >&2; exit 2; }
+    exl3_paired_tp4=ON
+    exl3_residency=80=2
+    ;;
+  off) ;;
+  *) echo "DS41RT_RELEASE_EXL3_PAIRED_TP4 must be on or off" >&2; exit 2 ;;
+esac
 [[ "$cuda_arch" =~ ^[0-9]+$ ]] || {
   echo "CUDA_ARCH must be numeric" >&2
   exit 2
@@ -109,6 +120,8 @@ cmake \
   -DDS41RT_ENABLE_CUDA=ON \
   -DDS41RT_ENABLE_V41_EXPERT_AOT=ON \
   -DDS41RT_ENABLE_V41_EXL3_AOT=ON \
+  -DDS41RT_V41_EXL3_PAIRED_TP4="$exl3_paired_tp4" \
+  -DDS41RT_V41_EXL3_RESIDENCY="$exl3_residency" \
   -DDS41RT_ENABLE_V41_LOCAL_EXPERT_AOT="$coordinator_aot" \
   -DDS41RT_ENABLE_V41_TP2_EXPERT_AOT="$coordinator_aot" \
   -DDS41RT_ENABLE_V41_FP8_AOT="$coordinator_aot" \

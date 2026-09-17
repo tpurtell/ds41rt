@@ -127,6 +127,7 @@ fn worker(
         ds41rt_loader::OFFICIAL_V41_MODEL_ID,
         &args.snapshot,
     )?;
+    let paired_profile = crate::v41_experts::paired::PairedProfile::for_serving(&catalog, args.exl3_paired_tp4)?;
     let start = Instant::now();
     let weights = BackboneLaneWeights::load(
         &lib,
@@ -230,7 +231,6 @@ fn worker(
             max_frame_bytes: 64 * 1024 * 1024,
         },
     )?;
-    let paired_profile = crate::v41_experts::paired::PairedProfile::from_env(catalog.exl3().is_some())?;
     let mut transport = NativeTp4Wave::new(&lib, roce, NativeTp4Wave::device_bytes(capacity)?)?;
     if let Some(profile) = &paired_profile { transport.install_paired(profile.clone())?; }
     let mut prefill_pass = TargetPass::new(

@@ -315,7 +315,7 @@ echo "== building Spark development and inference images natively on $seed_host 
 ssh -o BatchMode=yes "$seed_host" bash -s -- \
   "$remote_dir" "$SPARK_EXPERT_DOCKER_DEV" "$SPARK_EXPERT_DOCKER_INFERENCE" \
   "$engine_commit" "$sparkinfer_commit" "$release_version" \
-  "$source_manifest_sha256" <<'REMOTE'
+  "$source_manifest_sha256" "$EXL3_PAIRED_TP4" <<'REMOTE'
 set -euo pipefail
 remote_dir="$1"
 dev_image="$2"
@@ -324,6 +324,7 @@ engine_commit="$4"
 sparkinfer_commit="$5"
 release_version="$6"
 source_manifest_sha256="${7-}"
+exl3_paired_tp4="$8"
 release_source_label_args=()
 if [[ -n "$source_manifest_sha256" ]]; then
   release_source_label_args+=(
@@ -347,6 +348,7 @@ docker run --rm \
   --gpus all \
   --ipc=host \
   --ulimit memlock=-1:-1 \
+  -e "DS41RT_RELEASE_EXL3_PAIRED_TP4=$exl3_paired_tp4" \
   -v "$remote_dir:/source:ro" \
   -v "$remote_dir/.ds41rt-release-image:/output" \
   "$dev_image" \

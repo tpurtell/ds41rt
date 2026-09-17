@@ -5,13 +5,14 @@ use ds41rt_transport::{ExpertProtocolV2Request, v41_expert::{V41BackboneRequest,
 
 /// Cost units must agree across weights and routed-row terms. The caller supplies
 /// calibrated costs; this adapter does not assume a bandwidth or compute ratio.
-#[derive(Clone, Copy, Default, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Deserialize)]
 pub(crate) struct BoundaryCostModel {
     pub weight: [u64; 2],
     pub per_row: [u64; 2],
 }
 
-/// Explicit experimental profile; weights and per-row costs share one unit.
+/// Weights and per-row costs share one unit. The checkpoint-derived profile
+/// uses streamed trellis bytes; an explicit profile can supply calibrated costs.
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PairedProfile {
@@ -19,12 +20,50 @@ pub(crate) struct PairedProfile {
     layers: Vec<Vec<BoundaryCostModel>>,
 }
 impl PairedProfile {
-    pub(crate) fn from_env(compressed: bool) -> Result<Option<std::rc::Rc<Self>>> {
-        let Some(path) = std::env::var_os("DS41RT_EXL3_PAIRED_COST_PROFILE") else { return Ok(None); };
-        ensure!(compressed, "paired EXL3 profile requires an EXL3 checkpoint");
-        let profile: Self = serde_json::from_slice(&std::fs::read(path)?)?;
+    pub(crate) fn for_serving(catalog: &ds41rt_loader::OfficialV41Catalog, enabled: bool) -> Result<Option<std::rc::Rc<Self>>> {
+        let path = std::env::var_os("DS41RT_EXL3_PAIRED_COST_PROFILE");
+        if !enabled && path.is_none() { return Ok(None); }
+        let manifest = catalog.exl3().context("paired EXL3 profile requires an EXL3 checkpoint")?;
+        ensure!(manifest.decoder_tiers().len() == 2, "paired EXL3 kernels require two decoder tiers");
+        let checkpoint_streaming_costs = path.is_none();
+        let profile = if let Some(path) = path {
+            serde_json::from_slice(&std::fs::read(path)?)?
+        } else {
+            Self::from_streamed_bytes(|layer, expert| {
+                let mut bytes = [0; 3];
+                for (index, projection) in ["w1", "w3", "w2"].iter().enumerate() {
+                    // Catalog construction already checked physical tensor shapes,
+                    // byte lengths and quantization metadata. Do not read weights.
+                    bytes[index] = catalog.tensor(&format!("layers.{layer}.ffn.experts.{expert}.{projection}.trellis"))?.metadata.byte_length;
+                }
+                Ok(bytes)
+            })?
+        };
         profile.validate()?;
+        tracing::info!(checkpoint_streaming_costs,
+            "paired EXL3 TP4 ownership enabled; all Spark peers must use paired AOT packages");
         Ok(Some(std::rc::Rc::new(profile)))
+    }
+
+    fn from_streamed_bytes(mut projection_bytes: impl FnMut(usize, usize) -> Result<[u64; 3]>) -> Result<Self> {
+        let mut layers = Vec::with_capacity(40);
+        for layer in 0..40 {
+            let mut experts = Vec::with_capacity(384);
+            for expert in 0..384 {
+                let mut boundary_bytes = 0u64;
+                for bytes in projection_bytes(layer, expert)? {
+                    // 2304 intermediate channels comprise 18 H128 blocks.
+                    ensure!(bytes > 0 && bytes % 18 == 0, "paired EXL3 projection must contain 18 equal nonempty blocks");
+                    boundary_bytes = boundary_bytes.checked_add(bytes / 18)
+                        .context("paired EXL3 streaming cost overflow")?;
+                }
+                experts.push(BoundaryCostModel { weight: [boundary_bytes; 2], per_row: [0; 2] });
+            }
+            layers.push(experts);
+        }
+        let profile = Self { schema: "ds41rt.exl3-paired-cost.v1".into(), layers };
+        profile.validate()?;
+        Ok(profile)
     }
     fn validate(&self) -> Result<()> {
         ensure!(self.schema == "ds41rt.exl3-paired-cost.v1", "unsupported paired cost schema");
@@ -99,6 +138,45 @@ impl PairedAssignment {
 mod tests {
     use super::*;
     use ds41rt_transport::{ExpertProtocolV2RowDescriptor, ExpertProtocolV2RouteEntry, ExpertV2Dtype, ExpertV2SourceKind};
+    #[test]
+    #[ignore = "requires checkpoint metadata and an independently generated streaming profile"]
+    fn checkpoint_costs_match_independent_profile() -> Result<()> {
+        ensure!(std::env::var_os("DS41RT_EXL3_PAIRED_COST_PROFILE").is_none(), "remove experimental profile override for this check");
+        let snapshot = std::env::var_os("DS41RT_TEST_EXL3_SNAPSHOT").context("missing checkpoint path")?;
+        let expected_path = std::env::var_os("DS41RT_TEST_PAIRED_PROFILE").context("missing independent profile path")?;
+        let catalog = ds41rt_loader::read_official_v41_catalog(ds41rt_loader::OFFICIAL_V41_MODEL_ID, std::path::Path::new(&snapshot))?;
+        assert!(PairedProfile::for_serving(&catalog, false)?.is_none());
+        let actual = PairedProfile::for_serving(&catalog, true)?.context("missing derived profile")?;
+        let expected: PairedProfile = serde_json::from_slice(&std::fs::read(expected_path)?)?;
+        expected.validate()?;
+        assert_eq!(actual.layers, expected.layers);
+        Ok(())
+    }
+
+    #[test]
+    fn streamed_costs_preserve_per_expert_projection_sizes() -> Result<()> {
+        let mut visited = 0;
+        let profile = PairedProfile::from_streamed_bytes(|layer, expert| {
+            assert_eq!((layer, expert), (visited / 384, visited % 384));
+            visited += 1;
+            // Exercise different gate/up/down tiers and expert-specific sizes.
+            Ok([18 * 3, 18 * 4, 18 * (2 + layer as u64 + expert as u64)])
+        })?;
+        assert_eq!(visited, 40 * 384);
+        for layer in 0..40 {
+            for expert in 0..384 {
+                let model = profile.layer(layer)?[expert];
+                assert_eq!(model.weight, [9 + layer as u64 + expert as u64; 2]);
+                assert_eq!(model.per_row, [0; 2]);
+            }
+        }
+        for bytes in [[0, 18, 18], [19, 18, 18], [u64::MAX / 18 * 18; 3]] {
+            assert!(PairedProfile::from_streamed_bytes(|_, _| Ok(bytes)).is_err());
+        }
+        assert!(PairedProfile::from_streamed_bytes(|_, _| anyhow::bail!("missing projection")).is_err());
+        Ok(())
+    }
+
     fn request() -> ExpertProtocolV2Request {
         let mut request = ExpertProtocolV2Request::new(1, 1, 30, 5120, ExpertV2Dtype::Fp8E4m3Ue8m0K32,
             (0..3).map(|r| ExpertProtocolV2RowDescriptor { row_id:r as u64, source_kind:ExpertV2SourceKind::Decode,
