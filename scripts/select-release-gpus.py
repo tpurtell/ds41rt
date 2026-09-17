@@ -24,6 +24,8 @@ DEFAULT_POOL_TOKENS = 14 * 1_048_576
 # 3/2 compressed-source ownership split on logical GPUs 0/1.
 DUAL_FIXED_WITH_HEADROOM = (93_078_948_736, 96_299_387_520)
 DUAL_GROUP_BYTES = (270_336, 180_224)
+# Native packed TP2 rank weights per routed layer; staging remains reserved.
+DUAL_ROUTED_LAYER_BYTES = 3_609_722_880
 
 
 class SelectionError(ValueError):
@@ -53,6 +55,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--retained-turns", type=int, required=True)
     parser.add_argument("--kv-pool-size", default="")
     parser.add_argument("--memory-reservation", default="")
+    parser.add_argument("--minimum-expert-layers", type=int, choices=range(1, 41), default=20)
     parser.add_argument("--reclaim-pid", action="append", type=int, default=[])
     parser.add_argument("--nvidia-smi", default="nvidia-smi")
     return parser.parse_args()
@@ -151,13 +154,14 @@ def desired_groups(args: argparse.Namespace) -> int:
     return min(groups, DEFAULT_POOL_TOKENS // 512) + args.concurrency + 2 * args.retained_turns
 
 
-def required_mib(role: int, groups: int) -> int:
-    required = DUAL_FIXED_WITH_HEADROOM[role] + DUAL_GROUP_BYTES[role] * groups
+def required_mib(role: int, groups: int, minimum_expert_layers: int = 20) -> int:
+    required = (DUAL_FIXED_WITH_HEADROOM[role] + DUAL_GROUP_BYTES[role] * groups
+                + (minimum_expert_layers - 20) * DUAL_ROUTED_LAYER_BYTES)
     return math.ceil(required / MIB)
 
 
-def fits(gpu: Gpu, role: int, groups: int, reservation: str) -> bool:
-    required = required_mib(role, groups)
+def fits(gpu: Gpu, role: int, groups: int, reservation: str, minimum_expert_layers: int = 20) -> bool:
+    required = required_mib(role, groups, minimum_expert_layers)
     if gpu.total_mib < required or gpu.effective_free_mib < required:
         return False
     return not reservation or reservation_bytes(reservation, gpu.total_mib) >= required * MIB
@@ -184,7 +188,7 @@ def main() -> int:
             }))
             return 0
         groups = desired_groups(args)
-        requirements = [required_mib(role, groups) for role in (0, 1)]
+        requirements = [required_mib(role, groups, args.minimum_expert_layers) for role in (0, 1)]
         peers: set[tuple[int, int]] = set()
         if len(gpus) > 1:
             try:
@@ -198,12 +202,12 @@ def main() -> int:
                 if gpu.uuid != primary.uuid
                 and (primary.index, gpu.index) in peers
                 and (gpu.index, primary.index) in peers
-                and fits(gpu, 1, groups, args.memory_reservation)
+                and fits(gpu, 1, groups, args.memory_reservation, args.minimum_expert_layers)
             ),
             key=lambda gpu: (gpu.effective_free_mib, gpu.total_mib, -gpu.index),
             reverse=True,
         )
-        dual = fits(primary, 0, groups, args.memory_reservation) and bool(candidates)
+        dual = fits(primary, 0, groups, args.memory_reservation, args.minimum_expert_layers) and bool(candidates)
         if args.mode == "2" and not dual:
             details = ", ".join(
                 f"GPU {gpu.index}: {gpu.effective_free_mib}/{gpu.total_mib} MiB effective-free/total"

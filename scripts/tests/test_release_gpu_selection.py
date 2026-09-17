@@ -15,6 +15,18 @@ SECONDARY = "GPU-11111111-1111-1111-1111-111111111111"
 
 
 class ReleaseGpuSelectionTest(unittest.TestCase):
+    def test_negotiated_boundary_allows_pair_below_twenty_layer_budget(self):
+        ordinary = self.invoke(primary_free=65000, secondary_free=65000)
+        self.assertEqual(ordinary.returncode, 0, ordinary.stderr)
+        self.assertEqual(json.loads(ordinary.stdout)['count'], 1)
+        negotiated = self.invoke(primary_free=65000, secondary_free=65000,
+                                 extra=('--minimum-expert-layers', '1'))
+        self.assertEqual(negotiated.returncode, 0, negotiated.stderr)
+        self.assertEqual(json.loads(negotiated.stdout)['count'], 2)
+        too_small = self.invoke(mode='2', primary_free=15000, secondary_free=15000,
+                                extra=('--minimum-expert-layers', '1'))
+        self.assertNotEqual(too_small.returncode, 0)
+
     def invoke(
         self,
         *,

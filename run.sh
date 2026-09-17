@@ -93,8 +93,11 @@ if ((restart)) && docker container inspect "$coordinator" >/dev/null 2>&1; then
     [[ "$pid" =~ ^[0-9]+$ ]] && reclaim_args+=(--reclaim-pid "$pid")
   done < <(docker top "$coordinator" -eo pid 2>/dev/null | tail -n +2 || true)
 fi
+minimum_expert_layers=1
+[[ "$RTX_EXPERT_LAYERS" == auto || "$RTX_EXPERT_LAYERS" == 0 ]] || minimum_expert_layers="$RTX_EXPERT_LAYERS"
 gpu_selection="$(python3 "$repo_root/scripts/select-release-gpus.py" \
   --mode "$RTX_GPUS" \
+  --minimum-expert-layers "$minimum_expert_layers" \
   --primary-uuid "$RELEASE_COORDINATOR_GPU_UUID" \
   --concurrency "$CONCURRENCY" \
   --max-context-tokens "$MAX_CONTEXT_TOKENS" \
@@ -110,6 +113,7 @@ gpu_uuid_csv="$(IFS=,; echo "${release_gpu_uuids[*]}")"
 gpu_index_csv="$(IFS=,; echo "${release_gpu_indices[*]}")"
 gpu_pci_csv="$(IFS=,; echo "${release_gpu_pci[*]}")"
 spark_first_layer="$(release_spark_first_layer "$RELEASE_RTX_GPUS" "$RTX_EXPERT_LAYERS")"
+if ((RELEASE_RTX_GPUS == 2)) && [[ "$RTX_EXPERT_LAYERS" == auto ]]; then spark_first_layer=runtime-plan; fi
 if ((RELEASE_RTX_GPUS == 2)); then
   gpu_request="\"device=$gpu_uuid_csv\""
 else
@@ -189,6 +193,42 @@ cleanup() {
 }
 trap cleanup EXIT
 
+placement_directory=
+((RELEASE_RTX_GPUS != 2)) || placement_directory=/run/ds41rt-placement
+start_coordinator() {
+echo "== starting native RTX coordinator =="
+local -a args=(serve-native --snapshot "/root/.cache/huggingface/$snapshot_rel" --native-lib /opt/ds41rt/lib/libds41rt_native.so --peers "$peers" --rtx-gpus "$RELEASE_RTX_GPUS" --listen "$ADDR" --prefill-batch-tokens "$PREFILL_BATCH_TOKENS" --concurrency "$CONCURRENCY" --prefix-cache-entries "$PREFIX_CACHE_ENTRIES" --max-context-tokens "$MAX_CONTEXT_TOKENS" --max-output-tokens "$MAX_OUTPUT_TOKENS")
+args+=(--http-queue-depth "${HTTP_QUEUE_DEPTH:-$CONCURRENCY}" --http-queue-wait-ms "$HTTP_QUEUE_WAIT_MS")
+[[ "$RTX_EXPERT_LAYERS" == auto ]] || args+=(--rtx-expert-layers "$RTX_EXPERT_LAYERS")
+[[ "$HOST_CACHE_BYTES" == 0 ]] || args+=(--host-cache-bytes "$HOST_CACHE_BYTES")
+[[ -z "$KV_POOL_SIZE" ]] || args+=(--kv-pool-size "$KV_POOL_SIZE")
+[[ -z "$MEMORY_RESERVATION" ]] || args+=(--memory-reservation "$MEMORY_RESERVATION")
+[[ "$DSPARK" != on ]] || args+=(--dspark)
+[[ "$spark_exl3_identity" != paired:* ]] || args+=(--exl3-paired-tp4)
+[[ -z "$placement_directory" ]] || args+=(--placement-directory "$placement_directory")
+docker run -d --name "$coordinator" --restart no --gpus "$gpu_request" --network host --ipc host --ulimit memlock=-1:-1 --device=/dev/infiniband \
+  -e "CUDA_VISIBLE_DEVICES=$gpu_uuid_csv" \
+  -e "DS41RT_RELEASE_CONFIG_SHA256=$fingerprint" -e "RUST_LOG=${RUST_LOG:-info}" \
+  -v "$hf_home:/root/.cache/huggingface:ro" "$COORDINATOR_DOCKER_INFERENCE" ds41rt "${args[@]}" >/dev/null
+}
+deadline=$((SECONDS + ${DS41RT_RELEASE_READY_TIMEOUT_SECONDS:-900}))
+if ((RELEASE_RTX_GPUS == 2)); then
+  start_coordinator
+  until placement_plan="$(docker exec "$coordinator" cat "$placement_directory/plan.json" 2>/dev/null)"; do
+    [[ "$(docker inspect -f '{{.State.Status}}' "$coordinator" 2>/dev/null)" == running ]] || { docker logs --tail 100 "$coordinator" >&2 || true; release_die "coordinator exited before placement publication"; }
+    ((SECONDS < deadline)) || release_die "timed out waiting for coordinator placement"
+    sleep 1
+  done
+  spark_first_layer="$(jq -er '
+    select(.version == 1 and .rtx_gpus == 2)
+    | select((.nonce | type) == "string" and (.nonce | length) > 0)
+    | select((.rtx_expert_layers | type) == "number")
+    | select(.rtx_expert_layers == (.rtx_expert_layers | floor) and .rtx_expert_layers >= 1 and .rtx_expert_layers <= 40)
+    | select(.spark_first_layer == ([.rtx_expert_layers, 39] | min))
+    | .spark_first_layer' <<<"$placement_plan")" || release_die "invalid coordinator placement plan"
+  echo "  runtime placement: RTX layers $(jq -r '.rtx_expert_layers' <<<"$placement_plan"); Spark first layer $spark_first_layer"
+fi
+
 echo "== starting native Spark experts =="
 pids=()
 for i in 0 1 2 3; do
@@ -203,7 +243,6 @@ REMOTE
 done
 for pid in "${pids[@]}"; do wait "$pid"; done
 
-deadline=$((SECONDS + ${DS41RT_RELEASE_READY_TIMEOUT_SECONDS:-900}))
 for i in 0 1 2 3; do
   host="${hosts[$i]}"; remote="${spark_prefix}-${host}-${EXPERT_PORT}"
   until ssh -o BatchMode=yes "$host" "test \"\$(docker inspect -f '{{.State.Status}}' '$remote' 2>/dev/null)\" = running && timeout 1 bash -c '</dev/tcp/127.0.0.1/$EXPERT_PORT'" 2>/dev/null; do
@@ -212,19 +251,11 @@ for i in 0 1 2 3; do
   done
 done
 
-echo "== starting native RTX coordinator =="
-args=(serve-native --snapshot "/root/.cache/huggingface/$snapshot_rel" --native-lib /opt/ds41rt/lib/libds41rt_native.so --peers "$peers" --rtx-gpus "$RELEASE_RTX_GPUS" --listen "$ADDR" --prefill-batch-tokens "$PREFILL_BATCH_TOKENS" --concurrency "$CONCURRENCY" --prefix-cache-entries "$PREFIX_CACHE_ENTRIES" --max-context-tokens "$MAX_CONTEXT_TOKENS" --max-output-tokens "$MAX_OUTPUT_TOKENS")
-args+=(--http-queue-depth "${HTTP_QUEUE_DEPTH:-$CONCURRENCY}" --http-queue-wait-ms "$HTTP_QUEUE_WAIT_MS")
-[[ "$RTX_EXPERT_LAYERS" == auto ]] || args+=(--rtx-expert-layers "$RTX_EXPERT_LAYERS")
-[[ "$HOST_CACHE_BYTES" == 0 ]] || args+=(--host-cache-bytes "$HOST_CACHE_BYTES")
-[[ -z "$KV_POOL_SIZE" ]] || args+=(--kv-pool-size "$KV_POOL_SIZE")
-[[ -z "$MEMORY_RESERVATION" ]] || args+=(--memory-reservation "$MEMORY_RESERVATION")
-[[ "$DSPARK" != on ]] || args+=(--dspark)
-[[ "$spark_exl3_identity" != paired:* ]] || args+=(--exl3-paired-tp4)
-docker run -d --name "$coordinator" --restart no --gpus "$gpu_request" --network host --ipc host --ulimit memlock=-1:-1 --device=/dev/infiniband \
-  -e "CUDA_VISIBLE_DEVICES=$gpu_uuid_csv" \
-  -e "DS41RT_RELEASE_CONFIG_SHA256=$fingerprint" -e "RUST_LOG=${RUST_LOG:-info}" \
-  -v "$hf_home:/root/.cache/huggingface:ro" "$COORDINATOR_DOCKER_INFERENCE" ds41rt "${args[@]}" >/dev/null
+if ((RELEASE_RTX_GPUS == 2)); then
+  docker exec "$coordinator" sh -c 'cp "$1/plan.json" "$1/.ready-pending" && mv "$1/.ready-pending" "$1/ready.json"' sh "$placement_directory"
+else
+  start_coordinator
+fi
 api_url="http://127.0.0.1:${ADDR##*:}"
 until curl -fsS "$api_url/health" >/dev/null 2>&1 &&
   release_api_advertises_native_model "$api_url" "$RELEASE_NATIVE_API_MODEL_ID"; do

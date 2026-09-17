@@ -1354,3 +1354,22 @@ pass; the daemon test binary builds. Evidence: `placement-handoff-tests.log` and
 Launcher startup reordering, preflight estimates and live automatic-boundary
 validation remain. This foundation alone does not make run.sh automatically
 start workers at a below-20 boundary.
+
+The release launcher now starts the dual coordinator before Sparks, reads and
+validates the atomically published plan, starts every worker at the planned
+boundary, and acknowledges only after all four worker ports are ready. The
+handoff directory lives in the coordinator container, requiring no host mount
+or temporary-file cleanup. A committed acknowledgement pins that container's
+boundary across stop/start; a fresh run.sh deployment recalculates it. Mismatched
+explicit restart counts are rejected. Single-RTX startup keeps its prior order.
+
+GPU preflight accepts a configurable minimum expert count and subtracts the
+corresponding native routed-weight residency from its conservative estimate.
+The launcher uses one layer as the automatic preflight minimum, while the live
+coordinator planner remains authoritative. Tests cover a constrained pair that
+fails the former 20-layer estimate, insufficient memory even for one layer,
+coordinator-before-worker ordering, 1/17/20/40 boundaries, readiness-before-ack,
+invalid-plan rejection and unchanged single-RTX startup. Seven GPU selector,
+three process-stub startup, twelve existing launcher and two Rust handoff tests
+pass. Evidence: `placement-{preflight,launcher,recipe,resume}-tests.log` under
+`~/.cache/ds41rt-v6-heads32/`. Live below-20 startup and restart validation remain.

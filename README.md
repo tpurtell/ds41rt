@@ -338,8 +338,10 @@ Automatic RTX selection checks physical UUIDs, bidirectional peer reads, the
 requested cache or memory ceiling, and available memory. With `--restart`, it
 adds back only memory owned by the coordinator container being replaced; other
 GPU processes still count against feasibility. The chosen UUID order is passed
-through unchanged as logical RTX0/RTX1. Dual mode starts Spark routed experts at
-layer 20, while single mode keeps all 40 layers on every Spark.
+through unchanged as logical RTX0/RTX1. Dual mode publishes its live memory-derived RTX layer boundary before starting
+Spark workers, so only the remaining routed layers load there. Single mode keeps
+all 40 layers on every Spark. Restarting the same coordinator container preserves
+its acknowledged boundary; `./run.sh --restart` replans the deployment.
 
 With no explicit pool setting, single-RTX mode uses a **16.681 GB global pool
 for 18,710,016 tokens plus 32,768 private-tail tokens**. Dual-RTX mode targets a

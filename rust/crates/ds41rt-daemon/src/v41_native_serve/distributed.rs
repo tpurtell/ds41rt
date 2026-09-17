@@ -10,9 +10,17 @@ use crate::v41_target_head::distributed_target::DistributedTargetHead;
 use crate::v41_target_pass::{DistributedTargetPass, TargetTapWave};
 use std::rc::Rc;
 
-pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Receiver<NativeRequest>,
+pub(super) fn worker(mut args: crate::cli::NativeServeArgs, mut receive: mpsc::Receiver<NativeRequest>,
     ready: &mut Option<oneshot::Sender<std::result::Result<(), String>>>,
     stats: std::sync::Arc<std::sync::Mutex<serde_json::Value>>) -> Result<()> {
+    if let Some(directory)=args.placement_directory.as_deref() {
+        if let Some(layers)=super::placement::StartupPlacement::resumed_layers(directory)? {
+            if let memory::LocalLayers::Count(requested)=args.rtx_expert_layers {
+                ensure!(requested==layers,"restart layer request differs from acknowledged workers");
+            }
+            args.rtx_expert_layers=memory::LocalLayers::Count(layers);
+        }
+    }
     let minimum_expert_layers = match args.rtx_expert_layers {
         memory::LocalLayers::Auto => if args.placement_directory.is_some() {1} else {20},
         memory::LocalLayers::Count(count) => {

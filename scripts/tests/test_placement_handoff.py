@@ -1,0 +1,102 @@
+"""Exercise run.sh's actual startup sequence with process-boundary stubs."""
+import json
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+import unittest
+
+ROOT = Path(__file__).resolve().parents[2]
+
+STUB = r'''#!/usr/bin/env python3
+import json,os,sys
+from pathlib import Path
+args=sys.argv[1:]; tool=Path(sys.argv[0]).name
+with open(os.environ['EVENTS'],'a') as f:f.write(json.dumps([tool,args])+'\n')
+if tool=='docker':
+ if args[0]=='inspect':print('running')
+ elif args[0]=='exec' and 'cat' in args:
+  print(Path(os.environ['PLAN']).read_text())
+ elif args[0]=='run':print('container-id')
+else:
+ sys.stdin.read() if '-s' in args else None
+'''
+
+class PlacementHandoffTest(unittest.TestCase):
+    def run_startup(self, gpus, plan):
+        source=(ROOT/'run.sh').read_text()
+        block=source[source.index('placement_directory='):source.index('api_url=')]
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory); (root/'plan').write_text(json.dumps(plan))
+            for name in ['docker','ssh']:
+                path=root/name;path.write_text(STUB);path.chmod(0o755)
+            env=dict(os.environ,PATH=str(root)+os.pathsep+os.environ['PATH'],EVENTS=str(root/'events'),PLAN=str(root/'plan'))
+            setup=r'''
+set -euo pipefail
+release_die() { echo "$*" >&2; exit 1; }
+RELEASE_RTX_GPUS="$1"
+coordinator=coordinator
+snapshot_rel=model
+peers=peer-list
+ADDR=127.0.0.1:8000
+PREFILL_BATCH_TOKENS=2048
+CONCURRENCY=16
+PREFIX_CACHE_ENTRIES=20
+MAX_CONTEXT_TOKENS=1048576
+MAX_OUTPUT_TOKENS=393216
+HTTP_QUEUE_WAIT_MS=25000
+RTX_EXPERT_LAYERS=auto
+HOST_CACHE_BYTES=auto
+KV_POOL_SIZE=
+MEMORY_RESERVATION=
+DSPARK=on
+spark_exl3_identity=
+gpu_request=device=uuid0,uuid1
+gpu_uuid_csv=uuid0,uuid1
+fingerprint=test
+hf_home=/models
+COORDINATOR_DOCKER_INFERENCE=coordinator-image
+SPARK_EXPERT_DOCKER_INFERENCE=spark-image
+SPARK_DEVICE_BUDGET_BYTES=1000000
+spark_prefix=worker
+hosts=(a b c d)
+EXPERT_PORT=19441
+expert_capacity=4096
+spark_first_layer=0
+'''
+            result=subprocess.run(['bash','-c',setup+block,'test',str(gpus)],env=env,cwd=ROOT,capture_output=True,text=True,timeout=10)
+            events=[json.loads(line) for line in (root/'events').read_text().splitlines()]
+            return result,events
+
+    def test_dual_starts_coordinator_then_correct_workers_then_acknowledges(self):
+        for layers in [1,17,20,40]:
+            with self.subTest(layers=layers):
+                result,events=self.run_startup(2,dict(version=1,rtx_gpus=2,nonce='fresh',rtx_expert_layers=layers,spark_first_layer=min(layers,39)))
+                self.assertEqual(result.returncode,0,result.stderr)
+                self.assertEqual(events[0][0],'docker')
+                self.assertEqual(events[0][1][0],'run')
+                self.assertIn('--placement-directory',events[0][1])
+                starts=[args for tool,args in events if tool=='ssh' and '-s' in args]
+                self.assertEqual(len(starts),4)
+                self.assertTrue(all(args[-1]==str(min(layers,39)) for args in starts))
+                ack=[i for i,(tool,args) in enumerate(events) if tool=='docker' and args[:3]==['exec','coordinator','sh']]
+                self.assertEqual(len(ack),1)
+                ready=[i for i,(tool,args) in enumerate(events) if tool=='ssh' and any('timeout 1' in a for a in args)]
+                self.assertEqual(len(ready),4)
+                self.assertGreater(ack[0],max(ready))
+
+    def test_invalid_boundary_never_starts_workers(self):
+        result,events=self.run_startup(2,dict(version=1,rtx_gpus=2,nonce='fresh',rtx_expert_layers=17,spark_first_layer=20))
+        self.assertNotEqual(result.returncode,0)
+        self.assertFalse(any(tool=='ssh' for tool,_ in events))
+
+    def test_single_keeps_worker_first_startup_without_handoff(self):
+        result,events=self.run_startup(1,{})
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual(events[0][0],'ssh')
+        runs=[args for tool,args in events if tool=='docker' and args[0]=='run']
+        self.assertEqual(len(runs),1)
+        self.assertNotIn('--placement-directory',runs[0])
+        self.assertFalse(any(tool=='docker' and args[0]=='exec' for tool,args in events))
+
+if __name__=='__main__':unittest.main()
