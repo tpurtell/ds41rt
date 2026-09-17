@@ -4,7 +4,7 @@ use anyhow::{ensure, Result};
 use ds41rt_ffi::{Ds41rtDeviceBuffer,V41PeerCopy};
 use std::ffi::c_void;
 
-#[derive(Clone,Copy)]
+#[derive(Clone,Copy,PartialEq,Eq)]
 pub(crate) enum ProposalFormat { WindowFp8, CompressedFp4 }
 impl ProposalFormat {
     fn widths(self)->(usize,usize) {
@@ -22,6 +22,7 @@ pub(crate) struct ProposalReplica<'a> {
     capacity:usize,
 }
 impl<'a> ProposalReplica<'a> {
+    pub fn format(&self)->ProposalFormat { self.format }
     pub fn device_bytes(capacity:usize,format:ProposalFormat)->Result<usize> {
         ensure!((1..=4096).contains(&capacity),"invalid proposal replica capacity");
         let (values,scales)=format.widths();Ok(capacity*(values+scales))

@@ -593,3 +593,22 @@ commit/abort checks also pass. Evidence: `peer-committed-build.log` and
 `peer-committed-hardware.log` in the compact attention bundle. This validates the
 adapter contract, not concurrent full-model attention results; combined dual-wave
 and private-proposal integration remains outstanding.
+
+### Lane-owned peer attention inputs
+
+Added a reusable peer-input owner with window/source proposal buffers and selected
+index storage. It constructs peer cache views from the original bank/proposals,
+preserving request identities and token metadata. The peer request list uses fixed
+stack storage. Source copies are reused across consumers only when all original
+request bindings match; a new producing execution invalidates the copy key.
+Window rows retain physical offsets, compressed rows retain their stride, and
+committed-only source views require no private payload copy. All copy work uses
+the caller's peer stream and its existing completion/lifetime contract.
+
+A checkpoint-backed fixture passes layers 2 and 20 on opposite GPUs, both
+compression ratios, byte-for-byte proposal payload comparison, preserved bindings
+and metadata, repeated consumption and changed producer execution. Evidence:
+`peer-inputs-check.log`, `peer-inputs-build.log`, and `peer-inputs-hardware.log` in
+the compact attention bundle. Temporary fixtures were removed and serving remains
+healthy. Combining these views with live selection and the dual wave is the next
+step; this fixture does not establish full-model correctness or throughput.

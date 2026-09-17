@@ -18,6 +18,7 @@ pub(crate) use commit_access::CacheWave;
 mod publication;
 mod prefix;
 mod placement;
+pub(crate) mod peer_inputs;
 pub(crate) use placement::CachePlacement;
 pub(crate) use prefix::BackbonePrefix;
 use ced::CachePhase;

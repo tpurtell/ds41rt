@@ -67,6 +67,9 @@ impl<'a> CompressorState<'a> {
     pub fn replica(&self) -> Option<std::rc::Rc<SourceReplica<'a>>> {
         self.index.replica.as_ref().map(|r|r.storage.clone())
     }
+    pub fn replica_ref(&self)->Option<&SourceReplica<'a>> {
+        self.index.replica.as_ref().map(|r|r.storage.as_ref())
+    }
     pub fn enable_replica(&mut self,peer:crate::v41_memory::device::Device<'a>)
         ->Result<std::rc::Rc<SourceReplica<'a>>> {
         ensure!(self.slots.iter().all(|slot|slot.request.is_none()),"source replica requires no live requests");
@@ -409,6 +412,17 @@ pub(crate) struct IndexProposal<'a> {
     _wave: std::marker::PhantomData<&'a ()>,
 }
 impl IndexProposal<'_> {
+    /// # Safety
+    /// Producer writes are complete or ordered before the replica's stream.
+    /// Retain both plane owners until all peer consumers drain.
+    pub unsafe fn copy_peer(&self,replica:&crate::v41_memory::proposal_replica::ProposalReplica<'_>,
+        stream:*mut c_void)->Result<()> {
+        ensure!(replica.format()==crate::v41_memory::proposal_replica::ProposalFormat::CompressedFp4,
+            "compressed proposal replica format differs");
+        if self.committed { return Ok(()); }
+        unsafe { replica.copy_rows(self.kv_values,self.kv_scales,self.offset as usize,
+            self.count as usize,self.step as usize,stream) }
+    }
     /// Retain authoritative index keys and identity while substituting the peer's
     /// FP4 attention payload. Index selection still runs on the original device.
     /// # Safety

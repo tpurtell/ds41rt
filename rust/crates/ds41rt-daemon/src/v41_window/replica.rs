@@ -9,6 +9,9 @@ pub(super) struct WindowStateReplica<'a> {
     source: Device<'a>,
 }
 impl<'a> WindowState<'a> {
+    pub fn replica_ref(&self)->Option<&WindowReplica<'a>> {
+        self.replica.as_ref().map(|r|r.storage.as_ref())
+    }
     pub fn replica(&self) -> Option<std::rc::Rc<WindowReplica<'a>>> {
         self.replica.as_ref().map(|r|r.storage.clone())
     }

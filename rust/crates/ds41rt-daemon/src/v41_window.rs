@@ -372,6 +372,15 @@ pub(crate) struct WindowProposal<'a> {
     _wave: PhantomData<&'a ()>,
 }
 impl WindowProposal<'_> {
+    /// # Safety
+    /// Producer writes are complete or ordered before the replica's stream.
+    /// Retain both plane owners until all peer consumers drain.
+    pub unsafe fn copy_peer(&self,replica:&crate::v41_memory::proposal_replica::ProposalReplica<'_>,
+        stream:*mut c_void)->Result<()> {
+        ensure!(replica.format()==crate::v41_memory::proposal_replica::ProposalFormat::WindowFp8,
+            "window proposal replica format differs");
+        unsafe { replica.copy_rows(self.values,self.scales,self.offset,self.tokens,1,stream) }
+    }
     /// Committed end, proposal offset/count and query position. Ring consumers
     /// use positions max(cache.begin,query+1-128)..=query; rows >=end use proposals.
     pub fn metadata(&self, position: u64) -> Result<[u64; 4]> {
