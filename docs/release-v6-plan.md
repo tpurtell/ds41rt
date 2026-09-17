@@ -356,3 +356,22 @@ checks also pass. Evidence: `window-replica-hardware.log`,
 bundle. Temporary container fixtures were removed. This remains an explicit
 storage component: private proposal replication, attention-wave integration,
 startup budgeting and full serving qualification are still outstanding.
+
+### Lane-owned private proposal replicas
+
+Added preallocated `ProposalReplica` storage for FP8 windows and FP4 compressed
+proposals. It preserves the producer's physical offsets and stride-one/two layout,
+copying the bounded referenced span through SM peer reads. Stride gaps are copied
+without changing metadata; attention still masks them through its original logical
+indexing. Each producer wave should retain its own replica across consuming layers,
+so this component neither duplicates committed history nor requires per-layer
+full-cache copies. Empty spans enqueue no payload copy. Normal copying allocates
+no buffers and uses the existing lane publication contract.
+
+CPU checks cover capacity and overflow rejection. A bidirectional GPU test passes
+for both formats, stride-two spans, narrow overwritten spans, empty spans, untouched
+poisoned rows and stable destination addresses. Evidence: `proposal-replica-build-final.log`
+and `proposal-replica-hardware.log` in the compact attention bundle. Temporary
+container fixtures were removed. Binding these storage components to proposal
+lifetimes, compact attention waves and graph replay is the next integration step;
+there is still no TP2 serving performance claim.
