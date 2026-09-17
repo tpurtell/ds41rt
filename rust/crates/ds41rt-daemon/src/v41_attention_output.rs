@@ -17,7 +17,7 @@ pub(crate) struct AttentionOutputWeights<'a> {
     names: [String; 4],
     tensors: NativeRtxTensors<'a>,
     grouped_scales: DeviceAllocation<'a>,
-    scales: DeviceAllocation<'a>,
+    scales: Option<DeviceAllocation<'a>>,
 }
 impl<'a> AttentionOutputWeights<'a> {
     fn names(layer: usize) -> Result<[String; 4]> {
@@ -35,10 +35,14 @@ impl<'a> AttentionOutputWeights<'a> {
         catalog: &OfficialV41Catalog,
         layer: usize,
     ) -> Result<usize> {
-        let names = Self::names(layer)?;
-        Ok(NativeRtxTensors::plan(catalog, &names)?
-            + library.v41_fp8_matrix_info(1, 32768, 8192)?.packed_weight_scale_bytes as usize
-            + library.v41_fp8_matrix_info(1, 8192, 5120)?.packed_weight_scale_bytes as usize)
+        Self::device_bytes_with_split(library,catalog,layer,false)
+    }
+    pub fn device_bytes_with_split(library:&NativeLibrary,catalog:&OfficialV41Catalog,
+        layer:usize,split_output_b:bool)->Result<usize> {
+        let names=Self::names(layer)?;
+        Ok(NativeRtxTensors::plan(catalog,&names[..if split_output_b {2} else {4}])?
+            + library.v41_fp8_matrix_info(1,32768,8192)?.packed_weight_scale_bytes as usize
+            + if split_output_b {0} else {library.v41_fp8_matrix_info(1,8192,5120)?.packed_weight_scale_bytes as usize})
     }
     pub fn load(
         library: &'a NativeLibrary,
@@ -47,8 +51,12 @@ impl<'a> AttentionOutputWeights<'a> {
         budget: usize,
         staging: usize,
     ) -> Result<Self> {
+        Self::load_with_split(library,catalog,layer,budget,staging,false)
+    }
+    pub fn load_with_split(library:&'a NativeLibrary,catalog:&OfficialV41Catalog,layer:usize,
+        budget:usize,staging:usize,split_output_b:bool)->Result<Self> {
         ensure!(
-            Self::device_bytes(library, catalog, layer)? <= budget,
+            Self::device_bytes_with_split(library, catalog, layer,split_output_b)? <= budget,
             "attention output weights exceed budget"
         );
         let names = Self::names(layer)?;
@@ -56,18 +64,22 @@ impl<'a> AttentionOutputWeights<'a> {
         let grouped_scales = DeviceAllocation::new(library, grouped_kernel.info().packed_weight_scale_bytes as usize)?;
         let stream = LoadStream { library, raw: library.cuda_stream_create()? };
         let kernel = library.v41_fp8_matrix_kernel(1, 8192, 5120)?;
-        let scales =
-            DeviceAllocation::new(library, kernel.info().packed_weight_scale_bytes as usize)?;
+        let scales=if split_output_b {None} else {
+            Some(DeviceAllocation::new(library,kernel.info().packed_weight_scale_bytes as usize)?)
+        };
         let tensors = NativeRtxTensors::load(
             library,
             catalog,
-            &names,
-            budget - grouped_scales.buffer.bytes - scales.buffer.bytes,
+            &names[..if split_output_b {2} else {4}],
+            budget - grouped_scales.buffer.bytes - scales.as_ref().map_or(0,|s|s.buffer.bytes),
             staging,
         )?;
         let launched = (|| unsafe {
             grouped_kernel.pack_scales(tensors.get(&names[1])?, grouped_scales.buffer, stream.raw)?;
-            kernel.pack_scales(tensors.get(&names[3])?, scales.buffer, stream.raw)
+            if let Some(scales)=&scales {
+                kernel.pack_scales(tensors.get(&names[3])?,scales.buffer,stream.raw)?;
+            }
+            Ok(())
         })();
         launched.and(unsafe { library.cuda_stream_synchronize(stream.raw) })?;
         Ok(Self {
@@ -81,21 +93,21 @@ impl<'a> AttentionOutputWeights<'a> {
     }
     pub fn wave(&self, capacity: u32, budget: usize) -> Result<AttentionOutputWave<'_, 'a>> {
         ensure!(
-            AttentionOutputWave::device_bytes(self.library, capacity)? <= budget,
+            AttentionOutputWave::device_bytes_with_split(self.library, capacity,self.scales.is_none())? <= budget,
             "attention output wave exceeds budget"
         );
         let stream = LoadStream {
             library: self.library,
             raw: self.library.cuda_stream_create()?,
         };
-        let kernel = self.library.v41_fp8_matrix_plan(capacity, 8192, 5120)?;
+        let kernel=self.scales.as_ref().map(|_|self.library.v41_fp8_matrix_plan(capacity,8192,5120)).transpose()?;
         let grouped = self.library.v41_fp8_matrix_plan(capacity, 32768, 8192)?;
         let grouped_scratch = DeviceAllocation::new(self.library, grouped.info().scratch_bytes as usize)?;
         let value = AttentionOutputWave {
             stream,
             grouped,
             grouped_scratch,
-            scratch: DeviceAllocation::new(self.library, kernel.info().scratch_bytes as usize)?,
+            scratch: kernel.as_ref().map(|k|DeviceAllocation::new(self.library,k.info().scratch_bytes as usize)).transpose()?,
             kernel,
             alpha: DeviceAllocation::new(self.library, 4)?,
             norm: self.library.v41_attention_ops()?,
@@ -116,11 +128,10 @@ impl<'a> AttentionOutputWeights<'a> {
         );
         let launched = (|| unsafe {
             value.grouped.initialize_scratch(value.grouped_scratch.buffer, value.alpha.buffer, value.stream.raw)?;
-            value.kernel.initialize_scratch(
-                value.scratch.buffer,
-                value.alpha.buffer,
-                value.stream.raw,
-            )
+            if let (Some(kernel),Some(scratch))=(&value.kernel,&value.scratch) {
+                kernel.initialize_scratch(scratch.buffer,value.alpha.buffer,value.stream.raw)?;
+            }
+            Ok(())
         })();
         launched.and(value.synchronize())?;
         Ok(value)
@@ -153,8 +164,8 @@ pub(crate) struct AttentionOutputWave<'w, 'a> {
     stream: LoadStream<'a>,
     grouped: V41Fp8Plan<'a>,
     grouped_scratch: DeviceAllocation<'a>,
-    kernel: V41Fp8Plan<'a>,
-    scratch: DeviceAllocation<'a>,
+    kernel: Option<V41Fp8Plan<'a>>,
+    scratch: Option<DeviceAllocation<'a>>,
     alpha: DeviceAllocation<'a>,
     norm: V41AttentionOps<'a>,
     buffers: Vec<DeviceAllocation<'a>>,
@@ -173,6 +184,7 @@ impl<'w, 'a> AttentionOutputWave<'w, 'a> {
         self.origin = None;
         ensure!(
             std::ptr::eq(self.stream.library, weights.library)
+                && self.kernel.is_some()==weights.scales.is_some()
                 && weights.grouped_scales.buffer.device_id == self.b(0).device_id,
             "attention rebound weight library or device differs"
         );
@@ -183,12 +195,13 @@ impl<'w, 'a> AttentionOutputWave<'w, 'a> {
 }
 impl AttentionOutputWave<'_, '_> {
     pub fn device_bytes(library: &NativeLibrary, capacity: u32) -> Result<usize> {
+        Self::device_bytes_with_split(library,capacity,false)
+    }
+    pub fn device_bytes_with_split(library:&NativeLibrary,capacity:u32,split_output_b:bool)->Result<usize> {
         Ok(library.v41_fp8_matrix_plan_info(capacity, 32768, 8192)?.scratch_bytes as usize
             + 4
             + capacity as usize * ROW_BYTES.iter().sum::<usize>()
-            + library
-                .v41_fp8_matrix_plan_info(capacity, 8192, 5120)?
-                .scratch_bytes as usize)
+            + if split_output_b {0} else {library.v41_fp8_matrix_plan_info(capacity,8192,5120)?.scratch_bytes as usize})
     }
     fn b(&self, i: usize) -> Ds41rtDeviceBuffer {
         self.buffers[i].buffer
@@ -214,7 +227,7 @@ impl AttentionOutputWave<'_, '_> {
     unsafe fn enqueue(&mut self, rows: u32) -> Result<()> {
         unsafe { self.enqueue_on(rows, self.stream.raw) }
     }
-    unsafe fn enqueue_on(&mut self, rows: u32, stream: *mut std::ffi::c_void) -> Result<()> {
+    unsafe fn enqueue_grouped_on(&mut self, rows: u32, stream: *mut std::ffi::c_void) -> Result<()> {
         unsafe {
             self.norm.backbone_frequencies(
                 self.b(3),
@@ -234,11 +247,18 @@ impl AttentionOutputWave<'_, '_> {
                 rows,
                 stream,
             )?;
-            self.kernel.launch(
+        }
+        Ok(())
+    }
+    unsafe fn enqueue_on(&mut self,rows:u32,stream:*mut std::ffi::c_void)->Result<()> {
+        ensure!(self.kernel.is_some(),"split output-B requires TP2 execution");
+        unsafe {
+            self.enqueue_grouped_on(rows,stream)?;
+            self.kernel.as_ref().context("full output-B kernel absent")?.launch(
                 self.b(1),
                 self.weights.tensors.get(&self.weights.names[2])?,
-                self.weights.scales.buffer,
-                self.scratch.buffer,
+                self.weights.scales.as_ref().context("full output-B scales absent")?.buffer,
+                self.scratch.as_ref().context("full output-B scratch absent")?.buffer,
                 self.alpha.buffer,
                 self.b(2),
                 rows,
@@ -470,6 +490,38 @@ impl AttentionOutputWave<'_, '_> {
         }
         let mut value = self.b(2); value.bytes = attention.rows * 10240; Ok(value)
     }
+    /// # Safety
+    /// Same capture/producer contract as enqueue_chain_graph. This queues only
+    /// inverse rotary and grouped output-A; output-B must follow before FFN.
+    pub unsafe fn enqueue_grouped_chain_graph(&mut self,
+        attention:&crate::v41_sparse_attention::QueuedSparseAttention,
+        stream:*mut std::ffi::c_void)->Result<Ds41rtDeviceBuffer> {
+        ensure!(self.kernel.is_none() && attention.layer==self.weights.layer && attention.rows>0
+            && attention.rows<=self.capacity as usize && attention.values.device_id==self.b(0).device_id,
+            "split output prefix differs");
+        unsafe {
+            self.stream.library.copy_d2d_async(self.b(0),attention.values,attention.values.bytes,stream)?;
+            self.enqueue_grouped_on(attention.rows as u32,stream)?;
+        }
+        Ok(Ds41rtDeviceBuffer {bytes:attention.rows*ROW_BYTES[1],..self.b(1)})
+    }
+    /// # Safety
+    /// Grouped output-A has been queued on producer (or is complete when absent).
+    /// Retain prefix producer, this wave and consumer storage until completion
+    /// or drained cancellation. Consumer must enqueue only on the supplied stream.
+    pub async unsafe fn finish_tp2_then<T>(&mut self,rows:u32,
+        projection:&mut crate::v41_projection_tp2::Wave<'_, '_>,producer:Option<*mut std::ffi::c_void>,
+        consume:impl FnOnce(Ds41rtDeviceBuffer,*mut std::ffi::c_void)->Result<T>)->Result<T> {
+        self.validate(rows)?;
+        ensure!(self.kernel.is_none() && projection.kind()==crate::v41_projection_tp2::Kind::OutputB
+            && projection.output_device().id==self.b(0).device_id
+            && std::ptr::eq(projection.output_device().library,self.stream.library),"output projection owner differs");
+        unsafe { projection.execute_after(self.weights.layer,rows,
+            Ds41rtDeviceBuffer {bytes:rows as usize*ROW_BYTES[1],..self.b(1)},producer,|output,stream| {
+                self.stream.library.copy_d2d_async(self.b(2),output,output.bytes,stream)?;
+                consume(Ds41rtDeviceBuffer {bytes:output.bytes,..self.b(2)},stream)
+            }).await }
+    }
     pub fn chain_graph_identity(&self) -> [usize; 2] {
         [self.b(0).ptr as usize, self.weights as *const _ as usize]
     }
@@ -512,5 +564,96 @@ impl Drop for AttentionOutputWave<'_, '_> {
         {
             tracing::error!(%error,"draining attention output graph");
         }
+    }
+}
+
+#[cfg(test)]
+mod tp2_tests {
+    use super::*;
+    use crate::v41_memory::device::{Allocation,Device};
+    use crate::v41_projection_tp2::{Kind,Weights,Wave};
+    #[test]
+    #[ignore = "requires checkpoint, two GPUs and projection shard AOT"]
+    fn checkpoint_tp2_output_preserves_grouped_rotary() -> Result<()> {
+        let library=unsafe { NativeLibrary::load(std::env::var("DS41RT_NATIVE_LIB")?)? };
+        let catalog=ds41rt_loader::read_official_v41_catalog(ds41rt_loader::OFFICIAL_V41_MODEL_ID,
+            std::path::Path::new(&std::env::var("DS41RT_SNAPSHOT")?))?;
+        let devices=[Device {library:&library,id:0},Device {library:&library,id:1}];
+        let runtime=tokio::runtime::Builder::new_current_thread().build()?;
+        for (owner,layer) in [(0,2),(1,20)] {
+            let device=devices[owner];let capacity=16;
+            let weights=device.own(||AttentionOutputWeights::load(&library,&catalog,layer,
+                AttentionOutputWeights::device_bytes(&library,&catalog,layer)?,1<<20))?;
+            let split=device.own(||AttentionOutputWeights::load_with_split(&library,&catalog,layer,
+                AttentionOutputWeights::device_bytes_with_split(&library,&catalog,layer,true)?,1<<20,true))?;
+            assert!(split.scales.is_none() && split.tensors.get(&split.names[2]).is_err());
+            let mut reference=device.own(||weights.wave(capacity,usize::MAX))?;
+            let mut output=device.own(||split.wave(capacity,usize::MAX))?;
+            assert!(output.scratch.is_none() && output.rebind(&weights).is_err());
+            let halves=[vec![Weights::load(devices[0],&catalog,layer,Kind::OutputB,0,
+                Weights::load_peak_device_bytes(Kind::OutputB))?],
+                vec![Weights::load(devices[1],&catalog,layer,Kind::OutputB,1,
+                Weights::load_peak_device_bytes(Kind::OutputB))?]];
+            let mut projection=Wave::new([&halves[0],&halves[1]],capacity,owner,
+                Wave::device_bytes(&library,Kind::OutputB,capacity,owner)?)?;
+            let input=Allocation::new(device,capacity as usize*ROW_BYTES[0])?;
+            let read=|buffer:Ds41rtDeviceBuffer|->Result<Vec<u8>> {
+                let mut bytes=vec![0;buffer.bytes];device.run(||library.copy_d2h(&mut bytes,buffer))?;Ok(bytes)
+            };
+            for (cycle,rows) in [1,6,16,6,1].into_iter().enumerate() {
+                let host:Vec<u8>=(0..capacity as usize*32768).flat_map(|i| {
+                    let value=((i+cycle*5)%29) as f32/64.0-0.25;
+                    ((value.to_bits()>>16) as u16).to_ne_bytes()
+                }).collect();
+                device.run(||library.copy_h2d(input.buffer,&host))?;
+                let tokens:Vec<u64>=(0..rows).map(|i|(cycle*8192+i) as u64).collect();
+                let attention=crate::v41_sparse_attention::QueuedSparseAttention {
+                    values:Ds41rtDeviceBuffer {bytes:rows*ROW_BYTES[0],..input.buffer},rows,layer};
+                let stream=reference.stream.raw;
+                let expected=device.run(||unsafe {
+                    reference.prepare_chain_graph(&tokens,stream)?;
+                    let result=reference.enqueue_chain_graph(&attention,stream)?;
+                    library.cuda_stream_synchronize(stream)?;read(result)
+                })?;
+                let stream=output.stream.raw;
+                device.run(||unsafe {
+                    output.prepare_chain_graph(&tokens,stream)?;
+                    output.enqueue_grouped_chain_graph(&attention,stream)?;Ok(())
+                })?;
+                runtime.block_on(async {
+                    let mut pending=std::pin::pin!(device.future(unsafe {
+                        output.finish_tp2_then(rows as u32,&mut projection,Some(stream),|value,_|Ok(value))
+                    }));
+                    std::future::poll_fn(|cx| {
+                        use std::future::Future;
+                        let _=pending.as_mut().poll(cx);std::task::Poll::Ready(())
+                    }).await;
+                });
+                let actual=runtime.block_on(device.future(unsafe {
+                    output.finish_tp2_then(rows as u32,&mut projection,Some(stream),|value,_|Ok(value))
+                }))?;
+                let actual=read(actual)?;let mut max_error=0f32;let mut max_ulp=0u16;let mut changed=0usize;
+                for index in [0,1,3,4] {
+                    let slice=|buffer:Ds41rtDeviceBuffer|Ds41rtDeviceBuffer {bytes:rows*ROW_BYTES[index],..buffer};
+                    assert_eq!(read(slice(reference.b(index)))?,read(slice(output.b(index)))?);
+                }
+                for (a,b) in actual.chunks_exact(2).zip(expected.chunks_exact(2)) {
+                    let decode=|v:&[u8]|f32::from_bits(u32::from(u16::from_ne_bytes([v[0],v[1]]))<<16);
+                    let (a,b)=(decode(a),decode(b));
+                    ensure!(a.is_finite() && b.is_finite(),"nonfinite output projection");
+                    let ulp=((a.to_bits()>>16) as u16).abs_diff((b.to_bits()>>16) as u16);
+                    // The full M1 export uses split-K=2, while each half uses
+                    // split-K=1. Different FP32 accumulation order can straddle
+                    // a BF16 rounding boundary; allow one adjacent BF16 value.
+                    ensure!((a-b).abs()<=1e-4 || ulp<=1,
+                        "TP2 output differs beyond rounding: layer={layer} rows={rows} {a} vs {b}");
+                    max_ulp=max_ulp.max(ulp);changed+=usize::from(a!=b);
+                    max_error=max_error.max((a-b).abs());
+                }
+                eprintln!("TP2 complete output layer={layer} rows={rows} cycle={cycle} max_error={max_error} max_ulp={max_ulp} changed={changed}");
+
+            }
+        }
+        Ok(())
     }
 }

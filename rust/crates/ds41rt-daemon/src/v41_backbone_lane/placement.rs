@@ -7,14 +7,14 @@ impl<'a> BackboneLaneWeights<'a> {
         catalog: &OfficialV41Catalog,
         placement: CachePlacement,
     ) -> Result<[usize; 2]> {
-        Self::distributed_device_bytes_with_split(library,catalog,placement,false)
+        Self::distributed_device_bytes_with_split(library,catalog,placement,false,false)
     }
     pub fn distributed_device_bytes_with_split(library:&NativeLibrary,catalog:&OfficialV41Catalog,
-        placement:CachePlacement,split_query_b:bool)->Result<[usize;2]> {
+        placement:CachePlacement,split_query_b:bool,split_output_b:bool)->Result<[usize;2]> {
         let mut bytes = [0usize; 2];
         for layer in 0..40 {
             let gpu = placement.attention(layer)?;
-            let mut groups = Self::layer_bytes_with_split(library, catalog, layer,split_query_b)?;
+            let mut groups = Self::layer_bytes_with_split(library, catalog, layer,split_query_b,split_output_b)?;
             groups[3] = 0;
             for group in groups {
                 bytes[gpu] = bytes[gpu]
@@ -31,18 +31,18 @@ impl<'a> BackboneLaneWeights<'a> {
         budgets: [usize; 2],
         staging: usize,
     ) -> Result<Self> {
-        Self::load_distributed_with_split(library,catalog,placement,budgets,staging,false)
+        Self::load_distributed_with_split(library,catalog,placement,budgets,staging,false,false)
     }
     pub fn load_distributed_with_split(library:&'a NativeLibrary,catalog:&OfficialV41Catalog,
-        placement:CachePlacement,budgets:[usize;2],staging:usize,split_query_b:bool)->Result<Self> {
+        placement:CachePlacement,budgets:[usize;2],staging:usize,split_query_b:bool,split_output_b:bool)->Result<Self> {
         ensure!(
-            Self::distributed_device_bytes_with_split(library, catalog, placement,split_query_b)?
+            Self::distributed_device_bytes_with_split(library, catalog, placement,split_query_b,split_output_b)?
                 .into_iter()
                 .zip(budgets)
                 .all(|(need, budget)| need <= budget),
             "backbone weights exceed a GPU budget"
         );
-        Self::load_placed_with_split(library, catalog, staging, Some(placement),split_query_b)
+        Self::load_placed_with_split(library, catalog, staging, Some(placement),split_query_b,split_output_b)
     }
     pub(super) fn load_placed(
         library: &'a NativeLibrary,
@@ -50,10 +50,10 @@ impl<'a> BackboneLaneWeights<'a> {
         staging: usize,
         placement: Option<CachePlacement>,
     ) -> Result<Self> {
-        Self::load_placed_with_split(library,catalog,staging,placement,false)
+        Self::load_placed_with_split(library,catalog,staging,placement,false,false)
     }
     fn load_placed_with_split(library:&'a NativeLibrary,catalog:&OfficialV41Catalog,staging:usize,
-        placement:Option<CachePlacement>,split_query_b:bool)->Result<Self> {
+        placement:Option<CachePlacement>,split_query_b:bool,split_output_b:bool)->Result<Self> {
         let original = library.cuda_get_device()?;
         let layers = (0..40)
             .map(|layer| {
@@ -62,15 +62,15 @@ impl<'a> BackboneLaneWeights<'a> {
                     None => original,
                 };
                 let [hc, query, projection, shared, router] =
-                    Self::layer_bytes_with_split(library, catalog, layer,split_query_b)?;
+                    Self::layer_bytes_with_split(library, catalog, layer,split_query_b,split_output_b)?;
                 Device { library, id }.own(|| {
                     Ok(LayerWeights {
                         hc: BackboneHcWeights::load(library, catalog, layer, hc, staging)?,
                         query: AttentionQueryWeights::load_with_split(
                             library, catalog, layer, query, staging,split_query_b,
                         )?,
-                        projection: AttentionOutputWeights::load(
-                            library, catalog, layer, projection, staging,
+                        projection: AttentionOutputWeights::load_with_split(
+                            library, catalog, layer, projection, staging,split_output_b,
                         )?,
                         shared: if placement.is_some() {
                             None
@@ -91,6 +91,7 @@ impl<'a> BackboneLaneWeights<'a> {
             layers,
             placement,
             split_query_b,
+            split_output_b,
         })
     }
 }
@@ -102,12 +103,20 @@ impl<'w, 'a> BackboneLane<'w, 'a> {
         self.tp2_query=Some(crate::v41_projection_tp2::Wave::new(weights,self.capacity as u32,owner,budgets)?);
         Ok(())
     }
-    pub fn placed_workspace_bytes(library: &NativeLibrary, capacity: u32) -> Result<usize> {
-        Self::placed_workspace_bytes_with_split(library,capacity,false)
+    pub fn enable_tp2_output(&mut self,weights:[&'w [crate::v41_projection_tp2::Weights<'a>];2],
+        budgets:[usize;2])->Result<()> {
+        ensure!(self.weights.split_output_b && self.tp2_output.is_none(),"output split configuration differs");
+        let owner=self.projection.input().device_id as usize;
+        self.tp2_output=Some(crate::v41_projection_tp2::Wave::new(weights,self.capacity as u32,owner,budgets)?);
+        Ok(())
     }
-    pub fn placed_workspace_bytes_with_split(library:&NativeLibrary,capacity:u32,split_query_b:bool)->Result<usize> {
+    pub fn placed_workspace_bytes(library: &NativeLibrary, capacity: u32) -> Result<usize> {
+        Self::placed_workspace_bytes_with_split(library,capacity,false,false)
+    }
+    pub fn placed_workspace_bytes_with_split(library:&NativeLibrary,capacity:u32,split_query_b:bool,split_output_b:bool)->Result<usize> {
         let mut groups = Self::workspace_bytes(library, capacity)?;
         groups[1]=AttentionQueryWave::device_bytes_with_split(library,capacity,split_query_b)?;
+        groups[2]=AttentionOutputWave::device_bytes_with_split(library,capacity,split_output_b)?;
         groups[3] = 0;
         groups.into_iter().try_fold(0usize, |n, b| {
             n.checked_add(b)

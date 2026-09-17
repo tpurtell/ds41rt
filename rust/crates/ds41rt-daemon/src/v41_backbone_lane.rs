@@ -33,6 +33,7 @@ pub(crate) struct BackboneLaneWeights<'a> {
     layers: Vec<DeviceOwner<'a, LayerWeights<'a>>>,
     placement: Option<CachePlacement>,
     split_query_b: bool,
+    split_output_b: bool,
 }
 impl<'a> BackboneLaneWeights<'a> {
     fn layer_bytes(
@@ -40,14 +41,14 @@ impl<'a> BackboneLaneWeights<'a> {
         catalog: &OfficialV41Catalog,
         layer: usize,
     ) -> Result<[usize; 5]> {
-        Self::layer_bytes_with_split(library,catalog,layer,false)
+        Self::layer_bytes_with_split(library,catalog,layer,false,false)
     }
     fn layer_bytes_with_split(library:&NativeLibrary,catalog:&OfficialV41Catalog,layer:usize,
-        split_query_b:bool)->Result<[usize;5]> {
+        split_query_b:bool,split_output_b:bool)->Result<[usize;5]> {
         Ok([
             BackboneHcWeights::device_bytes(catalog, layer)?,
             AttentionQueryWeights::device_bytes_with_split(library, catalog, layer,split_query_b)?,
-            AttentionOutputWeights::device_bytes(library, catalog, layer)?,
+            AttentionOutputWeights::device_bytes_with_split(library, catalog, layer,split_output_b)?,
             BackboneSharedWeights::device_bytes(library, catalog, layer)?,
             BackboneRouterWeights::device_bytes(catalog, layer)?,
         ])
@@ -88,30 +89,77 @@ enum Phase {
     Invalid,
 }
 
+// The containing lane's pending owner drains all consumer work before drop.
+// Keep this bank before the allocations referenced by its graphs.
+struct Tp2FfnGraphs<'w,'a> {
+    device: Device<'a>,
+    bank: crate::v41_layer_graphs::LayerGraphs<'w,'a,BackboneHcWeights<'a>>,
+}
+impl<'w,'a> Tp2FfnGraphs<'w,'a> {
+    fn new(device:Device<'a>)->Self {
+        let mut bank=crate::v41_layer_graphs::LayerGraphs::new(device.library);
+        bank.enable_small_shapes();Self {device,bank}
+    }
+    unsafe fn capture_ready(&mut self,block:&mut BackboneBlockWave<'w,'a>,
+        weights:&'w BackboneHcWeights<'a>,binding:QueryBinding,rows:usize,
+        projected:Ds41rtDeviceBuffer,stream:*mut std::ffi::c_void)->Result<()> {
+        self.device.run(||unsafe {
+            block.restore_ffn_graph_warmup(binding,rows)?;
+            self.device.library.cuda_graph_begin_capture(stream)?;
+            let queued=block.enqueue_ffn(binding,rows,projected,stream);
+            let captured=self.device.library.cuda_graph_end_capture(stream);
+            match (queued,captured) {
+                (Ok(_),Ok(graph))=> {
+                    if let Err(error)=self.bank.insert(binding.layer(),weights,rows as u32,graph) {
+                        self.device.library.cuda_graph_exec_destroy(graph)?;return Err(error);
+                    }
+                    Ok(())
+                },
+                (Err(error),Ok(graph))=> {self.device.library.cuda_graph_exec_destroy(graph)?;Err(error)},
+                (Err(error),Err(_)) | (Ok(_),Err(error))=>Err(error),
+            }
+        })
+    }
+}
+impl Drop for Tp2FfnGraphs<'_,'_> {
+    fn drop(&mut self) {
+        if let Err(error)=self.device.run(||unsafe {self.bank.clear()}) {
+            tracing::error!(%error,"destroying TP2 FFN continuation graphs");
+        }
+    }
+}
+
 struct AttentionTail<'s, 'w, 'a> {
     projection: &'s mut AttentionOutputWave<'w, 'a>,
     block: &'s mut BackboneBlockWave<'w, 'a>,
     binding: QueryBinding,
     tokens: &'s [u64],
+    split_output: bool,
 }
 impl crate::v41_sparse_attention::AttentionGraphTail for AttentionTail<'_, '_, '_> {
     fn identity(&self) -> Vec<usize> {
         let mut identity = self.projection.chain_graph_identity().to_vec();
-        identity.extend(self.block.chain_graph_identity()); identity
+        identity.extend(self.block.chain_graph_identity()); identity.push(usize::from(self.split_output)); identity
     }
     unsafe fn prepare(&mut self, stream: *mut std::ffi::c_void) -> Result<()> {
         unsafe { self.projection.prepare_chain_graph(self.tokens, stream) }
     }
     unsafe fn enqueue(&mut self, attention: &crate::v41_sparse_attention::QueuedSparseAttention,
         stream: *mut std::ffi::c_void) -> Result<()> {
+        if self.split_output {
+            unsafe { self.projection.enqueue_grouped_chain_graph(attention,stream)?; }
+            return Ok(());
+        }
         let projected = unsafe { self.projection.enqueue_chain_graph(attention, stream)? };
         unsafe { self.block.enqueue_ffn(self.binding, self.tokens.len(), projected, stream)?; }
         Ok(())
     }
     unsafe fn restore_warmup(&mut self) -> Result<()> {
+        if self.split_output { return Ok(()); }
         unsafe { self.block.restore_ffn_graph_warmup(self.binding, self.tokens.len()) }
     }
     unsafe fn replay_state(&mut self) -> Result<()> {
+        if self.split_output { return Ok(()); }
         unsafe { self.block.prepare_ffn_graph_replay(self.binding, self.tokens.len()) }
     }
 }
@@ -128,7 +176,7 @@ impl<'s, 'w, 'a> PendingLaneFfn<'s, 'w, 'a> {
             let lane = self.lane.as_deref_mut().unwrap();
             let query = lane.query.output()?;
             let mut tail = AttentionTail { projection: &mut lane.projection, block: &mut lane.block,
-                binding: query.binding()?, tokens: query.tokens()? };
+                binding: query.binding()?, tokens: query.tokens()?, split_output:lane.tp2_output.is_some() };
             if let Some(dual)=lane.dual_sparse.as_mut() {
                 unsafe { dual.complete_owned_tail(&mut tail).await?; }
             } else {
@@ -136,7 +184,33 @@ impl<'s, 'w, 'a> PendingLaneFfn<'s, 'w, 'a> {
             }
             self.values = Some(lane.block.graph_normalized_storage(query.rows));
         }
-        if let Some(sparse)=&self.lane.as_ref().unwrap().sparse { sparse.wait_chain().await?; }
+        let lane=self.lane.as_deref_mut().unwrap();
+        if let Some(output)=&mut lane.tp2_output {
+            let query=lane.query.output()?;
+            let binding=query.binding()?;let rows=query.rows;
+            // Full-head attention leaves its grouped prefix queued. Dual-head
+            // completion already drained that prefix; neither case joins lanes.
+            let producer=lane.sparse.as_ref().map(|s|s.chain_stream());
+            let weights=&lane.weights.layers[lane.layer].hc;
+            let graphs=lane.tp2_ffn_graphs.as_mut().context("TP2 FFN graph owner absent")?;
+            let cached=graphs.bank.get_shape(lane.layer,weights,rows as u32);
+            let library=lane.weights.library;
+            let (values,stream,projected)=unsafe { lane.projection.finish_tp2_then(rows as u32,output,producer,
+                |projected,stream| {
+                    if let Some((graph,_))=cached {
+                        lane.block.prepare_ffn_graph_replay(binding,rows)?;
+                        library.cuda_graph_launch(graph,stream)?;
+                    } else {lane.block.enqueue_ffn(binding,rows,projected,stream)?;}
+                    Ok((lane.block.graph_normalized_storage(rows),stream,projected))
+                }).await? };
+            if cached.is_none() {
+                // Warm output is complete. Recording the next invocation restores
+                // host phase without executing the FFN prefix a second time.
+                unsafe {graphs.capture_ready(&mut lane.block,weights,binding,rows,projected,stream)?;}
+            }
+            self.values=Some(values);
+        } else if let Some(sparse)=&lane.sparse { sparse.wait_chain().await?; }
+
         let lane = self.lane.take().unwrap();
         let input = unsafe { lane.block.complete_queued_ffn(self.values.unwrap())? };
         lane.phase = Phase::Ffn;
@@ -346,6 +420,7 @@ async fn complete_ffn<T>(
 }
 
 pub(crate) struct BackboneLane<'w, 'a> {
+    tp2_ffn_graphs: Option<Tp2FfnGraphs<'w,'a>>,
     // Destroy containing graphs before their captured consumer allocations.
     sparse: Option<SparseAttentionWave<'a>>,
     dual_sparse: Option<crate::v41_sparse_attention::dual::DualAttentionWave<'a>>,
@@ -354,6 +429,7 @@ pub(crate) struct BackboneLane<'w, 'a> {
     block: BackboneBlockWave<'w, 'a>,
     query: AttentionQueryWave<'w, 'a>,
     tp2_query: Option<crate::v41_projection_tp2::Wave<'w,'a>>,
+    tp2_output: Option<crate::v41_projection_tp2::Wave<'w,'a>>,
     projection: AttentionOutputWave<'w, 'a>,
     shared: Option<BackboneSharedWave<'w, 'a>>,
     router: BackboneRouterWave<'w, 'a>,
@@ -387,6 +463,7 @@ impl<'w, 'a> BackboneLane<'w, 'a> {
         let mut sizes = Self::workspace_bytes(weights.library, capacity)?;
         if weights.placement.is_some() { sizes[3] = 0; }
         sizes[1]=AttentionQueryWave::device_bytes_with_split(weights.library,capacity,weights.split_query_b)?;
+        sizes[2]=AttentionOutputWave::device_bytes_with_split(weights.library,capacity,weights.split_output_b)?;
         let total = sizes.into_iter().try_fold(0usize, |n, b| {
             n.checked_add(b)
                 .ok_or_else(|| anyhow::anyhow!("backbone lane budget overflow"))
@@ -398,10 +475,12 @@ impl<'w, 'a> BackboneLane<'w, 'a> {
         );
         let first = &weights.layers[first_layer];
         Ok(Self {
+            tp2_ffn_graphs: weights.split_output_b.then(||Tp2FfnGraphs::new(first.device)),
             weights,
             block: first.hc.block(capacity as usize, sizes[0])?,
             query: first.query.wave(capacity, sizes[1])?,
             tp2_query: None,
+            tp2_output: None,
             projection: first.projection.wave(capacity, sizes[2])?,
             shared: first.shared.as_ref().map(|w| w.wave(capacity,sizes[3])).transpose()?,
             sparse: Some(SparseAttentionWave::new(weights.library, capacity as usize, sizes[4])?),
@@ -588,12 +667,13 @@ impl<'w, 'a> BackboneLane<'w, 'a> {
         requests: &[AttentionRequest<'_>],
         selection: Option<&IndexSelectionOutput<'_>>,
     ) -> Result<LaneFfn<'_, 'w, 'a>> {
+        ensure!(self.tp2_output.is_none(),"TP2 output requires cooperative attention completion");
         self.enter(Phase::Query)?;
         let query = self.query.output()?;
         let timing = std::time::Instant::now();
         let binding = query.binding()?;
         let tokens = query.tokens()?;
-        let mut tail = AttentionTail { projection: &mut self.projection, block: &mut self.block, binding, tokens };
+        let mut tail = AttentionTail { projection: &mut self.projection, block: &mut self.block, binding, tokens, split_output:false };
         let result = unsafe { self.sparse.as_mut().context("direct attention requires full-head mode")?
             .execute_query_graph(&query, sink, requests, selection, &mut tail) };
         if let Err(error) = result { self.block.reset(); self.phase = Phase::Invalid; return Err(error); }
@@ -666,7 +746,7 @@ impl<'w, 'a> BackboneLane<'w, 'a> {
         let lane = pending.lane.as_deref_mut().unwrap();
         let query = lane.query.output()?;
         let mut tail = AttentionTail { projection: &mut lane.projection, block: &mut lane.block,
-            binding, tokens: query.tokens()? };
+            binding, tokens: query.tokens()?, split_output:lane.tp2_output.is_some() };
         if unsafe { lane.sparse.as_mut().context("full-head attention wave absent")?
             .enqueue_query_prepared(&query, sink, &requests, selection, true, Some(&mut tail))? }.is_some() {
             pending.values = Some(lane.block.graph_normalized_storage(query.rows));
@@ -903,6 +983,7 @@ mod tests {
             layers: vec![],
             placement: None,
             split_query_b: false,
+            split_output_b: false,
         };
         // Native AOT variants supply scratch extents; validate budget boundaries
         // against this library instead of totals from an older export build.

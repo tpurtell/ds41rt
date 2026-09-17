@@ -1042,3 +1042,60 @@ this does not establish a default-worthy speedup. The earlier direct-launch
 candidate was roughly 2–3% behind on code, but those separate trials are not a
 paired direct-versus-graph estimate. Query TP2 stays opt-in. Output projection
 and dSpark remain the next independent work items. The normal server was restored.
+
+### Output-B TP2 serving path
+
+`--tp2-output-projection` selects two output-channel halves of output-B,
+independently of query projection and attention TP2. The inverse-rotary/grouped
+output-A prefix stays on the attention owner and remains part of the attention
+graph. Output-B ranks depend on that producer; their gathered result feeds the
+owner's FFN continuation before the final projection completion wait. That
+continuation has its own per-layer/shape graph bank. Each lane retains independent
+streams, events and graph state. The legacy full-output path remains the default.
+
+Split loading omits full-width output-B weights, scales and scratch. Resident
+replacement shards and both target lanes' exchange workspaces are allocated
+before expert/KV budgeting, as for query TP2. Full/split rebinds are rejected.
+
+Ten complete-output checkpoint cases cover layers 2/20 on their respective GPUs,
+rows 1/6/16, changed data/positions, graph reuse and dropped submission/reuse.
+Input, grouped output-A, positions and frequencies match exactly. Seven final
+output cases are exact; the other three differ at one or two elements by one
+adjacent BF16 value. Investigation found the full M1 export uses split-K=2 while
+the half-width M1 export uses split-K=1. The maximum absolute difference is
+0.0078125 at a value around 1.1; this is one BF16 spacing, not an indexing or
+producer mismatch. The check therefore requires finite values with absolute
+error <=0.0001 or one adjacent BF16 value, while retaining exact intermediate
+checks. Evidence: `output-split-hardware.log` and `output-split-diagnostic.log`
+in `~/.cache/ds41rt-v6-heads32/`. Serving/performance validation follows below.
+
+The output-only serving smoke passed the short concurrent requests and the
+10,824-token chunked-prefill identifier request with complete prefix reuse.
+After adding the FFN continuation graph, a second smoke enabled all three flags
+(attention, query-B, output-B) together and passed the same requests/reuse.
+Evidence: `~/.cache/ds41rt-v6-output-serving-wide/` and
+`~/.cache/ds41rt-v6-projections-attention-wide/`. The combined run reported
+6,077,440 usable GPU tokens plus 14,894,592 RAM tokens, totaling 20,972,032 tokens,
+with 13.75 GiB pinned RAM. Its 13.72-second warm startup is a single smoke result,
+not a load-speed qualification. At capacity 2048 each output projection wave
+budgets 101,581,840 bytes on its output GPU and 80,610,320 on the peer; these are
+gross workspace totals before accounting for removed full-width scratch.
+
+The output-only same-build comparison retained the fixed 5 GiB KV budget,
+20 local expert layers, K7, capacity 2048, C16 serving, 20 retained slots,
+automatic host cache, 400 W limits and stock 13,365 MHz memory. Three warm
+samples per point, thinking disabled, median per-request decode tokens/s:
+
+| Workload | Concurrency | Full output-B | TP2 output-B + FFN graphs | Change |
+|---|---:|---:|---:|---:|
+| Code | 1 | 166.7 | 163.2 | -2.1% |
+| Code | 4 | 118.1 | 115.2 | -2.5% |
+| Topic | 1 | 97.1 | 93.8 | -3.5% |
+| Topic | 4 | 69.6 | 68.5 | -1.6% |
+
+All paired output texts and completion counts match in this comparison. No
+performance winner is established; output TP2 stays off by default. Evidence:
+`~/.cache/ds41rt-v6-output-perf/` contains both launch commands, server logs,
+request results, GPU settings and harness. The standard coordinator was restored.
+The daemon check, test-target build and release build pass. dSpark transformer
+TP2 remains the next independent implementation/evaluation item.

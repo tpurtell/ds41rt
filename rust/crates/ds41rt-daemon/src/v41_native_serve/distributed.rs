@@ -61,15 +61,23 @@ pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Recei
         &lib,
         &catalog,
         map,
-        BackboneLaneWeights::distributed_device_bytes_with_split(&lib, &catalog, map,args.tp2_query_projection)?,
+        BackboneLaneWeights::distributed_device_bytes_with_split(&lib, &catalog, map,args.tp2_query_projection,args.tp2_output_projection)?,
         16 << 20,
         args.tp2_query_projection,
+        args.tp2_output_projection,
     )?;
     let query_shards=if args.tp2_query_projection {
         use crate::v41_projection_tp2::{Kind,Weights};
         Some([0usize,1].map(|rank| (0..40).map(|layer|
             Weights::load(devices[rank],&catalog,layer,Kind::QueryB,rank,
                 Weights::load_peak_device_bytes(Kind::QueryB))).collect::<Result<Vec<_>>>())
+            .into_iter().collect::<Result<Vec<_>>>()?)
+    } else { None };
+    let output_shards=if args.tp2_output_projection {
+        use crate::v41_projection_tp2::{Kind,Weights};
+        Some([0usize,1].map(|rank| (0..40).map(|layer|
+            Weights::load(devices[rank],&catalog,layer,Kind::OutputB,rank,
+                Weights::load_peak_device_bytes(Kind::OutputB))).collect::<Result<Vec<_>>>())
             .into_iter().collect::<Result<Vec<_>>>()?)
     } else { None };
     memory_checkpoint("attention mHC router weights")?;
@@ -142,7 +150,7 @@ pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Recei
         .ok()
         .expect("two ranks");
     memory_checkpoint("weights")?;
-    tracing::info!(capacity, backbone_lane_bytes=BackboneLane::placed_workspace_bytes_with_split(&lib, capacity,args.tp2_query_projection)?,
+    tracing::info!(capacity, backbone_lane_bytes=BackboneLane::placed_workspace_bytes_with_split(&lib, capacity,args.tp2_query_projection,args.tp2_output_projection)?,
         producer_bytes=?crate::v41_backbone_execution::PlacedProducerWaves::device_bytes(&lib, map, capacity)?,
         "dual RTX per-lane workspace plan");
     let make_pass = |decoder_capacity: u32| -> Result<DistributedTargetPass<'_, '_>> {
@@ -150,13 +158,13 @@ pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Recei
             BackboneLane::new_on_device(
                 &weights,
                 capacity,
-                BackboneLane::placed_workspace_bytes_with_split(&lib, capacity,args.tp2_query_projection)?,
+                BackboneLane::placed_workspace_bytes_with_split(&lib, capacity,args.tp2_query_projection,args.tp2_output_projection)?,
                 0,
             )?,
             BackboneLane::new_on_device(
                 &weights,
                 capacity,
-                BackboneLane::placed_workspace_bytes_with_split(&lib, capacity,args.tp2_query_projection)?,
+                BackboneLane::placed_workspace_bytes_with_split(&lib, capacity,args.tp2_query_projection,args.tp2_output_projection)?,
                 1,
             )?,
         ];
@@ -166,6 +174,14 @@ pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Recei
                 let budgets=Wave::device_bytes(&lib,Kind::QueryB,capacity,owner)?;
                 lane.enable_tp2_query([&shards[0],&shards[1]],budgets)?;
                 tracing::info!(owner,capacity,per_gpu_bytes=?budgets,"TP2 query projection workspace");
+            }
+        }
+        if let Some(shards)=&output_shards {
+            use crate::v41_projection_tp2::{Kind,Wave};
+            for (owner,lane) in lanes.iter_mut().enumerate() {
+                let budgets=Wave::device_bytes(&lib,Kind::OutputB,capacity,owner)?;
+                lane.enable_tp2_output([&shards[0],&shards[1]],budgets)?;
+                tracing::info!(owner,capacity,per_gpu_bytes=?budgets,"TP2 output projection workspace");
             }
         }
         let indices = [
