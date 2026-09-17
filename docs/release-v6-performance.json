@@ -1,0 +1,2517 @@
+{
+  "schema": 1,
+  "release": "v6",
+  "scope": "Native checkpoint performance; EXL3 results are historical and separate.",
+  "engine_commit": "619be005af10c506df3c261d99e9f282fdc846ae",
+  "coordinator_image_id": "sha256:1f2f7d18d90188f34a8541e17642c6c941f076448159ddce76164c37fcf57540",
+  "model_id": "deepseek-ai/DeepSeek-V4.1-Flash",
+  "model_revision": "dba1be0a40aa45a94ad051997016db3960a90277",
+  "sparkinfer_commit": "63e2140e4a32a977faa777c172b86679344fdc6a",
+  "binary_sha256": "9c5836613d04705a3e496aafa3ae297d77b69c8b5250bb0c32a815755e802135",
+  "native_library_sha256": "60fbb788bc7fa3a2b7326cc08b89098a5973db0446515393c83f83f681fa6f3c",
+  "corpus_sha256": "1972e572fbf9d468cd86c2db5d3d3de60641329edca152fe013a179eb55001de",
+  "context_sha256": "9fd051edae59a6b4263a690fbdd70816c78c9671a50d6976903b51b4386593b0",
+  "weighted_case_ids": [
+    "code",
+    "code-reasoning",
+    "math",
+    "fable",
+    "hello",
+    "topic",
+    "structured-json",
+    "structured-json-schema",
+    "multilingual"
+  ],
+  "controls": {
+    "repeats": 3,
+    "rtx_power_limit_watts": 400,
+    "rtx_memory": "stock",
+    "thinking": "per-case; reasoning code uses high effort",
+    "tp2_options": "off"
+  },
+  "layouts": {
+    "single": {
+      "decode": {
+        "passed": true,
+        "repeats": 3,
+        "median_weighted_tps": 91.99854224956455,
+        "cases": {
+          "code": {
+            "samples": 3,
+            "median_tps": 130.4130395686538,
+            "min_tps": 126.64870774919733,
+            "max_tps": 132.03924230083828
+          },
+          "code-reasoning": {
+            "samples": 3,
+            "median_tps": 100.27317392237796,
+            "min_tps": 99.84940766633592,
+            "max_tps": 100.55194756298394
+          },
+          "counting": {
+            "samples": 3,
+            "median_tps": 161.5788873247958,
+            "min_tps": 159.61777055298035,
+            "max_tps": 161.8518529954235
+          },
+          "fable": {
+            "samples": 3,
+            "median_tps": 56.49219784402843,
+            "min_tps": 56.16370339561395,
+            "max_tps": 60.18196048575867
+          },
+          "hello": {
+            "samples": 3,
+            "median_tps": 61.510681910411904,
+            "min_tps": 57.69535885325382,
+            "max_tps": 84.81351080787972
+          },
+          "math": {
+            "samples": 3,
+            "median_tps": 134.22426822276623,
+            "min_tps": 123.07148623422637,
+            "max_tps": 135.4802485716387
+          },
+          "multilingual": {
+            "samples": 3,
+            "median_tps": 74.10192230054263,
+            "min_tps": 68.59149640100512,
+            "max_tps": 75.39675345727586
+          },
+          "structured-json": {
+            "samples": 3,
+            "median_tps": 103.82722231005329,
+            "min_tps": 103.7718955560005,
+            "max_tps": 103.97414526944279
+          },
+          "structured-json-schema": {
+            "samples": 3,
+            "median_tps": 105.79129376924027,
+            "min_tps": 105.52769026563949,
+            "max_tps": 106.98992090973863
+          },
+          "topic": {
+            "samples": 3,
+            "median_tps": 73.57389330460316,
+            "min_tps": 72.5479989737151,
+            "max_tps": 74.00247949593006
+          }
+        }
+      },
+      "target_decode": {
+        "passed": true,
+        "repeats": 3,
+        "median_weighted_tps": 47.23268870799423,
+        "cases": {
+          "code": {
+            "samples": 3,
+            "median_tps": 49.08350341091756,
+            "min_tps": 48.78379066802225,
+            "max_tps": 49.36811993398033
+          },
+          "code-reasoning": {
+            "samples": 3,
+            "median_tps": 47.50666899198571,
+            "min_tps": 47.48259797763215,
+            "max_tps": 47.92250297759766
+          },
+          "counting": {
+            "samples": 3,
+            "median_tps": 49.35843845162183,
+            "min_tps": 44.63329214624869,
+            "max_tps": 49.36336982749105
+          },
+          "fable": {
+            "samples": 3,
+            "median_tps": 44.72208530164241,
+            "min_tps": 44.5319175614484,
+            "max_tps": 45.00027147364869
+          },
+          "hello": {
+            "samples": 3,
+            "median_tps": 44.745633752462275,
+            "min_tps": 43.73584734438557,
+            "max_tps": 45.008251420342205
+          },
+          "math": {
+            "samples": 3,
+            "median_tps": 45.76589307405308,
+            "min_tps": 44.758956094058505,
+            "max_tps": 48.10792312974217
+          },
+          "multilingual": {
+            "samples": 3,
+            "median_tps": 45.83745242214131,
+            "min_tps": 45.78290065109489,
+            "max_tps": 46.930415642305434
+          },
+          "structured-json": {
+            "samples": 3,
+            "median_tps": 47.37193557697446,
+            "min_tps": 44.82426756137877,
+            "max_tps": 48.968855644798815
+          },
+          "structured-json-schema": {
+            "samples": 3,
+            "median_tps": 48.499486276355846,
+            "min_tps": 48.0032434833391,
+            "max_tps": 48.62275775720943
+          },
+          "topic": {
+            "samples": 3,
+            "median_tps": 46.281005898511424,
+            "min_tps": 45.51562170153313,
+            "max_tps": 46.53576473717543
+          }
+        }
+      },
+      "concurrency": {
+        "code": {
+          "passed": true,
+          "prompt": "v5-release-final 20260914. Write a Python function merge_intervals(intervals) that merges overlapping integer intervals. Include type hints, a short docstring, and three assert-based examples. Return only one Python code block.",
+          "repeats": 3,
+          "summaries": [
+            {
+              "concurrency": 1,
+              "samples": 3,
+              "median_aggregate_tps": 137.42636615465003,
+              "min_aggregate_tps": 137.0299486121018,
+              "max_aggregate_tps": 137.44580810223198
+            },
+            {
+              "concurrency": 2,
+              "samples": 3,
+              "median_aggregate_tps": 218.47558285649217,
+              "min_aggregate_tps": 213.24802419234487,
+              "max_aggregate_tps": 220.60679176124142
+            },
+            {
+              "concurrency": 4,
+              "samples": 3,
+              "median_aggregate_tps": 384.41138940257076,
+              "min_aggregate_tps": 379.3410225517368,
+              "max_aggregate_tps": 391.748748758827
+            },
+            {
+              "concurrency": 8,
+              "samples": 3,
+              "median_aggregate_tps": 625.3020460708999,
+              "min_aggregate_tps": 609.1153746914662,
+              "max_aggregate_tps": 627.9290524964783
+            },
+            {
+              "concurrency": 16,
+              "samples": 3,
+              "median_aggregate_tps": 1069.1636872478027,
+              "min_aggregate_tps": 1053.531819218447,
+              "max_aggregate_tps": 1092.4881086641146
+            }
+          ]
+        },
+        "topic": {
+          "passed": true,
+          "prompt": "v5-release-final 20260914. Explain virtual memory to a junior programmer in five concise bullet points, including paging, page faults, and the role of the TLB.",
+          "repeats": 3,
+          "summaries": [
+            {
+              "concurrency": 1,
+              "samples": 3,
+              "median_aggregate_tps": 74.63107613222404,
+              "min_aggregate_tps": 74.47626550597266,
+              "max_aggregate_tps": 75.30980895166059
+            },
+            {
+              "concurrency": 2,
+              "samples": 3,
+              "median_aggregate_tps": 125.38584045741615,
+              "min_aggregate_tps": 123.50838852467317,
+              "max_aggregate_tps": 127.98869254978821
+            },
+            {
+              "concurrency": 4,
+              "samples": 3,
+              "median_aggregate_tps": 225.98612521847699,
+              "min_aggregate_tps": 224.00940718372217,
+              "max_aggregate_tps": 228.00505966035294
+            },
+            {
+              "concurrency": 8,
+              "samples": 3,
+              "median_aggregate_tps": 333.0605110186845,
+              "min_aggregate_tps": 326.9053888153123,
+              "max_aggregate_tps": 347.25661458793064
+            },
+            {
+              "concurrency": 16,
+              "samples": 3,
+              "median_aggregate_tps": 601.9026773655062,
+              "min_aggregate_tps": 585.6071937921078,
+              "max_aggregate_tps": 604.9967929926233
+            }
+          ]
+        },
+        "counting": {
+          "passed": true,
+          "prompt": "v5-release-final 20260914. Count from 1 to 200, separated by commas. Output only the sequence.",
+          "repeats": 3,
+          "summaries": [
+            {
+              "concurrency": 1,
+              "samples": 3,
+              "median_aggregate_tps": 159.31601688871405,
+              "min_aggregate_tps": 157.7362689640122,
+              "max_aggregate_tps": 159.874306114609
+            },
+            {
+              "concurrency": 2,
+              "samples": 3,
+              "median_aggregate_tps": 252.72796632407986,
+              "min_aggregate_tps": 247.69802816086604,
+              "max_aggregate_tps": 254.75686182041142
+            },
+            {
+              "concurrency": 4,
+              "samples": 3,
+              "median_aggregate_tps": 454.4809592546937,
+              "min_aggregate_tps": 447.68942206630754,
+              "max_aggregate_tps": 454.51530101717645
+            },
+            {
+              "concurrency": 8,
+              "samples": 3,
+              "median_aggregate_tps": 736.3724592288728,
+              "min_aggregate_tps": 728.9476853783758,
+              "max_aggregate_tps": 746.1862566646242
+            },
+            {
+              "concurrency": 16,
+              "samples": 3,
+              "median_aggregate_tps": 1267.067751224477,
+              "min_aggregate_tps": 1232.8292762796877,
+              "max_aggregate_tps": 1268.8874061138886
+            }
+          ]
+        }
+      },
+      "mixed": {
+        "passed": true,
+        "repeats": 3,
+        "summaries": [
+          {
+            "concurrency": 1,
+            "samples": 3,
+            "median_aggregate_tps": 104.01486234677294,
+            "min_aggregate_tps": 97.360715376578,
+            "max_aggregate_tps": 130.91979764739574
+          },
+          {
+            "concurrency": 2,
+            "samples": 3,
+            "median_aggregate_tps": 107.10483895609002,
+            "min_aggregate_tps": 100.70658133775571,
+            "max_aggregate_tps": 114.91362198185725
+          },
+          {
+            "concurrency": 4,
+            "samples": 3,
+            "median_aggregate_tps": 139.42384629911524,
+            "min_aggregate_tps": 135.50690908702387,
+            "max_aggregate_tps": 161.8735129928715
+          },
+          {
+            "concurrency": 8,
+            "samples": 3,
+            "median_aggregate_tps": 147.9035320724082,
+            "min_aggregate_tps": 145.70605502386994,
+            "max_aggregate_tps": 164.73582626418377
+          },
+          {
+            "concurrency": 16,
+            "samples": 3,
+            "median_aggregate_tps": 191.74888544802982,
+            "min_aggregate_tps": 183.087788013654,
+            "max_aggregate_tps": 193.94694444436763
+          }
+        ]
+      },
+      "prefill": {
+        "passed": true,
+        "bases": [
+          0,
+          32768,
+          65536,
+          131072,
+          262144
+        ],
+        "suffixes": [
+          1024,
+          2048,
+          4096,
+          8192,
+          16384,
+          32768
+        ],
+        "repeats": 3,
+        "warmups_per_cell": 1,
+        "context_sha256": "9fd051edae59a6b4263a690fbdd70816c78c9671a50d6976903b51b4386593b0",
+        "cells": [
+          {
+            "base_context_tokens": 0,
+            "suffix_tokens": 1024,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 3005.3219232503684,
+            "min_effective_prefill_tokens_per_second": 3000.600574320534,
+            "max_effective_prefill_tokens_per_second": 3007.0325387790895
+          },
+          {
+            "base_context_tokens": 0,
+            "suffix_tokens": 2048,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 4030.6556474961626,
+            "min_effective_prefill_tokens_per_second": 4003.5007251387246,
+            "max_effective_prefill_tokens_per_second": 4050.6428938211893
+          },
+          {
+            "base_context_tokens": 0,
+            "suffix_tokens": 4096,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 6950.399803850666,
+            "min_effective_prefill_tokens_per_second": 6865.238908503931,
+            "max_effective_prefill_tokens_per_second": 6968.265586263961
+          },
+          {
+            "base_context_tokens": 0,
+            "suffix_tokens": 8192,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 7492.584534121165,
+            "min_effective_prefill_tokens_per_second": 7481.133384321191,
+            "max_effective_prefill_tokens_per_second": 7518.6878974488445
+          },
+          {
+            "base_context_tokens": 0,
+            "suffix_tokens": 16384,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 7801.459632897317,
+            "min_effective_prefill_tokens_per_second": 7783.292300744154,
+            "max_effective_prefill_tokens_per_second": 7803.062691819499
+          },
+          {
+            "base_context_tokens": 0,
+            "suffix_tokens": 32768,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 7823.895369711136,
+            "min_effective_prefill_tokens_per_second": 7819.974197546604,
+            "max_effective_prefill_tokens_per_second": 7824.370061560667
+          },
+          {
+            "base_context_tokens": 32768,
+            "suffix_tokens": 1024,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 2462.8042719276505,
+            "min_effective_prefill_tokens_per_second": 2454.480614295049,
+            "max_effective_prefill_tokens_per_second": 2470.6075213318486
+          },
+          {
+            "base_context_tokens": 32768,
+            "suffix_tokens": 2048,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 3326.2617085568813,
+            "min_effective_prefill_tokens_per_second": 3305.2495574404547,
+            "max_effective_prefill_tokens_per_second": 3368.118658733456
+          },
+          {
+            "base_context_tokens": 32768,
+            "suffix_tokens": 4096,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 5379.184154253858,
+            "min_effective_prefill_tokens_per_second": 5265.445072474952,
+            "max_effective_prefill_tokens_per_second": 5487.948066754626
+          },
+          {
+            "base_context_tokens": 32768,
+            "suffix_tokens": 8192,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 6140.099553969826,
+            "min_effective_prefill_tokens_per_second": 5764.663038646709,
+            "max_effective_prefill_tokens_per_second": 6204.728027893652
+          },
+          {
+            "base_context_tokens": 32768,
+            "suffix_tokens": 16384,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 6597.763603287959,
+            "min_effective_prefill_tokens_per_second": 6562.20879111248,
+            "max_effective_prefill_tokens_per_second": 6637.69492710817
+          },
+          {
+            "base_context_tokens": 32768,
+            "suffix_tokens": 32768,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 6862.953272458978,
+            "min_effective_prefill_tokens_per_second": 6721.20461748754,
+            "max_effective_prefill_tokens_per_second": 6876.5733937716695
+          },
+          {
+            "base_context_tokens": 65536,
+            "suffix_tokens": 1024,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 2241.822542894412,
+            "min_effective_prefill_tokens_per_second": 2240.679910506244,
+            "max_effective_prefill_tokens_per_second": 2268.3895868174905
+          },
+          {
+            "base_context_tokens": 65536,
+            "suffix_tokens": 2048,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 3103.0714610390805,
+            "min_effective_prefill_tokens_per_second": 3100.4207211836488,
+            "max_effective_prefill_tokens_per_second": 3113.3737088284947
+          },
+          {
+            "base_context_tokens": 65536,
+            "suffix_tokens": 4096,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 4961.437523628565,
+            "min_effective_prefill_tokens_per_second": 4960.109710280792,
+            "max_effective_prefill_tokens_per_second": 4983.698324012284
+          },
+          {
+            "base_context_tokens": 65536,
+            "suffix_tokens": 8192,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 5664.684568970207,
+            "min_effective_prefill_tokens_per_second": 5597.719997282112,
+            "max_effective_prefill_tokens_per_second": 5731.273711706326
+          },
+          {
+            "base_context_tokens": 65536,
+            "suffix_tokens": 16384,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 6151.078196381339,
+            "min_effective_prefill_tokens_per_second": 5996.381462672582,
+            "max_effective_prefill_tokens_per_second": 6168.163795543406
+          },
+          {
+            "base_context_tokens": 65536,
+            "suffix_tokens": 32768,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 6360.801518407751,
+            "min_effective_prefill_tokens_per_second": 6354.261110143263,
+            "max_effective_prefill_tokens_per_second": 6369.817640521666
+          },
+          {
+            "base_context_tokens": 131072,
+            "suffix_tokens": 1024,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 1927.514702773885,
+            "min_effective_prefill_tokens_per_second": 1919.369819292648,
+            "max_effective_prefill_tokens_per_second": 1931.4307929032618
+          },
+          {
+            "base_context_tokens": 131072,
+            "suffix_tokens": 2048,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 2718.059148633167,
+            "min_effective_prefill_tokens_per_second": 2702.857698970302,
+            "max_effective_prefill_tokens_per_second": 2726.796498947456
+          },
+          {
+            "base_context_tokens": 131072,
+            "suffix_tokens": 4096,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 4205.010399464681,
+            "min_effective_prefill_tokens_per_second": 4195.729352494974,
+            "max_effective_prefill_tokens_per_second": 4228.293135868198
+          },
+          {
+            "base_context_tokens": 131072,
+            "suffix_tokens": 8192,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 4913.804441211375,
+            "min_effective_prefill_tokens_per_second": 4904.535432981082,
+            "max_effective_prefill_tokens_per_second": 4991.5793999373755
+          },
+          {
+            "base_context_tokens": 131072,
+            "suffix_tokens": 16384,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 5343.104723941876,
+            "min_effective_prefill_tokens_per_second": 5333.707876996449,
+            "max_effective_prefill_tokens_per_second": 5364.654804051912
+          },
+          {
+            "base_context_tokens": 131072,
+            "suffix_tokens": 32768,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 5530.324940708243,
+            "min_effective_prefill_tokens_per_second": 5508.789268571788,
+            "max_effective_prefill_tokens_per_second": 5531.992173029144
+          },
+          {
+            "base_context_tokens": 262144,
+            "suffix_tokens": 1024,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 1462.6936304164426,
+            "min_effective_prefill_tokens_per_second": 1439.846379873163,
+            "max_effective_prefill_tokens_per_second": 1520.104951140225
+          },
+          {
+            "base_context_tokens": 262144,
+            "suffix_tokens": 2048,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 2121.70242804926,
+            "min_effective_prefill_tokens_per_second": 2107.88743659228,
+            "max_effective_prefill_tokens_per_second": 2177.1578424915347
+          },
+          {
+            "base_context_tokens": 262144,
+            "suffix_tokens": 4096,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 3194.917604941697,
+            "min_effective_prefill_tokens_per_second": 3165.5184771207564,
+            "max_effective_prefill_tokens_per_second": 3289.7823470040194
+          },
+          {
+            "base_context_tokens": 262144,
+            "suffix_tokens": 8192,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 3796.754737519861,
+            "min_effective_prefill_tokens_per_second": 3792.4337668742482,
+            "max_effective_prefill_tokens_per_second": 3838.369874897068
+          },
+          {
+            "base_context_tokens": 262144,
+            "suffix_tokens": 16384,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 4156.127634658239,
+            "min_effective_prefill_tokens_per_second": 4155.533401552455,
+            "max_effective_prefill_tokens_per_second": 4175.223346341439
+          },
+          {
+            "base_context_tokens": 262144,
+            "suffix_tokens": 32768,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 4305.807479845311,
+            "min_effective_prefill_tokens_per_second": 4296.551439296644,
+            "max_effective_prefill_tokens_per_second": 4310.48955847799
+          }
+        ]
+      },
+      "retained_decode": {
+        "passed": true,
+        "objective_checks_passed": true,
+        "contexts": [
+          0,
+          32768,
+          65536,
+          131072,
+          262144
+        ],
+        "repeats": 3,
+        "context_sha256": "9fd051edae59a6b4263a690fbdd70816c78c9671a50d6976903b51b4386593b0",
+        "corpus_sha256": "1972e572fbf9d468cd86c2db5d3d3de60641329edca152fe013a179eb55001de",
+        "context_summaries": [
+          {
+            "context_tokens": 0,
+            "samples": 27,
+            "weighted_observed_decode_tokens_per_second": 86.8528987993813,
+            "serving_completed": 27,
+            "cache_valid": 27
+          },
+          {
+            "context_tokens": 32768,
+            "samples": 27,
+            "weighted_observed_decode_tokens_per_second": 83.28236711887043,
+            "serving_completed": 27,
+            "cache_valid": 27
+          },
+          {
+            "context_tokens": 65536,
+            "samples": 27,
+            "weighted_observed_decode_tokens_per_second": 82.63991760494024,
+            "serving_completed": 27,
+            "cache_valid": 27
+          },
+          {
+            "context_tokens": 131072,
+            "samples": 27,
+            "weighted_observed_decode_tokens_per_second": 86.66554835320004,
+            "serving_completed": 27,
+            "cache_valid": 27
+          },
+          {
+            "context_tokens": 262144,
+            "samples": 27,
+            "weighted_observed_decode_tokens_per_second": 80.02374626430432,
+            "serving_completed": 27,
+            "cache_valid": 27
+          }
+        ]
+      },
+      "retained_decode_2k": {
+        "passed": true,
+        "objective_checks_passed": true,
+        "contexts": [
+          2048
+        ],
+        "repeats": 3,
+        "context_sha256": "9fd051edae59a6b4263a690fbdd70816c78c9671a50d6976903b51b4386593b0",
+        "corpus_sha256": "1972e572fbf9d468cd86c2db5d3d3de60641329edca152fe013a179eb55001de",
+        "context_summaries": [
+          {
+            "context_tokens": 2048,
+            "samples": 27,
+            "weighted_observed_decode_tokens_per_second": 85.97168299595262,
+            "serving_completed": 27,
+            "cache_valid": 27
+          }
+        ]
+      }
+    },
+    "dual": {
+      "decode": {
+        "passed": true,
+        "repeats": 3,
+        "median_weighted_tps": 109.44189914543264,
+        "cases": {
+          "code": {
+            "samples": 3,
+            "median_tps": 155.69753609822018,
+            "min_tps": 147.84610516215926,
+            "max_tps": 156.48753917657635
+          },
+          "code-reasoning": {
+            "samples": 3,
+            "median_tps": 126.07888328768962,
+            "min_tps": 123.69546469645276,
+            "max_tps": 130.11961907355692
+          },
+          "counting": {
+            "samples": 3,
+            "median_tps": 221.6428800207799,
+            "min_tps": 209.35287248683926,
+            "max_tps": 223.01180184629808
+          },
+          "fable": {
+            "samples": 3,
+            "median_tps": 67.88240896825575,
+            "min_tps": 66.13453174570384,
+            "max_tps": 70.62998152035203
+          },
+          "hello": {
+            "samples": 3,
+            "median_tps": 98.03980417362446,
+            "min_tps": 71.39557729508378,
+            "max_tps": 98.6600293970791
+          },
+          "math": {
+            "samples": 3,
+            "median_tps": 134.12918218812626,
+            "min_tps": 124.83289261740734,
+            "max_tps": 162.81139987825878
+          },
+          "multilingual": {
+            "samples": 3,
+            "median_tps": 82.97359285352371,
+            "min_tps": 80.15056480263397,
+            "max_tps": 86.5040423889132
+          },
+          "structured-json": {
+            "samples": 3,
+            "median_tps": 133.89908812351067,
+            "min_tps": 104.40416802315745,
+            "max_tps": 134.3318587396113
+          },
+          "structured-json-schema": {
+            "samples": 3,
+            "median_tps": 102.92177128952889,
+            "min_tps": 101.53764196107348,
+            "max_tps": 117.74834117514993
+          },
+          "topic": {
+            "samples": 3,
+            "median_tps": 87.09801488006502,
+            "min_tps": 83.3139305479321,
+            "max_tps": 90.01602253434145
+          }
+        }
+      },
+      "target_decode": {
+        "passed": true,
+        "repeats": 3,
+        "median_weighted_tps": 49.95388337894619,
+        "cases": {
+          "code": {
+            "samples": 3,
+            "median_tps": 51.66593730654768,
+            "min_tps": 50.37743885495242,
+            "max_tps": 53.58419007217499
+          },
+          "code-reasoning": {
+            "samples": 3,
+            "median_tps": 50.73817298790969,
+            "min_tps": 49.90144900159916,
+            "max_tps": 51.30981465242728
+          },
+          "counting": {
+            "samples": 3,
+            "median_tps": 49.53059148620941,
+            "min_tps": 48.03087244694955,
+            "max_tps": 53.47199631806791
+          },
+          "fable": {
+            "samples": 3,
+            "median_tps": 48.24623498166237,
+            "min_tps": 47.0399321432942,
+            "max_tps": 48.78569676169382
+          },
+          "hello": {
+            "samples": 3,
+            "median_tps": 48.39238340289943,
+            "min_tps": 47.21307903292771,
+            "max_tps": 48.41097857467902
+          },
+          "math": {
+            "samples": 3,
+            "median_tps": 48.44530804201302,
+            "min_tps": 47.969835548350375,
+            "max_tps": 48.914762762546
+          },
+          "multilingual": {
+            "samples": 3,
+            "median_tps": 49.500480039678905,
+            "min_tps": 49.02678246176098,
+            "max_tps": 50.17097046610425
+          },
+          "structured-json": {
+            "samples": 3,
+            "median_tps": 50.06559432200062,
+            "min_tps": 46.922240921073175,
+            "max_tps": 51.54113296294166
+          },
+          "structured-json-schema": {
+            "samples": 3,
+            "median_tps": 50.837359755147816,
+            "min_tps": 50.64790605772077,
+            "max_tps": 51.689464460012395
+          },
+          "topic": {
+            "samples": 3,
+            "median_tps": 48.58788436363668,
+            "min_tps": 48.49472506408577,
+            "max_tps": 48.66423134392793
+          }
+        }
+      },
+      "concurrency": {
+        "code": {
+          "passed": true,
+          "prompt": "v5-release-final 20260914. Write a Python function merge_intervals(intervals) that merges overlapping integer intervals. Include type hints, a short docstring, and three assert-based examples. Return only one Python code block.",
+          "repeats": 3,
+          "summaries": [
+            {
+              "concurrency": 1,
+              "samples": 3,
+              "median_aggregate_tps": 171.95627777351902,
+              "min_aggregate_tps": 171.6168601932169,
+              "max_aggregate_tps": 172.2807722382717
+            },
+            {
+              "concurrency": 2,
+              "samples": 3,
+              "median_aggregate_tps": 279.69129389847075,
+              "min_aggregate_tps": 275.50506934513277,
+              "max_aggregate_tps": 284.8136141403422
+            },
+            {
+              "concurrency": 4,
+              "samples": 3,
+              "median_aggregate_tps": 476.0384365590305,
+              "min_aggregate_tps": 434.2585225254126,
+              "max_aggregate_tps": 486.31795685802797
+            },
+            {
+              "concurrency": 8,
+              "samples": 3,
+              "median_aggregate_tps": 749.7295925890417,
+              "min_aggregate_tps": 722.8283917812188,
+              "max_aggregate_tps": 757.4532498211798
+            },
+            {
+              "concurrency": 16,
+              "samples": 3,
+              "median_aggregate_tps": 1195.3719154676362,
+              "min_aggregate_tps": 1152.733303695134,
+              "max_aggregate_tps": 1212.5237485728205
+            }
+          ]
+        },
+        "topic": {
+          "passed": true,
+          "prompt": "v5-release-final 20260914. Explain virtual memory to a junior programmer in five concise bullet points, including paging, page faults, and the role of the TLB.",
+          "repeats": 3,
+          "summaries": [
+            {
+              "concurrency": 1,
+              "samples": 3,
+              "median_aggregate_tps": 96.94357509099338,
+              "min_aggregate_tps": 95.79928178884207,
+              "max_aggregate_tps": 97.6986837189852
+            },
+            {
+              "concurrency": 2,
+              "samples": 3,
+              "median_aggregate_tps": 163.7865824865823,
+              "min_aggregate_tps": 159.81170720354413,
+              "max_aggregate_tps": 166.9124617316313
+            },
+            {
+              "concurrency": 4,
+              "samples": 3,
+              "median_aggregate_tps": 260.7322980360532,
+              "min_aggregate_tps": 248.70926974781207,
+              "max_aggregate_tps": 264.35976970321167
+            },
+            {
+              "concurrency": 8,
+              "samples": 3,
+              "median_aggregate_tps": 447.58559370687783,
+              "min_aggregate_tps": 425.41197075724347,
+              "max_aggregate_tps": 452.80649578802723
+            },
+            {
+              "concurrency": 16,
+              "samples": 3,
+              "median_aggregate_tps": 622.8138231873548,
+              "min_aggregate_tps": 581.1827922414618,
+              "max_aggregate_tps": 647.6963582655229
+            }
+          ]
+        },
+        "counting": {
+          "passed": true,
+          "prompt": "v5-release-final 20260914. Count from 1 to 200, separated by commas. Output only the sequence.",
+          "repeats": 3,
+          "summaries": [
+            {
+              "concurrency": 1,
+              "samples": 3,
+              "median_aggregate_tps": 211.8270975600295,
+              "min_aggregate_tps": 211.72051692395289,
+              "max_aggregate_tps": 212.4820603670704
+            },
+            {
+              "concurrency": 2,
+              "samples": 3,
+              "median_aggregate_tps": 314.7140761857667,
+              "min_aggregate_tps": 309.1352048101686,
+              "max_aggregate_tps": 317.409189423516
+            },
+            {
+              "concurrency": 4,
+              "samples": 3,
+              "median_aggregate_tps": 586.0458345752654,
+              "min_aggregate_tps": 550.5049851849641,
+              "max_aggregate_tps": 586.7563369948084
+            },
+            {
+              "concurrency": 8,
+              "samples": 3,
+              "median_aggregate_tps": 973.2050760281527,
+              "min_aggregate_tps": 825.6033686828256,
+              "max_aggregate_tps": 977.6387932167798
+            },
+            {
+              "concurrency": 16,
+              "samples": 3,
+              "median_aggregate_tps": 1508.807322602429,
+              "min_aggregate_tps": 1440.7091428182432,
+              "max_aggregate_tps": 1512.6375452202044
+            }
+          ]
+        }
+      },
+      "mixed": {
+        "passed": true,
+        "repeats": 3,
+        "summaries": [
+          {
+            "concurrency": 1,
+            "samples": 3,
+            "median_aggregate_tps": 156.41345871930733,
+            "min_aggregate_tps": 144.89322728641272,
+            "max_aggregate_tps": 160.7056973768894
+          },
+          {
+            "concurrency": 2,
+            "samples": 3,
+            "median_aggregate_tps": 140.71880575524526,
+            "min_aggregate_tps": 136.36028289867974,
+            "max_aggregate_tps": 141.01828246698017
+          },
+          {
+            "concurrency": 4,
+            "samples": 3,
+            "median_aggregate_tps": 184.62087434592468,
+            "min_aggregate_tps": 171.38676466505802,
+            "max_aggregate_tps": 186.3801990735491
+          },
+          {
+            "concurrency": 8,
+            "samples": 3,
+            "median_aggregate_tps": 211.969321746534,
+            "min_aggregate_tps": 206.41653248594764,
+            "max_aggregate_tps": 215.88889869108263
+          },
+          {
+            "concurrency": 16,
+            "samples": 3,
+            "median_aggregate_tps": 284.6930919670309,
+            "min_aggregate_tps": 281.0841259734835,
+            "max_aggregate_tps": 296.27501887875536
+          }
+        ]
+      },
+      "prefill": {
+        "passed": true,
+        "bases": [
+          0,
+          32768,
+          65536,
+          131072,
+          262144
+        ],
+        "suffixes": [
+          1024,
+          2048,
+          4096,
+          8192,
+          16384,
+          32768
+        ],
+        "repeats": 3,
+        "warmups_per_cell": 1,
+        "context_sha256": "9fd051edae59a6b4263a690fbdd70816c78c9671a50d6976903b51b4386593b0",
+        "cells": [
+          {
+            "base_context_tokens": 0,
+            "suffix_tokens": 1024,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 4724.790722190273,
+            "min_effective_prefill_tokens_per_second": 4675.366177732915,
+            "max_effective_prefill_tokens_per_second": 4751.486403253496
+          },
+          {
+            "base_context_tokens": 0,
+            "suffix_tokens": 2048,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 6369.257207615631,
+            "min_effective_prefill_tokens_per_second": 6323.322853523115,
+            "max_effective_prefill_tokens_per_second": 6372.142387428692
+          },
+          {
+            "base_context_tokens": 0,
+            "suffix_tokens": 4096,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 7825.482837386227,
+            "min_effective_prefill_tokens_per_second": 7821.304995005711,
+            "max_effective_prefill_tokens_per_second": 7844.951114436878
+          },
+          {
+            "base_context_tokens": 0,
+            "suffix_tokens": 8192,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 8184.509446927311,
+            "min_effective_prefill_tokens_per_second": 8143.771267268536,
+            "max_effective_prefill_tokens_per_second": 8190.285977901251
+          },
+          {
+            "base_context_tokens": 0,
+            "suffix_tokens": 16384,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 8355.221265196516,
+            "min_effective_prefill_tokens_per_second": 8349.283719022567,
+            "max_effective_prefill_tokens_per_second": 8382.178666719377
+          },
+          {
+            "base_context_tokens": 0,
+            "suffix_tokens": 32768,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 8290.009147121638,
+            "min_effective_prefill_tokens_per_second": 8285.517831928548,
+            "max_effective_prefill_tokens_per_second": 8293.337663382226
+          },
+          {
+            "base_context_tokens": 32768,
+            "suffix_tokens": 1024,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 3682.732097530603,
+            "min_effective_prefill_tokens_per_second": 3667.417651631615,
+            "max_effective_prefill_tokens_per_second": 3705.1476767004106
+          },
+          {
+            "base_context_tokens": 32768,
+            "suffix_tokens": 2048,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 5153.343666640939,
+            "min_effective_prefill_tokens_per_second": 5140.51373408009,
+            "max_effective_prefill_tokens_per_second": 5219.25904647476
+          },
+          {
+            "base_context_tokens": 32768,
+            "suffix_tokens": 4096,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 6372.623250349613,
+            "min_effective_prefill_tokens_per_second": 6362.043827823745,
+            "max_effective_prefill_tokens_per_second": 6419.290489483658
+          },
+          {
+            "base_context_tokens": 32768,
+            "suffix_tokens": 8192,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 6930.147273462423,
+            "min_effective_prefill_tokens_per_second": 6907.191790684356,
+            "max_effective_prefill_tokens_per_second": 6943.107573929313
+          },
+          {
+            "base_context_tokens": 32768,
+            "suffix_tokens": 16384,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 7206.500020573493,
+            "min_effective_prefill_tokens_per_second": 7183.96849058593,
+            "max_effective_prefill_tokens_per_second": 7219.0556639649985
+          },
+          {
+            "base_context_tokens": 32768,
+            "suffix_tokens": 32768,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 7251.461598714913,
+            "min_effective_prefill_tokens_per_second": 7243.579690675289,
+            "max_effective_prefill_tokens_per_second": 7251.847541664579
+          },
+          {
+            "base_context_tokens": 65536,
+            "suffix_tokens": 1024,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 3220.707762012589,
+            "min_effective_prefill_tokens_per_second": 3218.3070884224694,
+            "max_effective_prefill_tokens_per_second": 3290.732424041529
+          },
+          {
+            "base_context_tokens": 65536,
+            "suffix_tokens": 2048,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 4625.502053303344,
+            "min_effective_prefill_tokens_per_second": 4539.852035937252,
+            "max_effective_prefill_tokens_per_second": 4657.314492651267
+          },
+          {
+            "base_context_tokens": 65536,
+            "suffix_tokens": 4096,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 5672.6466596928885,
+            "min_effective_prefill_tokens_per_second": 5645.772547391991,
+            "max_effective_prefill_tokens_per_second": 5725.934332066901
+          },
+          {
+            "base_context_tokens": 65536,
+            "suffix_tokens": 8192,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 6225.711659282545,
+            "min_effective_prefill_tokens_per_second": 6218.645297389807,
+            "max_effective_prefill_tokens_per_second": 6228.739323245543
+          },
+          {
+            "base_context_tokens": 65536,
+            "suffix_tokens": 16384,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 6507.415753728698,
+            "min_effective_prefill_tokens_per_second": 6498.57951657636,
+            "max_effective_prefill_tokens_per_second": 6529.874351923509
+          },
+          {
+            "base_context_tokens": 65536,
+            "suffix_tokens": 32768,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 6566.9139175730415,
+            "min_effective_prefill_tokens_per_second": 6537.84001362284,
+            "max_effective_prefill_tokens_per_second": 6581.706961067974
+          },
+          {
+            "base_context_tokens": 131072,
+            "suffix_tokens": 1024,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 2588.119262277231,
+            "min_effective_prefill_tokens_per_second": 2582.998052493482,
+            "max_effective_prefill_tokens_per_second": 2599.0913606992817
+          },
+          {
+            "base_context_tokens": 131072,
+            "suffix_tokens": 2048,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 3677.500706447941,
+            "min_effective_prefill_tokens_per_second": 3495.966407555523,
+            "max_effective_prefill_tokens_per_second": 3696.117712207366
+          },
+          {
+            "base_context_tokens": 131072,
+            "suffix_tokens": 4096,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 4654.7876251709295,
+            "min_effective_prefill_tokens_per_second": 4623.930270348667,
+            "max_effective_prefill_tokens_per_second": 4676.8666082498385
+          },
+          {
+            "base_context_tokens": 131072,
+            "suffix_tokens": 8192,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 5201.90207879065,
+            "min_effective_prefill_tokens_per_second": 5172.899995792193,
+            "max_effective_prefill_tokens_per_second": 5202.5515881202755
+          },
+          {
+            "base_context_tokens": 131072,
+            "suffix_tokens": 16384,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 5486.13158439025,
+            "min_effective_prefill_tokens_per_second": 5468.891123935796,
+            "max_effective_prefill_tokens_per_second": 5489.43711597514
+          },
+          {
+            "base_context_tokens": 131072,
+            "suffix_tokens": 32768,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 5555.633409437231,
+            "min_effective_prefill_tokens_per_second": 5544.527377199831,
+            "max_effective_prefill_tokens_per_second": 5564.4614543024
+          },
+          {
+            "base_context_tokens": 262144,
+            "suffix_tokens": 1024,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 1770.3865154971727,
+            "min_effective_prefill_tokens_per_second": 1765.1155193468387,
+            "max_effective_prefill_tokens_per_second": 1789.7192381787304
+          },
+          {
+            "base_context_tokens": 262144,
+            "suffix_tokens": 2048,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 2696.7338622388907,
+            "min_effective_prefill_tokens_per_second": 2649.1300706370334,
+            "max_effective_prefill_tokens_per_second": 2722.125598361307
+          },
+          {
+            "base_context_tokens": 262144,
+            "suffix_tokens": 4096,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 3335.9693898453916,
+            "min_effective_prefill_tokens_per_second": 3308.9834830735017,
+            "max_effective_prefill_tokens_per_second": 3417.3384311872196
+          },
+          {
+            "base_context_tokens": 262144,
+            "suffix_tokens": 8192,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 3847.3864975465067,
+            "min_effective_prefill_tokens_per_second": 3836.15708827863,
+            "max_effective_prefill_tokens_per_second": 3874.0507749758594
+          },
+          {
+            "base_context_tokens": 262144,
+            "suffix_tokens": 16384,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 4125.846534743028,
+            "min_effective_prefill_tokens_per_second": 4109.442216646835,
+            "max_effective_prefill_tokens_per_second": 4149.879136160634
+          },
+          {
+            "base_context_tokens": 262144,
+            "suffix_tokens": 32768,
+            "samples": 3,
+            "median_effective_prefill_tokens_per_second": 4228.670342983528,
+            "min_effective_prefill_tokens_per_second": 4226.520906495037,
+            "max_effective_prefill_tokens_per_second": 4241.736407716484
+          }
+        ]
+      },
+      "retained_decode": {
+        "passed": true,
+        "objective_checks_passed": true,
+        "contexts": [
+          0,
+          32768,
+          65536,
+          131072,
+          262144
+        ],
+        "repeats": 3,
+        "context_sha256": "9fd051edae59a6b4263a690fbdd70816c78c9671a50d6976903b51b4386593b0",
+        "corpus_sha256": "1972e572fbf9d468cd86c2db5d3d3de60641329edca152fe013a179eb55001de",
+        "context_summaries": [
+          {
+            "context_tokens": 0,
+            "samples": 27,
+            "weighted_observed_decode_tokens_per_second": 104.20958991154028,
+            "serving_completed": 27,
+            "cache_valid": 27
+          },
+          {
+            "context_tokens": 32768,
+            "samples": 27,
+            "weighted_observed_decode_tokens_per_second": 100.72283340270347,
+            "serving_completed": 27,
+            "cache_valid": 27
+          },
+          {
+            "context_tokens": 65536,
+            "samples": 27,
+            "weighted_observed_decode_tokens_per_second": 102.15253973158904,
+            "serving_completed": 27,
+            "cache_valid": 27
+          },
+          {
+            "context_tokens": 131072,
+            "samples": 27,
+            "weighted_observed_decode_tokens_per_second": 98.39666472438785,
+            "serving_completed": 27,
+            "cache_valid": 27
+          },
+          {
+            "context_tokens": 262144,
+            "samples": 27,
+            "weighted_observed_decode_tokens_per_second": 92.78424775469824,
+            "serving_completed": 27,
+            "cache_valid": 27
+          }
+        ]
+      },
+      "retained_decode_2k": {
+        "passed": true,
+        "objective_checks_passed": true,
+        "contexts": [
+          2048
+        ],
+        "repeats": 3,
+        "context_sha256": "9fd051edae59a6b4263a690fbdd70816c78c9671a50d6976903b51b4386593b0",
+        "corpus_sha256": "1972e572fbf9d468cd86c2db5d3d3de60641329edca152fe013a179eb55001de",
+        "context_summaries": [
+          {
+            "context_tokens": 2048,
+            "samples": 27,
+            "weighted_observed_decode_tokens_per_second": 103.80593808382565,
+            "serving_completed": 27,
+            "cache_valid": 27
+          }
+        ]
+      }
+    }
+  },
+  "launches": {
+    "single": {
+      "startup_seconds": 58.633014115999686,
+      "gpu_uuids": [
+        "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0"
+      ],
+      "deployment": {
+        "global_pool_bytes": 16700672000,
+        "logical_pool_tokens": 18736128,
+        "runtime_headroom_bytes_per_gpu": 2147483648,
+        "private_tail_tokens": 28672,
+        "source_pages": [
+          36650,
+          36650,
+          36650,
+          73300
+        ],
+        "prompt_retention_entries": 20,
+        "completed_turn_retention_entries": 20,
+        "concurrency": 16,
+        "rtx_expert_layers": 5,
+        "rtx_expert_tp": 1,
+        "spark_first_layer": 0,
+        "spark_layers": 40,
+        "spark_active_layers": 35,
+        "spark_redundant_layers": 5,
+        "spark_budget_bytes_each": 107374182400
+      },
+      "ram_capacity": {
+        "device_tokens": 18736128,
+        "target_tokens": 20971520,
+        "host_tokens": 2235904,
+        "combined_tokens": 20972032,
+        "staging_tokens": 1048576,
+        "pinned_bytes": 3489660928
+      },
+      "gpu_memory": "uuid, memory.used [MiB], memory.free [MiB], power.limit [W], clocks.max.memory [MHz], clocks.applications.memory [MHz]\nGPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, 94590 MiB, 2661 MiB, 400.00 W, 14001 MHz, [Requested functionality has been deprecated]\nGPU-95f8f212-9131-df99-fd53-7535965197d7, 12 MiB, 97236 MiB, 400.00 W, 14001 MHz, [Requested functionality has been deprecated]\n",
+      "placement": null,
+      "worker_image_id": "sha256:3418e35fb425f058f0c72cf08f8a512a39b30bbf824ac42730de93d860f48acd"
+    },
+    "dual": {
+      "startup_seconds": 31.714824059999955,
+      "gpu_uuids": [
+        "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0",
+        "GPU-95f8f212-9131-df99-fd53-7535965197d7"
+      ],
+      "deployment": {
+        "global_pool_bytes": 13090775040,
+        "logical_pool_tokens": 14680064,
+        "runtime_headroom_bytes_per_gpu": 838860800,
+        "private_tail_tokens": 28672,
+        "source_pages": [
+          28728,
+          28728,
+          28728,
+          57456
+        ],
+        "prompt_retention_entries": 20,
+        "completed_turn_retention_entries": 20,
+        "concurrency": 16,
+        "rtx_expert_layers": 20,
+        "rtx_expert_tp": 2,
+        "spark_first_layer": 20,
+        "spark_layers": 20,
+        "spark_active_layers": 20,
+        "spark_redundant_layers": 0,
+        "spark_budget_bytes_each": 107374182400
+      },
+      "ram_capacity": {
+        "device_tokens": 14680064,
+        "target_tokens": 20971520,
+        "host_tokens": 6291968,
+        "combined_tokens": 20972032,
+        "staging_tokens": 1048576,
+        "pinned_bytes": 7247757312
+      },
+      "gpu_memory": "uuid, memory.used [MiB], memory.free [MiB], power.limit [W], clocks.max.memory [MHz], clocks.applications.memory [MHz]\nGPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, 95132 MiB, 2119 MiB, 400.00 W, 14001 MHz, [Requested functionality has been deprecated]\nGPU-95f8f212-9131-df99-fd53-7535965197d7, 95738 MiB, 1510 MiB, 400.00 W, 14001 MHz, [Requested functionality has been deprecated]\n",
+      "placement": {
+        "version": 1,
+        "nonce": "7-1789660112619811784",
+        "rtx_gpus": 2,
+        "rtx_expert_layers": 20,
+        "spark_first_layer": 20
+      },
+      "worker_image_id": "sha256:3418e35fb425f058f0c72cf08f8a512a39b30bbf824ac42730de93d860f48acd"
+    }
+  },
+  "phases": {
+    "single-dspark": {
+      "arguments": [
+        "ds41rt",
+        "serve-native",
+        "--snapshot",
+        "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+        "--native-lib",
+        "/opt/ds41rt/lib/libds41rt_native.so",
+        "--peers",
+        "10.55.0.1:19441,10.55.0.2:19441,10.55.0.3:19441,10.55.0.4:19441",
+        "--rtx-gpus",
+        "1",
+        "--listen",
+        "0.0.0.0:8000",
+        "--prefill-batch-tokens",
+        "2048",
+        "--concurrency",
+        "16",
+        "--prefix-cache-entries",
+        "20",
+        "--max-context-tokens",
+        "1048576",
+        "--max-output-tokens",
+        "393216",
+        "--http-queue-depth",
+        "16",
+        "--http-queue-wait-ms",
+        "25000",
+        "--host-cache-bytes",
+        "auto",
+        "--dspark"
+      ],
+      "image_id": "sha256:1f2f7d18d90188f34a8541e17642c6c941f076448159ddce76164c37fcf57540",
+      "started_ns": 1789663951738756175,
+      "completed_ns": 1789666506936785924,
+      "commands": [
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-release-decode.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--tokenizer",
+            "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+            "--label",
+            "v5-release-final-single",
+            "--repeats",
+            "3",
+            "--nonce-seed",
+            "61001",
+            "--include-counting",
+            "--output",
+            "/home/tj/.cache/ds41rt-v6-package/performance/single-decode.json"
+          ],
+          "started_ns": 1789663951739742496,
+          "exit_code": 0,
+          "completed_ns": 1789664038136289816
+        },
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-concurrent-api.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--label",
+            "v5-release-final",
+            "--nonce",
+            "20260914",
+            "--case",
+            "code",
+            "--concurrency",
+            "1",
+            "2",
+            "4",
+            "8",
+            "16",
+            "--repeats",
+            "3",
+            "--output",
+            "/home/tj/.cache/ds41rt-v6-package/performance/single-code.json"
+          ],
+          "started_ns": 1789664038138170892,
+          "exit_code": 0,
+          "completed_ns": 1789664074911437546
+        },
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-concurrent-api.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--label",
+            "v5-release-final",
+            "--nonce",
+            "20260914",
+            "--case",
+            "topic",
+            "--concurrency",
+            "1",
+            "2",
+            "4",
+            "8",
+            "16",
+            "--repeats",
+            "3",
+            "--output",
+            "/home/tj/.cache/ds41rt-v6-package/performance/single-topic.json"
+          ],
+          "started_ns": 1789664074912360012,
+          "exit_code": 0,
+          "completed_ns": 1789664178912383839
+        },
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-concurrent-api.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--label",
+            "v5-release-final",
+            "--nonce",
+            "20260914",
+            "--case",
+            "counting",
+            "--concurrency",
+            "1",
+            "2",
+            "4",
+            "8",
+            "16",
+            "--repeats",
+            "3",
+            "--output",
+            "/home/tj/.cache/ds41rt-v6-package/performance/single-counting.json"
+          ],
+          "started_ns": 1789664178913487898,
+          "exit_code": 0,
+          "completed_ns": 1789664266679577844
+        },
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-adaptive-mixed.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--tokenizer",
+            "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+            "--nonce-seed",
+            "56001",
+            "--concurrency",
+            "1",
+            "2",
+            "4",
+            "8",
+            "16",
+            "--skip-lifecycle",
+            "--output",
+            "/home/tj/.cache/ds41rt-v6-package/performance/single-mixed-1.json"
+          ],
+          "started_ns": 1789664266680873631,
+          "exit_code": 0,
+          "completed_ns": 1789664304622094165
+        },
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-adaptive-mixed.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--tokenizer",
+            "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+            "--nonce-seed",
+            "56001",
+            "--concurrency",
+            "1",
+            "2",
+            "4",
+            "8",
+            "16",
+            "--skip-lifecycle",
+            "--output",
+            "/home/tj/.cache/ds41rt-v6-package/performance/single-mixed-2.json"
+          ],
+          "started_ns": 1789664304623041158,
+          "exit_code": 0,
+          "completed_ns": 1789664345746596267
+        },
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-adaptive-mixed.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--tokenizer",
+            "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+            "--nonce-seed",
+            "56001",
+            "--concurrency",
+            "1",
+            "2",
+            "4",
+            "8",
+            "16",
+            "--skip-lifecycle",
+            "--output",
+            "/home/tj/.cache/ds41rt-v6-package/performance/single-mixed-3.json"
+          ],
+          "started_ns": 1789664345747378332,
+          "exit_code": 0,
+          "completed_ns": 1789664385877763981
+        },
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-release-retained-decode.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--tokenizer",
+            "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+            "--context-file",
+            "/home/tj/.cache/ds41rt-upstream-20260916/release-matched-context-source.md",
+            "--label",
+            "v5-release-final-single",
+            "--repeats",
+            "3",
+            "--context",
+            "0",
+            "--context",
+            "32768",
+            "--context",
+            "65536",
+            "--context",
+            "131072",
+            "--context",
+            "262144",
+            "--output",
+            "/home/tj/.cache/ds41rt-v6-package/performance/single-retained-decode.json",
+            "--context-tag",
+            "v5-release-final-single"
+          ],
+          "started_ns": 1789664385878738986,
+          "exit_code": 0,
+          "completed_ns": 1789665242026485597
+        },
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-release-prefill-matrix.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--tokenizer",
+            "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+            "--context-file",
+            "/home/tj/.cache/ds41rt-upstream-20260916/release-matched-context-source.md",
+            "--label",
+            "v5-release-final-single",
+            "--repeats",
+            "3",
+            "--warmups",
+            "1",
+            "--output",
+            "/home/tj/.cache/ds41rt-v6-package/performance/single-prefill.json"
+          ],
+          "started_ns": 1789665242345231218,
+          "exit_code": 0,
+          "completed_ns": 1789666506867112782
+        }
+      ],
+      "gpu_settings": "uuid, power.limit [W], clocks.max.memory [MHz], clocks.applications.memory [MHz]\nGPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, 400.00 W, 14001 MHz, [Requested functionality has been deprecated]\nGPU-95f8f212-9131-df99-fd53-7535965197d7, 400.00 W, 14001 MHz, [Requested functionality has been deprecated]\n",
+      "telemetry": {
+        "coverage": "complete phase",
+        "devices": {
+          "GPU-95f8f212-9131-df99-fd53-7535965197d7": {
+            "samples": 2549,
+            "first_timestamp": "2026/09/18 00:52:31.762",
+            "last_timestamp": "2026/09/18 01:35:05.903",
+            "maximum_temperature_c": 51.0,
+            "hardware_thermal_slowdown_samples": 0,
+            "software_thermal_slowdown_samples": 0
+          },
+          "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0": {
+            "samples": 2549,
+            "first_timestamp": "2026/09/18 00:52:31.756",
+            "last_timestamp": "2026/09/18 01:35:05.903",
+            "maximum_temperature_c": 78.0,
+            "hardware_thermal_slowdown_samples": 0,
+            "software_thermal_slowdown_samples": 0
+          }
+        }
+      }
+    },
+    "single-target": {
+      "arguments": [
+        "ds41rt",
+        "serve-native",
+        "--snapshot",
+        "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+        "--native-lib",
+        "/opt/ds41rt/lib/libds41rt_native.so",
+        "--peers",
+        "10.55.0.1:19441,10.55.0.2:19441,10.55.0.3:19441,10.55.0.4:19441",
+        "--rtx-gpus",
+        "1",
+        "--listen",
+        "0.0.0.0:8000",
+        "--prefill-batch-tokens",
+        "2048",
+        "--concurrency",
+        "16",
+        "--prefix-cache-entries",
+        "20",
+        "--max-context-tokens",
+        "1048576",
+        "--max-output-tokens",
+        "393216",
+        "--http-queue-depth",
+        "16",
+        "--http-queue-wait-ms",
+        "25000",
+        "--host-cache-bytes",
+        "auto"
+      ],
+      "image_id": "sha256:1f2f7d18d90188f34a8541e17642c6c941f076448159ddce76164c37fcf57540",
+      "started_ns": 1789666705062543284,
+      "completed_ns": 1789666872853396130,
+      "commands": [
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-release-decode.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--tokenizer",
+            "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+            "--label",
+            "v5-release-final-single",
+            "--repeats",
+            "3",
+            "--nonce-seed",
+            "61001",
+            "--include-counting",
+            "--output",
+            "/home/tj/.cache/ds41rt-v6-package/performance/single-target-decode.json"
+          ],
+          "started_ns": 1789666705063325709,
+          "exit_code": 0,
+          "completed_ns": 1789666872436053269
+        }
+      ],
+      "gpu_settings": "uuid, power.limit [W], clocks.max.memory [MHz], clocks.applications.memory [MHz]\nGPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, 400.00 W, 14001 MHz, [Requested functionality has been deprecated]\nGPU-95f8f212-9131-df99-fd53-7535965197d7, 400.00 W, 14001 MHz, [Requested functionality has been deprecated]\n",
+      "telemetry": {
+        "coverage": "complete phase",
+        "devices": {
+          "GPU-95f8f212-9131-df99-fd53-7535965197d7": {
+            "samples": 167,
+            "first_timestamp": "2026/09/18 01:38:25.090",
+            "last_timestamp": "2026/09/18 01:41:11.797",
+            "maximum_temperature_c": 46.0,
+            "hardware_thermal_slowdown_samples": 0,
+            "software_thermal_slowdown_samples": 0
+          },
+          "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0": {
+            "samples": 167,
+            "first_timestamp": "2026/09/18 01:38:25.085",
+            "last_timestamp": "2026/09/18 01:41:11.797",
+            "maximum_temperature_c": 61.0,
+            "hardware_thermal_slowdown_samples": 0,
+            "software_thermal_slowdown_samples": 0
+          }
+        }
+      }
+    },
+    "single-retained_2k": {
+      "arguments": [
+        "ds41rt",
+        "serve-native",
+        "--snapshot",
+        "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+        "--native-lib",
+        "/opt/ds41rt/lib/libds41rt_native.so",
+        "--peers",
+        "10.55.0.1:19441,10.55.0.2:19441,10.55.0.3:19441,10.55.0.4:19441",
+        "--rtx-gpus",
+        "1",
+        "--listen",
+        "0.0.0.0:8000",
+        "--prefill-batch-tokens",
+        "2048",
+        "--concurrency",
+        "16",
+        "--prefix-cache-entries",
+        "20",
+        "--max-context-tokens",
+        "1048576",
+        "--max-output-tokens",
+        "393216",
+        "--http-queue-depth",
+        "16",
+        "--http-queue-wait-ms",
+        "25000",
+        "--host-cache-bytes",
+        "auto",
+        "--dspark"
+      ],
+      "image_id": "sha256:1f2f7d18d90188f34a8541e17642c6c941f076448159ddce76164c37fcf57540",
+      "started_ns": 1789666573820627413,
+      "completed_ns": 1789666639171401124,
+      "commands": [
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-release-retained-decode.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--tokenizer",
+            "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+            "--context-file",
+            "/home/tj/.cache/ds41rt-upstream-20260916/release-matched-context-source.md",
+            "--label",
+            "v5-release-final-single",
+            "--repeats",
+            "3",
+            "--output",
+            "/home/tj/.cache/ds41rt-v6-package/performance/single-retained-2k.json",
+            "--context-tag",
+            "v5-release-final-single",
+            "--context",
+            "2048"
+          ],
+          "started_ns": 1789666573821509949,
+          "exit_code": 0,
+          "completed_ns": 1789666639105371064
+        }
+      ],
+      "gpu_settings": "uuid, power.limit [W], clocks.max.memory [MHz], clocks.applications.memory [MHz]\nGPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, 400.00 W, 14001 MHz, [Requested functionality has been deprecated]\nGPU-95f8f212-9131-df99-fd53-7535965197d7, 400.00 W, 14001 MHz, [Requested functionality has been deprecated]\n",
+      "telemetry": {
+        "coverage": "complete phase",
+        "devices": {
+          "GPU-95f8f212-9131-df99-fd53-7535965197d7": {
+            "samples": 65,
+            "first_timestamp": "2026/09/18 01:36:13.847",
+            "last_timestamp": "2026/09/18 01:37:18.133",
+            "maximum_temperature_c": 46.0,
+            "hardware_thermal_slowdown_samples": 0,
+            "software_thermal_slowdown_samples": 0
+          },
+          "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0": {
+            "samples": 65,
+            "first_timestamp": "2026/09/18 01:36:13.842",
+            "last_timestamp": "2026/09/18 01:37:18.132",
+            "maximum_temperature_c": 60.0,
+            "hardware_thermal_slowdown_samples": 0,
+            "software_thermal_slowdown_samples": 0
+          }
+        }
+      }
+    },
+    "dual-dspark": {
+      "arguments": [
+        "ds41rt",
+        "serve-native",
+        "--snapshot",
+        "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+        "--native-lib",
+        "/opt/ds41rt/lib/libds41rt_native.so",
+        "--peers",
+        "10.55.0.1:19441,10.55.0.2:19441,10.55.0.3:19441,10.55.0.4:19441",
+        "--rtx-gpus",
+        "2",
+        "--listen",
+        "0.0.0.0:8000",
+        "--prefill-batch-tokens",
+        "2048",
+        "--concurrency",
+        "16",
+        "--prefix-cache-entries",
+        "20",
+        "--max-context-tokens",
+        "1048576",
+        "--max-output-tokens",
+        "393216",
+        "--http-queue-depth",
+        "16",
+        "--http-queue-wait-ms",
+        "25000",
+        "--host-cache-bytes",
+        "auto",
+        "--dspark",
+        "--placement-directory",
+        "/run/ds41rt-placement"
+      ],
+      "image_id": "sha256:1f2f7d18d90188f34a8541e17642c6c941f076448159ddce76164c37fcf57540",
+      "started_ns": 1789660157412483126,
+      "completed_ns": 1789662528112833736,
+      "commands": [
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-release-decode.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--tokenizer",
+            "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+            "--label",
+            "v5-release-final-dual",
+            "--repeats",
+            "3",
+            "--nonce-seed",
+            "61001",
+            "--include-counting",
+            "--output",
+            "/home/tj/.cache/ds41rt-v6-package/performance/dual-decode.json"
+          ],
+          "started_ns": 1789660157412755776,
+          "exit_code": 0,
+          "completed_ns": 1789660231641096579
+        },
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-concurrent-api.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--label",
+            "v5-release-final",
+            "--nonce",
+            "20260914",
+            "--case",
+            "code",
+            "--concurrency",
+            "1",
+            "2",
+            "4",
+            "8",
+            "16",
+            "--repeats",
+            "3",
+            "--output",
+            "/home/tj/.cache/ds41rt-v6-package/performance/dual-code.json"
+          ],
+          "started_ns": 1789660231642337242,
+          "exit_code": 0,
+          "completed_ns": 1789660261812103735
+        },
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-concurrent-api.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--label",
+            "v5-release-final",
+            "--nonce",
+            "20260914",
+            "--case",
+            "topic",
+            "--concurrency",
+            "1",
+            "2",
+            "4",
+            "8",
+            "16",
+            "--repeats",
+            "3",
+            "--output",
+            "/home/tj/.cache/ds41rt-v6-package/performance/dual-topic.json"
+          ],
+          "started_ns": 1789660261813415115,
+          "exit_code": 0,
+          "completed_ns": 1789660338451873213
+        },
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-concurrent-api.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--label",
+            "v5-release-final",
+            "--nonce",
+            "20260914",
+            "--case",
+            "counting",
+            "--concurrency",
+            "1",
+            "2",
+            "4",
+            "8",
+            "16",
+            "--repeats",
+            "3",
+            "--output",
+            "/home/tj/.cache/ds41rt-v6-package/performance/dual-counting.json"
+          ],
+          "started_ns": 1789660338453004863,
+          "exit_code": 0,
+          "completed_ns": 1789660409055437385
+        },
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-adaptive-mixed.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--tokenizer",
+            "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+            "--nonce-seed",
+            "56001",
+            "--concurrency",
+            "1",
+            "2",
+            "4",
+            "8",
+            "16",
+            "--skip-lifecycle",
+            "--output",
+            "/home/tj/.cache/ds41rt-v6-package/performance/dual-mixed-1.json"
+          ],
+          "started_ns": 1789660409056402595,
+          "exit_code": 0,
+          "completed_ns": 1789660436538075797
+        },
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-adaptive-mixed.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--tokenizer",
+            "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+            "--nonce-seed",
+            "56001",
+            "--concurrency",
+            "1",
+            "2",
+            "4",
+            "8",
+            "16",
+            "--skip-lifecycle",
+            "--output",
+            "/home/tj/.cache/ds41rt-v6-package/performance/dual-mixed-2.json"
+          ],
+          "started_ns": 1789660436538967306,
+          "exit_code": 0,
+          "completed_ns": 1789660464054563580
+        },
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-adaptive-mixed.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--tokenizer",
+            "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+            "--nonce-seed",
+            "56001",
+            "--concurrency",
+            "1",
+            "2",
+            "4",
+            "8",
+            "16",
+            "--skip-lifecycle",
+            "--output",
+            "/home/tj/.cache/ds41rt-v6-package/performance/dual-mixed-3.json"
+          ],
+          "started_ns": 1789660464055355620,
+          "exit_code": 0,
+          "completed_ns": 1789660491100664238
+        },
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-release-retained-decode.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--tokenizer",
+            "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+            "--context-file",
+            "/home/tj/.cache/ds41rt-upstream-20260916/release-matched-context-source.md",
+            "--label",
+            "v5-release-final-dual",
+            "--repeats",
+            "3",
+            "--context",
+            "0",
+            "--context",
+            "32768",
+            "--context",
+            "65536",
+            "--context",
+            "131072",
+            "--context",
+            "262144",
+            "--output",
+            "/home/tj/.cache/ds41rt-v6-package/performance/dual-retained-decode.json",
+            "--context-tag",
+            "v5-release-final-dual"
+          ],
+          "started_ns": 1789660491101485983,
+          "exit_code": 0,
+          "completed_ns": 1789661289827389569
+        },
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-release-prefill-matrix.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--tokenizer",
+            "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+            "--context-file",
+            "/home/tj/.cache/ds41rt-upstream-20260916/release-matched-context-source.md",
+            "--label",
+            "v5-release-final-dual",
+            "--repeats",
+            "3",
+            "--warmups",
+            "1",
+            "--output",
+            "/home/tj/.cache/ds41rt-v6-package/performance/dual-prefill.json"
+          ],
+          "started_ns": 1789661290145747190,
+          "exit_code": 0,
+          "completed_ns": 1789662528107088156
+        }
+      ],
+      "gpu_settings": "uuid, power.limit [W], clocks.max.memory [MHz], clocks.applications.memory [MHz]\nGPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, 400.00 W, 14001 MHz, [Requested functionality has been deprecated]\nGPU-95f8f212-9131-df99-fd53-7535965197d7, 400.00 W, 14001 MHz, [Requested functionality has been deprecated]\n",
+      "telemetry": {
+        "coverage": "partial phase; began during third direct-decode repeat",
+        "devices": {
+          "GPU-95f8f212-9131-df99-fd53-7535965197d7": {
+            "samples": 2298,
+            "first_timestamp": "2026/09/17 23:50:30.464",
+            "last_timestamp": "2026/09/18 00:28:49.859",
+            "maximum_temperature_c": 81.0,
+            "hardware_thermal_slowdown_samples": 0,
+            "software_thermal_slowdown_samples": null
+          },
+          "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0": {
+            "samples": 2298,
+            "first_timestamp": "2026/09/17 23:50:30.456",
+            "last_timestamp": "2026/09/18 00:28:49.859",
+            "maximum_temperature_c": 71.0,
+            "hardware_thermal_slowdown_samples": 0,
+            "software_thermal_slowdown_samples": null
+          }
+        }
+      }
+    },
+    "dual-target": {
+      "arguments": [
+        "ds41rt",
+        "serve-native",
+        "--snapshot",
+        "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+        "--native-lib",
+        "/opt/ds41rt/lib/libds41rt_native.so",
+        "--peers",
+        "10.55.0.1:19441,10.55.0.2:19441,10.55.0.3:19441,10.55.0.4:19441",
+        "--rtx-gpus",
+        "2",
+        "--listen",
+        "0.0.0.0:8000",
+        "--prefill-batch-tokens",
+        "2048",
+        "--concurrency",
+        "16",
+        "--prefix-cache-entries",
+        "20",
+        "--max-context-tokens",
+        "1048576",
+        "--max-output-tokens",
+        "393216",
+        "--http-queue-depth",
+        "16",
+        "--http-queue-wait-ms",
+        "25000",
+        "--host-cache-bytes",
+        "auto",
+        "--placement-directory",
+        "/run/ds41rt-placement"
+      ],
+      "image_id": "sha256:1f2f7d18d90188f34a8541e17642c6c941f076448159ddce76164c37fcf57540",
+      "started_ns": 1789663663610780389,
+      "completed_ns": 1789663852867847308,
+      "commands": [
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-release-decode.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--tokenizer",
+            "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+            "--label",
+            "v5-release-final-dual",
+            "--repeats",
+            "3",
+            "--nonce-seed",
+            "61001",
+            "--include-counting",
+            "--output",
+            "/home/tj/.cache/ds41rt-v6-package/performance/dual-target-decode.json"
+          ],
+          "started_ns": 1789663663611517666,
+          "exit_code": 0,
+          "completed_ns": 1789663851947100513
+        }
+      ],
+      "gpu_settings": "uuid, power.limit [W], clocks.max.memory [MHz], clocks.applications.memory [MHz]\nGPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, 400.00 W, 14001 MHz, [Requested functionality has been deprecated]\nGPU-95f8f212-9131-df99-fd53-7535965197d7, 400.00 W, 14001 MHz, [Requested functionality has been deprecated]\n",
+      "telemetry": {
+        "coverage": "complete phase",
+        "devices": {
+          "GPU-95f8f212-9131-df99-fd53-7535965197d7": {
+            "samples": 189,
+            "first_timestamp": "2026/09/18 00:47:43.633",
+            "last_timestamp": "2026/09/18 00:50:51.822",
+            "maximum_temperature_c": 68.0,
+            "hardware_thermal_slowdown_samples": 0,
+            "software_thermal_slowdown_samples": 0
+          },
+          "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0": {
+            "samples": 189,
+            "first_timestamp": "2026/09/18 00:47:43.627",
+            "last_timestamp": "2026/09/18 00:50:51.822",
+            "maximum_temperature_c": 61.0,
+            "hardware_thermal_slowdown_samples": 0,
+            "software_thermal_slowdown_samples": 0
+          }
+        }
+      }
+    },
+    "dual-retained_2k": {
+      "arguments": [
+        "ds41rt",
+        "serve-native",
+        "--snapshot",
+        "/root/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277",
+        "--native-lib",
+        "/opt/ds41rt/lib/libds41rt_native.so",
+        "--peers",
+        "10.55.0.1:19441,10.55.0.2:19441,10.55.0.3:19441,10.55.0.4:19441",
+        "--rtx-gpus",
+        "2",
+        "--listen",
+        "0.0.0.0:8000",
+        "--prefill-batch-tokens",
+        "2048",
+        "--concurrency",
+        "16",
+        "--prefix-cache-entries",
+        "20",
+        "--max-context-tokens",
+        "1048576",
+        "--max-output-tokens",
+        "393216",
+        "--http-queue-depth",
+        "16",
+        "--http-queue-wait-ms",
+        "25000",
+        "--host-cache-bytes",
+        "auto",
+        "--dspark",
+        "--placement-directory",
+        "/run/ds41rt-placement"
+      ],
+      "image_id": "sha256:1f2f7d18d90188f34a8541e17642c6c941f076448159ddce76164c37fcf57540",
+      "started_ns": 1789663570743033991,
+      "completed_ns": 1789663627870825376,
+      "commands": [
+        {
+          "command": [
+            "/home/tj/Developer/ds41rt/.venv/bin/python",
+            "/home/tj/Developer/ds41rt/scripts/bench-ds41-release-retained-decode.py",
+            "--base-url",
+            "http://127.0.0.1:8000",
+            "--tokenizer",
+            "/home/tj/.cache/huggingface/hub/models--deepseek-ai--DeepSeek-V4.1-Flash/snapshots/dba1be0a40aa45a94ad051997016db3960a90277/tokenizer.json",
+            "--context-file",
+            "/home/tj/.cache/ds41rt-upstream-20260916/release-matched-context-source.md",
+            "--label",
+            "v5-release-final-dual",
+            "--repeats",
+            "3",
+            "--output",
+            "/home/tj/.cache/ds41rt-v6-package/performance/dual-retained-2k.json",
+            "--context-tag",
+            "v5-release-final-dual",
+            "--context",
+            "2048"
+          ],
+          "started_ns": 1789663570743879912,
+          "exit_code": 0,
+          "completed_ns": 1789663627453349966
+        }
+      ],
+      "gpu_settings": "uuid, power.limit [W], clocks.max.memory [MHz], clocks.applications.memory [MHz]\nGPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, 400.00 W, 14001 MHz, [Requested functionality has been deprecated]\nGPU-95f8f212-9131-df99-fd53-7535965197d7, 400.00 W, 14001 MHz, [Requested functionality has been deprecated]\n",
+      "telemetry": {
+        "coverage": "complete phase",
+        "devices": {
+          "GPU-95f8f212-9131-df99-fd53-7535965197d7": {
+            "samples": 57,
+            "first_timestamp": "2026/09/18 00:46:10.765",
+            "last_timestamp": "2026/09/18 00:47:06.827",
+            "maximum_temperature_c": 66.0,
+            "hardware_thermal_slowdown_samples": 0,
+            "software_thermal_slowdown_samples": 0
+          },
+          "GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0": {
+            "samples": 57,
+            "first_timestamp": "2026/09/18 00:46:10.759",
+            "last_timestamp": "2026/09/18 00:47:06.827",
+            "maximum_temperature_c": 58.0,
+            "hardware_thermal_slowdown_samples": 0,
+            "software_thermal_slowdown_samples": 0
+          }
+        }
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "coordinator-image.json",
+      "sha256": "159ce44315364f86b8e72ae9e8f492beaff15f70409842077b2bc9f869cb5ff3",
+      "bytes": 2125
+    },
+    {
+      "path": "dual-launch-server.log",
+      "sha256": "016a34f8d057b9d3d22f8d49386b8ac770f190fd0fa0bce6d7fe5ada3d141f54",
+      "bytes": 7958
+    },
+    {
+      "path": "dual-launch.json",
+      "sha256": "ee0d97c00a8588d66310d19cb8fa740faf783557029e447e397b41279d297baa",
+      "bytes": 234213
+    },
+    {
+      "path": "performance/dual-code.json",
+      "sha256": "5a1aff4b3458e7538717bcd1abd6e5e60ce8c53ca445324074e195ef7bfc0862",
+      "bytes": 173166
+    },
+    {
+      "path": "performance/dual-counting.json",
+      "sha256": "68e6f79cafc74640ac42bbac324523ab55f9585f6b7912876db7886bf7b68af6",
+      "bytes": 188453
+    },
+    {
+      "path": "performance/dual-decode.json",
+      "sha256": "9503a01822a4d28a5732aa98302cf2576a4d6a3573a635be58e5af39b2cf64a2",
+      "bytes": 91532
+    },
+    {
+      "path": "performance/dual-dspark-execution.json",
+      "sha256": "ecac4f727a125b6cd3ee235b2ee1ae2e95c117c1452bc3e0ddd3e632009a81ae",
+      "bytes": 22638
+    },
+    {
+      "path": "performance/dual-gpu-telemetry.csv",
+      "sha256": "b287c14f1b9aaa98ae60963c17ae58bc6e44f579121bb76a1628966d2f35ac76",
+      "bytes": 613055
+    },
+    {
+      "path": "performance/dual-mixed-1.json",
+      "sha256": "b2e6bcb18dcbcab8b3ed5d993bff46673efacb2eb412208b47b93e8aacc54c4d",
+      "bytes": 71894
+    },
+    {
+      "path": "performance/dual-mixed-2.json",
+      "sha256": "993dff8a68761a4e87fec6a40e696b1495e8a07a8ee324a73bfda4782a88d0f6",
+      "bytes": 71868
+    },
+    {
+      "path": "performance/dual-mixed-3.json",
+      "sha256": "880944dbbab705eaa022c5ede4e38f334d3f6c1d37b3d23551b8c401283211a2",
+      "bytes": 71685
+    },
+    {
+      "path": "performance/dual-prefill.json",
+      "sha256": "68fa91fd2534364eac5be8e251e0cf192fd70422c65e41c3b6773e5aab330725",
+      "bytes": 227648
+    },
+    {
+      "path": "performance/dual-retained-2k.json",
+      "sha256": "e563da05bfc9fb62d75096075fac50175c8ed2e230b834ea3b0ff0b33d6915e4",
+      "bytes": 263955
+    },
+    {
+      "path": "performance/dual-retained-decode.json",
+      "sha256": "2303c2b436bede0e996e087d66c6ec2d9fc201351faa29707ba4a8f20394b31f",
+      "bytes": 54702802
+    },
+    {
+      "path": "performance/dual-retained_2k-execution.json",
+      "sha256": "dcbc08275e84340d1a790d2a3ccabb6005c693c3c9c6406b51f701f99b3f5085",
+      "bytes": 16881
+    },
+    {
+      "path": "performance/dual-retained_2k-gpu-telemetry.csv",
+      "sha256": "cfb10b8019e25c39d4b2b5284d14afa5cc6167afa4e143bb4e994b86357e2f04",
+      "bytes": 17567
+    },
+    {
+      "path": "performance/dual-target-decode.json",
+      "sha256": "eb0d4ae1532f2410696e3128c41650b97aad8074759084eca094411ec0fedc9a",
+      "bytes": 92720
+    },
+    {
+      "path": "performance/dual-target-execution.json",
+      "sha256": "a77d5285e3f4746430f220b8ab2ac06de26fc856b4b78ce8a985c964f56f6989",
+      "bytes": 16690
+    },
+    {
+      "path": "performance/dual-target-gpu-telemetry.csv",
+      "sha256": "76c50321730df794060731427766bc92f73506742989110f889338851c5eefaf",
+      "bytes": 57699
+    },
+    {
+      "path": "performance/dual-topic.json",
+      "sha256": "33a8b69190b3d3a5754d6cb30226dc0786e18b6050eb6751001848689f190a4b",
+      "bytes": 224411
+    },
+    {
+      "path": "performance/single-code.json",
+      "sha256": "bba26c743d22bfbea58d937527b74bbc2afaee561d8e308f5e2992aa2ba0bb23",
+      "bytes": 177056
+    },
+    {
+      "path": "performance/single-counting.json",
+      "sha256": "9229b1863913c705a93e848fb155a5b6ad341822426b6a1b97ccbe295ede1443",
+      "bytes": 188431
+    },
+    {
+      "path": "performance/single-decode.json",
+      "sha256": "8f5d5771674d3f341b8a0cec62a32ffeeecee01c4b63ab450dd0a2193b7f4399",
+      "bytes": 90378
+    },
+    {
+      "path": "performance/single-dspark-execution.json",
+      "sha256": "d47020e5acd732f9eb160c7e2ce8c0d2f2749c9615c477f637777a3e8db37dd1",
+      "bytes": 22691
+    },
+    {
+      "path": "performance/single-dspark-gpu-telemetry.csv",
+      "sha256": "162dce44c7fe620c2a7c1ed413e174f6b5810ebac2e0beb23274214236fd1b5c",
+      "bytes": 752417
+    },
+    {
+      "path": "performance/single-mixed-1.json",
+      "sha256": "9d935c41f5ed44d544f4dbe5ab42e23d969f7f43a2b8a98b124e51839139dfe3",
+      "bytes": 72877
+    },
+    {
+      "path": "performance/single-mixed-2.json",
+      "sha256": "d12c945c775fe7260726f6376e781e9705f17832e16fbe44e7c9e9c671d5d2b5",
+      "bytes": 72544
+    },
+    {
+      "path": "performance/single-mixed-3.json",
+      "sha256": "80a39e888a303601ffa4671f0728ce6584f2377f472108fa7e9ca4748c5ba346",
+      "bytes": 72482
+    },
+    {
+      "path": "performance/single-prefill.json",
+      "sha256": "7fba6348f57a35fecf331f827e224a5b7baddd85caafa80c594605d9c22be920",
+      "bytes": 227596
+    },
+    {
+      "path": "performance/single-retained-2k.json",
+      "sha256": "6a54eaaa076a8cf2fdffddac4dd6507e4b448d72bb2a8d5a7d79499286a5ae40",
+      "bytes": 262632
+    },
+    {
+      "path": "performance/single-retained-decode.json",
+      "sha256": "553a8a042b854e315f2301580f6cc03a2b4a38362f6da49e549daa29925d5d89",
+      "bytes": 54702547
+    },
+    {
+      "path": "performance/single-retained_2k-execution.json",
+      "sha256": "0c03ae06859f4235626618eace0c4313c1990396e38d5ee231ed83677d896de7",
+      "bytes": 16665
+    },
+    {
+      "path": "performance/single-retained_2k-gpu-telemetry.csv",
+      "sha256": "7e3a96315302e1a57411eb62260a8ebf37961cbc2c62f9fd3ac8d943a448251b",
+      "bytes": 19481
+    },
+    {
+      "path": "performance/single-target-decode.json",
+      "sha256": "9da38831347b0880f4dee8a3c804d08d004489bb140351825b08dedaa3909ad8",
+      "bytes": 87602
+    },
+    {
+      "path": "performance/single-target-execution.json",
+      "sha256": "47a153012594256a91cae75430c01842af41ea478e06af6cc195c2595540a01e",
+      "bytes": 16473
+    },
+    {
+      "path": "performance/single-target-gpu-telemetry.csv",
+      "sha256": "cea53c442da408b7e9a250f543bb0f2cd45d2ac48a1230f6e4fa27e758f3d1f6",
+      "bytes": 49676
+    },
+    {
+      "path": "performance/single-topic.json",
+      "sha256": "d6f6dd7516e36d894ae3de5d4a76247489f761c5124827312d2f8a89cd82ac01",
+      "bytes": 245634
+    },
+    {
+      "path": "single-launch-server.log",
+      "sha256": "a4654b254a3f96ef830de4dd88b4bfc21426a077c2bbad0ec89217421c1fa84e",
+      "bytes": 3804
+    },
+    {
+      "path": "single-launch.json",
+      "sha256": "3aefb05e7c0fec3b2dcabaee0aee54437de81b2c5b2ae911a2c749c6b2392352",
+      "bytes": 114786
+    }
+  ],
+  "performance_matrix_passed": true
+}

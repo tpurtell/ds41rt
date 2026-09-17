@@ -8,244 +8,135 @@ All reported RTX measurements use an enforced **400 W power limit** and **standa
 
 ## Performance
 
-The standard launcher selects two feasible peer-connected RTX cards and falls back to one. The official full checkpoint remains the default; the EXL3 3.25 bpw checkpoint is an opt-in configuration. Every performance cell contains three measured samples. Counting is retained as a low-entropy reference, while weighted content, reasoning code, and mixed traffic are the primary serving measurements.
+The official full checkpoint remains the default. Every performance cell contains three samples. Counting is a low-entropy reference; weighted content, reasoning code, topic, mixed traffic, and retained-context decode are the primary serving measurements. See the [v6 performance report](docs/release-v6-performance.md) for the protocol and provenance.
 
-RTX measurements use **400 W per card** and **standard memory speed, without a memory overclock**. All performance tables use FP8 PLE. Reasoning code uses thinking enabled at high effort; its throughput includes reasoning and final-answer tokens.
+RTX measurements use **400 W per card and standard memory speed, without a memory overclock**. Each performance cell has three samples. Reasoning code uses high-effort thinking; other throughput cases disable thinking. All new TP2 switches are off.
 
-**Headlines.** Median tokens/s. Changes compare two RTX cards with one for the same checkpoint. Counting is outside the weighted content score.
+**Headlines.** Tokens/s. Changes compare two RTX cards with one. Counting is outside the weighted score.
 
-| Measurement | Full 1 RTX | Full 2 RTX | Change | EXL3 1 RTX | EXL3 2 RTX | Change |
-|---|---:|---:|---:|---:|---:|---:|
-| Best median prefill | 7,852.77 | 8,366.20 | +6.5% | 4,460.01 | 5,149.28 | +15.5% |
-| Counting target-only decode | 49.56 | 53.76 | +8.5% | 49.55 | 57.34 | +15.7% |
-| Counting dSpark decode | 161.70 | 219.75 | +35.9% | 167.68 | 247.83 | +47.8% |
-| Weighted nine-category target-only decode | 48.36 | 51.97 | +7.5% | 48.46 | 55.05 | +13.6% |
-| Weighted nine-category dSpark decode | 92.79 | 109.88 | +18.4% | 93.66 | 119.55 | +27.6% |
-| C16 code aggregate | 1,074.96 | 1,205.02 | +12.1% | 1,153.15 | 1,294.55 | +12.3% |
-| C16 topic aggregate | 595.79 | 603.62 | +1.3% | 549.34 | 756.30 | +37.7% |
-| C16 counting aggregate | 1,253.43 | 1,511.84 | +20.6% | 1,366.95 | 1,690.30 | +23.7% |
-| C16 mixed aggregate | 200.11 | 295.71 | +47.8% | 223.10 | 332.48 | +49.0% |
+| Measurement | 1 RTX | 2 RTX | Change |
+|---|---:|---:|---:|
+| Best median prefill | 7,823.90 | 8,355.22 | +6.8% |
+| Counting target-only decode | 49.36 | 49.53 | +0.3% |
+| Counting dSpark decode | 161.58 | 221.64 | +37.2% |
+| Weighted nine-category target-only decode | 47.23 | 49.95 | +5.8% |
+| Weighted nine-category dSpark decode | 92.00 | 109.44 | +19.0% |
+| C16 code aggregate | 1,069.16 | 1,195.37 | +11.8% |
+| C16 topic aggregate | 601.90 | 622.81 | +3.5% |
+| C16 counting aggregate | 1,267.07 | 1,508.81 | +19.1% |
+| C16 mixed aggregate | 191.75 | 284.69 | +48.5% |
 
-**Full content-type decode.** Three samples per case. The nine-category score retains non-thinking code separately from reasoning code. Historical official results, when shown, were not rerun and include different prior fable wording; no reasoning-code reference exists.
-
-| Case | 1 RTX target | 1 RTX dSpark | 2 RTX target | 2 RTX dSpark | Historical official Flash |
-|---|---:|---:|---:|---:|---:|
-| Code | 49.41 | 132.81 | 53.36 | 155.69 | 345.90 |
-| Code with reasoning | 48.58 | 100.61 | 52.21 | 126.34 | — |
-| Math | 49.23 | 140.02 | 53.39 | 136.26 | 285.33 |
-| Fable | 46.25 | 57.41 | 49.75 | 68.30 | 123.63 |
-| Hello | 46.07 | 61.57 | 48.84 | 98.06 | 141.10 |
-| Topic | 48.50 | 73.63 | 51.74 | 87.72 | 169.24 |
-| Natural JSON | 48.79 | 104.04 | 53.19 | 129.97 | 175.33 |
-| Schema JSON | 48.58 | 107.52 | 51.84 | 107.45 | HTTP 400 |
-| Multilingual | 47.44 | 74.74 | 51.42 | 83.12 | 183.61 |
-| Counting 1–200 | 49.56 | 161.70 | 53.76 | 219.75 | 427.29 |
-
-**EXL3 content-type decode.** Three samples per case. The nine-category score retains non-thinking code separately from reasoning code. Historical official results, when shown, were not rerun and include different prior fable wording; no reasoning-code reference exists.
+**Content-type decode.** Median tokens/s. Official Flash values are the historical one-shot reference, including its prior fable wording; they were not rerun.
 
 | Case | 1 RTX target | 1 RTX dSpark | 2 RTX target | 2 RTX dSpark | Historical official Flash |
 |---|---:|---:|---:|---:|---:|
-| Code | 49.30 | 132.59 | 56.90 | 165.83 | 345.90 |
-| Code with reasoning | 48.94 | 107.19 | 55.72 | 142.87 | — |
-| Math | 48.97 | 113.57 | 54.12 | 155.99 | 285.33 |
-| Fable | 46.10 | 57.61 | 51.75 | 71.87 | 123.63 |
-| Hello | 45.25 | 75.16 | 50.81 | 86.59 | 141.10 |
-| Topic | 48.28 | 71.74 | 54.01 | 88.75 | 169.24 |
-| Natural JSON | 47.75 | 98.26 | 55.41 | 122.22 | 175.33 |
-| Schema JSON | 48.59 | 92.76 | 54.55 | 128.62 | HTTP 400 |
-| Multilingual | 47.21 | 74.69 | 54.06 | 90.72 | 183.61 |
-| Counting 1–200 | 49.55 | 167.68 | 57.34 | 247.83 | 427.29 |
+| Code | 49.08 | 130.41 | 51.67 | 155.70 | 345.90 |
+| Code with reasoning | 47.51 | 100.27 | 50.74 | 126.08 | — |
+| Math | 45.77 | 134.22 | 48.45 | 134.13 | 285.33 |
+| Fable | 44.72 | 56.49 | 48.25 | 67.88 | 123.63 |
+| Hello | 44.75 | 61.51 | 48.39 | 98.04 | 141.10 |
+| Topic | 46.28 | 73.57 | 48.59 | 87.10 | 169.24 |
+| Natural JSON | 47.37 | 103.83 | 50.07 | 133.90 | 175.33 |
+| Schema JSON | 48.50 | 105.79 | 50.84 | 102.92 | HTTP 400 |
+| Multilingual | 45.84 | 74.10 | 49.50 | 82.97 | 183.61 |
+| Counting 1–200 | 49.36 | 161.58 | 49.53 | 221.64 | 427.29 |
 
-**Full 1 RTX prefill matrix.** Median effective tokens/s, three samples per cell after shape warmup and verified parent reuse.
-
-| Retained base | +1K | +2K | +4K | +8K | +16K | +32K |
-|---|---:|---:|---:|---:|---:|---:|
-| 0K | 3,119 | 4,165 | 6,987 | 7,510 | 7,703 | 7,853 |
-| 32K | 2,473 | 3,215 | 5,128 | 6,000 | 6,549 | 6,789 |
-| 64K | 2,213 | 3,080 | 4,727 | 5,598 | 6,094 | 6,328 |
-| 128K | 1,905 | 2,699 | 4,121 | 4,855 | 5,285 | 5,528 |
-| 256K | 1,446 | 2,098 | 3,131 | 3,778 | 4,130 | 4,298 |
-
-**Full 2 RTX prefill matrix.** Median effective tokens/s, three samples per cell after shape warmup and verified parent reuse.
+**1 RTX prefill matrix.** Median effective tokens/s after shape warmup and verified parent reuse.
 
 | Retained base | +1K | +2K | +4K | +8K | +16K | +32K |
 |---|---:|---:|---:|---:|---:|---:|
-| 0K | 4,755 | 6,367 | 7,875 | 8,206 | 8,366 | 8,289 |
-| 32K | 3,666 | 5,118 | 6,423 | 6,941 | 7,228 | 7,264 |
-| 64K | 3,272 | 4,595 | 5,702 | 6,239 | 6,510 | 6,581 |
-| 128K | 2,622 | 3,744 | 4,699 | 5,225 | 5,496 | 5,568 |
-| 256K | 1,831 | 2,674 | 3,349 | 3,859 | 4,149 | 4,251 |
+| 0K | 3,005 | 4,031 | 6,950 | 7,493 | 7,801 | 7,824 |
+| 32K | 2,463 | 3,326 | 5,379 | 6,140 | 6,598 | 6,863 |
+| 64K | 2,242 | 3,103 | 4,961 | 5,665 | 6,151 | 6,361 |
+| 128K | 1,928 | 2,718 | 4,205 | 4,914 | 5,343 | 5,530 |
+| 256K | 1,463 | 2,122 | 3,195 | 3,797 | 4,156 | 4,306 |
 
-**EXL3 1 RTX prefill matrix.** Median effective tokens/s, three samples per cell after shape warmup and verified parent reuse.
-
-| Retained base | +1K | +2K | +4K | +8K | +16K | +32K |
-|---|---:|---:|---:|---:|---:|---:|
-| 0K | 2,531 | 2,965 | 4,084 | 4,296 | 4,431 | 4,460 |
-| 32K | 2,125 | 2,495 | 3,728 | 4,068 | 4,229 | 4,292 |
-| 64K | 1,939 | 2,408 | 3,523 | 3,850 | 4,033 | 4,092 |
-| 128K | 1,699 | 2,164 | 3,151 | 3,503 | 3,695 | 3,777 |
-| 256K | 1,331 | 1,777 | 2,584 | 2,892 | 3,095 | 3,170 |
-
-**EXL3 2 RTX prefill matrix.** Median effective tokens/s, three samples per cell after shape warmup and verified parent reuse.
+**2 RTX prefill matrix.** Median effective tokens/s after shape warmup and verified parent reuse.
 
 | Retained base | +1K | +2K | +4K | +8K | +16K | +32K |
 |---|---:|---:|---:|---:|---:|---:|
-| 0K | 3,124 | 3,761 | 4,981 | 5,106 | 5,149 | 5,112 |
-| 32K | 2,710 | 3,363 | 3,939 | 4,323 | 4,560 | 4,631 |
-| 64K | 2,468 | 3,112 | 3,637 | 4,033 | 4,265 | 4,344 |
-| 128K | 2,096 | 2,745 | 3,229 | 3,582 | 3,803 | 3,872 |
-| 256K | 1,577 | 2,180 | 2,524 | 2,881 | 3,104 | 3,184 |
+| 0K | 4,725 | 6,369 | 7,825 | 8,185 | 8,355 | 8,290 |
+| 32K | 3,683 | 5,153 | 6,373 | 6,930 | 7,207 | 7,251 |
+| 64K | 3,221 | 4,626 | 5,673 | 6,226 | 6,507 | 6,567 |
+| 128K | 2,588 | 3,678 | 4,655 | 5,202 | 5,486 | 5,556 |
+| 256K | 1,770 | 2,697 | 3,336 | 3,847 | 4,126 | 4,229 |
 
-**Decode over retained context.** Weighted nine-category dSpark tokens/s with verified retained-prefix reuse; three samples per case and base.
+**Decode over retained context.** Weighted nine-category dSpark tokens/s with verified prefix reuse.
 
-| Retained base | Full 1 RTX | Full 2 RTX | Change | EXL3 1 RTX | EXL3 2 RTX | Change |
-|---|---:|---:|---:|---:|---:|---:|
-| 0K | 87.51 | 105.77 | +20.9% | 88.99 | 116.77 | +31.2% |
-| 2K | 86.58 | 106.66 | +23.2% | 91.79 | 119.13 | +29.8% |
-| 32K | 87.46 | 101.74 | +16.3% | 87.39 | 111.07 | +27.1% |
-| 64K | 85.54 | 103.45 | +20.9% | 88.49 | 111.17 | +25.6% |
-| 128K | 85.05 | 102.39 | +20.4% | 87.41 | 115.55 | +32.2% |
-| 256K | 79.68 | 96.22 | +20.8% | 82.67 | 105.92 | +28.1% |
+| Retained base | 1 RTX | 2 RTX | Change |
+|---|---:|---:|---:|
+| 0K | 86.85 | 104.21 | +20.0% |
+| 2K | 85.97 | 103.81 | +20.7% |
+| 32K | 83.28 | 100.72 | +20.9% |
+| 64K | 82.64 | 102.15 | +23.6% |
+| 128K | 86.67 | 98.40 | +13.5% |
+| 256K | 80.02 | 92.78 | +15.9% |
 
-**Full concurrency scaling.** Median aggregate tokens/s across three runs, from earliest first output to final completion, including admission gaps.
+**Concurrency scaling.** Median aggregate tokens/s from earliest first output to final completion, including admission gaps.
 
 | Concurrency | 1 RTX counting | 2 RTX counting | 1 RTX code | 2 RTX code | 1 RTX topic | 2 RTX topic |
 |---|---:|---:|---:|---:|---:|---:|
-| 1 | 159.25 | 211.23 | 137.57 | 171.33 | 75.98 | 97.59 |
-| 2 | 250.57 | 315.17 | 218.00 | 278.81 | 126.12 | 162.21 |
-| 4 | 450.17 | 584.14 | 380.88 | 458.27 | 223.88 | 263.55 |
-| 8 | 739.81 | 971.54 | 620.52 | 755.73 | 340.93 | 437.76 |
-| 16 | 1,253.43 | 1,511.84 | 1,074.96 | 1,205.02 | 595.79 | 603.62 |
+| 1 | 159.32 | 211.83 | 137.43 | 171.96 | 74.63 | 96.94 |
+| 2 | 252.73 | 314.71 | 218.48 | 279.69 | 125.39 | 163.79 |
+| 4 | 454.48 | 586.05 | 384.41 | 476.04 | 225.99 | 260.73 |
+| 8 | 736.37 | 973.21 | 625.30 | 749.73 | 333.06 | 447.59 |
+| 16 | 1,267.07 | 1,508.81 | 1,069.16 | 1,195.37 | 601.90 | 622.81 |
 
-**EXL3 concurrency scaling.** Median aggregate tokens/s across three runs, from earliest first output to final completion, including admission gaps.
+**Mixed traffic.** Code/fable/topic mix; aggregate tokens/s median and range across three sweeps.
 
-| Concurrency | 1 RTX counting | 2 RTX counting | 1 RTX code | 2 RTX code | 1 RTX topic | 2 RTX topic |
+| Concurrency | 1 RTX | 2 RTX |
+|---|---:|---:|
+| 1 | 104.01 (97.36–130.92) | 156.41 (144.89–160.71) |
+| 2 | 107.10 (100.71–114.91) | 140.72 (136.36–141.02) |
+| 4 | 139.42 (135.51–161.87) | 184.62 (171.39–186.38) |
+| 8 | 147.90 (145.71–164.74) | 211.97 (206.42–215.89) |
+| 16 | 191.75 (183.09–193.95) | 284.69 (281.08–296.28) |
+
+**Deployment and cache capacity.** RAM bytes include staging and snapshot overhead. Combined tokens count each logical source once; active requests must fit the GPU pool.
+
+| Configuration | RTX expert layers | Spark resident / active layers / budget | Global FP4 source pool | RAM cache | Combined usable tokens | Prompt / turn retention |
 |---|---:|---:|---:|---:|---:|---:|
-| 1 | 165.25 | 239.59 | 133.36 | 183.56 | 78.12 | 106.50 |
-| 2 | 264.62 | 356.64 | 212.78 | 279.61 | 126.47 | 151.12 |
-| 4 | 486.65 | 627.96 | 408.17 | 523.56 | 227.15 | 252.39 |
-| 8 | 769.25 | 1,029.43 | 689.48 | 844.61 | 365.61 | 461.30 |
-| 16 | 1,366.95 | 1,690.30 | 1,153.15 | 1,294.55 | 549.34 | 756.30 |
+| 1 RTX | 0–4, TP1 | 40 / 35 / 100 GiB each | 16.701 GB / 18,736,128 usable + 28,672 private-tail tokens | 3.25 GiB pinned / 2,235,904 logical tokens | 20,972,032 | 20 / 20 |
+| 2 RTX | 0–19, TP2 | 20 / 20 / 100 GiB each | 13.091 GB / 14,680,064 usable + 28,672 private-tail tokens | 6.75 GiB pinned / 6,291,968 logical tokens | 20,972,032 | 20 / 20 |
 
-**Mixed traffic.** Matched code/fable/topic mix; median and range across three sweeps.
-
-| Concurrency | Full 1 RTX | Full 2 RTX | EXL3 1 RTX | EXL3 2 RTX |
-|---|---:|---:|---:|---:|
-| 1 | 105.86 (104.60–131.07) | 158.21 (154.04–160.00) | 115.90 (114.83–132.69) | 157.12 (154.97–167.05) |
-| 2 | 105.98 (103.43–113.89) | 141.17 (138.63–145.29) | 112.31 (107.78–114.26) | 132.20 (128.75–133.41) |
-| 4 | 151.57 (135.82–155.87) | 182.83 (170.15–186.70) | 130.48 (128.88–157.58) | 187.68 (187.04–193.28) |
-| 8 | 160.90 (154.58–175.47) | 199.02 (196.41–209.78) | 172.01 (155.78–176.85) | 256.15 (242.50–257.24) |
-| 16 | 200.11 (199.43–202.68) | 295.71 (292.81–298.34) | 223.10 (218.31–230.36) | 332.48 (320.02–333.40) |
-
-**Adaptive draft acceptance by content.** C1, three requests per category. Each cell shows accepted/verified draft percentage and mean emitted tokens per observed nonterminal verification cycle in parentheses. Terminal cycles are excluded; schema JSON uses grammar-constrained targets. Reasoning code includes both reasoning and final-answer generation. Adaptive selection censors unverified drafts, and model continuations differ: these are serving acceptance measurements, not teacher-forced quant agreement. Instrumented timings are excluded from TPS tables.
-
-| Content | Full 1 RTX | Full 2 RTX | EXL3 1 RTX | EXL3 2 RTX |
-|---|---:|---:|---:|---:|
-| Code | 90.67% (5.26) | 74.89% (5.82) | 88.75% (5.10) | 73.46% (5.80) |
-| Code with reasoning | 78.90% (3.74) | 68.83% (3.92) | 78.29% (3.71) | 66.20% (3.82) |
-| Math | 90.97% (5.55) | 69.25% (5.21) | 68.29% (4.04) | 66.17% (5.09) |
-| Fable | 52.86% (1.79) | 40.70% (1.77) | 51.59% (1.77) | 41.67% (1.81) |
-| Hello | 65.12% (2.75) | 35.33% (2.43) | 63.33% (2.78) | 41.09% (3.04) |
-| Topic | 61.93% (2.47) | 49.38% (2.47) | 64.16% (2.51) | 53.10% (2.53) |
-| Natural JSON | 82.14% (4.17) | 62.14% (4.00) | 80.00% (4.17) | 68.79% (4.59) |
-| Schema JSON (grammar-constrained) | 75.40% (4.65) | 54.76% (4.29) | 71.31% (4.48) | 59.01% (4.52) |
-| Multilingual | 57.33% (2.22) | 50.37% (2.38) | 63.01% (2.43) | 51.99% (2.34) |
-
-**Deployment and cache capacity.** Measured placement and pool reservation. Spark resident layers can include unused weights below the active range; retention values count cache entries.
-
-| Configuration | RTX expert layers | Spark resident / active layers / budget | Global FP4 source pool | Prompt / completed retention |
-|---|---:|---:|---:|---:|
-| Full 1 RTX | 0–4, TP1 | 40 resident / 35 active / 100 GiB each | 16.681 GB / 18,710,016 logical + 32,768 private-tail tokens | 24 / 24 |
-| Full 2 RTX | 0–19, TP2 | 20 resident / 20 active / 100 GiB each | 13.094 GB / 14,680,064 logical + 32,768 private-tail tokens | 24 / 24 |
-| EXL3 1 RTX | 0–5, TP1 | 40 resident / 34 active / 100 GiB each | 16.681 GB / 18,710,016 logical + 32,768 private-tail tokens | 24 / 24 |
-| EXL3 2 RTX | 0–24, TP2 | 20 resident / 15 active / 100 GiB each | 13.094 GB / 14,680,064 logical + 32,768 private-tail tokens | 24 / 24 |
-
-**Startup.** Standard-script launch to API readiness, including orchestration; one launch per configuration.
+**Startup.** Standard launcher to API readiness, including orchestration; one observation per layout.
 
 | Configuration | Seconds |
 |---|---:|
-| Full 1 RTX | 59.78 |
-| Full 2 RTX | 64.00 |
-| EXL3 1 RTX | 63.65 |
-| EXL3 2 RTX | 59.37 |
+| 1 RTX | 58.63 |
+| 2 RTX | 31.71 |
 
-**Memory after readiness.** All GPU allocations, including weights, KV and workspace.
+**Memory after readiness.** GPU allocations include weights, KV and workspaces; later graph capture can consume additional memory.
 
-| Configuration | GPU | Loaded MiB | Free MiB | Runtime reserve MiB |
+| Configuration | Logical RTX | Loaded MiB | Free MiB | Planned runtime reserve MiB |
 |---|---:|---:|---:|---:|
-| Full 1 RTX | 0 | 94,568.00 | 2,683.00 | 2,048.00 |
-| Full 2 RTX | 0 | 95,138.00 | 2,113.00 | 800.00 |
-| Full 2 RTX | 1 | 95,726.00 | 1,522.00 | 800.00 |
-| EXL3 1 RTX | 0 | 92,020.00 | 5,231.00 | 2,048.00 |
-| EXL3 2 RTX | 0 | 93,772.00 | 3,479.00 | 800.00 |
-| EXL3 2 RTX | 1 | 92,626.00 | 4,622.00 | 800.00 |
+| 1 RTX | 0 | 94,590.00 | 2,661.00 | 2,048.00 |
+| 2 RTX | 0 | 95,132.00 | 2,119.00 | 800.00 |
+| 2 RTX | 1 | 95,738.00 | 1,510.00 | 800.00 |
 
-**Tool calling.** Three campaigns per checkpoint variant with high-effort thinking. Full/FP8-PLE rows preserve the clean v4 campaigns for the unchanged tool and schema path; both EXL3 variants are fresh v5 campaigns. Failures remain in the scores; see each campaign report for its engine/image provenance and response cap.
+**Historical native draft acceptance.** V5 measurements, not rerun for v6: C1, three requests per content type. Accepted/verified percentage and mean emitted tokens per nonterminal cycle in parentheses. Schema JSON is grammar-constrained; reasoning code includes reasoning and final output. Adaptive selection omits unverified drafts, so these are serving rates, not fixed-history agreement.
 
-| Checkpoint | Run | Basic | Hard | Total |
-|---|---:|---:|---:|---:|
-| Full / FP8 PLE | 2026-09-16T04-12-34.961137Z_2214ecfb | 124/138 | 31/38 | 155/176 |
-| Full / FP8 PLE | 2026-09-16T04-17-40.551606Z_43911d6a | 126/138 | 34/38 | 160/176 |
-| Full / FP8 PLE | 2026-09-16T04-22-39.602726Z_81eaa393 | 123/138 | 33/38 | 156/176 |
-| EXL3 / FP8 PLE | 2026-09-17T05-08-20.536955Z_1a1eb46f | 121/138 | 35/38 | 156/176 |
-| EXL3 / FP8 PLE | 2026-09-17T05-13-17.171884Z_5c9247f1 | 125/138 | 32/38 | 157/176 |
-| EXL3 / FP8 PLE | 2026-09-17T05-39-22.611937Z_9d81067b | 121/138 | 36/38 | 157/176 |
-| EXL3 / FP4 PLE | 2026-09-17T05-54-27.625385Z_944f32ed | 123/138 | 34/38 | 157/176 |
-| EXL3 / FP4 PLE | 2026-09-17T06-01-25.437889Z_b5d60f29 | 118/138 | 35/38 | 153/176 |
-| EXL3 / FP4 PLE | 2026-09-17T06-08-18.487070Z_66d59e17 | 120/138 | 35/38 | 155/176 |
-
-### Quant analysis
-
-**Checkpoint and tensor payload sizes.** GiB uses 2^30 bytes. Tensor columns exclude safetensors headers. Both EXL3 checkpoints share identical routed experts; FP4 PLE changes only the lookup tables.
-
-| Checkpoint | Shards | Checkpoint GiB | Size vs full | Routed-expert GiB | PLE GiB |
-|---|---:|---:|---:|---:|---:|
-| Full / FP8 PLE | 48 | 475.25 | — | 275.67 | 188.83 |
-| EXL3 / FP8 PLE | 52 | 411.05 | -13.5% | 211.46 | 188.83 |
-| EXL3 / FP4 PLE | 52 | 325.22 | -31.6% | 211.46 | 103.00 |
-
-**EXL3 routed projection tiers.** Target layers plus one MTP layer: 384 experts each. The aggregate is 3.25 nominal bpw and 3.2601 bpw including scales and metadata.
-
-| Projection | Logical shape | 3-bit tensors | 4-bit tensors | 4-bit share |
-|---|---:|---:|---:|---:|
-| w1 | 5,120 × 2,304 | 13,530 | 2,214 | 14.06% |
-| w2 | 2,304 × 5,120 | 9,840 | 5,904 | 37.50% |
-| w3 | 5,120 × 2,304 | 12,054 | 3,690 | 23.44% |
-
-**PLE table geometry.** The FP4-PLE clone hard-links 48 unchanged shards and replaces 4 shards.
-
-| Variant | Stored tensor geometry | Payload GiB |
+| Content | Historical 1 RTX | Historical 2 RTX |
 |---|---:|---:|
-| FP8 PLE | F8_E4M3 384,006,168×256 (1×); F8_E4M3 384,016,682×256 (1×); F8_E8M0 384,006,168×8 (1×); F8_E8M0 384,016,682×8 (1×) | 188.83 |
-| FP4 PLE | F32 scalar (2×); F8_E4M3 384,006,168×16 (1×); F8_E4M3 384,016,682×16 (1×); U8 384,006,168×128 (1×); U8 384,016,682×128 (1×) | 103.00 |
+| Code | 90.67% (5.26) | 74.89% (5.82) |
+| Code with reasoning | 78.90% (3.74) | 68.83% (3.92) |
+| Math | 90.97% (5.55) | 69.25% (5.21) |
+| Fable | 52.86% (1.79) | 40.70% (1.77) |
+| Hello | 65.12% (2.75) | 35.33% (2.43) |
+| Topic | 61.93% (2.47) | 49.38% (2.47) |
+| Natural JSON | 82.14% (4.17) | 62.14% (4.00) |
+| Schema JSON | 75.40% (4.65) | 54.76% (4.29) |
+| Multilingual | 57.33% (2.22) | 50.37% (2.38) |
 
-**Fixed-history top-1 agreement.** Exact unconstrained target argmax IDs at C1 with dSpark disabled. All checkpoints use the same 20-layer TP2 placement, byte-identical teacher-forced assistant prefixes, and corpus SHA-256 `2c30b0c840160ac02a859e177fc0d7e0dad3e6dcab1d67c57bc5b2d6d26c6e45`. Runtime includes launch and collection. This isolates next-token argmax preservation; it is not a long-form generation-quality score.
+**Historical native tool calling.** The three v4 full-checkpoint campaigns retained in v5; not rerun for v6. High-effort thinking was enabled, and failures remain in the scores.
 
-| Checkpoint | Samples | Matches | Wilson 95% CI | Seconds |
-|---|---:|---:|---:|---:|
-| Full baseline | 132 | Reference | — | 66.4 |
-| EXL3 / FP8 PLE | 132 | 95/132 (71.97%) | 63.77–78.93% | 77.8 |
-| EXL3 / FP4 PLE | 132 | 99/132 (75.00%) | 66.98–81.61% | 59.6 |
+| Run | Basic | Hard | Total |
+|---|---:|---:|---:|
+| 2026-09-16T04-12-34.961137Z_2214ecfb | 124/138 | 31/38 | 155/176 |
+| 2026-09-16T04-17-40.551606Z_43911d6a | 126/138 | 34/38 | 160/176 |
+| 2026-09-16T04-22-39.602726Z_81eaa393 | 123/138 | 33/38 | 156/176 |
 
-**Top-1 agreement by category.** Each category uses twelve fixed continuations; percentages retain exact token-ID denominators.
-
-| Category | EXL3 / FP8 PLE | EXL3 / FP4 PLE |
-|---|---:|---:|
-| Creative | 10/12 (83.3%) | 9/12 (75.0%) |
-| Factual | 8/12 (66.7%) | 8/12 (66.7%) |
-| Instructions | 10/12 (83.3%) | 10/12 (83.3%) |
-| Long Context | 10/12 (83.3%) | 10/12 (83.3%) |
-| Math | 11/12 (91.7%) | 11/12 (91.7%) |
-| Multilingual | 5/12 (41.7%) | 5/12 (41.7%) |
-| Python | 7/12 (58.3%) | 10/12 (83.3%) |
-| Reasoning | 8/12 (66.7%) | 8/12 (66.7%) |
-| Science | 8/12 (66.7%) | 9/12 (75.0%) |
-| Structured | 8/12 (66.7%) | 9/12 (75.0%) |
-| Systems | 10/12 (83.3%) | 10/12 (83.3%) |
-
-**Performance review.** The EXL3 checkpoint changes weighted dSpark decode from 92.79 to 93.66 tok/s on one RTX (+0.9%) and from 109.88 to 119.55 tok/s on two RTX cards (+8.8%). High-effort reasoning-code decode changes from 100.61 to 107.19 tok/s and from 126.34 to 142.87 tok/s. Its two-RTX best prefill is 5,149.28 tok/s versus 8,366.20 for the full checkpoint (-38.5%), so the official full checkpoint remains the standard launcher default and EXL3 remains opt-in.
-
-The [v5 performance report](docs/release-v5-performance.md) includes the measurement protocol and the same complete table set. [Exact structured results](docs/release-v5-performance.json) preserve the summaries and qualification provenance. The downloadable v5 qualification-evidence archive contains raw samples, traces, telemetry, launch records, and validators.
+Historical EXL3 performance, acceptance and quantization analysis are preserved in the [v5 performance report](https://github.com/tpurtell/ds41rt/blob/v5/docs/release-v5-performance.md); they are not v6 measurements.
 
 ## Getting started
 
@@ -277,7 +168,10 @@ MODEL_REVISION=cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88
 EXL3_PAIRED_TP4=on
 ```
 
-Install that exact snapshot on the coordinator and all four Sparks. The FP4-PLE variant is separately analyzed and tool-qualified; the release performance tables use the FP8-PLE checkpoint above.
+Install that exact snapshot on the coordinator and all four Sparks. Historical
+EXL3 performance and FP4-PLE analysis remain in the linked v5 performance report;
+v6 treats EXL3 as a compatibility path and reports performance for the official
+checkpoint.
 
 To use the published images, pull the coordinator image locally and the Spark image on each worker:
 
@@ -350,10 +244,10 @@ Spark workers, so only the remaining routed layers load there. Single mode keeps
 all 40 layers on every Spark. Restarting the same coordinator container preserves
 its acknowledged boundary; `./run.sh --restart` replans the deployment.
 
-With no explicit pool setting, single-RTX mode uses a **16.681 GB global pool
-for 18,710,016 tokens plus 32,768 private-tail tokens**. Dual-RTX mode targets a
-**13.094 GB global pool with 14,712,832 source-token positions**, including
-32,768 tail/COW positions. The 20 completed-turn and prompt-snapshot limits
+With no explicit pool setting, single-RTX mode uses a **16.701 GB global pool
+for 18,736,128 usable tokens plus 28,672 private-tail tokens**. Dual-RTX mode uses
+a **13.091 GB global pool for 14,680,064 usable tokens plus 28,672 private-tail
+tokens**. The 20 completed-turn and prompt-snapshot limits
 remain independent of the aggregate token budget. `--kv-pool-size` selects the
 exact global pool. The recipe defaults to `--host-cache-bytes auto`, which keeps
 usable GPU plus RAM token capacity above `prefix-cache-entries × max-context-tokens`;
@@ -390,17 +284,24 @@ The [engineering report](docs/ENGINEERING.md) covers the final kernels, executio
 
 ## Qualification
 
-The clean v5 candidate passed the scoped release qualification:
+The clean v6 candidate uses the official full checkpoint and three samples per
+performance cell. Its release qualification covers:
 
-- matched one/two-RTX target-only and dSpark throughput for nine content categories plus counting, with three samples per cell;
-- four one/two-RTX full/EXL3 prefill matrices covering 30 retained-base/suffix cells each, plus retained-prefix decode through 256K and a separate 2K control;
-- counting, code, and topic at C1, C2, C4, C8, and C16, with three mixed-traffic sweeps for every checkpoint/layout combination;
-- instrumented adaptive draft acceptance for nine categories across all four full/EXL3 one/two-RTX deployments;
-- exactly three high-effort tool campaigns for EXL3 FP8 PLE and three for EXL3 FP4 PLE, alongside the preserved three-run full-checkpoint reference;
-- focused vision and 32K/1.04M needle checks for EXL3, plus bounded exact target top-1 comparison against the full checkpoint;
-- clean five-host candidate builds and standard-script deployment smokes, with binary, image, checkpoint, and raw-evidence provenance.
+- matched one/two-RTX target-only and dSpark throughput for nine content categories plus counting;
+- one/two-RTX prefill matrices covering 30 retained-base/suffix cells each, retained-prefix decode through 256K, and separate 2K controls;
+- counting, code, and topic at C1, C2, C4, C8, and C16, plus three mixed-traffic sweeps per layout;
+- cache restoration and overload behavior under a one-off two-minute tiny-pool pressure torture test;
+- independent correctness and serving checks for replicated-KV attention, query projection, output projection, and dSpark routed-expert TP2, followed by a combined opt-in smoke check;
+- one basic EXL3 compatibility smoke, without a new EXL3 performance campaign;
+- clean five-host candidate builds and standard-script deployment smokes, with binary, image, checkpoint, telemetry, and raw-evidence provenance.
 
-The performance report and downloadable qualification-evidence archive preserve failures and measured limitations alongside passes. The [Phase 2 engineering log](docs/phase2-dual-rtx.md) covers the earlier dual-RTX implementation sequence.
+Historical native draft-acceptance and high-effort tool campaigns are reproduced
+in the performance section and explicitly identified as measurements that were
+not rerun for v6. The performance report and downloadable qualification-evidence
+archive preserve failures and measured limitations alongside passes. The
+[v6 release plan](docs/release-v6-plan.md) records the rejected TP2 experiments;
+the [Phase 2 engineering log](docs/phase2-dual-rtx.md) covers the earlier dual-RTX
+implementation sequence.
 
 ## RDMA tools for DGX Spark and RoCE PCs
 
