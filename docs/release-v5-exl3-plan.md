@@ -1231,3 +1231,19 @@ three completed request snapshots before accepting a trace slice, including
 requests whose final cycle has no draft. These instrumented timings must not be
 used for the release throughput tables. Aggregation tests pass; the live
 acceptance campaign remains to run after performance collection.
+
+The first final performance attempt completed dual-RTX EXL3 short-context
+content, all concurrency sweeps and all three mixed sweeps. Retained-context
+collection exposed a client setup error at the new reasoning-code case: the
+parent had been primed with thinking disabled, but high-effort thinking adds a
+system prefix and changes assistant serialization. The returned code passed;
+cache hits were correctly zero, so the collector stopped rather than reporting
+that sample as retained-context throughput. Original services were restored.
+
+The retained collector now primes each thinking/effort mode separately, fits
+its actual template to the requested base size, and carries the parent's
+reasoning into the follow-up history. A live 2K-context check on the restored
+full-model service passed all nine categories: disabled-thinking cases reused
+2,050 tokens, and reasoning-code reused its complete 2,076-token parent.
+This is collector validation, not new release performance evidence. Preserve
+the failed attempt and reuse only its independently completed performance files.

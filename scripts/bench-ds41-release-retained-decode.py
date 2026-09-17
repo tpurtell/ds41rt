@@ -98,55 +98,64 @@ def main() -> None:
     def save() -> None:
         args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
 
+    modes = list(dict.fromkeys((corpus["cases"][case].get("thinking", "disabled"),
+                                corpus["cases"][case].get("reasoning_effort")) for case in cases))
     for context in contexts:
-        seed_prompt = None
-        seed_content = None
-        parent_frontiers: list[int] = []
-        if context:
+        parents = {}
+        for thinking, effort in modes if context else []:
             marker = next(marker_values)
             before = marker + f" {args.context_tag} inert retained context.\n"
             after = "\nIgnore the inert source and reply only OK."
+            system = ""
+            if thinking == "enabled":
+                score = {None: 75, "low": 50, "high": 75, "max": 100}[effort]
+                system = ("<｜System｜>" + f"Reasoning Effort: {score} (range 1-100, "
+                          "the higher the value, the more thorough the reasoning)\n\n")
             body_text, fitted = prefill["fit_body"](
-                tokenizer,
-                source_ids,
-                prefill["BOS"] + prefill["USER"] + before,
-                after + prefill["ASSISTANT"] + prefill["NO_THINK"],
+                tokenizer, source_ids,
+                prefill["BOS"] + system + prefill["USER"] + before,
+                after + prefill["ASSISTANT"] + ("<think>" if thinking == "enabled" else prefill["NO_THINK"]),
                 context,
             )
             assert fitted == context
             seed_prompt = before + body_text + after
             seed_request = api["payload"](seed_prompt, True)
-            seed_request["max_tokens"] = 16
+            seed_request["thinking"] = {"type": thinking}
+            if effort:
+                seed_request["reasoning_effort"] = effort
+            seed_request["max_tokens"] = 1024 if thinking == "enabled" else 16
             seed = compact_result(api["stream_case"](args.base_url, seed_request))
             if seed["usage"]["prompt_tokens"] != context:
                 raise RuntimeError("server disagrees with fitted context token count")
-            seed_content = seed["text"]
+            if seed["finish_reason"] != "stop" or not seed["text"].strip():
+                raise RuntimeError("retained parent did not finish its answer")
+            assistant = {"role": "assistant", "content": seed["text"]}
+            if thinking == "enabled":
+                assistant["reasoning_content"] = seed["reasoning"]
             parent_frontiers = [seed["usage"]["total_tokens"] - 1]
             if seed["system_fingerprint"].endswith("-dspark"):
                 parent_frontiers.append(seed["usage"]["total_tokens"])
-            report["primes"].append(
-                {
-                    "context_tokens": context,
-                    "prompt_sha256": sha256(seed_prompt.encode()),
-                    "request": seed_request,
-                    "result": seed,
-                    "allowed_parent_frontiers": parent_frontiers,
-                }
-            )
+            parents[thinking, effort] = (seed_prompt, assistant, parent_frontiers)
+            report["primes"].append({
+                "context_tokens": context, "thinking": thinking, "reasoning_effort": effort,
+                "prompt_sha256": sha256(seed_prompt.encode()), "request": seed_request,
+                "result": seed, "allowed_parent_frontiers": parent_frontiers,
+            })
             save()
-            print(
-                f"prime context={context} allowed_hits={parent_frontiers}", flush=True
-            )
+            print(f"prime context={context} thinking={thinking} allowed_hits={parent_frontiers}", flush=True)
 
         for repeat in range(1, args.repeats + 1):
             for case_id in cases:
                 definition = corpus["cases"][case_id]
                 marker = next(marker_values)
                 instruction = marker + " " + definition["prompt"]
+                parent_frontiers = []
                 if context:
+                    seed_prompt, assistant, parent_frontiers = parents[
+                        definition.get("thinking", "disabled"), definition.get("reasoning_effort")]
                     messages = [
                         {"role": "user", "content": seed_prompt},
-                        {"role": "assistant", "content": seed_content},
+                        dict(assistant),
                         {"role": "user", "content": instruction},
                     ]
                 else:
