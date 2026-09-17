@@ -1373,3 +1373,30 @@ invalid-plan rejection and unchanged single-RTX startup. Seven GPU selector,
 three process-stub startup, twelve existing launcher and two Rust handoff tests
 pass. Evidence: `placement-{preflight,launcher,recipe,resume}-tests.log` under
 `~/.cache/ds41rt-v6-heads32/`. Live below-20 startup and restart validation remain.
+
+### Live automatic placement and acknowledged restart
+
+The current release executable passes two live four-Spark handoff experiments.
+Both publish the boundary at approximately four seconds, load temporary workers
+at that exact first layer, admit requests only after acknowledgement, and restart
+from committed state after ready.json is removed. Concurrent READY/code/10,824-
+token identifier requests and complete prompt cache reuse pass before and after
+restart. Temporary workers are removed and normal v5 serving restored.
+
+| Policy | Selected RTX layers | GPU usable tokens | RAM usable tokens | Combined tokens | Pinned RAM |
+|---|---:|---:|---:|---:|---:|
+| 80 GiB ceiling, no explicit KV size | 8 | 67,080,192 | 0 | 67,080,192 | 0 |
+| 80 GiB ceiling, 13,090,775,040-byte KV pool | 15 | 14,680,064 | 6,291,968 | 20,972,032 | 7,247,757,312 bytes (6.75 GiB) |
+
+The first policy intentionally retains the existing reservation-only behavior:
+fill remaining cache capacity before placing additional expert layers. The
+second fixes the ordinary 14M-token usable pool and demonstrates the intended
+cache-preserving reduced-layer placement. RTX attention/source ownership stays
+unchanged when routed experts are delegated. Initial total readiness is 39.05/
+32.74 seconds including temporary worker loading; acknowledged coordinator
+restart is 7.00/11.01 seconds. These different layouts are not a controlled
+startup speed comparison. Evidence: `~/.cache/ds41rt-v6-auto-placement/` and
+`~/.cache/ds41rt-v6-auto-placement-fixed-pool/`.
+
+The live tests use the coordinator executable and temporary worker containers;
+full clean build.sh/run.sh image qualification remains a release gate.

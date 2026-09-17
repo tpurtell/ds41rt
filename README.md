@@ -352,7 +352,9 @@ exact global pool. The recipe defaults to `--host-cache-bytes auto`, which keeps
 usable GPU plus RAM token capacity above `prefix-cache-entries × max-context-tokens`;
 snapshot overhead and restore staging are reserved separately. Explicit RAM sizes
 and `0` override that automatic capacity guarantee. `--memory-reservation` caps total planned device occupancy;
-when both are present, the exact pool must fit under the ceiling. Smaller values
+when both are present, the exact pool must fit under the ceiling. A reservation
+without an explicit KV size uses remaining capacity for KV before filling extra
+RTX expert layers; specify both to preserve a chosen pool under a tighter ceiling. Smaller values
 are useful for side-by-side development servers:
 
 ```bash
