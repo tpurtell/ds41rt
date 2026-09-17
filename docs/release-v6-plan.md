@@ -668,3 +668,25 @@ bundle. This fixture still stops after projection: the new FFN handoff and full
 backbone need execution coverage. Serving does not yet select dual mode; startup
 flags, replicated pool sizing and end-to-end correctness/performance remain.
 Temporary fixtures were removed and the running server remains healthy.
+
+### Experimental serving switch and replicated pool sizing
+
+`--tp2-attention` now selects the combined attention path for `--rtx-gpus 2`.
+Startup replaces each backbone lane's full-head workspace before K7 reservation
+and final KV planning, then builds the replicated bank and binds both producer
+lanes. One-RTX startup rejects the flag before loading the native library. The
+flag is opt-in; launch defaults remain unchanged.
+
+Both the expert-placement reservation and final pool planner use physical replica
+bytes per GPU. Nominal `--kv-pool-size` and logical token capacity keep their prior
+meaning; replicas do not add tokens. Automatic sizing may shrink to the tighter
+card, while an explicit pool request fails instead of silently shrinking. Startup
+logs identify whether attention replication is enabled.
+
+Daemon build checks and all nine distributed memory-planner tests pass, including
+unchanged nonreplicated sizing, constrained replicated sizing, physical-byte bounds
+and explicit-size rejection/acceptance. Evidence: `tp2-startup-check.log` and
+`tp2-startup-tests.log` in the compact attention bundle. This makes the experimental
+path launchable in code, but no serving run or full-model qualification has yet
+validated it. A current native build and actual startup/FFN execution checks are
+next, before throughput experiments or any default decision.

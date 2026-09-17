@@ -98,6 +98,12 @@ impl PoolPlan {
         slots: usize, context: usize, retained_turns: usize, _snapshot_bytes: usize,
         exact: Option<super::ByteSize>, reservation: Option<super::Reservation>,
         memory: [(usize, usize); 2]) -> anyhow::Result<Self> {
+        Self::with_replication(placement,slots,context,retained_turns,_snapshot_bytes,exact,reservation,memory,false)
+    }
+    pub fn with_replication(placement: crate::v41_backbone_cache::CachePlacement,
+        slots:usize,context:usize,retained_turns:usize,_snapshot_bytes:usize,
+        exact:Option<super::ByteSize>,reservation:Option<super::Reservation>,
+        memory:[(usize,usize);2],replicated:bool)->anyhow::Result<Self> {
         use anyhow::{ensure, Context};
         use super::{BackboneCache, GROUP_BYTES, MAX_GROUPS};
         ensure!((1..=16).contains(&slots), "invalid concurrency limit");
@@ -114,8 +120,9 @@ impl PoolPlan {
                 .and_then(|n| n.checked_sub(RUNTIME_HEADROOM))
                 .with_context(|| format!("GPU {gpu} reservation leaves no cache space after fixed owners and runtime headroom"))?;
         }
-        let cache_bytes = |groups| BackboneCache::distributed_device_bytes(placement, slots,
-            [groups, groups, groups, groups * 2]);
+        let cache_bytes = |groups| if replicated {
+            BackboneCache::replicated_device_bytes(placement,slots,[groups,groups,groups,groups*2])
+        } else { BackboneCache::distributed_device_bytes(placement, slots,[groups,groups,groups,groups*2]) };
         let fits = |groups| -> anyhow::Result<bool> {
             Ok(cache_bytes(groups)?.iter().zip(available).all(|(&used, free)| used <= free))
         };
@@ -156,6 +163,27 @@ impl PoolPlan {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn replicated_pool_charges_both_cards_without_inflating_tokens()->anyhow::Result<()> {
+        let placement=crate::v41_backbone_cache::CachePlacement::encoder_decoder();
+        let memory=[(8usize<<30,96usize<<30);2];
+        let original=PoolPlan::new(placement,16,1_048_576,20,0,None,None,memory)?;
+        let unchanged=PoolPlan::with_replication(placement,16,1_048_576,20,0,None,None,memory,false)?;
+        assert_eq!(original.pages,unchanged.pages);
+        assert_eq!(original.cache_bytes,unchanged.cache_bytes);
+        let replica=PoolPlan::with_replication(placement,16,1_048_576,20,0,None,None,memory,true)?;
+        assert!(replica.pages[0]<original.pages[0]);
+        assert_eq!(replica.global_bytes,replica.pages[0]*super::super::GROUP_BYTES);
+        assert_eq!(replica.cache_bytes,crate::v41_backbone_cache::BackboneCache::replicated_device_bytes(
+            placement,16,replica.pages)?);
+        for gpu in 0..2 { assert!(replica.cache_bytes[gpu]+RUNTIME_HEADROOM<=memory[gpu].0); }
+        assert!(PoolPlan::with_replication(placement,16,1_048_576,20,0,
+            Some(super::super::ByteSize(original.global_bytes)),None,memory,true).is_err());
+        let exact=PoolPlan::with_replication(placement,16,1_048_576,20,0,
+            Some(super::super::ByteSize(replica.global_bytes)),None,memory,true)?;
+        assert_eq!(exact.pages,replica.pages);
+        Ok(())
+    }
 
     #[test]
     fn automatic_expert_placement_preserves_pool_and_obeys_tighter_rank() -> anyhow::Result<()> {

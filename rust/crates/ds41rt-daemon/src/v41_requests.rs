@@ -102,6 +102,11 @@ impl<'a> Requests<'a> {
     pub fn cache(&self) -> &BackboneCache<'a> {
         &self.cache
     }
+    pub fn new_replicated(library:&'a NativeLibrary,pipeline:EngramPipeline,slots:usize,
+        pages:[usize;4],map:crate::v41_backbone_cache::CachePlacement,budgets:[usize;2])->Result<Self> {
+        Ok(Self { cache:BackboneCache::new_replicated(library,map,slots,pages,budgets)?,
+            prefix_histories:[None,None],pipeline,slots:(0..slots).map(|_|None).collect(),image_requests:0 })
+    }
     fn request(&self, lease: CacheLease) -> Result<&Request> {
         self.cache.request_id(lease)?;
         self.slots

@@ -73,6 +73,15 @@ impl Drop for ReservedPassGuard<'_, '_, '_, '_, '_> {
     }
 }
 impl<'w, 'a> DistributedTargetPass<'w, 'a> {
+    pub fn enable_dual_attention(&mut self)->Result<()> {
+        for lane in &mut self.lanes {
+            let device=lane.device;
+            let peer=crate::v41_memory::device::Device { library:device.library,id:1-device.id };
+            let budget=lane.dual_attention_bytes()?;
+            device.run(||lane.enable_dual_attention(peer,budget))?;
+        }
+        Ok(())
+    }
     pub fn configure_cache_replicas(&mut self,bank:&crate::v41_backbone_cache::BackboneCache<'a>)->Result<()> {
         bank.configure_producer_replicas(&mut self.execution.producers.windows,
             &mut self.execution.producers.sources)

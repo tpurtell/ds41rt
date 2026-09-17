@@ -124,6 +124,7 @@ fn worker(
     ready: &mut Option<oneshot::Sender<std::result::Result<(), String>>>,
     stats: std::sync::Arc<std::sync::Mutex<serde_json::Value>>,
 ) -> Result<()> {
+    ensure!(!args.tp2_attention || args.rtx_gpus==2,"--tp2-attention requires --rtx-gpus 2");
     if args.rtx_gpus == 2 { return distributed::worker(args, receive, ready, stats); }
     let capacity = prefill_capacity(args.prefill_batch_tokens)?;
     let rows = capacity as usize;

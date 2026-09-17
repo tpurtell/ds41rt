@@ -775,6 +775,9 @@ impl<'w, 'a> BackboneLane<'w, 'a> {
         source.run(|| { self.sparse=None; Ok(()) })?;
         self.dual_sparse=Some(dual);Ok(())
     }
+    pub fn dual_attention_bytes(&self)->Result<[usize;2]> {
+        crate::v41_sparse_attention::dual::DualAttentionWave::device_bytes(self.capacity)
+    }
     /// Reserve adaptive route history during planning, before lane execution.
     pub fn reserve_route_capture(&mut self, layers: std::ops::Range<usize>, rows: usize) -> Result<()> {
         ensure!(layers.end <= 40 && rows <= 4096, "route history reservation exceeds model bounds");

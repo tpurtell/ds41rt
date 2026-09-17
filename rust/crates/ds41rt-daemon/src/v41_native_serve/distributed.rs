@@ -198,6 +198,7 @@ pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Recei
         )
     };
     let mut pass = make_pass(capacity).context("constructing first distributed target lane")?;
+    if args.tp2_attention { pass.enable_dual_attention()?; }
     if args.dspark && args.dspark_draft_limit > 5 { pass.reserve_sparse_decode_rows(64)?; }
     memory_checkpoint("first target lane")?;
     // Both lanes also produce source 20 from every encoder row on GPU1, so
@@ -206,6 +207,7 @@ pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Recei
     // lane 1's GPU1 index selection and taps serve at most 64 verify rows.
     // TP2 expert workspaces remain full capacity on both GPUs and lanes.
     let mut second = make_pass(80).context("constructing second distributed target lane")?;
+    if args.tp2_attention { second.enable_dual_attention()?; }
     if args.dspark && args.dspark_draft_limit > 5 { second.reserve_sparse_decode_rows(64)?; }
     memory_checkpoint("second target lane")?;
     let draft_weights = if args.dspark {
@@ -248,9 +250,9 @@ pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Recei
         reserved_memory[gpu].0 = reserved_memory[gpu].0.checked_sub(deferred)
             .context("minimum TP2 placement leaves no cache memory")?;
     }
-    let reserved_pool = memory::distributed::PoolPlan::new(map, args.concurrency as usize,
+    let reserved_pool = memory::distributed::PoolPlan::with_replication(map, args.concurrency as usize,
         args.max_context_tokens as usize, args.prefix_cache_entries as usize, snapshot_bytes,
-        args.kv_pool_size, args.memory_reservation, reserved_memory)?;
+        args.kv_pool_size, args.memory_reservation, reserved_memory,args.tp2_attention)?;
     let expert_budget = std::array::from_fn(|gpu|
         prefix_peak[minimum_expert_layers-1][gpu] + reserved_pool.unused_bytes[gpu]);
     let expert_layers = memory::distributed::expert_layers(args.rtx_expert_layers, &prefix_peak, expert_budget)?;
@@ -280,12 +282,12 @@ pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Recei
     memory_checkpoint("TP2 transports")?;
     if let Some(draft) = &mut draft { draft.configure_cost_model(&transport)?; }
     let memory = [devices[0].run(|| lib.cuda_memory_info())?, devices[1].run(|| lib.cuda_memory_info())?];
-    let pool = memory::distributed::PoolPlan::new(map, args.concurrency as usize,
+    let pool = memory::distributed::PoolPlan::with_replication(map, args.concurrency as usize,
         args.max_context_tokens as usize, args.prefix_cache_entries as usize, snapshot_bytes,
-        args.kv_pool_size, args.memory_reservation, memory)?;
+        args.kv_pool_size, args.memory_reservation, memory,args.tp2_attention)?;
     ensure!(pool.pages.iter().zip(reserved_pool.pages).all(|(&actual, reserved)| actual >= reserved),
         "TP2 setup exceeded its budget and reduced the reserved KV pool");
-    tracing::info!(source_pages=?pool.pages, global_bytes=pool.global_bytes, cache_bytes=?pool.cache_bytes,
+    tracing::info!(tp2_attention=args.tp2_attention, source_pages=?pool.pages, global_bytes=pool.global_bytes, cache_bytes=?pool.cache_bytes,
         occupied_before=?pool.occupied_before, reservation_bytes=?pool.reservation_bytes,
         unused_bytes=?pool.unused_bytes, desired_groups=pool.desired_groups, snapshot_slots, snapshot_bytes,
         runtime_headroom_bytes=memory::distributed::RUNTIME_HEADROOM,
@@ -294,8 +296,9 @@ pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Recei
     let rows = capacity as usize;
     let pipeline = unsafe { ds41rt_loader::EngramPipeline::new(&catalog, token_map, rows,
         2 * ds41rt_core::ENGRAM_LAYERS.len(), rows * 64 * 1024)? };
-    let mut requests = Requests::new_distributed(&lib, pipeline, args.concurrency as usize,
-        pool.pages, map, pool.cache_bytes)?;
+    let mut requests = if args.tp2_attention {
+        Requests::new_replicated(&lib,pipeline,args.concurrency as usize,pool.pages,map,pool.cache_bytes)?
+    } else { Requests::new_distributed(&lib,pipeline,args.concurrency as usize,pool.pages,map,pool.cache_bytes)? };
     pass.configure_cache_replicas(requests.cache())?;
     second.configure_cache_replicas(requests.cache())?;
     if let Some(pool) = target_prefix_pool { requests.install_prefix_pool(pool)?; }
