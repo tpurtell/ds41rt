@@ -16,6 +16,24 @@ def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def residency_overrides(values: list[str], capacities: list[int], paired: bool) -> dict[int, int]:
+    """Explicit offline build choices; B12X validates kernel resource limits."""
+    if values and not paired:
+        raise ValueError('residency overrides require a paired TP4 package')
+    result = {}
+    for value in values:
+        try:
+            capacity, blocks = map(int, value.split('='))
+        except (ValueError, AttributeError):
+            raise ValueError('residency override must be CAPACITY=BLOCKS') from None
+        if capacity not in capacities or blocks not in (1, 2):
+            raise ValueError('residency override requires a selected capacity and one or two blocks/SM')
+        if capacity in result:
+            raise ValueError('duplicate residency override capacity')
+        result[capacity] = blocks
+    return result
+
+
 def verify(package: Path, revision: str | None = None, runtime: Path | None = None, role: str | None = None) -> dict:
     manifest = json.loads((package / 'manifest.json').read_text())
     if manifest['schema'] != 'ds41rt.exl3-package.v1':
@@ -27,6 +45,8 @@ def verify(package: Path, revision: str | None = None, runtime: Path | None = No
     paired = manifest.get('paired_tp4', False)
     if not isinstance(paired, bool) or (paired and manifest['role'] != 'spark'):
         raise ValueError('paired EXL3 package requires Spark role')
+    overrides = residency_overrides(manifest.get('residency_overrides', []),
+                                    [v['capacity'] for v in manifest['variants']], paired)
     expected = manifest['files']
     actual = {str(p.relative_to(package)) for p in package.rglob('*') if p.is_file()}
     if actual != set(expected) | {'manifest.json'}:
@@ -52,6 +72,10 @@ def verify(package: Path, revision: str | None = None, runtime: Path | None = No
         for key in ('capacity', 'intermediate', 'experts', 'top_k', 'output_dtype', 'bits'):
             if meta[key] != variant[key]:
                 raise ValueError(f'EXL3 variant metadata mismatch: {directory}/{key}')
+        if 'blocks_per_sm' in variant and variant['blocks_per_sm'] != meta.get('blocks_per_sm'):
+            raise ValueError('EXL3 variant residency metadata mismatch')
+        if meta['capacity'] in overrides and meta.get('blocks_per_sm') != overrides[meta['capacity']]:
+            raise ValueError('EXL3 compiled residency differs from requested override')
         boundary = meta.get('paired_boundary')
         if paired:
             rank_name = directory.split('/')[0]
@@ -115,14 +139,15 @@ def build(args: argparse.Namespace) -> None:
     paired = getattr(args, 'paired_tp4', False)
     if paired and (args.role != 'spark' or len(args.bits) != 2):
         raise ValueError('paired TP4 package requires Spark role and two tiers')
+    capacities = sorted(set(int(v) for v in args.capacities.split(',')))
+    if not capacities or any(v < 1 or v > 4096 for v in capacities):
+        raise ValueError('EXL3 capacities must be in 1..4096')
+    overrides = residency_overrides(getattr(args, 'residency', []), capacities, paired)
     # Import the source-pinned compiler only for builds, never package checks.
     import _pinned_sparkinfer
     from export_b12x_v41_exl3_aot import export
     import torch
 
-    capacities = sorted(set(int(v) for v in args.capacities.split(',')))
-    if not capacities or any(v < 1 or v > 4096 for v in capacities):
-        raise ValueError('EXL3 capacities must be in 1..4096')
     props = torch.cuda.get_device_properties(0)
     expected_compute = (12, 1) if args.role == 'spark' else (12, 0)
     if (props.major, props.minor) != expected_compute:
@@ -147,6 +172,8 @@ def build(args: argparse.Namespace) -> None:
             for capacity in capacities:
                 raw = args.build_dir / profile / f'm{capacity}'
                 options = {'paired_boundary': profile.removeprefix('paired-')} if paired else {}
+                if capacity in overrides:
+                    options['blocks_per_sm'] = overrides[capacity]
                 meta = export(raw, width, experts, capacity, tuple(args.bits), 'auto', topk, dtype, **options)
                 core = raw / 'libds41rt_exl3.so'
                 subprocess.run([args.cxx, '-shared', '-fPIC', '-std=c++17',
@@ -170,7 +197,7 @@ def build(args: argparse.Namespace) -> None:
                         target.parent.mkdir(parents=True, exist_ok=True)
                         shutil.copy2(raw / name, target)
                     variants.append({'directory': directory, **{key: meta[key] for key in
-                        ('capacity', 'intermediate', 'experts', 'top_k', 'output_dtype', 'bits')}})
+                        ('capacity', 'intermediate', 'experts', 'top_k', 'output_dtype', 'bits', 'blocks_per_sm')}})
                     if paired:
                         variants[-1]['paired_boundary'] = meta['paired_boundary']
                 # Large prefill exports must not retain another capacity's arenas.
@@ -186,6 +213,8 @@ def build(args: argparse.Namespace) -> None:
                                 'provider': 'installed nvidia-cutlass-dsl CUDA runtime; release entrypoint sets its library path'}}
         if paired:
             manifest['paired_tp4'] = True
+        if overrides:
+            manifest['residency_overrides'] = [f'{capacity}={blocks}' for capacity, blocks in sorted(overrides.items())]
         (stage / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
         verify(stage, _pinned_sparkinfer.REVISION)
         install_package(stage, args.output)
@@ -198,6 +227,8 @@ def main() -> None:
     create = commands.add_parser('build')
     create.add_argument('--role', choices=('spark', 'coordinator'), required=True)
     create.add_argument('--paired-tp4', action='store_true', help='Export explicit paired H128 ownership kernels for all four Spark ranks')
+    create.add_argument('--residency', action='append', default=[], metavar='CAPACITY=BLOCKS',
+                        help='Explicit paired-package blocks/SM override; repeat per capacity (for example 80=2). B12X validates resources.')
     create.add_argument('--capacities', default='1,16,80,256,1024,4096')
     create.add_argument('--bits', type=int, nargs='+', default=[3, 4])
     create.add_argument('--build-dir', type=Path, required=True)

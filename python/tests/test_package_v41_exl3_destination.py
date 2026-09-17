@@ -11,6 +11,17 @@ spec.loader.exec_module(package)
 
 
 class PackageDestinationTests(unittest.TestCase):
+    def test_residency_override_is_explicit_and_capacity_bound(self):
+        self.assertEqual(package.residency_overrides([], [1, 80], False), {})
+        self.assertEqual(package.residency_overrides(['80=2'], [1, 80], True), {80: 2})
+        for values, capacities, paired in [
+            (['80=2'], [1, 80], False), (['80=2'], [1, 16], True),
+            (['80=3'], [80], True), (['80=1', '80=2'], [80], True),
+            (['80'], [80], True), (['80=two'], [80], True),
+        ]:
+            with self.assertRaises(ValueError):
+                package.residency_overrides(values, capacities, paired)
+
     def test_paired_boundary_contract_cannot_be_relabelled(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -19,7 +30,7 @@ class PackageDestinationTests(unittest.TestCase):
             meta = dict(capacity=80, intermediate=640, experts=384, top_k=6,
                         output_dtype='bf16', bits=[3, 4], sparkinfer_revision='test',
                         requires_route_preparation=False, paired_boundary='last',
-                        descriptor_rows=4, native_info_version=3)
+                        descriptor_rows=4, native_info_version=3, blocks_per_sm=2)
             (directory / 'v41_exl3.json').write_text(json.dumps(meta))
             for name in ('trellis_lut.bin', 'libds41rt_exl3.so'):
                 (directory / name).write_bytes(b'fixture')
@@ -34,6 +45,19 @@ class PackageDestinationTests(unittest.TestCase):
                 (root / 'manifest.json').write_text(json.dumps(manifest))
             write()
             package.verify(root)
+            manifest['residency_overrides'] = ['80=2']
+            write()
+            package.verify(root)
+            manifest['residency_overrides'] = ['80=1']
+            write()
+            with self.assertRaisesRegex(ValueError, 'compiled residency'):
+                package.verify(root)
+            del manifest['residency_overrides']
+            variant['blocks_per_sm'] = 1
+            write()
+            with self.assertRaisesRegex(ValueError, 'residency metadata'):
+                package.verify(root)
+            variant['blocks_per_sm'] = 2
             for field, value in [('paired_tp4', False), ('role', 'coordinator')]:
                 original = manifest[field]
                 manifest[field] = value

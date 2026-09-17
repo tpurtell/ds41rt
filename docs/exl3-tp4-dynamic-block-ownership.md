@@ -672,3 +672,21 @@ thinking with a 4,096-token cap. Full/EXL3 residency is 20/25 RTX expert layers;
 generated outputs and cycle counts can differ. These are draft-acceptance
 observations, not teacher-forced top-1 agreement or final throughput evidence.
 EXL3 sources are the earlier paired K7 and reasoning-code acceptance archives.
+
+### Reproducible paired residency build option
+
+The package builder now accepts explicit paired-capacity residency choices:
+`--paired-tp4 --residency 80=2` requests the tested two-block m80 candidate for
+both boundary orientations and leaves every other capacity unchanged. This
+replaces the experiment's Python monkey-patch with an ordinary build argument.
+It introduces no automatic device heuristic or default change: B12X still owns
+kernel resource validation and compilation. Overrides require a selected
+capacity, one or two blocks/SM, and the paired Spark package; duplicate or
+non-paired requests fail before importing CUDA.
+
+New manifests retain requested overrides and per-variant compiled residency.
+Verification checks both against kernel metadata, including all four rank
+copies. Five focused packaging tests pass, and the updated verifier accepts
+all 24 variants of the existing measured candidate package. A fresh GPU build
+through this option, exact source-pin promotion, and normal clean-image
+qualification remain pending; they will run after the measurement queue.
