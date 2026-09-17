@@ -153,6 +153,9 @@ bandwidth benefit from bits alone.
 - [ ] Four-configuration release performance tables and raw evidence.
 - [ ] One-time quant analysis and bounded top-1 comparisons; evidence-based default decision.
 - [ ] Clean build/run, fork and engine commits pushed, v5 images/assets/notes published and verified.
+- [ ] Create and push `release/v5` at the final v5 release commit, aligned with
+  the published `v5` tag; verify both remote refs before calling publication complete.
+  Do this at release publication, not at an intermediate development commit.
 
 ## Loader contract progress
 
