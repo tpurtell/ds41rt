@@ -69,6 +69,18 @@ checkpoint conversion and the V4.1 serving integration still require inspection.
 
 ## Measurements and publication tables
 
+The release summarizer accepts `--model full|exl3` and an explicit
+`--corpus scripts/fixtures/release-semantic-corpus.json`. For v5, supply both:
+it verifies all nine categories plus counting and the actual reasoning request
+controls, rather than inferring thinking from a row label. Its historical mode
+without `--corpus` remains available for old eight-category evidence.
+`scripts/render-ds41-v5-release-tables.py` consumes the completed full and EXL3
+summaries plus three tool-evaluation reports (full, EXL3 FP8 PLE, EXL3 FP4 PLE).
+It requires matching engine/corpus identities and renders the four-configuration
+tables below. It does not populate missing measurements from historical results;
+README/report replacement waits for the complete measured inputs. Acceptance
+and the deferred quant-agreement analysis accompany these throughput tables.
+
 Normal performance benchmarks use **FP8 PLE**, for both full and EXL3 models.
 Use matched prompts/configurations and three samples where applicable. State
 400 W power limits, standard memory speed, cache bytes plus token capacities,
