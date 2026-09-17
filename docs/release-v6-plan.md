@@ -1099,3 +1099,45 @@ performance winner is established; output TP2 stays off by default. Evidence:
 request results, GPU settings and harness. The standard coordinator was restored.
 The daemon check, test-target build and release build pass. dSpark transformer
 TP2 remains the next independent implementation/evaluation item.
+
+### dSpark TP2 expert preparation and cross-device graph feasibility
+
+The native draft has 128 routed experts per stage, top-3 routing and 2,304
+intermediate channels. The first transformer split targets those routed weights:
+1,152 intermediate channels per GPU with all expert IDs available on both ranks.
+`V41ExpertSelection::DsparkTp2` reads contiguous W1/W3 row halves and W2 column
+halves, with corresponding scale partitions and bounded caller-owned staging.
+Each expert half stages 9,400,320 bytes with a 1,152-byte minimum row scratch.
+Prefetch advises only the selected contiguous half or the full span needed by
+strided column reads. Existing native/Spark paths remain unchanged.
+
+The staging fixture passes both draft ranks at stage 2/expert 127, byte-for-byte
+checks for all six tensors, offsets beyond 2 GiB, odd read batches, short-buffer
+rejection with untouched sentinel storage, tail guards, and invalid stage/expert/
+rank checks. The daemon still checks successfully. The AOT exporter now accepts
+`--role dspark_tp2` with geometry 128 experts, 1,152 intermediate channels and
+three routes. It consumes the existing FP8 K32 row representation and emits
+ordered FP32 route planes. Capacities 1/16/80/256 compile at width 192; this is
+export evidence, not an executed MoE or serving correctness/performance result.
+Evidence: `dspark-tp2-staging-test.log`, `dspark-tp2-loader-check.log`, and
+`dspark-tp2-export.log` in `~/.cache/ds41rt-v6-heads32/`, plus the manifest and
+objects in `~/.cache/ds41rt-v6-dspark-tp2-aot/`.
+
+A separate GPU experiment establishes a useful scheduling option:
+`native/tests/v41_cross_device_graph_selftest.py` captures BF16 arithmetic on both
+GPUs, event fork/join dependencies and bidirectional SM peer copies in one CUDA
+graph. Three replays with changed input values produce exact expected results on
+both GPUs. CUDA's ordinary `cudaMemcpyPeerAsync` rejected capture in the initial
+probe; the existing SM peer-copy implementation succeeds. Evidence:
+`~/.cache/ds41rt-v6-dspark-tp2-aot/cross-device-graph.json` (and the failed copy-API
+probe in `cross_device_kernel_capture.json`). This validates the primitive graph
+structure, not the complete draft transformer. The implementation should first
+try retaining one captured draft-chain launch with GPU event dependencies,
+rather than introducing host waits between the three draft stages. It also gives
+a reason to revisit the separate projection launches after dSpark integration.
+
+Native module/FFI ownership, two-rank weight loading, routing/input broadcast,
+ordered reduction and draft-chain integration remain. The draft reduction must
+sum rank contributions before the existing per-route BF16 rounding and top-3
+sum/shared addition; the backbone's six-route reducer is not interchangeable.
+No dSpark TP2 serving flag or performance claim exists yet.

@@ -30,17 +30,21 @@ def export(output, capacities, width, atomic_min_capacity=None, role="spark", *,
     props = torch.cuda.get_device_properties(0)
     if (props.major, props.minor) not in ((12, 0), (12, 1)):
         raise ValueError("native Blackwell device required")
-    if role not in ("spark", "coordinator", "rtx_backbone", "rtx_tp2"):
+    if role not in ("spark", "coordinator", "rtx_backbone", "rtx_tp2", "dspark_tp2"):
         raise ValueError("unsupported expert placement role")
     coordinator = role == "coordinator"
     local_backbone = role == "rtx_backbone"
     tp2 = role == "rtx_tp2"
-    if (local_backbone or tp2) and (props.major, props.minor) != (12, 0):
-        raise ValueError("RTX backbone slices require SM120")
+    draft_tp2 = role == "dspark_tp2"
+    if (local_backbone or tp2 or draft_tp2) and (props.major, props.minor) != (12, 0):
+        raise ValueError("RTX expert slices require SM120")
+    if draft_tp2 and atomic_min_capacity is not None:
+        raise ValueError("dSpark TP2 uses ordered route output before rank reduction")
     if coordinator and ((props.major, props.minor) != (12, 0) or atomic_min_capacity is not None):
         raise ValueError("coordinator slices require SM120 and ordered route output")
     experts, intermediate, kernel_intermediate, topk = (
         (128, 2304, 2304, 3) if coordinator else
+        (128, 1152, 1152, 3) if draft_tp2 else
         (384, 1152, 1152, 6) if tp2 else
         (384, 2304, 2304, 6) if local_backbone else (384, 576, 640, 6)
     )
@@ -220,7 +224,7 @@ def export(output, capacities, width, atomic_min_capacity=None, role="spark", *,
         )
         info = [
             3 if atomic else 2,
-            0 if coordinator else 3 if tp2 else 2 if local_backbone else 1,
+            0 if coordinator else 4 if draft_tp2 else 3 if tp2 else 2 if local_backbone else 1,
             experts,
             5120,
             intermediate,
@@ -290,7 +294,7 @@ def export(output, capacities, width, atomic_min_capacity=None, role="spark", *,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--role", choices=("spark", "coordinator", "rtx_backbone", "rtx_tp2"), default="spark")
+    parser.add_argument("--role", choices=("spark", "coordinator", "rtx_backbone", "rtx_tp2", "dspark_tp2"), default="spark")
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--rows", default="1,16,80")
     parser.add_argument(

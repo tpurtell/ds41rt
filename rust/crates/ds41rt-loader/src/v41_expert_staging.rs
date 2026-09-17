@@ -21,6 +21,8 @@ pub enum V41ExpertSelection {
         stage: usize,
         expert: usize,
     },
+    /// Half-width routed draft expert on one member of an RTX pair.
+    DsparkTp2 { stage: usize, expert: usize, rank: usize },
 }
 
 /// Borrows the validated catalog; storage is supplied by the caller and reusable.
@@ -76,6 +78,12 @@ impl OfficialV41Catalog {
                     config.moe_intermediate_size,
                 )
             }
+            V41ExpertSelection::DsparkTp2 { stage, expert, rank } => {
+                ensure!(stage < config.num_nextn_predict_layers,"dSpark stage out of range");
+                ensure!(expert < config.dspark_n_routed_experts,"dSpark expert out of range");
+                ensure!(rank < 2,"dSpark TP2 rank must be in 0..2");
+                (format!("mtp.{stage}.ffn.experts.{expert}"),Some(rank),config.moe_intermediate_size/2)
+            }
             V41ExpertSelection::Dspark { stage, expert } => {
                 ensure!(
                     stage < config.num_nextn_predict_layers,
@@ -107,7 +115,7 @@ impl OfficialV41Catalog {
         for (slot, name) in names.iter().enumerate() {
             let size = usize::try_from(if matches!(selection, V41ExpertSelection::BackboneFull { .. }) {
                 self.tensor(name)?.metadata.byte_length
-            } else if matches!(selection, V41ExpertSelection::BackboneTp2 { .. }) {
+            } else if matches!(selection, V41ExpertSelection::BackboneTp2 { .. } | V41ExpertSelection::DsparkTp2 { .. }) {
                 self.tensor(name)?.metadata.byte_length / 2
             } else {
                 self.device_tensor_bytes(name, rank)?
@@ -173,10 +181,15 @@ impl V41ExpertStaging<'_> {
     /// unrelated experts/engram tables; callers bound the lookahead window.
     pub fn prefetch(&self) -> Result<()> {
         use std::os::fd::AsRawFd;
-        for (name, range) in self.names.iter().zip(&self.ranges) {
+        for (slot, (name, range)) in self.names.iter().zip(&self.ranges).enumerate() {
             let tensor = self.catalog.tensor(name)?;
             let mut offset = tensor.metadata.byte_offset;
             let bytes = match tensor.placement {
+                _ if matches!(self.selection,V41ExpertSelection::DsparkTp2 { .. }) && slot!=2 && slot!=5 => {
+                    offset=offset.checked_add(range.len() as u64*self.rank.unwrap() as u64)
+                        .context("draft expert prefetch offset overflow")?;
+                    range.len() as u64
+                }
                 crate::V41TensorPlacement::BackboneExpertTp4 { axis: 0, .. } if self.rank.is_some() => {
                     offset = offset
                         .checked_add((range.len() as u64) * self.rank.unwrap() as u64)
@@ -218,7 +231,7 @@ impl V41ExpertStaging<'_> {
             "expert read scratch requires {} bytes",
             self.scratch_bytes
         );
-        for (name, range) in self.names.iter().zip(&self.ranges) {
+        for (slot, (name, range)) in self.names.iter().zip(&self.ranges).enumerate() {
             if matches!(self.selection, V41ExpertSelection::BackboneFull { .. }) {
                 use std::os::unix::fs::FileExt;
                 let tensor = self.catalog.tensor(name)?;
@@ -228,6 +241,10 @@ impl V41ExpertStaging<'_> {
             } else if let V41ExpertSelection::BackboneTp2 { rank, .. } = self.selection {
                 self.catalog.read_backbone_tp2_into(name, rank, &mut staging[range.clone()], scratch)
                     .with_context(|| format!("staging TP2 backbone expert tensor {name}"))?;
+            } else if let V41ExpertSelection::DsparkTp2 { rank, .. } = self.selection {
+                let axis=usize::from(slot==2 || slot==5);
+                self.catalog.read_coordinator_tp2_into(name,axis,rank,&mut staging[range.clone()],scratch)
+                    .with_context(||format!("staging TP2 dSpark expert tensor {name}"))?;
             } else {
                 self.catalog
                     .read_device_tensor_into(name, self.rank, &mut staging[range.clone()], scratch)

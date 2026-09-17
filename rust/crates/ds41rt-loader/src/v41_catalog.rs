@@ -914,8 +914,36 @@ mod expert_staging_tests {
         for (range, expected) in plan.tensor_ranges().iter().zip(&payloads) {
             assert_eq!(&staging[range.clone()], expected.as_slice());
         }
+        // Draft halves use the same packed row/column split, while preserving
+        // all 128 expert IDs independently on each RTX rank.
+        for rank in 0..2 {
+            let plan=catalog.expert_staging(V41ExpertSelection::DsparkTp2 {stage:2,expert:127,rank}).unwrap();
+            assert_eq!(plan.intermediate_size(),1152);
+            assert_eq!(plan.staging_bytes(),9_400_320);
+            assert_eq!(plan.minimum_read_scratch_bytes(),1152);
+            let mut staging=vec![205;plan.staging_bytes()+32];
+            let mut scratch=vec![0;1152*7+3];
+            assert!(plan.read_into(&mut staging[..plan.staging_bytes()-1],&mut scratch).is_err());
+            assert!(plan.read_into(&mut staging,&mut scratch[..1151]).is_err());
+            assert!(staging.iter().all(|&v|v==205));
+            plan.prefetch().unwrap();
+            plan.read_into(&mut staging,&mut scratch).unwrap();
+            for (slot,range) in plan.tensor_ranges().iter().enumerate() {
+                let source=&payloads[slot];
+                let expected=if slot==2 || slot==5 {
+                    let row=source.len()/5120;
+                    source.chunks_exact(row).flat_map(|r|
+                        r[rank*row/2..(rank+1)*row/2].iter().copied()).collect::<Vec<_>>()
+                } else {source[rank*source.len()/2..(rank+1)*source.len()/2].to_vec()};
+                assert_eq!(&staging[range.clone()],expected.as_slice());
+            }
+            assert!(staging[plan.staging_bytes()..].iter().all(|&v|v==205));
+        }
         for selection in [
             select(4),
+            V41ExpertSelection::DsparkTp2 {stage:3,expert:0,rank:0},
+            V41ExpertSelection::DsparkTp2 {stage:0,expert:128,rank:0},
+            V41ExpertSelection::DsparkTp2 {stage:0,expert:0,rank:2},
             V41ExpertSelection::BackboneTp2 { layer: 0, expert: 0, rank: 2 },
             V41ExpertSelection::BackboneTp2 { layer: 40, expert: 0, rank: 0 },
             V41ExpertSelection::BackboneTp2 { layer: 0, expert: 384, rank: 0 },
