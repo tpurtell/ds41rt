@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="860" viewBox="0 0 1400 860" role="img" aria-labelledby="title desc">
+<title id="title">DS41RT v6 parallelism experiments and RAM-backed KV</title>
+<desc id="desc">Two independent serving lanes use two RTX GPUs and four Spark expert workers. Independent experimental switches split attention with replicated KV, query and output projections, and dSpark routed experts. They remain disabled unless performance wins. A configurable bottom-up routed-expert boundary divides RTX tensor-parallel layers from Spark layers. Automatic RAM paging increases logical token capacity beyond twenty leading-edge slots times the configured context limit. Replicated GPU copies count once.</desc>
+<defs>
+ <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 Z" fill="#60d6e8"/></marker>
+ <style>
+ text{font-family:Arial,Helvetica,sans-serif;fill:#e4ecf8}
+ .title{font-size:30px;font-weight:700}.heading{font-size:22px;font-weight:700}
+ .body{font-size:18px}.small{font-size:16px;fill:#a9bad2}.accent{fill:#74e4c4}
+ .box{fill:#14243a;stroke:#35506c;stroke-width:2}.optional{fill:#20283f;stroke:#b298ea;stroke-width:2;stroke-dasharray:7 5}
+ .link{fill:none;stroke:#60d6e8;stroke-width:3;marker-end:url(#arrow)}
+ </style>
+</defs>
+<rect width="1400" height="860" rx="20" fill="#091423"/>
+<text x="45" y="53" class="title">V6 • useful parallelism, bounded cache pressure</text>
+<text x="45" y="85" class="body">Experimental GPU splits stay off by default until serving measurements establish a win.</text>
+
+<rect x="45" y="113" width="630" height="65" rx="12" class="box"/>
+<rect x="725" y="113" width="630" height="65" rx="12" class="box"/>
+<text x="67" y="141" class="heading">Lane A</text><text x="67" y="165" class="small">Own streams, draft workspace, events and graph lifetime</text>
+<text x="747" y="141" class="heading">Lane B</text><text x="747" y="165" class="small">Independent replay and completion; no cross-lane decision</text>
+
+<text x="700" y="196" text-anchor="middle" class="small">Both lanes use both GPUs</text>
+<rect x="45" y="203" width="630" height="300" rx="14" class="box"/>
+<rect x="725" y="203" width="630" height="300" rx="14" class="box"/>
+<text x="67" y="240" class="heading">RTX0</text><text x="747" y="240" class="heading">RTX1</text>
+<text x="67" y="273" class="body">Baseline: embeddings, vision, lower attention blocks</text>
+<text x="747" y="273" class="body">Baseline: upper attention blocks, draft transformer</text>
+<text x="67" y="307" class="body accent">TP2 routed experts: bottom N layers, rank 0</text>
+<text x="747" y="307" class="body accent">TP2 routed experts: bottom N layers, rank 1</text>
+<text x="67" y="335" class="small">Shared experts and vocabulary already tensor-parallel</text>
+<text x="747" y="335" class="small">Shared experts and vocabulary already tensor-parallel</text>
+<rect x="63" y="355" width="594" height="129" rx="10" class="optional"/>
+<rect x="743" y="355" width="594" height="129" rx="10" class="optional"/>
+<text x="80" y="384" class="body">Optional: 32 attention heads + replicated KV</text>
+<text x="80" y="415" class="body">Optional: query-B / output-B projection halves</text>
+<text x="80" y="446" class="body">Optional: half of each dSpark routed expert</text>
+<text x="80" y="473" class="small">Each switch is evaluated independently</text>
+<text x="760" y="384" class="body">Optional: 32 attention heads + replicated KV</text>
+<text x="760" y="415" class="body">Optional: query-B / output-B projection halves</text>
+<text x="760" y="446" class="body">Optional: half of each dSpark routed expert</text>
+<text x="760" y="473" class="small">Draft attention and shared experts remain here</text>
+<path d="M677 407 H722" class="link" marker-start="url(#arrow)"/>
+
+<path d="M360 503 V541" class="link"/><path d="M1040 503 V541" class="link"/>
+<rect x="45" y="545" width="1310" height="103" rx="14" class="box"/>
+<text x="67" y="579" class="heading">Four DGX Spark workers • TP4 routed experts above the RTX boundary</text>
+<text x="67" y="610" class="body">N is configurable; worker residency must cover every delegated layer before requests start.</text>
+<text x="67" y="635" class="small">Attention groups stay with their KV source. Reducing RTX layers trades expert bandwidth for cache room.</text>
+
+<rect x="45" y="678" width="1310" height="142" rx="14" class="box"/>
+<text x="67" y="714" class="heading">GPU KV ↔ pinned RAM snapshots</text>
+<text x="67" y="746" class="body accent">Recipe: 20 leading-edge entries • automatic RAM budget • explicit size overrides</text>
+<text x="67" y="776" class="body">Usable GPU tokens + RAM tokens &gt; entries × maximum context tokens</text>
+<text x="67" y="802" class="small">Replicated KV counts once. Snapshot overhead and restore staging are reserved separately; RAM paging is not active GPU capacity.</text>
+</svg>

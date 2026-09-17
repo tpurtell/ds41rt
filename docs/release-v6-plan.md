@@ -6,6 +6,8 @@ Increase useful dual-RTX serving throughput while preserving the winning
 configuration as the default. Evaluate attention, projection, and dSpark TP2
 independently; shipping supported opt-in paths is acceptable when they do not win.
 
+[![V6 parallelism experiments and RAM-backed KV](release-v6-parallelism.svg)](release-v6-parallelism.svg)
+
 ## Implementation sequence
 
 - [x] Review and port PR #4 onto current dev, preserving contributor attribution,
@@ -16,13 +18,13 @@ independently; shipping supported opt-in paths is acceptable when they do not wi
 - [x] Resolve issue #3: bounded HTTP admission, default queue depth equal to
   concurrency, 25-second wait budget, 429 with Retry-After for overload and 503
   for shutdown. Bound waiting request memory and support cancellation.
-- [ ] Map current retention/SWA controls and set the requested leading-edge
+- [x] Map current retention/SWA controls and set the requested leading-edge
   default to 20. Compute logical device-plus-host capacity above
   slots * max_context_tokens, allowing for snapshot overhead and staging.
   Replicated device copies count once toward logical capacity.
 - [ ] Replace the dual-RTX 20-layer minimum with budget-driven bottom-up placement;
   coordinate the chosen RTX/Spark boundary before loading and verify fast startup.
-- [ ] Implement independently selectable TP2 projection and attention paths,
+- [x] Implement independently selectable TP2 projection and attention paths,
   considering head partitioning with replicated KV (DCP1-style). Account for
   reductions, replicated state, graph storage, scratch and host paging bandwidth.
 - [ ] Evaluate TP2 dSpark independently, including its experts, attention,
