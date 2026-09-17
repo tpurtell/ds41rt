@@ -40,13 +40,13 @@ int main() {
   int checks = 0;
   for(int format : {0,1,2}) for (int rows : {1, 6, 128, 256}) {
     Buffer query(size_t(rows)*64*512*2), output(query.bytes), sink(64*4);
-    Buffer window(128*512, true), window_scales(128*16, true);
-    Buffer proposal(size_t(rows)*512, true), proposal_scales(size_t(rows)*16, true);
-    Buffer source(768*(format==2?256:512), true), source_scales(768*(format==2?32:16), true);
-    Buffer private_source(3*(format==2?256:512), true), private_scales(3*(format==2?32:16), true);
+    Buffer window(128*512, !(rows==6 && format==2)), window_scales(128*16, !(rows==6 && format==2));
+    Buffer proposal(size_t(rows)*512, !(rows==6 && format==2)), proposal_scales(size_t(rows)*16, !(rows==6 && format==2));
+    Buffer source(768*(format==2?256:512), !(rows==6 && format==2)), source_scales(768*(format==2?32:16), !(rows==6 && format==2));
+    Buffer private_source(3*(format==2?256:512), !(rows==6 && format==2)), private_scales(3*(format==2?32:16), !(rows==6 && format==2));
     Buffer window_end(8), source_end(8), pages(8), metadata(size_t(rows)*10*8);
     Buffer selected(size_t(rows)*512*4), bounds(size_t(rows)*8);
-    Buffer scratch(size_t(rows)*3*64*514*4);
+    Buffer scratch(size_t(rows)*10*64*514*4);
     query.Fill(0); sink.Fill(0); window.Fill(0); proposal.Fill(0);
     window_scales.Fill(127); proposal_scales.Fill(127);
     source.Fill(format==2?0x22:0x38); private_source.Fill(format==2?0x22:0x38); // Quantized ones.
@@ -63,7 +63,7 @@ int main() {
     view.pages=reinterpret_cast<const uint32_t*>(pages.data);
     view.window_proposal_capacity=rows; view.source_capacity=768;
     view.source_proposal_capacity=3; view.page_stride=2; view.compressed=format;
-    for (int parts : {0, 3}) for (int begin : {-1, 0, 2048, 2049}) for (int mode : {0, 1, 2}) {
+    for (int parts : {0, 3, 10}) for (int begin : {-1, 0, 2048, 2049}) for (int mode : {0, 1, 2}) {
       std::vector<uint64_t> meta;
       std::vector<int32_t> ids(size_t(rows)*512, -1);
       for (int row=0; row<rows; ++row) {
@@ -115,7 +115,7 @@ int main() {
           parts?scratch.bytes:0,parts?parts:1)));
       Check(cudaMemcpy(actual.data(),output.data,output.bytes,cudaMemcpyDeviceToHost));
       Buffer local_query(size_t(rows)*32*512*2),local_output(local_query.bytes),local_sink(32*4);
-      Buffer local_scratch(size_t(rows)*3*32*514*4);
+      Buffer local_scratch(size_t(rows)*(parts?parts:1)*32*514*4);
       for(int rank=0;rank<2;++rank) {
         std::vector<uint16_t> compact(local_query.bytes/2);
         for(int row=0;row<rows;++row)
@@ -168,7 +168,15 @@ int main() {
         auto* bs=reinterpret_cast<float*>(batch_scratch.data);
         Check(static_cast<cudaError_t>(ds41rt_v41_sparse_attention_batch_validate(
             q,sk,m,s,out,rows,views.data(),dv,wb,bs,batch_scratch.bytes,batch_parts,format)));
-        Check(static_cast<cudaError_t>(ds41rt_v41_sparse_attention_batch(
+        auto batch_launch=ds41rt_v41_sparse_attention_batch;
+        auto half_batch_launch=ds41rt_v41_sparse_attention_heads32_batch;
+#ifdef DS41RT_TEST_ATTENTION_AOT
+        if(format==2) {
+          batch_launch=ds41rt_v41_sparse_attention_batch_aot;
+          half_batch_launch=ds41rt_v41_sparse_attention_heads32_batch_aot;
+        }
+#endif
+        Check(static_cast<cudaError_t>(batch_launch(
             q,sk,m,s,out,rows,dv,test_stream,wb,bs,batch_parts,format)));
         Check(cudaStreamSynchronize(test_stream));
         Check(cudaMemcpy(actual.data(),output.data,output.bytes,cudaMemcpyDeviceToHost));
@@ -195,7 +203,7 @@ int main() {
             throw std::runtime_error("compact batch validation missed scratch/descriptor overlap");
           cudaGraph_t graph;cudaGraphExec_t executable;
           Check(cudaStreamBeginCapture(test_stream,cudaStreamCaptureModeThreadLocal));
-          Check(static_cast<cudaError_t>(ds41rt_v41_sparse_attention_heads32_batch(
+          Check(static_cast<cudaError_t>(half_batch_launch(
               hq,hs,m,s,ho,rows,dv,test_stream,wb,hp,batch_parts,format)));
           Check(cudaStreamEndCapture(test_stream,&graph));
           Check(cudaGraphInstantiate(&executable,graph,nullptr,nullptr,0));

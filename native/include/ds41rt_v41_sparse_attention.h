@@ -94,7 +94,7 @@ int32_t ds41rt_v41_sparse_attention_batch_aot(
 // scratch [rows,parts,32,514]. Caller slices the corresponding query and sink
 // heads and supplies local replicated KV; metadata and selected IDs are unchanged.
 // All bounded-entry validation, lifetime and replay rules above apply. Initialize
-// on each participating device before capture. Uses WMMA, independently of AOT64.
+// on each participating device before capture. Eligible FP4 decode uses AOT32.
 int32_t ds41rt_v41_sparse_attention_heads32_initialize(void);
 int32_t ds41rt_v41_sparse_attention_heads32_bounded(
     const uint16_t* query,const float* sink,const uint64_t* metadata,
@@ -114,6 +114,12 @@ int32_t ds41rt_v41_sparse_attention_heads32_batch_validate(
 // completion. Capture retains device descriptor addresses, not their contents;
 // callers may change contents only after prior consumers have completed.
 int32_t ds41rt_v41_sparse_attention_heads32_batch(
+    const uint16_t* query,const float* sink,const uint64_t* metadata,
+    const int32_t* selected,uint16_t* output,int32_t rows,
+    const ds41rt_v41_sparse_kv_t* device_views,void* stream,const uint64_t* begins,
+    float* partial,int32_t parts,int32_t compressed);
+// Optional AOT32 batch symbol; same eligibility rules as AOT64 above.
+int32_t ds41rt_v41_sparse_attention_heads32_batch_aot(
     const uint16_t* query,const float* sink,const uint64_t* metadata,
     const int32_t* selected,uint16_t* output,int32_t rows,
     const ds41rt_v41_sparse_kv_t* device_views,void* stream,const uint64_t* begins,

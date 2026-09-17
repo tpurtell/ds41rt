@@ -237,3 +237,30 @@ on both RTX cards, and its memory-sanitized run reports zero errors. These are
 native WMMA checks; Rust binding, compact AOT and replicated-cache serving remain
 outstanding. Evidence: `batch-selftest*.log` and `batch-memcheck.log` in the same
 local bundle.
+
+### Optimized compact attention backend
+
+SparkInfer now accepts static 32- or 64-head geometry in its direct V4.1 pointer
+ABI, including the sink merge. The fork's master contains `63e2140e`; the source
+lock and submodule are updated together. Head count participates in the compile
+key, while live row counts remain runtime arguments. The existing producer oracle
+still passes, and two compact halves match full-head AOT output bit-for-bit under
+live row-count changes and graph replay with kernel resolution frozen. The tests
+also retain invalid-row, private-overlay and recycled-page coverage. The producer
+test passes on both RTX cards; the address-only high-page oracle passes on GPU1.
+
+Native builds export both geometries into separate initialized modules. The
+32-head bounded entry dispatches eligible aligned FP4 decode to AOT; a separate
+AOT batch entry follows the existing prevalidation contract. Other inputs retain
+WMMA fallback. The native selftest now includes ten-way split attention and aligned
+AOT fixtures: 432 cases pass on each RTX, including bounded descriptor staging and
+batch descriptor mutation during replay. Compute Sanitizer reports zero memory
+errors for the exported native build. This used CUDA 13.3 and the current local
+CUTLASS environment; full release-image build verification remains required.
+Evidence: `aot-local-heads*.log`, `aot-native*.log`, `aot-memcheck.log`, and exported
+manifests in `~/.cache/ds41rt-v6-heads32/`.
+
+This completes the native kernel/backend foundation, not TP2 serving. Rust
+bindings, local KV replicas and their lifetime/restore handling, projection
+partitioning, lane integration and end-to-end measurements remain outstanding.
+No serving defaults or performance claims change here.

@@ -20,3 +20,23 @@ add_dependencies(ds41rt_v41_attention_export ds41rt_verify_sparkinfer_source)
 set_source_files_properties("${DS41RT_V41_ATTENTION_DIR}/v41_attention.o"
   PROPERTIES EXTERNAL_OBJECT TRUE GENERATED TRUE)
 list(APPEND DS41RT_NATIVE_SOURCES "${DS41RT_V41_ATTENTION_DIR}/v41_attention.o" src/v41_attention_aot.cc)
+
+# Local TP2 head geometry is exported separately; live row counts stay dynamic.
+add_custom_command(
+  OUTPUT "${DS41RT_V41_ATTENTION_DIR}/v41_attention_heads32.json"
+    "${DS41RT_V41_ATTENTION_DIR}/v41_attention_heads32.h" "${DS41RT_V41_ATTENTION_DIR}/v41_attention_heads32.o"
+  COMMAND ${DS41RT_SPARKINFER_VERIFY_COMMAND}
+  COMMAND "${CMAKE_COMMAND}" -E env ${DS41RT_SPARKINFER_PYTHON_ENV}
+    "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../python/tools/export_b12x_v41_attention_aot.py"
+    --output-dir "${DS41RT_V41_ATTENTION_DIR}" --heads 32
+  DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../python/tools/export_b12x_v41_attention_aot.py"
+    ${DS41RT_SPARKINFER_PROVENANCE_INPUTS} ${DS41RT_SPARKINFER_EXPORT_INPUTS}
+  COMMENT "Exporting 32-head direct V4.1 FP4 attention and sink merge"
+  VERBATIM)
+add_custom_target(ds41rt_v41_attention_heads32_export DEPENDS
+  "${DS41RT_V41_ATTENTION_DIR}/v41_attention_heads32.json"
+  "${DS41RT_V41_ATTENTION_DIR}/v41_attention_heads32.h" "${DS41RT_V41_ATTENTION_DIR}/v41_attention_heads32.o")
+add_dependencies(ds41rt_v41_attention_heads32_export ds41rt_verify_sparkinfer_source)
+set_source_files_properties("${DS41RT_V41_ATTENTION_DIR}/v41_attention_heads32.o"
+  PROPERTIES EXTERNAL_OBJECT TRUE GENERATED TRUE)
+list(APPEND DS41RT_NATIVE_SOURCES "${DS41RT_V41_ATTENTION_DIR}/v41_attention_heads32.o" src/v41_attention_heads32_aot.cc)
