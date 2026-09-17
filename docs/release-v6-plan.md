@@ -277,3 +277,28 @@ scratch limits and graph identity. The daemon compiles against the updated FFI.
 These tests do not establish Rust-to-GPU execution or replicated KV correctness;
 those require the upcoming serving ownership integration. Evidence:
 `rust-tests.log` and `rust-daemon-check.log` in the compact-head evidence bundle.
+
+### Compressed KV replica storage
+
+Added an explicit peer `SourceReplica` owner that reuses the authoritative page
+allocator's physical IDs. It allocates FP4 values/scales (288 bytes per compressed
+row), page tables and committed lengths; index keys/scales remain on the source
+owner. Replica allocation is allowed only before the source pool is populated,
+so retained snapshots cannot silently acquire uninitialized peer storage. Logical
+capacity is unchanged and the replica keeps no additional page references.
+
+Append copies cover accepted row ranges and copy-on-write replacement tails,
+then changed page-table entries, then lengths. The operations take an external
+peer stream and perform no host synchronization or allocation; the caller must
+order source writes, preserve reservations and drain both sides on errors.
+Separate operations copy freshly RAM-restored pages and attach/reset slot metadata.
+These are explicit unsafe ownership/ordering contracts, not yet serving hooks.
+
+A hardware test passes in both GPU directions against the v5 native copy API:
+255-row prefix, shared snapshot, append crossing into row 258 with copy-on-write,
+unchanged retained owner, and a 300-row host-restored prefix. It checks peer value
+and scale bytes, page tables and committed lengths. The CPU allocation-budget
+check also passes. The temporary test executable was removed from the running
+container. Evidence: `replica-hardware.log` and `replica-build.log` in the compact
+attention evidence bundle. Independent-lane event ordering, cancellation handling,
+SWA/proposal replication, memory-plan integration and serving remain required.

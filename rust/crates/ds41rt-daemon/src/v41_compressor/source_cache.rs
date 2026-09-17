@@ -7,6 +7,7 @@ use std::{cell::RefCell, rc::Rc};
 mod ownership;
 use ownership::PagePool;
 mod reservation;
+pub(crate) mod replica;
 use reservation::PageReservation;
 pub(crate) use ownership::SourcePrefix;
 
