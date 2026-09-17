@@ -1494,3 +1494,35 @@ not the entire direct-decode phase. Remaining measurement phases now start and
 stop their own telemetry process and record whether it survived through phase
 completion. Historical comparisons alone do not isolate the cause of the
 mixed/long-context discrepancy.
+
+### Focused RAM-cache comparison
+
+Both arms completed successfully using the same candidate image, 20 RTX expert
+layers and 13,090,775,040-byte GPU KV allocation. Automatic RAM caching ran first,
+then RAM caching disabled; this was not interleaved. Each cell has three samples.
+
+| Context / workload | Automatic RAM tok/s | RAM disabled tok/s | Auto versus disabled |
+|---|---:|---:|---:|
+| 128K code | 145.08 | 135.60 | +6.99% |
+| 128K reasoning code | 127.13 | 120.08 | +5.88% |
+| 128K topic | 82.30 | 82.15 | +0.19% |
+| 256K code | 131.13 | 132.83 | -1.28% |
+| 256K reasoning code | 126.63 | 110.06 | +15.06% |
+| 256K topic | 72.60 | 80.06 | -9.32% |
+| C16 mixed aggregate | 279.52 | 285.24 | -2.00% |
+
+Mixed ranges overlap substantially: 269.51–294.80 with automatic RAM and
+266.16–297.79 with RAM disabled. Only one of the eighteen paired retained
+responses has identical content. Requests match except for 256K reasoning code,
+whose generated priming response differs between arms and becomes part of the
+retained parent. The comparison JSON records request/content/reasoning equality
+and completion lengths explicitly. These are observed serving rates, not an
+isolated measurement of RAM-copy overhead; the large opposite-direction changes
+cannot establish either a general cache regression or a cache speedup.
+
+The recipe was restored successfully. Evidence is in
+`~/.cache/ds41rt-v6-hostcache-perf/`, including both arm reports, mixed samples,
+retained-phase telemetry, cache statistics, server logs and `comparison.json`.
+The original historical discrepancy remains unresolved; this experiment does
+not justify disabling the requested automatic RAM cache. The remaining dual
+2K-context and target-only measurements are now proceeding sequentially.
