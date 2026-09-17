@@ -15,7 +15,15 @@ pub(crate) const EXPERT_SETUP_HEADROOM: usize = 64 * 1024 * 1024;
 /// Both ranks must fit independently; spare bytes cannot cross the PCIe link.
 pub(crate) fn expert_layers(requested: super::LocalLayers, prefix_peak: &[[usize; 2]],
     available: [usize; 2]) -> anyhow::Result<usize> {
+    expert_layers_with_minimum(requested,prefix_peak,available,20)
+}
+
+/// A lower automatic minimum is allowed only when startup coordinates the
+/// resulting Spark residency boundary before connecting serving transports.
+pub(crate) fn expert_layers_with_minimum(requested: super::LocalLayers, prefix_peak: &[[usize; 2]],
+    available: [usize; 2], automatic_minimum:usize) -> anyhow::Result<usize> {
     use anyhow::ensure;
+    ensure!((1..=40).contains(&automatic_minimum),"invalid automatic expert minimum");
     ensure!(prefix_peak.len() == 40 && prefix_peak.windows(2).all(|w|
         w[0].iter().zip(w[1]).all(|(&a, b)| a <= b)), "invalid TP2 prefix budgets");
     let fits = |count: usize| prefix_peak[count-1].iter().zip(available).all(|(&used, free)| used <= free);
@@ -24,7 +32,7 @@ pub(crate) fn expert_layers(requested: super::LocalLayers, prefix_peak: &[[usize
             ensure!((1..=40).contains(&count), "dual RTX expert layers must be 1..=40");
             count
         }
-        super::LocalLayers::Auto => (20..=40).rev().find(|&count| fits(count))
+        super::LocalLayers::Auto => (automatic_minimum..=40).rev().find(|&count| fits(count))
             .ok_or_else(|| anyhow::anyhow!("minimum TP2 expert placement does not fit reserved memory"))?,
     };
     ensure!(fits(layers), "requested TP2 expert layers exceed the per-GPU memory budget");
@@ -207,6 +215,15 @@ mod tests {
             [available[0], 24*layer_bytes])?, 24);
         assert!(expert_layers(super::super::LocalLayers::Auto, &prefix,
             [available[0], 20*layer_bytes-1]).is_err());
+        // Negotiated placement can preserve the pool while choosing any
+        // supported boundary, always bounded by the tighter physical GPU.
+        for count in [1,17,19,20,40] {
+            assert_eq!(expert_layers_with_minimum(super::super::LocalLayers::Auto,&prefix,
+                [40*layer_bytes,count*layer_bytes],1)?,count);
+        }
+        assert!(expert_layers_with_minimum(super::super::LocalLayers::Auto,&prefix,
+            [layer_bytes-1,40*layer_bytes],1).is_err());
+        assert!(expert_layers_with_minimum(super::super::LocalLayers::Auto,&prefix,available,0).is_err());
         // Explicit placement can return expert memory to replicated KV without
         // changing the existing automatic launcher boundary before negotiation.
         assert_eq!(expert_layers(super::super::LocalLayers::Count(17), &prefix,

@@ -531,6 +531,9 @@ pub(crate) struct NativeServeArgs {
     /// Force one RTX or the distributed two-RTX layout (automatic launcher selection is pending).
     #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u32).range(1..=2))]
     pub rtx_gpus: u32,
+    /// Private startup handoff directory supplied by the release launcher.
+    #[arg(long, hide = true)]
+    pub placement_directory: Option<std::path::PathBuf>,
     /// Experimental TP2 attention with replicated KV; requires two RTX GPUs.
     #[arg(long)]
     pub tp2_attention: bool,

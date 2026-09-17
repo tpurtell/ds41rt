@@ -1332,3 +1332,25 @@ The goal introduction now includes `release-v6-parallelism.svg`, covering the
 independent GPU options, both serving lanes and automatic logical GPU/RAM cache
 capacity. XML parsing and a rendered visual review pass. A fresh GitHub check
 on September 17 finds no open issues or pull requests.
+
+### Automatic placement handoff foundation
+
+The coordinator now supports a launcher-owned private placement directory.
+After fixed owners and cache reservation determine the routed-expert budget, it
+atomically publishes a versioned plan containing the selected RTX layer count,
+Spark first layer and unique launch nonce. Local expert loading can overlap
+worker startup; transport connection waits for an exact matching acknowledgement.
+Stale directories, wrong launch/boundary acknowledgements, malformed or oversized
+messages and timeouts fail startup. Forty local layers retain worker layer 39
+to satisfy the existing nonempty worker contract.
+
+When this handoff is configured, automatic placement can select 1–40 layers
+after preserving the cache reservation. Direct launches without worker startup
+coordination retain the existing 20-layer automatic minimum. Explicit placement
+remains supported. Two handoff tests and the extended tighter-GPU budget test
+pass; the daemon test binary builds. Evidence: `placement-handoff-tests.log` and
+`placement-budget-tests.log` in `~/.cache/ds41rt-v6-heads32/`.
+
+Launcher startup reordering, preflight estimates and live automatic-boundary
+validation remain. This foundation alone does not make run.sh automatically
+start workers at a below-20 boundary.

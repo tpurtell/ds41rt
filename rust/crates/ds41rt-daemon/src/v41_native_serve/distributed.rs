@@ -14,7 +14,7 @@ pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Recei
     ready: &mut Option<oneshot::Sender<std::result::Result<(), String>>>,
     stats: std::sync::Arc<std::sync::Mutex<serde_json::Value>>) -> Result<()> {
     let minimum_expert_layers = match args.rtx_expert_layers {
-        memory::LocalLayers::Auto => 20,
+        memory::LocalLayers::Auto => if args.placement_directory.is_some() {1} else {20},
         memory::LocalLayers::Count(count) => {
             ensure!((1..=40).contains(&count), "dual RTX expert layers must be 1..=40");
             count as usize
@@ -293,11 +293,14 @@ pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Recei
         args.kv_pool_size, args.memory_reservation, reserved_memory,args.tp2_attention)?;
     let expert_budget = std::array::from_fn(|gpu|
         prefix_peak[minimum_expert_layers-1][gpu] + reserved_pool.unused_bytes[gpu]);
-    let expert_layers = memory::distributed::expert_layers(args.rtx_expert_layers, &prefix_peak, expert_budget)?;
+    let expert_layers = memory::distributed::expert_layers_with_minimum(args.rtx_expert_layers,
+        &prefix_peak, expert_budget, minimum_expert_layers)?;
     let rank_budgets = prefix_peak[expert_layers-1];
     tracing::info!(expert_layers, expert_budget=?expert_budget, rank_peak_bytes=?rank_budgets,
         reserved_cache_bytes=?reserved_pool.cache_bytes, transport_bytes=?transport_bytes,
         setup_headroom_bytes=memory::distributed::EXPERT_SETUP_HEADROOM, "dual RTX bottom-up expert placement");
+    let placement_handoff=args.placement_directory.as_deref().map(|directory|
+        super::placement::StartupPlacement::publish(directory,expert_layers)).transpose()?;
     eprintln!("loading bottom {expert_layers} expert layers as TP2");
     let routed = if compressed {
         RankWeights::load_exl3_pair(devices, &catalog, expert_layers, rank_budgets, &exl3_directory)?
@@ -306,6 +309,9 @@ pub(super) fn worker(args: crate::cli::NativeServeArgs, mut receive: mpsc::Recei
         [Rc::new(RankWeights::load(devices[0], &catalog, expert_layers, rank_budgets[0])?),
          Rc::new(RankWeights::load(devices[1], &catalog, expert_layers, rank_budgets[1])?)]
     };
+    if let Some(handoff)=placement_handoff {
+        handoff.wait_ready(Duration::from_secs(900))?;
+    }
     let make_transport = || {
         let mut transport = devices[1].own(|| NativeTp4Wave::new(&lib,
             V41Tp4Roce::new(args.peers.clone().try_into().map_err(|_| anyhow::anyhow!("four Spark peers required"))?,

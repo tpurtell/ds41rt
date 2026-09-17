@@ -4,6 +4,7 @@ use speculative::DraftChain;
 pub(crate) mod speculative;
 mod scheduler;
 mod distributed;
+mod placement;
 mod scores;
 mod constraints;
 use scores::TokenScores;
@@ -124,6 +125,8 @@ fn worker(
     ready: &mut Option<oneshot::Sender<std::result::Result<(), String>>>,
     stats: std::sync::Arc<std::sync::Mutex<serde_json::Value>>,
 ) -> Result<()> {
+    ensure!(args.placement_directory.is_none() || args.rtx_gpus==2,
+        "placement handoff requires --rtx-gpus 2");
     ensure!(!args.tp2_dspark_experts || (args.rtx_gpus==2 && args.dspark),
         "--tp2-dspark-experts requires --rtx-gpus 2 and --dspark");
     ensure!(!args.tp2_output_projection || args.rtx_gpus==2,"--tp2-output-projection requires --rtx-gpus 2");
