@@ -40,7 +40,8 @@ pub(crate) async fn run(args: crate::cli::NativeServeArgs) -> Result<()> {
     ensure!(args.peers.len() == 4, "four Spark peers required");
     let listen = args.listen.clone();
     let limits = ds41rt_api::native_v41::NativeLimits::new(args.max_context_tokens, args.max_output_tokens)?;
-    let (send, receive) = mpsc::channel(args.concurrency as usize);
+    let (send, receive) = mpsc::channel(args.http_queue_depth.unwrap_or(args.concurrency) as usize);
+    let http_queue_wait = Duration::from_millis(args.http_queue_wait_ms);
     let (ready, readiness) = oneshot::channel();
     let stats = std::sync::Arc::new(std::sync::Mutex::new(serde_json::Value::Null));
     let worker_stats = stats.clone();
@@ -66,7 +67,7 @@ pub(crate) async fn run(args: crate::cli::NativeServeArgs) -> Result<()> {
         .map_err(anyhow::Error::msg)?;
     let listener = tokio::net::TcpListener::bind(&listen).await?;
     tracing::info!(%listen,"native V4.1 target API ready");
-    axum::serve(listener, ds41rt_api::native_v41::router_with_limits_and_stats(send, limits, stats))
+    axum::serve(listener, ds41rt_api::native_v41::router_with_admission(send, limits, stats, http_queue_wait))
         .with_graceful_shutdown(async {
             let mut term =
                 tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())

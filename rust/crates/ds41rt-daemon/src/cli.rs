@@ -543,6 +543,14 @@ pub(crate) struct NativeServeArgs {
     #[arg(long, default_value_t = 16, value_parser = clap::value_parser!(u32).range(1..=16))]
     pub concurrency: u32,
 
+    /// Buffered HTTP jobs; defaults to concurrency. At most this many additional callers wait.
+    #[arg(long, value_parser = clap::value_parser!(u32).range(1..=4096))]
+    pub http_queue_depth: Option<u32>,
+
+    /// Maximum wait for space in the HTTP job queue; zero rejects immediately.
+    #[arg(long, default_value_t = 25000)]
+    pub http_queue_wait_ms: u64,
+
     /// Retained completed turns, plus a separate prompt-repeat bank of this size; zero disables reuse.
     #[arg(long, default_value_t = 24, value_parser = clap::value_parser!(u32).range(0..=128))]
     pub prefix_cache_entries: u32,

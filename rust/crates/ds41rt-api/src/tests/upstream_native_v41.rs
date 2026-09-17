@@ -165,3 +165,23 @@ async fn non_stream_body_carries_content_and_finish_reason() {
         + choice["message"]["reasoning_content"].as_str().unwrap_or("");
     assert!(text.contains("hello"), "processed text is carried: {value}");
 }
+
+#[tokio::test]
+async fn native_queue_pressure_is_429_with_retry_after_and_stats() {
+    let (tx, _rx) = tokio::sync::mpsc::channel(1);
+    let held = tx.clone().reserve_owned().await.unwrap();
+    let app = crate::native_v41::router_with_admission(tx,
+        crate::native_v41::NativeLimits::default(),
+        std::sync::Arc::new(std::sync::Mutex::new(Value::Null)),
+        std::time::Duration::from_millis(1));
+    let response = app.clone().oneshot(post_json(valid_request())).await.unwrap();
+    assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(response.headers()["retry-after"], "1");
+    let (_, body, _) = response_json(response).await;
+    assert!(body["error"]["message"].as_str().unwrap().contains("queue"));
+    let response = app.oneshot(Request::get("/v1/stats").body(Body::empty()).unwrap()).await.unwrap();
+    let (_, stats, _) = response_json(response).await;
+    assert_eq!(stats["http_queue_waits"], 1);
+    assert_eq!(stats["http_queue_rejects"], 1);
+    drop(held);
+}
