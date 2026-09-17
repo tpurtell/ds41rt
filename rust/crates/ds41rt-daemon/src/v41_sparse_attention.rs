@@ -10,6 +10,7 @@ use ds41rt_ffi::{
     Ds41rtDeviceBuffer, NativeLibrary, V41SparseAttention, V41SparseBatch, V41SparseSource, V41SparseWindow, V41Kv, V41PeerCopy,
 };
 use std::{collections::VecDeque, ffi::c_void, marker::PhantomData};
+pub(crate) mod dual;
 
 pub(crate) struct AttentionRequest<'a> {
     pub window: &'a WindowProposal<'a>,

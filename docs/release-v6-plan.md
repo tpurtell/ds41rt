@@ -454,3 +454,24 @@ Evidence: `peer-views-check.log`, `peer-views-tests.log` and
 `proposal-used-rows-hardware.log` in the compact attention bundle. Temporary
 container files were removed; serving health remains successful. End-to-end
 publication/ownership integration and throughput qualification are still pending.
+
+### Dual attention wave and output gathering
+
+Added a lane-owned pair of compact attention waves, preinitialized copy kernels,
+a peer completion event and full-width gathered output. Both halves are submitted
+before cold preparation waits; warm execution uses a peer event and SM pitched
+copy to join only this lane's two head halves. The original device receives the
+64-head output for the existing projection. Proposal identities must match across
+the halves. Cancellation drains both waves before owners can be reused, and CUDA
+device scope is restored on each async poll. Budgets include both compact waves
+and the full-width gathered output; cache replicas remain separately budgeted.
+
+The hardware fixture passes with either GPU owning the output, four causal rows,
+different sink weights per half, changed FP8 payloads, cancellation and subsequent
+owner reuse. It checks closed-form BF16 results across every head and dimension.
+This fixture directly submits native attention inputs: full query/proposal
+enqueue, cold preparation and backbone integration still need combined coverage.
+Evidence: `dual-wave-build.log`, `dual-wave-native-build.log`, and
+`dual-wave-hardware.log` in the compact attention bundle. Temporary container
+files were removed and serving remains healthy. No throughput claim or default
+configuration change follows from this component check.
