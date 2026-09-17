@@ -310,6 +310,7 @@ impl<'a> WindowWeights<'a> {
             ready: None,
             pending_query: None,
             pending_commit: None,
+            replica: None,
         };
         ensure!(
             value.input.buffer.device_id == self.tensors.get(&self.names[0])?.device_id,
@@ -398,6 +399,8 @@ pub(crate) struct WindowWave<'w, 'a> {
     ready: Option<Prepared>,
     pending_query: Option<(Prepared, bool)>,
     pending_commit: Option<PendingCommit>,
+    replica: Option<(std::rc::Rc<replica::WindowReplica<'a>>,
+        crate::v41_memory::peer_publication::PeerPublication<'a>)>,
 }
 impl WindowWave<'_, '_> {
     pub fn device_bytes(library: &NativeLibrary, capacity: u32) -> Result<usize> {

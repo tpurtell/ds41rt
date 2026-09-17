@@ -475,3 +475,21 @@ Evidence: `dual-wave-build.log`, `dual-wave-native-build.log`, and
 `dual-wave-hardware.log` in the compact attention bundle. Temporary container
 files were removed and serving remains healthy. No throughput claim or default
 configuration change follows from this component check.
+
+### Accepted SWA commits publish their peer replica
+
+Window producer waves can now opt into a shared window replica with their own
+publication stream/events. The existing accepted-commit path queues peer suffix
+and end copies after native ring writes; its normal completion, abort and drop
+paths therefore cover peer publication too. Different producer waves retain
+independent publication owners. Foreign cache owners are rejected before writes.
+Unconfigured waves retain the original path and allocate no publication objects.
+
+The checkpoint-backed queued-window fixture passes both the unchanged path and
+replicated commits. Two request slots use independent producer waves; after each
+normal commit, peer FP8 values/scales and committed ends match the authoritative
+cache. The fixture also checks mismatched acceptance, abort/revocation and the
+other slot remaining valid. Evidence: `window-commit-replica-build.log` and
+`window-commit-replica-hardware.log` in the compact attention bundle. Replica
+creation/budgeting at serving startup, restore publication and the analogous
+compressed-cache commit hooks remain required before enabling TP2 attention.

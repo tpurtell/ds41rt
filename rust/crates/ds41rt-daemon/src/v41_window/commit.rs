@@ -14,12 +14,27 @@ pub(super) struct PendingCommit {
     accepted: Vec<u32>,
     _reservation: WriteReservation,
 }
-impl WindowWave<'_, '_> {
+impl<'a> WindowWave<'_, 'a> {
+    /// Configure before production. Each wave owns independent publication
+    /// events, while waves using disjoint request slots share replica storage.
+    pub fn enable_replica(&mut self, state: &WindowState<'a>,
+        replica: std::rc::Rc<super::replica::WindowReplica<'a>>) -> Result<()> {
+        ensure!(self.ready.is_none() && self.pending_query.is_none() && self.pending_commit.is_none()
+            && self.replica.is_none(), "window replica requires an unused wave");
+        replica.validate_owner(state)?;
+        ensure!(state.layer==self.weights.layer && state.values.buffer.device_id==self.values.buffer.device_id
+            && std::ptr::eq(state.ends.library,self.stream.library),
+            "window replica producer differs");
+        let source=crate::v41_memory::device::Device { library:self.stream.library,id:self.values.buffer.device_id };
+        let publication=crate::v41_memory::peer_publication::PeerPublication::new(source,replica.device())?;
+        self.replica=Some((replica,publication)); Ok(())
+    }
     /// # Safety
     /// All consumers of this proposal have drained. Keep state and wave alive
     /// through completion; on any failure drain before invalidating its requests.
     pub unsafe fn enqueue_commit(&mut self, state: &WindowState<'_>, accepted: &[u32]) -> Result<()> {
         ensure!(self.pending_commit.is_none(), "window commit already pending");
+        if let Some((replica,_))=&self.replica { replica.validate_owner(state)?; }
         self.validate_ready(state)?;
         let p = self.ready.take().context("window output unpublished")?;
         ensure!(accepted.len() == p.chunks.len(), "window acceptance count differs");
@@ -78,6 +93,15 @@ impl WindowWave<'_, '_> {
                         &self.staging.bytes_mut()[p.rows * 8 + i * 8..p.rows * 8 + i * 8 + 8],
                         self.stream.raw,
                     )?;
+                }
+                if let Some((replica,publication)) = self.replica.as_mut() {
+                    let pending=self.pending_commit.as_ref().unwrap();
+                    publication.enqueue(self.stream.raw,|stream| {
+                        for (chunk,&end) in pending.prepared.chunks.iter().zip(&pending.ends) {
+                            replica.copy_commit(state,chunk.lease,end,stream)?;
+                        }
+                        Ok(())
+                    })?;
                 }
             }
             Ok(())
@@ -148,6 +172,14 @@ mod tests {
     #[test]
     #[ignore = "requires DS41RT_NATIVE_LIB, DS41RT_CACHE_COMMIT_MODEL and CUDA"]
     fn native_queued_windows_match_direct_and_keep_peer_slots_independent() -> Result<()> {
+        queued_windows(false)
+    }
+    #[test]
+    #[ignore = "requires SM peer copy, DS41RT_CACHE_COMMIT_MODEL and two CUDA GPUs"]
+    fn native_queued_windows_publish_replicas_before_commit_completion() -> Result<()> {
+        queued_windows(true)
+    }
+    fn queued_windows(replicated: bool) -> Result<()> {
         let lib = unsafe { NativeLibrary::load(std::env::var("DS41RT_NATIVE_LIB")?)? };
         let model = std::env::var("DS41RT_CACHE_COMMIT_MODEL")?;
         let catalog = ds41rt_loader::read_official_v41_catalog(
@@ -156,11 +188,18 @@ mod tests {
             WindowWeights::device_bytes(&lib, &catalog, 0)?, 1024*1024)?;
         let mut state = WindowState::new(&lib, 0, 2, usize::MAX)?;
         let mut reference = WindowState::new(&lib, 0, 2, usize::MAX)?;
+        let replica=if replicated {
+            Some(std::rc::Rc::new(super::super::replica::WindowReplica::new(&state,
+                crate::v41_memory::device::Device { library:&lib,id:1-lib.cuda_get_device()? })?))
+        } else { None };
         let first = state.begin_request(0, 11)?;
         let second = state.begin_request(1, 22)?;
         let originals = [reference.begin_request(0, 11)?, reference.begin_request(1, 22)?];
         // Waves drop/drain before either state, including on assertion/error paths.
         let mut waves = [weights.wave(16, usize::MAX)?, weights.wave(16, usize::MAX)?];
+        if let Some(replica)=&replica {
+            for wave in &mut waves { wave.enable_replica(&state,replica.clone())?; }
+        }
         let mut direct = weights.wave(16, usize::MAX)?;
         let chunk = |lease, position| WindowChunk { lease, position, tokens: 3 };
         let input: Vec<u8> = (0..3*5120).flat_map(|i| {
@@ -201,6 +240,18 @@ mod tests {
                 lib.copy_d2h(&mut left, slice(a, 0, (i+2)*width))?;
                 lib.copy_d2h(&mut right, slice(b, 0, (i+2)*width))?;
                 assert_eq!(left, right);
+            }
+            if let Some(replica)=&replica {
+                let peer=unsafe { replica.view(&state,lease)? };
+                for (a,b,width) in [(actual.values,peer.values,512),(actual.scales,peer.scales,16)] {
+                    let mut left=vec![0;(i+2)*width]; let mut right=left.clone();
+                    lib.copy_d2h(&mut left,slice(a,0,(i+2)*width))?;
+                    replica.device().run(||lib.copy_d2h(&mut right,slice(b,0,(i+2)*width)))?;
+                    assert_eq!(left,right);
+                }
+                let mut end=[0;8];
+                replica.device().run(||lib.copy_d2h(&mut end,peer.device_end))?;
+                assert_eq!(u64::from_ne_bytes(end),actual.end);
             }
         }
         unsafe {

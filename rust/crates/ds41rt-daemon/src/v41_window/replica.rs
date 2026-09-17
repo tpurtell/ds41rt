@@ -11,6 +11,10 @@ pub(crate) struct WindowReplica<'a> {
     owner: u64,
 }
 impl<'a> WindowReplica<'a> {
+    pub fn device(&self) -> Device<'a> { self.values.device }
+    pub fn validate_owner(&self, state: &WindowState<'_>) -> Result<()> {
+        ensure!(self.owner==state.owner,"foreign window replica"); Ok(())
+    }
     pub fn new(state: &WindowState<'a>, device: Device<'a>) -> Result<Self> {
         ensure!(std::ptr::eq(state.ends.library,device.library)
             && state.values.buffer.device_id!=device.id,"window replica requires a peer device");
