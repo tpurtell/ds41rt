@@ -154,14 +154,14 @@ def render(reports, official=None, tools=None):
             label = f'{LABELS[model]} {count} RTX'
             q = reports[model]['deployment'][name]
             deployments.append([label, f"0–{q['rtx_expert_layers']-1}, TP{q['rtx_expert_tp']}",
-                f"{q['spark_layers']} layers / {q['spark_budget_bytes_each']/2**30:g} GiB each",
+                f"{q['spark_layers']} resident / {q.get('spark_active_layers', 40-q['rtx_expert_layers'])} active / {q['spark_budget_bytes_each']/2**30:g} GiB each",
                 f"{q['global_pool_bytes']/1e9:.3f} GB / {q['logical_pool_tokens']:,} logical + {q['private_tail_tokens']:,} private-tail tokens",
                 f"{q['prompt_retention_entries']} / {q['completed_turn_retention_entries']}"])
             startups.append([label, fmt(reports[model]['startup_seconds'][name])])
             for index, gpu in enumerate(reports[model]['readiness_memory'][name]['gpus']):
                 memory.append([label, index, fmt(gpu['used_mib']), fmt(gpu['free_mib']), fmt(q['runtime_headroom_bytes_per_gpu']/2**20)])
-    table('Deployment and cache capacity', 'Measured placement and pool reservation; retention values count cache entries.',
-          ['Configuration', 'RTX expert layers', 'Spark residency / budget', 'Global FP4 source pool', 'Prompt / completed retention'], deployments)
+    table('Deployment and cache capacity', 'Measured placement and pool reservation. Spark resident layers can include unused weights below the active range; retention values count cache entries.',
+          ['Configuration', 'RTX expert layers', 'Spark resident / active layers / budget', 'Global FP4 source pool', 'Prompt / completed retention'], deployments)
     table('Startup', 'Standard-script launch to API readiness, including orchestration; one launch per configuration.',
           ['Configuration', 'Seconds'], startups)
     table('Memory after readiness', 'All GPU allocations, including weights, KV and workspace.',

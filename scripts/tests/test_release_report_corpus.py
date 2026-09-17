@@ -48,6 +48,13 @@ def test_deployment_reads_both_log_formats_and_rejects_partition_gap(tmp_path, f
     result = MODULE['summarize_deployment'](metadata, path)
     assert result['rtx_expert_layers'] == result['spark_first_layer'] == 20
     assert result['logical_pool_tokens'] == 14680064
+    assert result['spark_active_layers'] == 20
+    assert result['spark_redundant_layers'] == 0
+    metadata['workers'][0]['args'][-1] = '15'
+    overlap = MODULE['summarize_deployment'](metadata, path)
+    assert overlap['spark_layers'] == 25
+    assert overlap['spark_active_layers'] == 20
+    assert overlap['spark_redundant_layers'] == 5
     metadata['workers'][0]['args'][-1] = '21'
     with pytest.raises(AssertionError, match='partition'):
         MODULE['summarize_deployment'](metadata, path)

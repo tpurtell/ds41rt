@@ -836,4 +836,45 @@ Launcher readiness now checks the native API identity
 `deepseek-ai/DeepSeek-V4.1-Flash`, independently of the selected Hugging Face
 checkpoint repository. This avoids rejecting a healthy EXL3 deployment merely
 because its checkpoint name differs from the API model name; both identities
-are printed at startup. The corrected build still needs a complete clean run.
+are printed at startup. The corrected clean run is recorded below.
+
+### Clean build and standard-launch smoke completed
+
+`build.sh` completed from `3841117183a399a30bfc2f227b77cacbbefebc38`, including
+fresh native compilation on both architectures, package verification and Spark
+image distribution. The coordinator package contains 18 variants; the Spark
+package contains 24 paired variants and records `80=2` residency. All four
+Sparks have the same candidate image ID and matching engine/fork labels.
+
+Normal `run.sh` launches passed small JSON, streaming, cancellation/recovery
+and unsupported-sampling checks for every configuration below. The original
+v4 containers were preserved and restored after testing.
+
+| Checkpoint | RTX count | RTX expert layers | Spark resident / active layers | Draft limit |
+| --- | ---: | ---: | ---: | ---: |
+| Full | 1 | 5 | 40 / 35 | 5 |
+| Full | 2 | 20 | 20 / 20 | 7 |
+| EXL3, FP8 PLE | 1 | 6 | 40 / 34 | 5 |
+| EXL3, FP8 PLE | 2 | 25 | 20 / 15 | 7 |
+| EXL3, FP4 PLE | 2 | 25 | 20 / 15 | 7 |
+
+The measured single-RTX source/index pool is 16.681 GB for 18,710,016 logical
+tokens plus 32,768 private-tail tokens. Dual mode reserves 13.094 GB for
+14,680,064 logical tokens plus 32,768 private-tail tokens. These are startup
+allocation observations, not new long-context capacity qualification.
+
+The standard launcher keeps Spark weights from layer 0 in single mode and
+layer 20 in dual mode. The dual planner enforces at least 20 RTX layers, so this
+cannot create a missing-layer gap; extra resident Spark weights below the
+active range are unused. Reporting now distinguishes those resident and active
+counts and still rejects a first Spark layer above the RTX boundary. Eliminating
+the redundant loading would be a separate startup optimization, not a decode
+performance gain established by these smoke checks.
+
+Evidence: `release-v5-clean-build-smoke.json` and its archive include build
+logs, package manifests, image identities, launcher configurations, raw smoke
+responses and restoration records. The first dual-EXL3 controller's ANSI log
+parsing failure is retained; its API checks passed and the draft-width check
+passed after stripping colour codes. This completes the clean build and basic
+launcher checks, not final performance, tool evaluation, broad long-context or
+vision qualification, top1 analysis, or publication.

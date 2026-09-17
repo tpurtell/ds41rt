@@ -111,13 +111,15 @@ def summarize_deployment(metadata: dict, log: Path) -> dict:
     budgets = {option(w["args"], "--device-budget-bytes") for w in workers}
     first = {option(w["args"], "--first-layer") for w in workers}
     assert len(budgets) == len(first) == 1
-    assert next(iter(first)) == layers, "RTX/Spark expert partition disagrees"
+    spark_first = next(iter(first))
+    assert 0 <= spark_first <= layers <= 40, "RTX/Spark expert partition has a gap"
     return {"global_pool_bytes": pool_bytes, "logical_pool_tokens": (pages[0] - tails) * 512,
             "runtime_headroom_bytes_per_gpu": runtime_headroom,
             "private_tail_tokens": tails * 512, "source_pages": pages,
             "prompt_retention_entries": retained, "completed_turn_retention_entries": retained,
             "concurrency": concurrency, "rtx_expert_layers": layers, "rtx_expert_tp": tp,
-            "spark_first_layer": next(iter(first)), "spark_layers": 40 - next(iter(first)),
+            "spark_first_layer": spark_first, "spark_layers": 40 - spark_first,
+            "spark_active_layers": 40 - layers, "spark_redundant_layers": layers - spark_first,
             "spark_budget_bytes_each": next(iter(budgets))}
 
 def main() -> None:

@@ -1,0 +1,116 @@
+{
+  "scope": "Fresh build.sh artifacts and normal run.sh small JSON/stream/cancellation API smoke; not final performance, tool, long-context, vision or top1 qualification.",
+  "engine_revision": "3841117183a399a30bfc2f227b77cacbbefebc38",
+  "images": {
+    "coordinator": {
+      "image": "ds41rt-coordinator:v5-paired-candidate",
+      "image_id": "sha256:a43d693ad7189ecbcf5a9b59652793ebb241a1efbffee18099b3e5da0071f51d",
+      "architecture": "amd64",
+      "engine_revision": "3841117183a399a30bfc2f227b77cacbbefebc38",
+      "sparkinfer_revision": "e685f48c3b941208a8dc5915a742738a3c2de706"
+    },
+    "ostrich": {
+      "image": "ds41rt-spark-expert:v5-paired-candidate",
+      "image_id": "sha256:743a2490db82a42f2f0040e7167953370b99bf19ce6e7b90c31007fba684aa28",
+      "architecture": "arm64",
+      "engine_revision": "3841117183a399a30bfc2f227b77cacbbefebc38",
+      "sparkinfer_revision": "e685f48c3b941208a8dc5915a742738a3c2de706"
+    },
+    "dodo": {
+      "image": "ds41rt-spark-expert:v5-paired-candidate",
+      "image_id": "sha256:743a2490db82a42f2f0040e7167953370b99bf19ce6e7b90c31007fba684aa28",
+      "architecture": "arm64",
+      "engine_revision": "3841117183a399a30bfc2f227b77cacbbefebc38",
+      "sparkinfer_revision": "e685f48c3b941208a8dc5915a742738a3c2de706"
+    },
+    "emu": {
+      "image": "ds41rt-spark-expert:v5-paired-candidate",
+      "image_id": "sha256:743a2490db82a42f2f0040e7167953370b99bf19ce6e7b90c31007fba684aa28",
+      "architecture": "arm64",
+      "engine_revision": "3841117183a399a30bfc2f227b77cacbbefebc38",
+      "sparkinfer_revision": "e685f48c3b941208a8dc5915a742738a3c2de706"
+    },
+    "kiwi": {
+      "image": "ds41rt-spark-expert:v5-paired-candidate",
+      "image_id": "sha256:743a2490db82a42f2f0040e7167953370b99bf19ce6e7b90c31007fba684aa28",
+      "architecture": "arm64",
+      "engine_revision": "3841117183a399a30bfc2f227b77cacbbefebc38",
+      "sparkinfer_revision": "e685f48c3b941208a8dc5915a742738a3c2de706"
+    }
+  },
+  "cases": [
+    {
+      "case": "exl3-rtx2",
+      "passed": true,
+      "rtx_expert_layers": 25,
+      "draft_width": 7,
+      "spark_first_layer_from_launcher": 20,
+      "spark_resident_layers": 20,
+      "spark_active_layers": 15,
+      "global_pool_bytes": 13094420480,
+      "logical_pool_tokens": 14680064,
+      "private_tail_tokens": 32768,
+      "evidence_directory": "clean-serving-smoke/exl3-rtx2"
+    },
+    {
+      "case": "exl3-rtx1",
+      "passed": true,
+      "rtx_expert_layers": 6,
+      "draft_width": 5,
+      "spark_first_layer_from_launcher": 0,
+      "spark_resident_layers": 40,
+      "spark_active_layers": 34,
+      "global_pool_bytes": 16681077760,
+      "logical_pool_tokens": 18710016,
+      "private_tail_tokens": 32768,
+      "evidence_directory": "clean-serving-smoke-rest/exl3-rtx1"
+    },
+    {
+      "case": "full-rtx2",
+      "passed": true,
+      "rtx_expert_layers": 20,
+      "draft_width": 7,
+      "spark_first_layer_from_launcher": 20,
+      "spark_resident_layers": 20,
+      "spark_active_layers": 20,
+      "global_pool_bytes": 13094420480,
+      "logical_pool_tokens": 14680064,
+      "private_tail_tokens": 32768,
+      "evidence_directory": "clean-serving-smoke-rest/full-rtx2"
+    },
+    {
+      "case": "full-rtx1",
+      "passed": true,
+      "rtx_expert_layers": 5,
+      "draft_width": 5,
+      "spark_first_layer_from_launcher": 0,
+      "spark_resident_layers": 40,
+      "spark_active_layers": 35,
+      "global_pool_bytes": 16681077760,
+      "logical_pool_tokens": 18710016,
+      "private_tail_tokens": 32768,
+      "evidence_directory": "clean-serving-smoke-rest/full-rtx1"
+    },
+    {
+      "case": "fp4ple-rtx2",
+      "passed": true,
+      "rtx_expert_layers": 25,
+      "draft_width": 7,
+      "spark_first_layer_from_launcher": 20,
+      "spark_resident_layers": 20,
+      "spark_active_layers": 15,
+      "global_pool_bytes": 13094420480,
+      "logical_pool_tokens": 14680064,
+      "private_tail_tokens": 32768,
+      "evidence_directory": "clean-serving-smoke-rest/fp4ple-rtx2"
+    }
+  ],
+  "restored_original_services": true,
+  "archive": "release-v5-clean-build-smoke.tar.gz",
+  "archive_sha256": "645eb7353fa911c84fbac7e5fe01cb8886bf2b6120d505d5102d49eee5c3642a",
+  "notes": [
+    "First build completed coordinator export but failed at the SSH empty-argument handoff; retry contains the fix.",
+    "First dual EXL3 API smoke passed; its controller failed only on ANSI-coloured draft-width parsing. The retained logs were revalidated after stripping ANSI.",
+    "Spark first-layer values are recorded by launcher dry runs; final deployment reports must also inspect live worker arguments."
+  ]
+}
