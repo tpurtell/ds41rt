@@ -1141,3 +1141,26 @@ ordered reduction and draft-chain integration remain. The draft reduction must
 sum rank contributions before the existing per-route BF16 rounding and top-3
 sum/shared addition; the backbone's six-route reducer is not interchangeable.
 No dSpark TP2 serving flag or performance claim exists yet.
+
+### dSpark TP2 native interface and reduction verification
+
+The dual-RTX native build now includes separate draft TP2 expert modules for
+capacities 1/16/80/256/1024/4096 alongside the existing backbone TP2 modules.
+Rust validates role 4 (128 experts, 1,152 intermediate channels, top-3, FP8 K32
+input) and can load each draft half through the existing weight packer. EXL3
+draft TP2 is explicitly unsupported; existing EXL3 paths remain unchanged.
+
+The ordered route reducer now supports two ranks and three routes: sum FP32
+rank contributions, round each route to BF16, then sum routes and add the
+optional shared expert output before final BF16 rounding. The hardware test
+initializes all six draft/backbone capacities on both GPUs and checks 108
+changed-input CUDA graph replays across rows 1/7/16, shared output on/off, and
+existing one-rank/top-3 and four-rank/top-6 paths. All results are exact against
+the CPU rounding oracle; the fixture also distinguishes incorrect premature
+per-rank rounding. The daemon test build passes. Evidence:
+`~/.cache/ds41rt-v6-heads32/dspark-tp2-native-hardware.log` and
+`dspark-tp2-native-test-build.log` in the same directory.
+
+This verifies module initialization and reduction, not expert GEMM execution
+or serving performance. Pair-owned weights/workspaces, input broadcast and
+full draft-chain graph integration remain before a serving comparison.

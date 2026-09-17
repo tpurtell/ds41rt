@@ -4,7 +4,9 @@
 #include <cstddef>
 #include <cstdio>
 #include <mutex>
-#ifdef DS41RT_V41_TP2_EXPERTS
+#ifdef DS41RT_V41_DSPARK_TP2_EXPERTS
+#include "v41_dspark_tp2_expert_variants.h"
+#elif defined(DS41RT_V41_TP2_EXPERTS)
 #include "v41_tp2_expert_variants.h"
 #elif defined(DS41RT_V41_LOCAL_EXPERTS)
 #include "v41_local_expert_variants.h"

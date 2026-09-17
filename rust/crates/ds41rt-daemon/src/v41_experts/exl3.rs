@@ -41,6 +41,7 @@ fn layout(catalog: &OfficialV41Catalog, layer: ExpertLayer, partition: V41Exl3Pa
         ExpertLayer::BackboneFull { layer } => (V41Exl3Layer::Backbone(layer), 1, 0),
         ExpertLayer::BackboneTp2 { layer, rank } => (V41Exl3Layer::Backbone(layer), 2, rank),
         ExpertLayer::Dspark { stage } => (V41Exl3Layer::Dspark(stage), 1, 0),
+        ExpertLayer::DsparkTp2 { .. } => anyhow::bail!("TP2 dSpark EXL3 is not implemented"),
     };
     catalog
         .exl3()

@@ -370,10 +370,15 @@ impl NativeLibrary {
         self.expert_info_for(capacity, 3)
     }
 
+    pub fn v41_dspark_tp2_expert_info(&self,capacity:u32)->Result<V41ExpertInfo> {
+        self.expert_info_for(capacity,4)
+    }
+
     fn expert_info_for(&self, capacity: u32, interface: u8) -> Result<V41ExpertInfo> {
         let name: &[u8] = match interface {
             2 => b"ds41rt_v41_local_expert_info",
             3 => b"ds41rt_v41_tp2_expert_info",
+            4 => b"ds41rt_v41_dspark_tp2_expert_info",
             _ => b"ds41rt_v41_expert_info",
         };
         let function = unsafe { self.lib.get::<InfoFn>(name) }
@@ -389,7 +394,7 @@ impl NativeLibrary {
             "unsupported V4.1 native expert ABI"
         );
         ensure!(
-            info.input_dtype == 1 || (matches!(info.role, 1 | 2 | 3) && info.input_dtype == 7),
+            info.input_dtype == 1 || (matches!(info.role, 1 | 2 | 3 | 4) && info.input_dtype == 7),
             "unsupported native expert input representation"
         );
         let expected = match info.role {
@@ -397,6 +402,7 @@ impl NativeLibrary {
             1 => (384, 576, 640, 6),
             2 => (384, 2304, 2304, 6),
             3 => (384, 1152, 1152, 6),
+            4 => (128, 1152, 1152, 3),
             _ => anyhow::bail!("unknown V4.1 expert role {}", info.role),
         };
         ensure!(
@@ -430,24 +436,28 @@ impl NativeLibrary {
         self.expert_kernel_for(capacity, 3)
     }
 
+    pub fn v41_dspark_tp2_expert_kernel(&self,capacity:u32)->Result<V41ExpertKernel<'_>> {
+        self.expert_kernel_for(capacity,4)
+    }
+
     fn expert_kernel_for(&self, capacity: u32, interface: u8) -> Result<V41ExpertKernel<'_>> {
         let info = self.expert_info_for(capacity, interface)?;
-        let symbol = |ordinary: &'static [u8], full: &'static [u8], tp2: &'static [u8]|
-            match interface { 2 => full, 3 => tp2, _ => ordinary };
+        let symbol = |ordinary: &'static [u8], full: &'static [u8], tp2: &'static [u8], draft_tp2: &'static [u8]|
+            match interface { 2 => full, 3 => tp2, 4 => draft_tp2, _ => ordinary };
         let initialize = unsafe {
             self.lib
-                .get::<InitializeFn>(symbol(b"ds41rt_v41_expert_initialize", b"ds41rt_v41_local_expert_initialize", b"ds41rt_v41_tp2_expert_initialize"))?
+                .get::<InitializeFn>(symbol(b"ds41rt_v41_expert_initialize", b"ds41rt_v41_local_expert_initialize", b"ds41rt_v41_tp2_expert_initialize", b"ds41rt_v41_dspark_tp2_expert_initialize"))?
         };
-        let launch = unsafe { *self.lib.get::<LaunchFn>(symbol(b"ds41rt_v41_expert_launch", b"ds41rt_v41_local_expert_launch", b"ds41rt_v41_tp2_expert_launch"))? };
+        let launch = unsafe { *self.lib.get::<LaunchFn>(symbol(b"ds41rt_v41_expert_launch", b"ds41rt_v41_local_expert_launch", b"ds41rt_v41_tp2_expert_launch", b"ds41rt_v41_dspark_tp2_expert_launch"))? };
         let bind_scratch = unsafe {
             *self
                 .lib
-                .get::<BindScratchFn>(symbol(b"ds41rt_v41_expert_bind_scratch", b"ds41rt_v41_local_expert_bind_scratch", b"ds41rt_v41_tp2_expert_bind_scratch"))?
+                .get::<BindScratchFn>(symbol(b"ds41rt_v41_expert_bind_scratch", b"ds41rt_v41_local_expert_bind_scratch", b"ds41rt_v41_tp2_expert_bind_scratch", b"ds41rt_v41_dspark_tp2_expert_bind_scratch"))?
         };
         let initialize_scratch = unsafe {
             *self
                 .lib
-                .get::<InitScratchFn>(symbol(b"ds41rt_v41_expert_initialize_scratch_async", b"ds41rt_v41_local_expert_initialize_scratch_async", b"ds41rt_v41_tp2_expert_initialize_scratch_async"))?
+                .get::<InitScratchFn>(symbol(b"ds41rt_v41_expert_initialize_scratch_async", b"ds41rt_v41_local_expert_initialize_scratch_async", b"ds41rt_v41_tp2_expert_initialize_scratch_async", b"ds41rt_v41_dspark_tp2_expert_initialize_scratch_async"))?
         };
         let mut handle = std::ptr::null_mut();
         let status = unsafe { initialize(i32::try_from(capacity)?, &mut handle) };
@@ -457,7 +467,7 @@ impl NativeLibrary {
         );
         let token_accumulation = if info.abi_version == 3 {
             type OutputKindFn = unsafe extern "C" fn(i32, *mut u32) -> i32;
-            let query = unsafe { self.lib.get::<OutputKindFn>(symbol(b"ds41rt_v41_expert_output_kind", b"ds41rt_v41_local_expert_output_kind", b"ds41rt_v41_tp2_expert_output_kind"))? };
+            let query = unsafe { self.lib.get::<OutputKindFn>(symbol(b"ds41rt_v41_expert_output_kind", b"ds41rt_v41_local_expert_output_kind", b"ds41rt_v41_tp2_expert_output_kind", b"ds41rt_v41_dspark_tp2_expert_output_kind"))? };
             let mut kind = u32::MAX;
             let status = unsafe { query(i32::try_from(capacity)?, &mut kind) };
             ensure!(status == 0 && kind == 1 && matches!(info.role, 1 | 2 | 3), "unsupported V4.1 ABI 3 output layout");

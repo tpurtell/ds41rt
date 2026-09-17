@@ -6,7 +6,7 @@ extern "C" {
 
 #define DS41RT_V41_EXPERT_POINTERS 44
 /* Per-expert prepared sizes in bytes: W13, W13 scales, W2, W2 scales.
- * Logical intermediate must be 2304 (RTX) or 576 (backbone TP4).
+ * Logical intermediate must be 2304 (full RTX), 1152 (RTX TP2), or 576 (backbone TP4).
  * Sources are contiguous official bytes: W1, W3, W2, S1, S3, S2.
  * Destinations are distinct, 16-byte aligned device allocations with the sizes
  * returned below; source and destination storage must not overlap.
@@ -30,7 +30,7 @@ typedef struct ds41rt_v41_expert_launch_t {
 
 typedef struct ds41rt_v41_expert_info_t {
   uint32_t abi_version;
-  uint32_t role; /* 0: coordinator dSpark; 1: Spark TP4 shard; 2: full RTX backbone */
+  uint32_t role; /* 0: coordinator dSpark; 1: Spark TP4 shard; 2: full RTX backbone; 3: backbone TP2; 4: dSpark TP2 */
   uint32_t experts;
   uint32_t hidden_size;
   uint32_t logical_intermediate;
@@ -71,7 +71,7 @@ int32_t ds41rt_v41_expert_bind_scratch(void* kernel, void* storage,
 int32_t ds41rt_v41_expert_initialize_scratch_async(void* kernel, void* storage,
     uint64_t bytes, void* stream);
 /* Reduce contiguous FP32 [rows,topk,5120] route planes into BF16 [rows,5120].
- * Supported geometries: ranks=1/topk=3 (RTX dSpark), ranks=4/topk=6 (backbone).
+ * Supported geometries: ranks=1 or 2/topk=3 (RTX dSpark), ranks=4/topk=6 (backbone).
  * planes is a host array of device pointers; unused slots must be null.
  * Sum TP ranks before rounding each route to BF16, then sum routes in FP32,
  * add optional BF16 shared output and round once to BF16.

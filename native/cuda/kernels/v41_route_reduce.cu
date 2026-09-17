@@ -138,7 +138,7 @@ extern "C" int32_t ds41rt_v41_reduce_routes_async(const float* const planes[4],
     const uint16_t* shared, uint16_t* output, uint32_t rows,
     uint32_t ranks, uint32_t topk, void* stream) {
   if (!planes || !output || !rows ||
-      !((ranks == 1 && topk == 3) || (ranks == 4 && topk == 6)))
+      !(((ranks == 1 || ranks == 2) && topk == 3) || (ranks == 4 && topk == 6)))
     return cudaErrorInvalidValue;
   const uint64_t count = uint64_t(rows) * hidden;
   for (uint32_t rank = 0; rank < 4; ++rank) {
@@ -157,6 +157,10 @@ extern "C" int32_t ds41rt_v41_reduce_routes_async(const float* const planes[4],
   auto cuda_stream = static_cast<cudaStream_t>(stream);
   if (ranks == 1)
     reduce_routes<1, 3><<<blocks, 256, 0, cuda_stream>>>(planes[0], nullptr,
+        nullptr, nullptr, reinterpret_cast<const __nv_bfloat16*>(shared),
+        reinterpret_cast<__nv_bfloat16*>(output), count);
+  else if (ranks == 2)
+    reduce_routes<2, 3><<<blocks, 256, 0, cuda_stream>>>(planes[0], planes[1],
         nullptr, nullptr, reinterpret_cast<const __nv_bfloat16*>(shared),
         reinterpret_cast<__nv_bfloat16*>(output), count);
   else

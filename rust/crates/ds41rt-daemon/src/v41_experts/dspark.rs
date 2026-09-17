@@ -35,6 +35,7 @@ use ds41rt_loader::OfficialV41Catalog;
 use std::{path::{Path, PathBuf}, rc::Rc};
 use super::exl3::Exl3Weights;
 mod expert_backend;
+mod tp2;
 use expert_backend::{DraftExperts, CompressedDraftExperts};
 
 #[derive(Debug, Clone, Copy)]
