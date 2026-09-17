@@ -741,6 +741,15 @@ other than two, duplicate or unselected capacities, and residency other than
 one or two blocks per SM. B12X still validates actual kernel resource limits.
 The default remains disjoint, with no residency override. CPU-only tests
 configure the actual CMake rules and inspect generated export commands; they
-do not substitute for a fresh GPU build. Updating the release source pin,
-coordinator ownership selection and standard build/run defaults remains
-required before publishing the paired package.
+do not substitute for a fresh GPU build. Coordinator ownership selection and
+standard build/run integration remain required before publishing the paired
+package.
+
+The release source pin now matches the measured candidate's SparkInfer revision
+`e685f48c3b941208a8dc5915a742738a3c2de706` (tree SHA-256
+`4b81e9eecfa750c5b78124b4c60c8b6c29572c75f9b76ac9fb832ec8aa5a6ec1`).
+Source verification and all 24 variants of the existing paired Spark package
+pass provenance verification against this pin. This brings the previously
+qualified paired kernel implementation into reproducible source builds;
+paired serving and residency are still explicit choices. It does not claim a
+new performance result or a completed clean-container build.
