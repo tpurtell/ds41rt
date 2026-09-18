@@ -190,6 +190,27 @@ EXL3 performance and FP4-PLE analysis remain in the linked v5 performance report
 v6 treats EXL3 as a compatibility path and reports performance for the official
 checkpoint.
 
+The two v7 checkpoints need no extra switches: set `MODEL_ID` and
+`MODEL_REVISION` to the snapshot and the engine detects the expert format from
+the checkpoint's config. The NVFP4 publication runs in the same topologies as
+the official checkpoint, and the EXL3 2 bpw publication runs either fully on
+two cards with no Sparks or, on a single card, in the compact profile:
+
+```bash
+MODEL_ID=diffbot/DeepSeek-V4.1-Flash-EXL3-2.0bpw-2x-RTX-PRO-6000
+MODEL_REVISION=28b7ab71ba2eb15569b08b91a8ea07df8eda8a75
+SPARK_COUNT=2              # one RTX card with a 32 GiB ceiling, two Sparks
+```
+
+`SPARK_COUNT=2` requires an EXL3 checkpoint, caps the card at 32 GiB including
+headroom, and uses two Spark workers instead of four. NVIDIA's W4A4
+publication needs no such switch:
+
+```bash
+MODEL_ID=nvidia/DeepSeek-V4.1-Flash-NVFP4
+MODEL_REVISION=3431dde3247c13b5957f682b1e3c6fcae2566079
+```
+
 To use the published images, pull the coordinator image locally and the Spark image on each worker:
 
 ```bash
