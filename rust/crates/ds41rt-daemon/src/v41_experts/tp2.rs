@@ -246,8 +246,11 @@ impl<'a> ExpertWave<'a> {
             .into_iter()
             .max()
             .unwrap();
+        let reduction = PeerReduction::device_bytes(capacity)?;
         scratch
-            .checked_add(PeerReduction::device_bytes(capacity)?)
+            // Rank output: BF16 token-major partials.
+            .checked_add(capacity as usize * 5120 * 2)
+            .and_then(|bytes| bytes.checked_add(reduction))
             .ok_or_else(|| anyhow::anyhow!("TP2 NVFP4 workspace overflow"))
     }
     pub fn exl3_device_bytes(directory: &Path, capacity: u32) -> Result<usize> {

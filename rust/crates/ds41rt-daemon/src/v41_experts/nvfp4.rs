@@ -94,8 +94,10 @@ impl<'a> Nvfp4Side<'a> {
                 sum.checked_add(size.checked_mul(experts).context("NVFP4 resident overflow")?)
                     .context("NVFP4 resident byte overflow")
             })?
-            .checked_add(experts * 4 * 2)
-            .context("NVFP4 alpha vector overflow")?;
+            // Four per-expert f32 vectors: alphas, down alphas and the two
+            // activation-scale planes.
+            .checked_add(experts * 4 * 4)
+            .context("NVFP4 scalar vector overflow")?;
         Ok(ExpertLoadBudget {
             resident_bytes,
             device_staging_bytes: staging.staging_bytes(),
