@@ -33,8 +33,11 @@ text{font-family:Arial,Helvetica,sans-serif;fill:#e4ecf8}
 <rect x="40" y="168" width="314" height="704" rx="11" fill="#0e1c2f" stroke="#35506c" stroke-width="1.4"/>
 <text x="56" y="198" class="panel">Original / NVIDIA</text>
 <text x="56" y="219" class="panel">1x RTX 6000 + 4x Spark</text>
-<text x="56" y="242" class="sub">not yet measured</text>
+<text x="56" y="242" class="sub">NVFP4: 4 full-width layers</text>
 <rect x="122.8" y="343.9" width="62" height="354.1" rx="5" fill="#1b2b42" stroke="#35506c" stroke-width="1.6"/>
+<rect x="122.8" y="592.8" width="62" height="105.2" fill="#4f8ef7"/>
+<text x="154" y="650" class="band" text-anchor="middle">30.6</text>
+<rect x="122.8" y="591.6" width="62" height="1.2" fill="#b298ea"/>
 <text x="154" y="722" class="device" text-anchor="middle">RTX0</text>
 <text x="154" y="739" class="sub" text-anchor="middle">96 GiB</text>
 <rect x="208.8" y="258.0" width="62" height="440.0" rx="5" fill="#1b2b42" stroke="#35506c" stroke-width="1.6"/>
@@ -47,7 +50,7 @@ text{font-family:Arial,Helvetica,sans-serif;fill:#e4ecf8}
 <text x="238" y="804" class="tps" text-anchor="end">130</text>
 <text x="334" y="804" class="tps" text-anchor="end">7,824</text>
 <text x="56" y="827" class="speed">NVFP4 W4A4</text>
-<text x="238" y="827" class="pending" text-anchor="end">—</text>
+<text x="238" y="827" class="tps" text-anchor="end">89</text>
 <text x="334" y="827" class="pending" text-anchor="end">—</text>
 <rect x="376" y="168" width="314" height="704" rx="11" fill="#0e1c2f" stroke="#35506c" stroke-width="1.4"/>
 <text x="392" y="198" class="panel">Original / NVIDIA</text>

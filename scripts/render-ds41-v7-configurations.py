@@ -47,9 +47,13 @@ CAPTION = [
 CONFIGS = [
     dict(
         title=["Original / NVIDIA", "1x RTX 6000 + 4x Spark"],
-        subtitle="not yet measured",
-        devices=[("RTX0", 103, "96 GiB", {}), ("Spark x4", 128, "128 GB", {})],
-        speeds=[("MXFP4", 130.4, 7824), ("NVFP4 W4A4", None, None)],
+        subtitle="NVFP4: 4 full-width layers",
+        devices=[
+            # Logged: 4 resident layers, resident_bytes 30.58 GB, workspace 0.34 GB.
+            ("RTX0", 103, "96 GiB", {"Routed experts": 30.6, "Transport + workspace": 0.34}),
+            ("Spark x4", 128, "128 GB", {}),
+        ],
+        speeds=[("MXFP4", 130.4, 7824), ("NVFP4 W4A4", 88.8, None)],
     ),
     dict(
         title=["Original / NVIDIA", "2x RTX 6000 + 4x Spark"],
