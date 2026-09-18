@@ -94,7 +94,21 @@ def source_inventory(source: Path) -> set[str]:
             mode = path.lstat().st_mode
             display = f"./{relative.as_posix()}"
             if stat.S_ISLNK(mode):
-                unsupported.append(f"{display} (symlink)")
+                # Pinned dependencies ship a few in-tree file symlinks (for
+                # example third_party/transformers AGENTS.md -> .ai/AGENTS.md).
+                # They are reproducible from the pin, so record them by their
+                # resolved content; escaping, directory, or broken links stay
+                # unsupported.
+                try:
+                    resolved = path.resolve(strict=True)
+                    resolved.relative_to(source)
+                except (OSError, ValueError):
+                    unsupported.append(f"{display} (symlink escapes source tree)")
+                    continue
+                if not resolved.is_file():
+                    unsupported.append(f"{display} (symlink target is not a regular file)")
+                    continue
+                inventory.add(display)
             elif stat.S_ISREG(mode):
                 inventory.add(display)
             else:

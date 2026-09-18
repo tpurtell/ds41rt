@@ -42,6 +42,10 @@ install -m 0644 \
   "$build_output/V41_EXPERT_AOT.json" \
   "$incoming/workspace/.ds41rt-wip/V41_EXPERT_AOT.json"
 install -m 0644 "$build_output/V41_FP8_AOT.json" "$incoming/workspace/.ds41rt-wip/V41_FP8_AOT.json"
+if [[ -d "$build_output/exl3" ]]; then
+  mkdir -p "$incoming/workspace/.ds41rt-wip"
+  cp -a "$build_output/exl3" "$incoming/workspace/.ds41rt-wip/exl3"
+fi
 install -m 0644 \
   "$build_output/ARTIFACT_SHA256SUMS" \
   "$incoming/workspace/.ds41rt-wip/ARTIFACT_SHA256SUMS"
