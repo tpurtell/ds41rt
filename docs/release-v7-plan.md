@@ -482,6 +482,26 @@ Order that keeps the GPUs exclusive:
 Reference for how the previous release did this: `docs/release-v6-plan.md` and
 the v6 sections of `scripts/build-release-artifacts.sh`.
 
+### The TC-26 wedge is profile-specific, not a harness defect (correction)
+
+Earlier in this cycle I concluded the tool-evaluation wedge on TC-26 was
+"harness-side" because a three-message streamed request against the same
+compact profile returned its chunks and a `[DONE]` terminator. That conclusion
+was too broad and is now corrected.
+
+The NVFP4 single-card evaluation ran **past** TC-26 and on to TC-27 without
+intervention, on the same harness and the same protocol. So the wedge is
+specific to the EXL3 compact profile (one card, 2 GiB KV pool, two TP2
+Sparks) under that scenario, not something the harness does in general. The
+ordinary-streaming test proved only that a *short* multi-turn request
+terminates; it did not reproduce the scenario's shape.
+
+TC-26 is "State Consistency (Multi-Turn)", the first multi-turn scenario in
+the set, so the compact profile's cross-turn handling under a 2 GiB pool is
+still the leading candidate and remains untested rather than exonerated. The
+compact report's quality section should not claim the quality result is
+merely pending-harness; it is pending an investigation into that profile.
+
 ### Tool-call evaluation notes (round 27)
 
 The EXL3 compact qualification run stalled on scenario TC-26 ("State
