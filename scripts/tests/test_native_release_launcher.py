@@ -168,13 +168,16 @@ printf '%s\n' "$MODEL_ID" "$MODEL_REVISION" "$EXPERT_FORMAT" "$SPARKINFER_EXL3" 
             ],
         )
 
-    def test_v6_published_images_and_full_model_are_release_defaults(self) -> None:
+    def test_v7_published_images_and_full_model_are_release_defaults(self) -> None:
         config = (ROOT / "ds41rt.config").read_text()
         self.assertIn("MODEL_ID=deepseek-ai/DeepSeek-V4.1-Flash", config)
-        self.assertIn("COORDINATOR_DOCKER_INFERENCE=ghcr.io/tpurtell/ds41rt-coordinator:v6", config)
-        self.assertIn("SPARK_EXPERT_DOCKER_INFERENCE=ghcr.io/tpurtell/ds41rt-spark-expert:v6", config)
+        # Both roles must name the same release: a mixed-version default pair
+        # still passes each individual assertion, yet the launcher's engine
+        # identity check then rejects the deployment at startup.
+        self.assertIn("COORDINATOR_DOCKER_INFERENCE=ghcr.io/tpurtell/ds41rt-coordinator:v7", config)
+        self.assertIn("SPARK_EXPERT_DOCKER_INFERENCE=ghcr.io/tpurtell/ds41rt-spark-expert:v7", config)
         readme = (ROOT / "README.md").read_text()
-        self.assertIn("docker pull ghcr.io/tpurtell/ds41rt-coordinator:v6", readme)
+        self.assertIn("docker pull ghcr.io/tpurtell/ds41rt-coordinator:v7", readme)
         self.assertIn("The official full checkpoint remains the default", readme)
         self.assertNotIn("docker pull ghcr.io/tpurtell/ds41rt-coordinator:v3", readme)
 
