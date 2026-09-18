@@ -43,6 +43,24 @@ one headline table per checkpoint linking to full per-checkpoint reports.
   activation NVFP4 quant as the requested W4A4 optimization; A/B and
   report.
 
+### NVFP4 loader contract (N1, committed c781297)
+
+- `v41_nvfp4.rs` validates the full ModelOpt block (quant_method=fp8,
+  quant_algo=MIXED_PRECISION, moe_quant_algo=NVFP4, expert_dtype=fp4,
+  group_size=16, W4A4 config groups, the exact ignore list, a modelopt
+  producer, per-layer `layers.N.ffn.experts` NVFP4 entries, unquantized KV),
+  substitutes the canonical official FP8 block and still validates every
+  other config field against the official snapshot.
+- Catalog: backbone expert tensors become packed E2M1 (U8), F8_E4M3 per-16
+  scale planes (TP4-sharded like native FP4) plus replicated FP32 global
+  weight and activation scales; draft experts keep the native FP4 6-tensor
+  layout. New `BackboneExpertReplicated` placement with whole-tensor reads
+  and per-rank budget accounting.
+- Verified against the local NVIDIA snapshot: 188,245 catalog tensors,
+  92,160 TP4 payload/scale, 92,160 replicated scalars, 2,304 native draft.
+- Next: N2 daemon staging/pack plus V4.1-geometry W4A16 e4m3_k16 AOT
+  exports (baseline), then N3 W4A4 nvfp4 exports + activation quantization.
+
 ### nvidia/DeepSeek-V4.1-Flash-NVFP4 @ 3431dde3247c13b5957f682b1e3c6fcae2566079
 
 - `quantization_config`: `quant_method=fp8`, `quant_algo=MIXED_PRECISION`,
