@@ -424,13 +424,17 @@ row being quoted as the headline figure - but it means one dash in the README
 currently costs hours of exclusive GPU time in a configuration the release
 owner has described as degenerate.
 
-If GPU time is scarce before the release, the better trade is to stop this
-matrix and spend the time on the tool-call evaluation runs, which the release
-owner named as the only quality evidence they want and which are currently the
-weakest part of the deliverable (one run wedged, two never started). The
-alternative, if the full matrix is not going to be run, is to relax the
-headline gate for a disclosed partial row rather than leaving a bare dash -
-but that is a deliberate documentation decision, not a silent one.
+Decision taken: the full matrix was stopped and the GPU given to the
+tool-call evaluation instead, because the release owner named the evaluation
+as the only quality evidence they want and described the single-card
+configuration as degenerate. The NVFP4 single-card evaluation is running now.
+
+Consequence, stated so it is not mistaken for an oversight: the NVFP4 1x
+best-prefill headline cell stays an em dash. The measured base-0 row (best
+4,131 tok/s at +32K, three samples per cell) remains visible in the quant
+report's prefill table with its partial-coverage disclosure, but it is not
+promoted to a headline. If the matrix is later completed, the headline gate
+opens by itself and no document needs editing.
 
 ### Two operating rules learned the hard way this release
 
