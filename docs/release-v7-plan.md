@@ -297,6 +297,27 @@ weights) and trails on prefill (trellis decode compute). One
 code-reasoning repeat produced an empty final response because all tokens
 went to reasoning; the campaign should confirm the budget is sufficient.
 
+### NVFP4 topology correction (important)
+
+W4A4 resident cost is ~3.82 GB per rank per TP2 layer (0.5 byte/weight plus
+the E4M3 K16 scale planes, twice the MXFP4 scale bytes), so all 40 layers on
+the RTX pair do NOT fit - unlike EXL3 K2 at 1.73 GB/rank/layer. NVFP4
+therefore belongs in the **current 1+2 RTX + 4 Spark topologies** exactly as
+the objective says, while EXL3 K2 Compact owns the all-resident profiles.
+The dual planner still holds the layers that fit (roughly 17-19 of 40) and
+the Sparks carry the remainder, so the **Spark NVFP4 path is required** for
+any W4A4 serve.
+
+Spark-path plan: `ExpertExecution` is currently typed to `ExpertWeights`
+(`bind_layer(&ExpertWeights)`), so introduce a small `ExpertBinder` trait
+(`bind` + `resident_bytes`) implemented by both `ExpertWeights` and
+`Nvfp4Weights`, then reuse the existing execution/graph machinery with
+`v41_nvfp4_expert_kernel` on the Spark role. The input wire becomes BF16
+(10,240 B/row) instead of FP8-K32 (5,280 B/row) - the same dtype the
+coordinator dspark role already ships - so the transport sizing follows
+`input_row_bytes()` (already 10,240 for input_dtype 1) and needs no new
+format, only the wider plane.
+
 ### NVFP4 build integration verified
 
 The real SM120 WIP build now produces and links the complete W4A4 family:
