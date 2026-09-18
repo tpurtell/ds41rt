@@ -59,17 +59,26 @@ export CARGO_TARGET_DIR="$build_dir/cargo-target"
 # The WIP sync chain (rsync -a + docker cp) can leave source mtimes older
 # than the previous build's fingerprints; cargo/ninja then silently reuse
 # stale objects and the slot ships binaries that do not match the frozen
-# source. Content-fingerprint the build-relevant tree and, only on change,
-# refresh mtimes so the dependency trackers see the new content.
-wip_source_fingerprint="$(
-  find "$source_dir/rust" "$source_dir/native" "$source_dir/python" \
-    -type f \( -name '*.rs' -o -name '*.toml' -o -name '*.lock' -o -name '*.cu' -o -name '*.cc' -o -name '*.h' -o -name '*.cmake' -o -name 'CMakeLists.txt' -o -name '*.py' \) \
+# source. Fingerprint each build tree's content and, only where it changed,
+# refresh mtimes so the dependency trackers see the new content. Python
+# tools drive the AOT exports, so a python change also refreshes native/.
+wip_tree_fingerprint() {
+  find "$@" -type f \( -name '*.rs' -o -name '*.toml' -o -name '*.lock' -o -name '*.cu' -o -name '*.cc' -o -name '*.h' -o -name '*.cmake' -o -name 'CMakeLists.txt' -o -name '*.py' \) \
     -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}'
-)"
+}
+wip_rust_fingerprint="$(wip_tree_fingerprint "$source_dir/rust")"
+wip_native_fingerprint="$(wip_tree_fingerprint "$source_dir/native" "$source_dir/python")"
 wip_fingerprint_marker="$build_dir/.source-content-fingerprint"
-if [[ ! -f "$wip_fingerprint_marker" ]] || [[ "$(cat "$wip_fingerprint_marker")" != "$wip_source_fingerprint" ]]; then
-  find "$source_dir/rust" "$source_dir/native" "$source_dir/python" -type f -exec touch {} +
+wip_previous_fingerprint="$(cat "$wip_fingerprint_marker" 2>/dev/null || true)"
+wip_previous_rust="$(cut -d' ' -f1 <<<"$wip_previous_fingerprint")"
+wip_previous_native="$(cut -d' ' -f2 <<<"$wip_previous_fingerprint")"
+if [[ -z "$wip_previous_fingerprint" || "$wip_previous_rust" != "$wip_rust_fingerprint" ]]; then
+  find "$source_dir/rust" -type f -exec touch {} +
 fi
+if [[ -z "$wip_previous_fingerprint" || "$wip_previous_native" != "$wip_native_fingerprint" ]]; then
+  find "$source_dir/native" "$source_dir/python" -type f -exec touch {} +
+fi
+wip_current_fingerprint="$wip_rust_fingerprint $wip_native_fingerprint"
 
 cargo build \
   --quiet \
@@ -106,7 +115,7 @@ cmake \
   -DPython3_EXECUTABLE="$(command -v python3)" \
   -DDS41RT_CUDA_ARCHITECTURES="$cuda_arch"
 cmake --build "$build_dir/native"
-printf '%s' "$wip_source_fingerprint" >"$wip_fingerprint_marker"
+printf '%s' "$wip_current_fingerprint" >"$wip_fingerprint_marker"
 
 install -m 0755 "$CARGO_TARGET_DIR/release/ds41rt" "$output_dir/ds41rt"
 install -m 0755 "$build_dir/native/libds41rt_native.so" "$output_dir/libds41rt_native.so"
