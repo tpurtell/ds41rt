@@ -482,6 +482,22 @@ Order that keeps the GPUs exclusive:
 Reference for how the previous release did this: `docs/release-v6-plan.md` and
 the v6 sections of `scripts/build-release-artifacts.sh`.
 
+### First non-passing scenario in the NVFP4 evaluation
+
+Run 1 of the single-card NVFP4 evaluation reached TC-43 "Omitted Required
+Parameter" (category K, tool-call correctness) and scored **0 points**,
+status fail, 47.9 s - the first non-passing scenario after a clean first
+thirty-nine.
+
+Two things follow. The harness discriminates rather than rubber-stamping, so
+the decision to gate a published quality result on a completed, passing
+campaign is doing real work. And this failure must be disclosed in the report
+alongside the pass counts, which is exactly what the missing report
+integration would currently drop - see the note above. Do not read a single
+scenario failure as a quantization defect: it is one scenario, and the two-card
+runs and the other configuration will show whether it is profile-specific,
+model behaviour, or prompt sensitivity.
+
 ### The quant reports cannot yet publish eval results
 
 `scripts/render-ds41-v7-quant-reports.py` has no code path that reads tool
