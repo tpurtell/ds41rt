@@ -206,6 +206,29 @@ Confirmed by read-only analysis of the export and daemon paths:
 - Sliced plan: 0 staging (done) - 1 daemon load - 2 device pack (reuse GLM
   packers) - 3 AOT export + FFI/ABI - 4 three-state format branch - 5 W4A4.
 
+### W4A4 AOT export (implemented)
+
+`python/tools/export_b12x_v41_nvfp4_aot.py` exports the b12x dynamic
+nvfp4 kernel per role/capacity and emits the engine's 44-slot bridge:
+
+  slot 0..21 -> kernel 0..21; slot 22/24 -> FC1/FC2 payload; slot 23 ->
+  FC1 and FC2 scale planes (the gate view aliases the fused plane because
+  separate_w13_halves is false at every V4.1 n); slot 34..43 -> row counts,
+  write rows, alpha vectors, token map/weights; engine scalars 44..51 ->
+  the kernel's scheduling scalars and stream. The kernel's 46-entry
+  parameter array matches exactly, so no ABI struct change or runtime
+  wrapper is needed.
+
+Small-M decode uses direct routing (validated for m<=4) and larger
+capacities use grouped routing; `dynamic_tile_m=16` with explicit
+`swiglu_limit=10` / `deterministic_output=True` avoids the CuTe optional
+argument export bug. Kernel-owned scratch comes from the b12x core
+workspace plan (24 tensors mapped to their slots); alpha (38/39) and the
+per-expert scale vectors (37/40) stay weight-bound.
+
+Validated on this SM120 host for rtx_tp2 (m1, m16), rtx_backbone (m1) and
+dspark_tp2 (m1); the spark role needs the SM121 build host.
+
 ### W4A4 pivot (user direction)
 
 W4A16 is NOT a target: the base DeepSeek checkpoint is already W4A8, so the
