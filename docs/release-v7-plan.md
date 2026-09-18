@@ -183,6 +183,40 @@ one headline table per checkpoint linking to full per-checkpoint reports.
 - 3 samples per cell, 400 W + stock memory hard-asserted, telemetry must
   survive each phase, corpus/context sha256 pinned.
 
+## Quick performance read (2x RTX EXL3 K2 zero-Spark, dSpark width 7)
+
+Same bench scripts and controls as the v6 campaign; quick subset, not the
+full release protocol. 400 W stock memory, 3 samples per cell, context
+sha256 1881a1d1..., corpus sha256 1972e572....
+
+**Prefill** (0K base, median effective tok/s after one warmup):
+
+| Suffix | tok/s |
+|---:|---:|
+| 1K | 3,566 |
+| 4K | 5,500 |
+| 16K | 5,572 |
+| 32K | 5,502 |
+
+**Content-type decode** (median tok/s over three repeats; weighted nine
+category median 150.64):
+
+| Case | tok/s | Case | tok/s |
+|---|---:|---|---:|
+| Code | 216.9 | Natural JSON | 163.9 |
+| Code + reasoning | 168.0 | Schema JSON | 150.6 |
+| Math | 188.8 | Multilingual | 106.4 |
+| Fable | 85.7 | Counting 1-200 | 337.4 |
+| Hello | 127.6 | | |
+| Topic | 98.5 | | |
+
+Reference v6 dual native official checkpoint: weighted nine-category
+dSpark 109.44, counting 221.64, prefill 0K row 4,725 (1K) .. 8,355 (16K).
+The zero-Spark all-TP2 layout wins decode (no Spark round trip, 2-bit
+weights) and trails on prefill (trellis decode compute). One
+code-reasoning repeat produced an empty final response because all tokens
+went to reasoning; the campaign should confirm the budget is sufficient.
+
 ## Implementation sequence
 
 1. [ ] EXL3: raw-publication contract in the loader (synthesize manifest
