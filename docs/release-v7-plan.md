@@ -197,6 +197,32 @@ one headline table per checkpoint linking to full per-checkpoint reports.
 
 ## Log
 
+### September 18 (round 2 continued)
+
+- **Raw EXL3 publication serving validated end-to-end** (WIP slot v7q-a1,
+  1 RTX + 4 Sparks): all four ranks load 40 layers at ~925 MiB/rank/layer,
+  coordinator places 12 RTX-resident K2 layers, API answers with coherent
+  reasoning, prefix reuse hits, and strict JSON-schema smoke passes exact
+  match. Fixed in the loop: DS41RT_NATIVE_LIB must be set on both roles for
+  manual WIP launches (release images carry it as ENV); WIP binaries went
+  stale because rsync/docker-cp mtimes confused cargo freshness - WIP
+  builds now content-fingerprint the tree (build-wip-artifacts.sh).
+- **Dual-RTX (2x RTX + 4 Sparks attached) also validated**: with EXL3 K2's
+  ~1.73 GiB/rank TP2 layers, the dual memory planner places ALL 40 layers
+  on the RTX pair by default (rtx_expert_layers=40, ~69 GiB peak per GPU,
+  ~89 GiB occupied with the KV pool), leaving Sparks with zero dispatched
+  layers. The model genuinely fits 2x 96 GB - the "EXL3 K2 Compact 2x fully
+  RTX" profile is a planner reality already; the remaining profile work is
+  letting the daemon/launcher run without the four Spark peers. Exact
+  JSON-schema output verified on dual too (dual uses more reasoning tokens
+  cold; budget accordingly).
+- The legacy DS4_FLASH AOT kernels no longer compile against the pinned
+  SparkInfer (mixed-kernel launcher ABI drift) - WIP flags now match
+  release (DS4_FLASH_AOT=OFF); dev loop is serve-native only.
+- verify-release-source-manifest.py rejected in-tree symlinks from the
+  pinned transformers submodule (latent WIP break since Sep 14); now
+  records resolvable in-tree file links by content.
+
 ### September 18 (rounds 1-2)
 
 - Verified both checkpoints on all 5 hosts; mapped tensor contracts from
