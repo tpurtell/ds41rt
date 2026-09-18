@@ -482,6 +482,24 @@ Order that keeps the GPUs exclusive:
 Reference for how the previous release did this: `docs/release-v6-plan.md` and
 the v6 sections of `scripts/build-release-artifacts.sh`.
 
+### Report integration discloses failures but not partials
+
+The renderer's tool-eval section reads the harness aggregate, whose `failures`
+list contains only `status == "fail"` entries. Partially credited scenarios
+appear in the `statuses` counts and in the points arithmetic but are not named.
+Run 1 currently has two of them (TC-66 and TC-58, one point each), so the
+section as written would report "53 pass, 2 partial, 1 fail; 1xx/176 points"
+and name only TC-43.
+
+That is not wrong, but naming each partial is better: a scenario worth one of
+two points is a real quality signal and a reader should not have to infer it
+from a count. The per-run `tool-eval.json` under the run directory holds all
+88 scenario results with points and status, so extending the reader to list
+non-passing scenarios from that file (falling back to the aggregate) is the
+next refinement. Left unwired deliberately: the aggregate path is written and
+tested, and changing it without re-running the tests has already cost this
+release one broken commit.
+
 ### First non-passing scenario in the NVFP4 evaluation
 
 Run 1 of the single-card NVFP4 evaluation reached TC-43 "Omitted Required
