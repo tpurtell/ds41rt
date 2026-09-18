@@ -1,0 +1,1123 @@
+{
+  "scope": "Run the nine-category and counting release decode workloads.",
+  "label": "nvfp4-v7-optin-1x-auto-shard5",
+  "base_url": "http://127.0.0.1:8000",
+  "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+  "corpus_sha256": "1972e572fbf9d468cd86c2db5d3d3de60641329edca152fe013a179eb55001de",
+  "tokenizer_sha256": "c90dfa01249db1be4245780a052ede752e1361c612ac6d08e2bdada7d599476b",
+  "repeats": 3,
+  "nonce_seed": 198473622,
+  "selected_cases": [
+    "code",
+    "code-reasoning",
+    "math",
+    "fable",
+    "hello",
+    "topic",
+    "structured-json",
+    "structured-json-schema",
+    "multilingual"
+  ],
+  "include_orchid": false,
+  "include_counting": true,
+  "remote_reference": false,
+  "controls": {
+    "temperature": 0,
+    "thinking": "per-case; default disabled"
+  },
+  "samples": [
+    {
+      "repeat": 1,
+      "case": "code",
+      "category": "code",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "視 request nonce 198473622-0.\n",
+        "marker": "視",
+        "first_content_token_id": 15001
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "視 request nonce 198473622-0.\nWrite a Python function merge_intervals(intervals) that merges overlapping integer intervals. Include type hints, a short docstring, and three assert-based examples. Return only one Python code block."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 320,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775197870179028,
+      "error": "IncompleteStreamError('incomplete SSE: done=False, first=None, finish=None, usage=None')",
+      "passed": false
+    },
+    {
+      "repeat": 1,
+      "case": "code-reasoning",
+      "category": "code-with-reasoning",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "覚 request nonce 198473622-1.\n",
+        "marker": "覚",
+        "first_content_token_id": 55650
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "覚 request nonce 198473622-1.\nWrite a Python function merge_intervals(intervals) that merges overlapping integer intervals. Include type hints, a short docstring, and three assert-based examples. Return only one Python code block."
+          }
+        ],
+        "thinking": {
+          "type": "enabled"
+        },
+        "temperature": 0,
+        "max_tokens": 4096,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        },
+        "reasoning_effort": "high"
+      },
+      "started_ns": 1789775198127919168,
+      "error": "IncompleteStreamError('incomplete SSE: done=False, first=None, finish=None, usage=None')",
+      "passed": false
+    },
+    {
+      "repeat": 1,
+      "case": "math",
+      "category": "reasoning",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "覧 request nonce 198473622-2.\n",
+        "marker": "覧",
+        "first_content_token_id": 63682
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "覧 request nonce 198473622-2.\nA shop discounts a $240 jacket by 25%, then applies 8% sales tax to the discounted price. What is the final price? Show the calculation briefly."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 128,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775198197285961,
+      "error": "IncompleteStreamError('incomplete SSE: done=False, first=None, finish=None, usage=None')",
+      "passed": false
+    },
+    {
+      "repeat": 1,
+      "case": "fable",
+      "category": "creative-prose",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "親 request nonce 198473622-3.\n",
+        "marker": "親",
+        "first_content_token_id": 14418
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "親 request nonce 198473622-3.\nWrite a self-contained fable of about 150 words about two parrots who disagree about sharing credit. Output no title or preamble. End with a one-sentence moral."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 256,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775198247670691,
+      "error": "IncompleteStreamError('incomplete SSE: done=False, first=None, finish=None, usage=None')",
+      "passed": false
+    },
+    {
+      "repeat": 1,
+      "case": "hello",
+      "category": "short-response",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "観 request nonce 198473622-4.\n",
+        "marker": "観",
+        "first_content_token_id": 50199
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "観 request nonce 198473622-4.\nhi"
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 32,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775198299219721,
+      "error": "IncompleteStreamError('incomplete SSE: done=False, first=None, finish=None, usage=None')",
+      "passed": false
+    },
+    {
+      "repeat": 1,
+      "case": "topic",
+      "category": "exposition",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "覺 request nonce 198473622-5.\n",
+        "marker": "覺",
+        "first_content_token_id": 10873
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "覺 request nonce 198473622-5.\nExplain virtual memory to a junior programmer in five concise bullet points, including paging, page faults, and the role of the TLB."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 384,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775198344904582,
+      "error": "IncompleteStreamError('incomplete SSE: done=False, first=None, finish=None, usage=None')",
+      "passed": false
+    },
+    {
+      "repeat": 1,
+      "case": "structured-json",
+      "category": "structured-output-natural",
+      "weight": 0.5,
+      "nonce": {
+        "prefix": "覽 request nonce 198473622-6.\n",
+        "marker": "覽",
+        "first_content_token_id": 62850
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "覽 request nonce 198473622-6.\nReturn only a JSON object describing a file edit with keys path, operation, line_start, line_end, and rationale. Use path src/cache.rs, operation replace, lines 41 through 47, and a one-sentence rationale about removing a redundant copy."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 128,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775198398466475,
+      "error": "IncompleteStreamError('incomplete SSE: done=False, first=None, finish=None, usage=None')",
+      "passed": false
+    },
+    {
+      "repeat": 1,
+      "case": "structured-json-schema",
+      "category": "structured-output-constrained",
+      "weight": 0.5,
+      "nonce": {
+        "prefix": "觀 request nonce 198473622-7.\n",
+        "marker": "觀",
+        "first_content_token_id": 16809
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "觀 request nonce 198473622-7.\nReturn only a JSON object describing a file edit with keys path, operation, line_start, line_end, and rationale. Use path src/cache.rs, operation replace, lines 41 through 47, and a one-sentence rationale about removing a redundant copy."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 128,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        },
+        "response_format": {
+          "type": "json_schema",
+          "json_schema": {
+            "name": "file_edit",
+            "strict": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "operation": {
+                  "type": "string"
+                },
+                "line_start": {
+                  "type": "integer"
+                },
+                "line_end": {
+                  "type": "integer"
+                },
+                "rationale": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "operation",
+                "line_start",
+                "line_end",
+                "rationale"
+              ],
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "started_ns": 1789775198455970439,
+      "error": "IncompleteStreamError('incomplete SSE: done=False, first=None, finish=None, usage=None')",
+      "passed": false
+    },
+    {
+      "repeat": 1,
+      "case": "multilingual",
+      "category": "multilingual",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "见 request nonce 198473622-8.\n",
+        "marker": "见",
+        "first_content_token_id": 1724
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "见 request nonce 198473622-8.\n請用繁體中文，以四個簡短條列解釋什麼是寫入時複製（copy-on-write），並包含一個行程 fork 後修改記憶體頁面的例子。"
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 384,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775198734751764,
+      "error": "IncompleteStreamError('incomplete SSE: done=False, first=None, finish=None, usage=None')",
+      "passed": false
+    },
+    {
+      "repeat": 1,
+      "case": "counting",
+      "category": "low-entropy",
+      "weight": 0.0,
+      "nonce": null,
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Count from 1 to 200, separated by commas. Output only the sequence."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 640,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775198791680915,
+      "error": "IncompleteStreamError('incomplete SSE: done=False, first=None, finish=None, usage=None')",
+      "passed": false
+    },
+    {
+      "repeat": 2,
+      "case": "code",
+      "category": "code",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "规 request nonce 198473622-10.\n",
+        "marker": "规",
+        "first_content_token_id": 1742
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "规 request nonce 198473622-10.\nWrite a Python function merge_intervals(intervals) that merges overlapping integer intervals. Include type hints, a short docstring, and three assert-based examples. Return only one Python code block."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 320,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775198845514155,
+      "error": "IncompleteStreamError('incomplete SSE: done=False, first=None, finish=None, usage=None')",
+      "passed": false
+    },
+    {
+      "repeat": 2,
+      "case": "code-reasoning",
+      "category": "code-with-reasoning",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "觅 request nonce 198473622-11.\n",
+        "marker": "觅",
+        "first_content_token_id": 51312
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "觅 request nonce 198473622-11.\nWrite a Python function merge_intervals(intervals) that merges overlapping integer intervals. Include type hints, a short docstring, and three assert-based examples. Return only one Python code block."
+          }
+        ],
+        "thinking": {
+          "type": "enabled"
+        },
+        "temperature": 0,
+        "max_tokens": 4096,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        },
+        "reasoning_effort": "high"
+      },
+      "started_ns": 1789775198910467940,
+      "error": "IncompleteStreamError('incomplete SSE: done=False, first=None, finish=None, usage=None')",
+      "passed": false
+    },
+    {
+      "repeat": 2,
+      "case": "math",
+      "category": "reasoning",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "视 request nonce 198473622-12.\n",
+        "marker": "视",
+        "first_content_token_id": 2427
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "视 request nonce 198473622-12.\nA shop discounts a $240 jacket by 25%, then applies 8% sales tax to the discounted price. What is the final price? Show the calculation briefly."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 128,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775198973498155,
+      "error": "IncompleteStreamError('incomplete SSE: done=False, first=None, finish=None, usage=None')",
+      "passed": false
+    },
+    {
+      "repeat": 2,
+      "case": "fable",
+      "category": "creative-prose",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "览 request nonce 198473622-13.\n",
+        "marker": "览",
+        "first_content_token_id": 10127
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "览 request nonce 198473622-13.\nWrite a self-contained fable of about 150 words about two parrots who disagree about sharing credit. Output no title or preamble. End with a one-sentence moral."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 256,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775199025634727,
+      "error": "IncompleteStreamError('incomplete SSE: done=False, first=None, finish=None, usage=None')",
+      "passed": false
+    },
+    {
+      "repeat": 2,
+      "case": "hello",
+      "category": "short-response",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "觉 request nonce 198473622-14.\n",
+        "marker": "觉",
+        "first_content_token_id": 2330
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "觉 request nonce 198473622-14.\nhi"
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 32,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775199076534261,
+      "error": "IncompleteStreamError('incomplete SSE: done=False, first=None, finish=None, usage=None')",
+      "passed": false
+    },
+    {
+      "repeat": 2,
+      "case": "topic",
+      "category": "exposition",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "觑 request nonce 198473622-15.\n",
+        "marker": "觑",
+        "first_content_token_id": 77740
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "觑 request nonce 198473622-15.\nExplain virtual memory to a junior programmer in five concise bullet points, including paging, page faults, and the role of the TLB."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 384,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775199121232971,
+      "error": "IncompleteStreamError('incomplete SSE: done=False, first=None, finish=None, usage=None')",
+      "passed": false
+    },
+    {
+      "repeat": 2,
+      "case": "structured-json",
+      "category": "structured-output-natural",
+      "weight": 0.5,
+      "nonce": {
+        "prefix": "角 request nonce 198473622-16.\n",
+        "marker": "角",
+        "first_content_token_id": 2877
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "角 request nonce 198473622-16.\nReturn only a JSON object describing a file edit with keys path, operation, line_start, line_end, and rationale. Use path src/cache.rs, operation replace, lines 41 through 47, and a one-sentence rationale about removing a redundant copy."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 128,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775199172137893,
+      "error": "IncompleteStreamError('incomplete SSE: done=False, first=None, finish=None, usage=None')",
+      "passed": false
+    },
+    {
+      "repeat": 2,
+      "case": "structured-json-schema",
+      "category": "structured-output-constrained",
+      "weight": 0.5,
+      "nonce": {
+        "prefix": "解 request nonce 198473622-17.\n",
+        "marker": "解",
+        "first_content_token_id": 1335
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "解 request nonce 198473622-17.\nReturn only a JSON object describing a file edit with keys path, operation, line_start, line_end, and rationale. Use path src/cache.rs, operation replace, lines 41 through 47, and a one-sentence rationale about removing a redundant copy."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 128,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        },
+        "response_format": {
+          "type": "json_schema",
+          "json_schema": {
+            "name": "file_edit",
+            "strict": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "operation": {
+                  "type": "string"
+                },
+                "line_start": {
+                  "type": "integer"
+                },
+                "line_end": {
+                  "type": "integer"
+                },
+                "rationale": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "operation",
+                "line_start",
+                "line_end",
+                "rationale"
+              ],
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "started_ns": 1789775199224670349,
+      "error": "IncompleteStreamError('incomplete SSE: done=False, first=None, finish=None, usage=None')",
+      "passed": false
+    },
+    {
+      "repeat": 2,
+      "case": "multilingual",
+      "category": "multilingual",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "触 request nonce 198473622-18.\n",
+        "marker": "触",
+        "first_content_token_id": 6619
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "触 request nonce 198473622-18.\n請用繁體中文，以四個簡短條列解釋什麼是寫入時複製（copy-on-write），並包含一個行程 fork 後修改記憶體頁面的例子。"
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 384,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775199274603311,
+      "error": "IncompleteStreamError('incomplete SSE: done=False, first=None, finish=None, usage=None')",
+      "passed": false
+    },
+    {
+      "repeat": 2,
+      "case": "counting",
+      "category": "low-entropy",
+      "weight": 0.0,
+      "nonce": null,
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Count from 1 to 200, separated by commas. Output only the sequence."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 640,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775199324667541,
+      "error": "IncompleteStreamError('incomplete SSE: done=False, first=None, finish=None, usage=None')",
+      "passed": false
+    },
+    {
+      "repeat": 3,
+      "case": "code",
+      "category": "code",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "言 request nonce 198473622-20.\n",
+        "marker": "言",
+        "first_content_token_id": 2344
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "言 request nonce 198473622-20.\nWrite a Python function merge_intervals(intervals) that merges overlapping integer intervals. Include type hints, a short docstring, and three assert-based examples. Return only one Python code block."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 320,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775199370906484,
+      "error": "IncompleteStreamError('incomplete SSE: done=False, first=None, finish=None, usage=None')",
+      "passed": false
+    },
+    {
+      "repeat": 3,
+      "case": "code-reasoning",
+      "category": "code-with-reasoning",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "訂 request nonce 198473622-21.\n",
+        "marker": "訂",
+        "first_content_token_id": 44428
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "訂 request nonce 198473622-21.\nWrite a Python function merge_intervals(intervals) that merges overlapping integer intervals. Include type hints, a short docstring, and three assert-based examples. Return only one Python code block."
+          }
+        ],
+        "thinking": {
+          "type": "enabled"
+        },
+        "temperature": 0,
+        "max_tokens": 4096,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        },
+        "reasoning_effort": "high"
+      },
+      "started_ns": 1789775199422661704,
+      "error": "IncompleteStreamError('incomplete SSE: done=False, first=None, finish=None, usage=None')",
+      "passed": false
+    },
+    {
+      "repeat": 3,
+      "case": "math",
+      "category": "reasoning",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "計 request nonce 198473622-22.\n",
+        "marker": "計",
+        "first_content_token_id": 9925
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "計 request nonce 198473622-22.\nA shop discounts a $240 jacket by 25%, then applies 8% sales tax to the discounted price. What is the final price? Show the calculation briefly."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 128,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775199484217083,
+      "error": "IncompleteStreamError('incomplete SSE: done=False, first=None, finish=None, usage=None')",
+      "passed": false
+    },
+    {
+      "repeat": 3,
+      "case": "fable",
+      "category": "creative-prose",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "訊 request nonce 198473622-23.\n",
+        "marker": "訊",
+        "first_content_token_id": 29637
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "訊 request nonce 198473622-23.\nWrite a self-contained fable of about 150 words about two parrots who disagree about sharing credit. Output no title or preamble. End with a one-sentence moral."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 256,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775199535433553,
+      "error": "IncompleteStreamError('incomplete SSE: done=False, first=None, finish=None, usage=None')",
+      "passed": false
+    },
+    {
+      "repeat": 3,
+      "case": "hello",
+      "category": "short-response",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "討 request nonce 198473622-24.\n",
+        "marker": "討",
+        "first_content_token_id": 29983
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "討 request nonce 198473622-24.\nhi"
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 32,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775199587449815,
+      "error": "IncompleteStreamError('incomplete SSE: done=False, first=None, finish=None, usage=None')",
+      "passed": false
+    },
+    {
+      "repeat": 3,
+      "case": "topic",
+      "category": "exposition",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "訓 request nonce 198473622-25.\n",
+        "marker": "訓",
+        "first_content_token_id": 33275
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "訓 request nonce 198473622-25.\nExplain virtual memory to a junior programmer in five concise bullet points, including paging, page faults, and the role of the TLB."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 384,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775199633602679,
+      "error": "IncompleteStreamError('incomplete SSE: done=False, first=None, finish=None, usage=None')",
+      "passed": false
+    },
+    {
+      "repeat": 3,
+      "case": "structured-json",
+      "category": "structured-output-natural",
+      "weight": 0.5,
+      "nonce": {
+        "prefix": "託 request nonce 198473622-26.\n",
+        "marker": "託",
+        "first_content_token_id": 70726
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "託 request nonce 198473622-26.\nReturn only a JSON object describing a file edit with keys path, operation, line_start, line_end, and rationale. Use path src/cache.rs, operation replace, lines 41 through 47, and a one-sentence rationale about removing a redundant copy."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 128,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775199684802293,
+      "error": "IncompleteStreamError('incomplete SSE: done=False, first=None, finish=None, usage=None')",
+      "passed": false
+    },
+    {
+      "repeat": 3,
+      "case": "structured-json-schema",
+      "category": "structured-output-constrained",
+      "weight": 0.5,
+      "nonce": {
+        "prefix": "記 request nonce 198473622-27.\n",
+        "marker": "記",
+        "first_content_token_id": 10387
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "記 request nonce 198473622-27.\nReturn only a JSON object describing a file edit with keys path, operation, line_start, line_end, and rationale. Use path src/cache.rs, operation replace, lines 41 through 47, and a one-sentence rationale about removing a redundant copy."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 128,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        },
+        "response_format": {
+          "type": "json_schema",
+          "json_schema": {
+            "name": "file_edit",
+            "strict": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "operation": {
+                  "type": "string"
+                },
+                "line_start": {
+                  "type": "integer"
+                },
+                "line_end": {
+                  "type": "integer"
+                },
+                "rationale": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "operation",
+                "line_start",
+                "line_end",
+                "rationale"
+              ],
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "started_ns": 1789775199737900360,
+      "error": "IncompleteStreamError('incomplete SSE: done=False, first=None, finish=None, usage=None')",
+      "passed": false
+    },
+    {
+      "repeat": 3,
+      "case": "multilingual",
+      "category": "multilingual",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "訝 request nonce 198473622-28.\n",
+        "marker": "訝",
+        "first_content_token_id": 83691
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "訝 request nonce 198473622-28.\n請用繁體中文，以四個簡短條列解釋什麼是寫入時複製（copy-on-write），並包含一個行程 fork 後修改記憶體頁面的例子。"
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 384,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775199787797839,
+      "error": "IncompleteStreamError('incomplete SSE: done=False, first=None, finish=None, usage=None')",
+      "passed": false
+    },
+    {
+      "repeat": 3,
+      "case": "counting",
+      "category": "low-entropy",
+      "weight": 0.0,
+      "nonce": null,
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Count from 1 to 200, separated by commas. Output only the sequence."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 640,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775199838961159,
+      "error": "IncompleteStreamError('incomplete SSE: done=False, first=None, finish=None, usage=None')",
+      "passed": false
+    }
+  ],
+  "repeat_summaries": [
+    {
+      "repeat": 1,
+      "weighted_cases": 0,
+      "serving_completed": 0,
+      "objective_checks_passed": 0,
+      "objective_checks_assessed": 0,
+      "weighted_observed_decode_tokens_per_second": null,
+      "partial_weighted_observed_decode_tokens_per_second": null,
+      "complete_weighted_corpus": false,
+      "all_samples_passed": false
+    },
+    {
+      "repeat": 2,
+      "weighted_cases": 0,
+      "serving_completed": 0,
+      "objective_checks_passed": 0,
+      "objective_checks_assessed": 0,
+      "weighted_observed_decode_tokens_per_second": null,
+      "partial_weighted_observed_decode_tokens_per_second": null,
+      "complete_weighted_corpus": false,
+      "all_samples_passed": false
+    },
+    {
+      "repeat": 3,
+      "weighted_cases": 0,
+      "serving_completed": 0,
+      "objective_checks_passed": 0,
+      "objective_checks_assessed": 0,
+      "weighted_observed_decode_tokens_per_second": null,
+      "partial_weighted_observed_decode_tokens_per_second": null,
+      "complete_weighted_corpus": false,
+      "all_samples_passed": false
+    }
+  ],
+  "passed": false,
+  "median_weighted_observed_decode_tokens_per_second": null
+}

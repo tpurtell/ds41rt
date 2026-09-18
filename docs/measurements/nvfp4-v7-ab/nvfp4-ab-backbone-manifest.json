@@ -1,0 +1,2434 @@
+{
+  "activation": "silu",
+  "activation_quantization": {
+    "format": "FP4 E2M1 in 16-wide groups with E4M3 scales (W4A4)",
+    "launch_scales": "input_global_scale=1/input_scale, alpha=weight_scale_2*input_scale, down_alpha=weight_scale_2(down)*input_scale(down), global_scale=1/input_scale(down)",
+    "payload_policy": "keeper-source E2M1 with [up(w3); gate(w1)] rows",
+    "weight_scale_layout": "F8_128x4 swizzled E4M3 K16 plane"
+  },
+  "artifact_sha256": {
+    "v41_expert_variants.h": "f4e50e5ff2a82c88363968dcbdf1b647ef51ec313e401b741cb28b415e32000e",
+    "v41_nvfp4_rtx_backbone_m1.h": "938eede4d8c1c4faed37aedcf23473c212f1b5d9b66e99d5db5e284f07d5d362",
+    "v41_nvfp4_rtx_backbone_m1.o": "77ba1a88a0356c9316e51a65343d7c63c7fc64d6f426920a2dd3fd0885057800",
+    "v41_nvfp4_rtx_backbone_m1024.h": "bc38549ae83914b88878569c280a589dc4f9bc714f4acd9b1586c6dc9858ad90",
+    "v41_nvfp4_rtx_backbone_m1024.o": "d79b871903966dcd8d2d461d6c12a8af9d9c236b6c0067d607c078e2fb988fb1",
+    "v41_nvfp4_rtx_backbone_m16.h": "eece7f73bde30af76e5a531bd119dbcf52cd8180088e2626fd624b6c3cb0c9c4",
+    "v41_nvfp4_rtx_backbone_m16.o": "5e7f19f8f411403df3db4cde71996a67a4ae8ea184207cb11851f87320ed72a5",
+    "v41_nvfp4_rtx_backbone_m256.h": "d6ef87a55c41917bcc69418febd2a895ccb8a71fb19b0bdaa15f9b635fabe8a9",
+    "v41_nvfp4_rtx_backbone_m256.o": "f09b96bc7cee7519f6faf99ea06ffc13c863d49a21f8e0e999be1395b8554c8d",
+    "v41_nvfp4_rtx_backbone_m4096.h": "a6299a99f05e143faf0ce7ffece921703b783ee5e6c6f70c18ad65b3236165eb",
+    "v41_nvfp4_rtx_backbone_m4096.o": "b83ce46de0e5a7bab7d7358bea1305ccb270f4d2d97d88d672779e454930fa9f",
+    "v41_nvfp4_rtx_backbone_m80.h": "f87b10858aaedf426e76086fd11016571beabaef81620c24f8df94fd660889f7",
+    "v41_nvfp4_rtx_backbone_m80.o": "be00d813bddfcaadc4c48f19568a6ecfc229b4c0ad151223c7bad60ce99f19fe"
+  },
+  "capability": [
+    12,
+    0
+  ],
+  "device": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+  "geometry": {
+    "experts": 384,
+    "hidden": 5120,
+    "intermediate": 2304,
+    "kernel_intermediate": 2304,
+    "topk": 6
+  },
+  "input_format": "bf16",
+  "physical_sms": 188,
+  "quant_mode": "nvfp4",
+  "role": "rtx_backbone",
+  "schema": 1,
+  "source_format": "modelopt_nvfp4",
+  "sparkinfer_revision": "2bcbe122bf34d77fecbaf288df2f395b9c09e79e",
+  "tile_m": null,
+  "variants": [
+    {
+      "capacity_rows": 1,
+      "compile_time_clusters": 188,
+      "core_scratch_nbytes": 369624,
+      "max_active_clusters": 188,
+      "max_rows": 16,
+      "name": "v41_nvfp4_rtx_backbone_m1",
+      "native_entry": "_mlir_ds41rt_v41_nvfp4_rtx_backbone_m1__mlir_ciface_cutlass___call___b12xmoefused_moe_impl_DynamicMoELaunch_object_at__Ptrgmem_Ptrgmem_Ptrgmem_Ptrgmem_Ptrgmem_Ptrgmem_Ptrgmem_Ptrgmem_FakeTensorInt3211_FakeTensorInt3211_FakeTensorInt",
+      "output_format": "bf16_routes",
+      "output_kind": 2,
+      "output_shards": 5,
+      "physical_tiles": 6,
+      "requested_rows": 1,
+      "route_mode": "direct",
+      "rows_padded": 96,
+      "scratch": [
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "row_counts",
+          "nbytes": 1536,
+          "offset": 0,
+          "shape": [
+            384
+          ],
+          "slots": [
+            34
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "barrier_count",
+          "nbytes": 24,
+          "offset": 1536,
+          "shape": [
+            6
+          ],
+          "slots": [
+            8
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "barrier_epoch",
+          "nbytes": 24,
+          "offset": 1568,
+          "shape": [
+            6
+          ],
+          "slots": [
+            9
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "token_map",
+          "nbytes": 384,
+          "offset": 1600,
+          "shape": [
+            96
+          ],
+          "slots": [
+            42
+          ]
+        },
+        {
+          "dtype": "float32",
+          "init": "zeros",
+          "name": "token_weights",
+          "nbytes": 384,
+          "offset": 1984,
+          "shape": [
+            96
+          ],
+          "slots": [
+            43
+          ]
+        },
+        {
+          "dtype": "bfloat16",
+          "init": "empty",
+          "name": "route_output",
+          "nbytes": 61440,
+          "offset": 2368,
+          "shape": [
+            6,
+            5120
+          ],
+          "slots": [
+            41
+          ]
+        },
+        {
+          "dtype": "bfloat16",
+          "init": "empty",
+          "name": "materialized_intermediate",
+          "nbytes": 10240,
+          "offset": 63808,
+          "shape": [
+            1,
+            5120
+          ],
+          "slots": [
+            7
+          ]
+        },
+        {
+          "dtype": "uint8",
+          "init": "empty",
+          "name": "packed_input",
+          "nbytes": 245760,
+          "offset": 74048,
+          "shape": [
+            1,
+            96,
+            2560
+          ],
+          "slots": [
+            3,
+            5
+          ]
+        },
+        {
+          "dtype": "uint8",
+          "init": "empty",
+          "name": "packed_input_scale",
+          "nbytes": 40960,
+          "offset": 319808,
+          "shape": [
+            128,
+            320
+          ],
+          "slots": [
+            4,
+            6
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "expert_write_rows",
+          "nbytes": 1536,
+          "offset": 360768,
+          "shape": [
+            384
+          ],
+          "slots": [
+            35
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "expert_tile_base",
+          "nbytes": 1540,
+          "offset": 362304,
+          "shape": [
+            385
+          ],
+          "slots": [
+            36
+          ]
+        },
+        {
+          "dtype": "float32",
+          "init": "empty",
+          "name": "input_gs",
+          "nbytes": 1536,
+          "offset": 363856,
+          "shape": [
+            384
+          ],
+          "slots": [
+            37
+          ]
+        },
+        {
+          "dtype": "float32",
+          "init": "empty",
+          "name": "down_input_scale",
+          "nbytes": 1536,
+          "offset": 365392,
+          "shape": [
+            384
+          ],
+          "slots": [
+            40
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "pair_head",
+          "nbytes": 4,
+          "offset": 366928,
+          "shape": [
+            1
+          ],
+          "slots": [
+            10
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "producers_done_count",
+          "nbytes": 4,
+          "offset": 366944,
+          "shape": [
+            1
+          ],
+          "slots": [
+            11
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "all_work_published",
+          "nbytes": 4,
+          "offset": 366960,
+          "shape": [
+            1
+          ],
+          "slots": [
+            12
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_head",
+          "nbytes": 4,
+          "offset": 366976,
+          "shape": [
+            1
+          ],
+          "slots": [
+            13
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_tail",
+          "nbytes": 4,
+          "offset": 366992,
+          "shape": [
+            1
+          ],
+          "slots": [
+            14
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_ready",
+          "nbytes": 432,
+          "offset": 367008,
+          "shape": [
+            108
+          ],
+          "slots": [
+            15
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_expert",
+          "nbytes": 432,
+          "offset": 367440,
+          "shape": [
+            108
+          ],
+          "slots": [
+            16
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_m_tile",
+          "nbytes": 432,
+          "offset": 367872,
+          "shape": [
+            108
+          ],
+          "slots": [
+            17
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_slice_begin",
+          "nbytes": 432,
+          "offset": 368304,
+          "shape": [
+            108
+          ],
+          "slots": [
+            18
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_slice_count",
+          "nbytes": 432,
+          "offset": 368736,
+          "shape": [
+            108
+          ],
+          "slots": [
+            19
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_valid_rows",
+          "nbytes": 432,
+          "offset": 369168,
+          "shape": [
+            108
+          ],
+          "slots": [
+            20
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "tile_write_count",
+          "nbytes": 24,
+          "offset": 369600,
+          "shape": [
+            6
+          ],
+          "slots": [
+            21
+          ]
+        }
+      ],
+      "scratch_pointer_offsets": [
+        null,
+        null,
+        null,
+        74048,
+        319808,
+        74048,
+        319808,
+        63808,
+        1536,
+        1568,
+        366928,
+        366944,
+        366960,
+        366976,
+        366992,
+        367008,
+        367440,
+        367872,
+        368304,
+        368736,
+        369168,
+        369600,
+        null,
+        null,
+        null,
+        null,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        360768,
+        362304,
+        363856,
+        null,
+        null,
+        365392,
+        2368,
+        1600,
+        1984
+      ],
+      "task_capacity": 108,
+      "tile_m": 16
+    },
+    {
+      "capacity_rows": 16,
+      "compile_time_clusters": 188,
+      "core_scratch_nbytes": 5728276,
+      "max_active_clusters": 188,
+      "max_rows": 96,
+      "name": "v41_nvfp4_rtx_backbone_m16",
+      "native_entry": "_mlir_ds41rt_v41_nvfp4_rtx_backbone_m16__mlir_ciface_cutlass___call___b12xmoefused_moe_impl_DynamicMoELaunch_object_at__Ptrgmem_Ptrgmem_Ptrgmem_Ptrgmem_Ptrgmem_Ptrgmem_Ptrgmem_Ptrgmem_FakeTensorInt3211_FakeTensorInt3211_FakeTensorInt",
+      "output_format": "bf16_routes",
+      "output_kind": 2,
+      "output_shards": 1,
+      "physical_tiles": 101,
+      "requested_rows": 16,
+      "route_mode": "grouped",
+      "rows_padded": 1616,
+      "scratch": [
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "row_counts",
+          "nbytes": 1536,
+          "offset": 0,
+          "shape": [
+            384
+          ],
+          "slots": [
+            34
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "barrier_count",
+          "nbytes": 384,
+          "offset": 1536,
+          "shape": [
+            96
+          ],
+          "slots": [
+            8
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "barrier_epoch",
+          "nbytes": 384,
+          "offset": 1920,
+          "shape": [
+            96
+          ],
+          "slots": [
+            9
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "token_map",
+          "nbytes": 6464,
+          "offset": 2304,
+          "shape": [
+            1616
+          ],
+          "slots": [
+            42
+          ]
+        },
+        {
+          "dtype": "float32",
+          "init": "zeros",
+          "name": "token_weights",
+          "nbytes": 6464,
+          "offset": 8768,
+          "shape": [
+            1616
+          ],
+          "slots": [
+            43
+          ]
+        },
+        {
+          "dtype": "bfloat16",
+          "init": "empty",
+          "name": "route_output",
+          "nbytes": 983040,
+          "offset": 15232,
+          "shape": [
+            96,
+            5120
+          ],
+          "slots": [
+            41
+          ]
+        },
+        {
+          "dtype": "bfloat16",
+          "init": "empty",
+          "name": "materialized_intermediate",
+          "nbytes": 10240,
+          "offset": 998272,
+          "shape": [
+            1,
+            5120
+          ],
+          "slots": [
+            7
+          ]
+        },
+        {
+          "dtype": "uint8",
+          "init": "empty",
+          "name": "packed_input",
+          "nbytes": 4136960,
+          "offset": 1008512,
+          "shape": [
+            1,
+            1616,
+            2560
+          ],
+          "slots": [
+            3,
+            5
+          ]
+        },
+        {
+          "dtype": "uint8",
+          "init": "empty",
+          "name": "packed_input_scale",
+          "nbytes": 532480,
+          "offset": 5145472,
+          "shape": [
+            1664,
+            320
+          ],
+          "slots": [
+            4,
+            6
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "expert_write_rows",
+          "nbytes": 1536,
+          "offset": 5677952,
+          "shape": [
+            384
+          ],
+          "slots": [
+            35
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "expert_tile_base",
+          "nbytes": 1540,
+          "offset": 5679488,
+          "shape": [
+            385
+          ],
+          "slots": [
+            36
+          ]
+        },
+        {
+          "dtype": "float32",
+          "init": "empty",
+          "name": "input_gs",
+          "nbytes": 1536,
+          "offset": 5681040,
+          "shape": [
+            384
+          ],
+          "slots": [
+            37
+          ]
+        },
+        {
+          "dtype": "float32",
+          "init": "empty",
+          "name": "down_input_scale",
+          "nbytes": 1536,
+          "offset": 5682576,
+          "shape": [
+            384
+          ],
+          "slots": [
+            40
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "pair_head",
+          "nbytes": 4,
+          "offset": 5684112,
+          "shape": [
+            1
+          ],
+          "slots": [
+            10
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "producers_done_count",
+          "nbytes": 4,
+          "offset": 5684128,
+          "shape": [
+            1
+          ],
+          "slots": [
+            11
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "all_work_published",
+          "nbytes": 4,
+          "offset": 5684144,
+          "shape": [
+            1
+          ],
+          "slots": [
+            12
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_head",
+          "nbytes": 4,
+          "offset": 5684160,
+          "shape": [
+            1
+          ],
+          "slots": [
+            13
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_tail",
+          "nbytes": 4,
+          "offset": 5684176,
+          "shape": [
+            1
+          ],
+          "slots": [
+            14
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_ready",
+          "nbytes": 7272,
+          "offset": 5684192,
+          "shape": [
+            1818
+          ],
+          "slots": [
+            15
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_expert",
+          "nbytes": 7272,
+          "offset": 5691472,
+          "shape": [
+            1818
+          ],
+          "slots": [
+            16
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_m_tile",
+          "nbytes": 7272,
+          "offset": 5698752,
+          "shape": [
+            1818
+          ],
+          "slots": [
+            17
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_slice_begin",
+          "nbytes": 7272,
+          "offset": 5706032,
+          "shape": [
+            1818
+          ],
+          "slots": [
+            18
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_slice_count",
+          "nbytes": 7272,
+          "offset": 5713312,
+          "shape": [
+            1818
+          ],
+          "slots": [
+            19
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_valid_rows",
+          "nbytes": 7272,
+          "offset": 5720592,
+          "shape": [
+            1818
+          ],
+          "slots": [
+            20
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "tile_write_count",
+          "nbytes": 404,
+          "offset": 5727872,
+          "shape": [
+            101
+          ],
+          "slots": [
+            21
+          ]
+        }
+      ],
+      "scratch_pointer_offsets": [
+        null,
+        null,
+        null,
+        1008512,
+        5145472,
+        1008512,
+        5145472,
+        998272,
+        1536,
+        1920,
+        5684112,
+        5684128,
+        5684144,
+        5684160,
+        5684176,
+        5684192,
+        5691472,
+        5698752,
+        5706032,
+        5713312,
+        5720592,
+        5727872,
+        null,
+        null,
+        null,
+        null,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        5677952,
+        5679488,
+        5681040,
+        null,
+        null,
+        5682576,
+        15232,
+        2304,
+        8768
+      ],
+      "task_capacity": 1818,
+      "tile_m": 16
+    },
+    {
+      "capacity_rows": 80,
+      "compile_time_clusters": 188,
+      "core_scratch_nbytes": 24216436,
+      "max_active_clusters": 188,
+      "max_rows": 480,
+      "name": "v41_nvfp4_rtx_backbone_m80",
+      "native_entry": "_mlir_ds41rt_v41_nvfp4_rtx_backbone_m80__mlir_ciface_cutlass___call___b12xmoefused_moe_impl_DynamicMoELaunch_object_at__Ptrgmem_Ptrgmem_Ptrgmem_Ptrgmem_Ptrgmem_Ptrgmem_Ptrgmem_Ptrgmem_FakeTensorInt3211_FakeTensorInt3211_FakeTensorInt",
+      "output_format": "bf16_routes",
+      "output_kind": 2,
+      "output_shards": 1,
+      "physical_tiles": 413,
+      "requested_rows": 80,
+      "route_mode": "grouped",
+      "rows_padded": 6608,
+      "scratch": [
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "row_counts",
+          "nbytes": 1536,
+          "offset": 0,
+          "shape": [
+            384
+          ],
+          "slots": [
+            34
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "barrier_count",
+          "nbytes": 1920,
+          "offset": 1536,
+          "shape": [
+            480
+          ],
+          "slots": [
+            8
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "barrier_epoch",
+          "nbytes": 1920,
+          "offset": 3456,
+          "shape": [
+            480
+          ],
+          "slots": [
+            9
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "token_map",
+          "nbytes": 26432,
+          "offset": 5376,
+          "shape": [
+            6608
+          ],
+          "slots": [
+            42
+          ]
+        },
+        {
+          "dtype": "float32",
+          "init": "zeros",
+          "name": "token_weights",
+          "nbytes": 26432,
+          "offset": 31808,
+          "shape": [
+            6608
+          ],
+          "slots": [
+            43
+          ]
+        },
+        {
+          "dtype": "bfloat16",
+          "init": "empty",
+          "name": "route_output",
+          "nbytes": 4915200,
+          "offset": 58240,
+          "shape": [
+            480,
+            5120
+          ],
+          "slots": [
+            41
+          ]
+        },
+        {
+          "dtype": "bfloat16",
+          "init": "empty",
+          "name": "materialized_intermediate",
+          "nbytes": 10240,
+          "offset": 4973440,
+          "shape": [
+            1,
+            5120
+          ],
+          "slots": [
+            7
+          ]
+        },
+        {
+          "dtype": "uint8",
+          "init": "empty",
+          "name": "packed_input",
+          "nbytes": 16916480,
+          "offset": 4983680,
+          "shape": [
+            1,
+            6608,
+            2560
+          ],
+          "slots": [
+            3,
+            5
+          ]
+        },
+        {
+          "dtype": "uint8",
+          "init": "empty",
+          "name": "packed_input_scale",
+          "nbytes": 2129920,
+          "offset": 21900160,
+          "shape": [
+            6656,
+            320
+          ],
+          "slots": [
+            4,
+            6
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "expert_write_rows",
+          "nbytes": 1536,
+          "offset": 24030080,
+          "shape": [
+            384
+          ],
+          "slots": [
+            35
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "expert_tile_base",
+          "nbytes": 1540,
+          "offset": 24031616,
+          "shape": [
+            385
+          ],
+          "slots": [
+            36
+          ]
+        },
+        {
+          "dtype": "float32",
+          "init": "empty",
+          "name": "input_gs",
+          "nbytes": 1536,
+          "offset": 24033168,
+          "shape": [
+            384
+          ],
+          "slots": [
+            37
+          ]
+        },
+        {
+          "dtype": "float32",
+          "init": "empty",
+          "name": "down_input_scale",
+          "nbytes": 1536,
+          "offset": 24034704,
+          "shape": [
+            384
+          ],
+          "slots": [
+            40
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "pair_head",
+          "nbytes": 4,
+          "offset": 24036240,
+          "shape": [
+            1
+          ],
+          "slots": [
+            10
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "producers_done_count",
+          "nbytes": 4,
+          "offset": 24036256,
+          "shape": [
+            1
+          ],
+          "slots": [
+            11
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "all_work_published",
+          "nbytes": 4,
+          "offset": 24036272,
+          "shape": [
+            1
+          ],
+          "slots": [
+            12
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_head",
+          "nbytes": 4,
+          "offset": 24036288,
+          "shape": [
+            1
+          ],
+          "slots": [
+            13
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_tail",
+          "nbytes": 4,
+          "offset": 24036304,
+          "shape": [
+            1
+          ],
+          "slots": [
+            14
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_ready",
+          "nbytes": 29736,
+          "offset": 24036320,
+          "shape": [
+            7434
+          ],
+          "slots": [
+            15
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_expert",
+          "nbytes": 29736,
+          "offset": 24066064,
+          "shape": [
+            7434
+          ],
+          "slots": [
+            16
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_m_tile",
+          "nbytes": 29736,
+          "offset": 24095808,
+          "shape": [
+            7434
+          ],
+          "slots": [
+            17
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_slice_begin",
+          "nbytes": 29736,
+          "offset": 24125552,
+          "shape": [
+            7434
+          ],
+          "slots": [
+            18
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_slice_count",
+          "nbytes": 29736,
+          "offset": 24155296,
+          "shape": [
+            7434
+          ],
+          "slots": [
+            19
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_valid_rows",
+          "nbytes": 29736,
+          "offset": 24185040,
+          "shape": [
+            7434
+          ],
+          "slots": [
+            20
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "tile_write_count",
+          "nbytes": 1652,
+          "offset": 24214784,
+          "shape": [
+            413
+          ],
+          "slots": [
+            21
+          ]
+        }
+      ],
+      "scratch_pointer_offsets": [
+        null,
+        null,
+        null,
+        4983680,
+        21900160,
+        4983680,
+        21900160,
+        4973440,
+        1536,
+        3456,
+        24036240,
+        24036256,
+        24036272,
+        24036288,
+        24036304,
+        24036320,
+        24066064,
+        24095808,
+        24125552,
+        24155296,
+        24185040,
+        24214784,
+        null,
+        null,
+        null,
+        null,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        24030080,
+        24031616,
+        24033168,
+        null,
+        null,
+        24034704,
+        58240,
+        5376,
+        31808
+      ],
+      "task_capacity": 7434,
+      "tile_m": 16
+    },
+    {
+      "capacity_rows": 256,
+      "compile_time_clusters": 188,
+      "core_scratch_nbytes": 38106588,
+      "max_active_clusters": 188,
+      "max_rows": 1536,
+      "name": "v41_nvfp4_rtx_backbone_m256",
+      "native_entry": "_mlir_ds41rt_v41_nvfp4_rtx_backbone_m256__mlir_ciface_cutlass___call___b12xmoefused_moe_impl_DynamicMoELaunch_object_at__Ptrgmem_Ptrgmem_Ptrgmem_Ptrgmem_Ptrgmem_Ptrgmem_Ptrgmem_Ptrgmem_FakeTensorInt3211_FakeTensorInt3211_FakeTensorInt",
+      "output_format": "bf16_routes",
+      "output_kind": 2,
+      "output_shards": 1,
+      "physical_tiles": 479,
+      "requested_rows": 256,
+      "route_mode": "grouped",
+      "rows_padded": 7664,
+      "scratch": [
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "row_counts",
+          "nbytes": 1536,
+          "offset": 0,
+          "shape": [
+            384
+          ],
+          "slots": [
+            34
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "barrier_count",
+          "nbytes": 6144,
+          "offset": 1536,
+          "shape": [
+            1536
+          ],
+          "slots": [
+            8
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "barrier_epoch",
+          "nbytes": 6144,
+          "offset": 7680,
+          "shape": [
+            1536
+          ],
+          "slots": [
+            9
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "token_map",
+          "nbytes": 30656,
+          "offset": 13824,
+          "shape": [
+            7664
+          ],
+          "slots": [
+            42
+          ]
+        },
+        {
+          "dtype": "float32",
+          "init": "zeros",
+          "name": "token_weights",
+          "nbytes": 30656,
+          "offset": 44480,
+          "shape": [
+            7664
+          ],
+          "slots": [
+            43
+          ]
+        },
+        {
+          "dtype": "bfloat16",
+          "init": "empty",
+          "name": "route_output",
+          "nbytes": 15728640,
+          "offset": 75136,
+          "shape": [
+            1536,
+            5120
+          ],
+          "slots": [
+            41
+          ]
+        },
+        {
+          "dtype": "bfloat16",
+          "init": "empty",
+          "name": "materialized_intermediate",
+          "nbytes": 10240,
+          "offset": 15803776,
+          "shape": [
+            1,
+            5120
+          ],
+          "slots": [
+            7
+          ]
+        },
+        {
+          "dtype": "uint8",
+          "init": "empty",
+          "name": "packed_input",
+          "nbytes": 19619840,
+          "offset": 15814016,
+          "shape": [
+            1,
+            7664,
+            2560
+          ],
+          "slots": [
+            3,
+            5
+          ]
+        },
+        {
+          "dtype": "uint8",
+          "init": "empty",
+          "name": "packed_input_scale",
+          "nbytes": 2457600,
+          "offset": 35433856,
+          "shape": [
+            7680,
+            320
+          ],
+          "slots": [
+            4,
+            6
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "expert_write_rows",
+          "nbytes": 1536,
+          "offset": 37891456,
+          "shape": [
+            384
+          ],
+          "slots": [
+            35
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "expert_tile_base",
+          "nbytes": 1540,
+          "offset": 37892992,
+          "shape": [
+            385
+          ],
+          "slots": [
+            36
+          ]
+        },
+        {
+          "dtype": "float32",
+          "init": "empty",
+          "name": "input_gs",
+          "nbytes": 1536,
+          "offset": 37894544,
+          "shape": [
+            384
+          ],
+          "slots": [
+            37
+          ]
+        },
+        {
+          "dtype": "float32",
+          "init": "empty",
+          "name": "down_input_scale",
+          "nbytes": 1536,
+          "offset": 37896080,
+          "shape": [
+            384
+          ],
+          "slots": [
+            40
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "pair_head",
+          "nbytes": 4,
+          "offset": 37897616,
+          "shape": [
+            1
+          ],
+          "slots": [
+            10
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "producers_done_count",
+          "nbytes": 4,
+          "offset": 37897632,
+          "shape": [
+            1
+          ],
+          "slots": [
+            11
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "all_work_published",
+          "nbytes": 4,
+          "offset": 37897648,
+          "shape": [
+            1
+          ],
+          "slots": [
+            12
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_head",
+          "nbytes": 4,
+          "offset": 37897664,
+          "shape": [
+            1
+          ],
+          "slots": [
+            13
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_tail",
+          "nbytes": 4,
+          "offset": 37897680,
+          "shape": [
+            1
+          ],
+          "slots": [
+            14
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_ready",
+          "nbytes": 34488,
+          "offset": 37897696,
+          "shape": [
+            8622
+          ],
+          "slots": [
+            15
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_expert",
+          "nbytes": 34488,
+          "offset": 37932192,
+          "shape": [
+            8622
+          ],
+          "slots": [
+            16
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_m_tile",
+          "nbytes": 34488,
+          "offset": 37966688,
+          "shape": [
+            8622
+          ],
+          "slots": [
+            17
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_slice_begin",
+          "nbytes": 34488,
+          "offset": 38001184,
+          "shape": [
+            8622
+          ],
+          "slots": [
+            18
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_slice_count",
+          "nbytes": 34488,
+          "offset": 38035680,
+          "shape": [
+            8622
+          ],
+          "slots": [
+            19
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_valid_rows",
+          "nbytes": 34488,
+          "offset": 38070176,
+          "shape": [
+            8622
+          ],
+          "slots": [
+            20
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "tile_write_count",
+          "nbytes": 1916,
+          "offset": 38104672,
+          "shape": [
+            479
+          ],
+          "slots": [
+            21
+          ]
+        }
+      ],
+      "scratch_pointer_offsets": [
+        null,
+        null,
+        null,
+        15814016,
+        35433856,
+        15814016,
+        35433856,
+        15803776,
+        1536,
+        7680,
+        37897616,
+        37897632,
+        37897648,
+        37897664,
+        37897680,
+        37897696,
+        37932192,
+        37966688,
+        38001184,
+        38035680,
+        38070176,
+        38104672,
+        null,
+        null,
+        null,
+        null,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        37891456,
+        37892992,
+        37894544,
+        null,
+        null,
+        37896080,
+        75136,
+        13824,
+        44480
+      ],
+      "task_capacity": 8622,
+      "tile_m": 16
+    },
+    {
+      "capacity_rows": 1024,
+      "compile_time_clusters": 188,
+      "core_scratch_nbytes": 116381916,
+      "max_active_clusters": 188,
+      "max_rows": 6144,
+      "name": "v41_nvfp4_rtx_backbone_m1024",
+      "native_entry": "_mlir_ds41rt_v41_nvfp4_rtx_backbone_m1024__mlir_ciface_cutlass___call___b12xmoefused_moe_impl_DynamicMoELaunch_object_at__Ptrgmem_Ptrgmem_Ptrgmem_Ptrgmem_Ptrgmem_Ptrgmem_Ptrgmem_Ptrgmem_FakeTensorInt3211_FakeTensorInt3211_FakeTensorInt",
+      "output_format": "bf16_routes",
+      "output_kind": 2,
+      "output_shards": 1,
+      "physical_tiles": 575,
+      "requested_rows": 1024,
+      "route_mode": "grouped",
+      "rows_padded": 18400,
+      "scratch": [
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "row_counts",
+          "nbytes": 1536,
+          "offset": 0,
+          "shape": [
+            384
+          ],
+          "slots": [
+            34
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "barrier_count",
+          "nbytes": 24576,
+          "offset": 1536,
+          "shape": [
+            6144
+          ],
+          "slots": [
+            8
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "barrier_epoch",
+          "nbytes": 24576,
+          "offset": 26112,
+          "shape": [
+            6144
+          ],
+          "slots": [
+            9
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "token_map",
+          "nbytes": 73600,
+          "offset": 50688,
+          "shape": [
+            18400
+          ],
+          "slots": [
+            42
+          ]
+        },
+        {
+          "dtype": "float32",
+          "init": "zeros",
+          "name": "token_weights",
+          "nbytes": 73600,
+          "offset": 124288,
+          "shape": [
+            18400
+          ],
+          "slots": [
+            43
+          ]
+        },
+        {
+          "dtype": "bfloat16",
+          "init": "empty",
+          "name": "route_output",
+          "nbytes": 62914560,
+          "offset": 197888,
+          "shape": [
+            6144,
+            5120
+          ],
+          "slots": [
+            41
+          ]
+        },
+        {
+          "dtype": "bfloat16",
+          "init": "empty",
+          "name": "materialized_intermediate",
+          "nbytes": 10240,
+          "offset": 63112448,
+          "shape": [
+            1,
+            5120
+          ],
+          "slots": [
+            7
+          ]
+        },
+        {
+          "dtype": "uint8",
+          "init": "empty",
+          "name": "packed_input",
+          "nbytes": 47104000,
+          "offset": 63122688,
+          "shape": [
+            1,
+            18400,
+            2560
+          ],
+          "slots": [
+            3,
+            5
+          ]
+        },
+        {
+          "dtype": "uint8",
+          "init": "empty",
+          "name": "packed_input_scale",
+          "nbytes": 5898240,
+          "offset": 110226688,
+          "shape": [
+            18432,
+            320
+          ],
+          "slots": [
+            4,
+            6
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "expert_write_rows",
+          "nbytes": 1536,
+          "offset": 116124928,
+          "shape": [
+            384
+          ],
+          "slots": [
+            35
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "expert_tile_base",
+          "nbytes": 1540,
+          "offset": 116126464,
+          "shape": [
+            385
+          ],
+          "slots": [
+            36
+          ]
+        },
+        {
+          "dtype": "float32",
+          "init": "empty",
+          "name": "input_gs",
+          "nbytes": 1536,
+          "offset": 116128016,
+          "shape": [
+            384
+          ],
+          "slots": [
+            37
+          ]
+        },
+        {
+          "dtype": "float32",
+          "init": "empty",
+          "name": "down_input_scale",
+          "nbytes": 1536,
+          "offset": 116129552,
+          "shape": [
+            384
+          ],
+          "slots": [
+            40
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "pair_head",
+          "nbytes": 4,
+          "offset": 116131088,
+          "shape": [
+            1
+          ],
+          "slots": [
+            10
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "producers_done_count",
+          "nbytes": 4,
+          "offset": 116131104,
+          "shape": [
+            1
+          ],
+          "slots": [
+            11
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "all_work_published",
+          "nbytes": 4,
+          "offset": 116131120,
+          "shape": [
+            1
+          ],
+          "slots": [
+            12
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_head",
+          "nbytes": 4,
+          "offset": 116131136,
+          "shape": [
+            1
+          ],
+          "slots": [
+            13
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_tail",
+          "nbytes": 4,
+          "offset": 116131152,
+          "shape": [
+            1
+          ],
+          "slots": [
+            14
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_ready",
+          "nbytes": 41400,
+          "offset": 116131168,
+          "shape": [
+            10350
+          ],
+          "slots": [
+            15
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_expert",
+          "nbytes": 41400,
+          "offset": 116172576,
+          "shape": [
+            10350
+          ],
+          "slots": [
+            16
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_m_tile",
+          "nbytes": 41400,
+          "offset": 116213984,
+          "shape": [
+            10350
+          ],
+          "slots": [
+            17
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_slice_begin",
+          "nbytes": 41400,
+          "offset": 116255392,
+          "shape": [
+            10350
+          ],
+          "slots": [
+            18
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_slice_count",
+          "nbytes": 41400,
+          "offset": 116296800,
+          "shape": [
+            10350
+          ],
+          "slots": [
+            19
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_valid_rows",
+          "nbytes": 41400,
+          "offset": 116338208,
+          "shape": [
+            10350
+          ],
+          "slots": [
+            20
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "tile_write_count",
+          "nbytes": 2300,
+          "offset": 116379616,
+          "shape": [
+            575
+          ],
+          "slots": [
+            21
+          ]
+        }
+      ],
+      "scratch_pointer_offsets": [
+        null,
+        null,
+        null,
+        63122688,
+        110226688,
+        63122688,
+        110226688,
+        63112448,
+        1536,
+        26112,
+        116131088,
+        116131104,
+        116131120,
+        116131136,
+        116131152,
+        116131168,
+        116172576,
+        116213984,
+        116255392,
+        116296800,
+        116338208,
+        116379616,
+        null,
+        null,
+        null,
+        null,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        116124928,
+        116126464,
+        116128016,
+        null,
+        null,
+        116129552,
+        197888,
+        50688,
+        124288
+      ],
+      "task_capacity": 10350,
+      "tile_m": 32
+    },
+    {
+      "capacity_rows": 4096,
+      "compile_time_clusters": 188,
+      "core_scratch_nbytes": 393993948,
+      "max_active_clusters": 188,
+      "max_rows": 24576,
+      "name": "v41_nvfp4_rtx_backbone_m4096",
+      "native_entry": "_mlir_ds41rt_v41_nvfp4_rtx_backbone_m4096__mlir_ciface_cutlass___call___b12xmoefused_moe_impl_DynamicMoELaunch_object_at__Ptrgmem_Ptrgmem_Ptrgmem_Ptrgmem_Ptrgmem_Ptrgmem_Ptrgmem_Ptrgmem_FakeTensorInt3211_FakeTensorInt3211_FakeTensorInt",
+      "output_format": "bf16_routes",
+      "output_kind": 2,
+      "output_shards": 1,
+      "physical_tiles": 767,
+      "requested_rows": 4096,
+      "route_mode": "grouped",
+      "rows_padded": 49088,
+      "scratch": [
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "row_counts",
+          "nbytes": 1536,
+          "offset": 0,
+          "shape": [
+            384
+          ],
+          "slots": [
+            34
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "barrier_count",
+          "nbytes": 98304,
+          "offset": 1536,
+          "shape": [
+            24576
+          ],
+          "slots": [
+            8
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "barrier_epoch",
+          "nbytes": 98304,
+          "offset": 99840,
+          "shape": [
+            24576
+          ],
+          "slots": [
+            9
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "token_map",
+          "nbytes": 196352,
+          "offset": 198144,
+          "shape": [
+            49088
+          ],
+          "slots": [
+            42
+          ]
+        },
+        {
+          "dtype": "float32",
+          "init": "zeros",
+          "name": "token_weights",
+          "nbytes": 196352,
+          "offset": 394496,
+          "shape": [
+            49088
+          ],
+          "slots": [
+            43
+          ]
+        },
+        {
+          "dtype": "bfloat16",
+          "init": "empty",
+          "name": "route_output",
+          "nbytes": 251658240,
+          "offset": 590848,
+          "shape": [
+            24576,
+            5120
+          ],
+          "slots": [
+            41
+          ]
+        },
+        {
+          "dtype": "bfloat16",
+          "init": "empty",
+          "name": "materialized_intermediate",
+          "nbytes": 10240,
+          "offset": 252249088,
+          "shape": [
+            1,
+            5120
+          ],
+          "slots": [
+            7
+          ]
+        },
+        {
+          "dtype": "uint8",
+          "init": "empty",
+          "name": "packed_input",
+          "nbytes": 125665280,
+          "offset": 252259328,
+          "shape": [
+            1,
+            49088,
+            2560
+          ],
+          "slots": [
+            3,
+            5
+          ]
+        },
+        {
+          "dtype": "uint8",
+          "init": "empty",
+          "name": "packed_input_scale",
+          "nbytes": 15728640,
+          "offset": 377924608,
+          "shape": [
+            49152,
+            320
+          ],
+          "slots": [
+            4,
+            6
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "expert_write_rows",
+          "nbytes": 1536,
+          "offset": 393653248,
+          "shape": [
+            384
+          ],
+          "slots": [
+            35
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "expert_tile_base",
+          "nbytes": 1540,
+          "offset": 393654784,
+          "shape": [
+            385
+          ],
+          "slots": [
+            36
+          ]
+        },
+        {
+          "dtype": "float32",
+          "init": "empty",
+          "name": "input_gs",
+          "nbytes": 1536,
+          "offset": 393656336,
+          "shape": [
+            384
+          ],
+          "slots": [
+            37
+          ]
+        },
+        {
+          "dtype": "float32",
+          "init": "empty",
+          "name": "down_input_scale",
+          "nbytes": 1536,
+          "offset": 393657872,
+          "shape": [
+            384
+          ],
+          "slots": [
+            40
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "pair_head",
+          "nbytes": 4,
+          "offset": 393659408,
+          "shape": [
+            1
+          ],
+          "slots": [
+            10
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "producers_done_count",
+          "nbytes": 4,
+          "offset": 393659424,
+          "shape": [
+            1
+          ],
+          "slots": [
+            11
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "all_work_published",
+          "nbytes": 4,
+          "offset": 393659440,
+          "shape": [
+            1
+          ],
+          "slots": [
+            12
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_head",
+          "nbytes": 4,
+          "offset": 393659456,
+          "shape": [
+            1
+          ],
+          "slots": [
+            13
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_tail",
+          "nbytes": 4,
+          "offset": 393659472,
+          "shape": [
+            1
+          ],
+          "slots": [
+            14
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_ready",
+          "nbytes": 55224,
+          "offset": 393659488,
+          "shape": [
+            13806
+          ],
+          "slots": [
+            15
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_expert",
+          "nbytes": 55224,
+          "offset": 393714720,
+          "shape": [
+            13806
+          ],
+          "slots": [
+            16
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_m_tile",
+          "nbytes": 55224,
+          "offset": 393769952,
+          "shape": [
+            13806
+          ],
+          "slots": [
+            17
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_slice_begin",
+          "nbytes": 55224,
+          "offset": 393825184,
+          "shape": [
+            13806
+          ],
+          "slots": [
+            18
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_slice_count",
+          "nbytes": 55224,
+          "offset": 393880416,
+          "shape": [
+            13806
+          ],
+          "slots": [
+            19
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "task_valid_rows",
+          "nbytes": 55224,
+          "offset": 393935648,
+          "shape": [
+            13806
+          ],
+          "slots": [
+            20
+          ]
+        },
+        {
+          "dtype": "int32",
+          "init": "zeros",
+          "name": "tile_write_count",
+          "nbytes": 3068,
+          "offset": 393990880,
+          "shape": [
+            767
+          ],
+          "slots": [
+            21
+          ]
+        }
+      ],
+      "scratch_pointer_offsets": [
+        null,
+        null,
+        null,
+        252259328,
+        377924608,
+        252259328,
+        377924608,
+        252249088,
+        1536,
+        99840,
+        393659408,
+        393659424,
+        393659440,
+        393659456,
+        393659472,
+        393659488,
+        393714720,
+        393769952,
+        393825184,
+        393880416,
+        393935648,
+        393990880,
+        null,
+        null,
+        null,
+        null,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        393653248,
+        393654784,
+        393656336,
+        null,
+        null,
+        393657872,
+        590848,
+        198144,
+        394496
+      ],
+      "task_capacity": 13806,
+      "tile_m": 64
+    }
+  ]
+}

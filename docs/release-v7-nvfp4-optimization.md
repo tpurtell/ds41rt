@@ -1,5 +1,134 @@
 # V7 NVFP4 optimization investigation
 
+## Published-pair follow-up (source c2ccf16)
+
+The previous image-revision blocker is fixed. `run.sh --config
+/tmp/ds41rt-nvfp4-ab.config --rtx-gpus 1 --dry-run` passes with both roles at
+engine `0107d01e3d35d22b1dbc5de70c4e1a32d32d165f` and SparkInfer
+`2bcbe122bf34d77fecbaf288df2f395b9c09e79e`. Historical status below is retained
+as an investigation record, not the current deployment status.
+
+### New published 1x baseline
+
+Checkpoint: `nvidia/DeepSeek-V4.1-Flash-NVFP4` snapshot
+`3431dde3247c13b5957f682b1e3c6fcae2566079`. One RTX GPU0 plus four Sparks,
+dSpark on, prefill batch2048/capacity4096, concurrency16, prefix entries20.
+Coordinator digest `sha256:d85608bbe14ce655a3bae4fd61655a0020099f056d357a40b8a3ac5115275c5e`;
+expert digest `sha256:aa477ff1c74fe4e815734c1e57d3fad325c5126ddbb324c92fd58f6d02fe856b`.
+
+The launcher preflight was used unchanged; the actual launch uses the user's
+RDMA/capability/security shape. Exact launch commands and configuration are in
+`measurements/nvfp4-v7-ab/ds41rt-nvfp4-baseline-launch.sh` and
+`measurements/nvfp4-v7-ab/ds41rt-nvfp4-ab.config`. No image guard was bypassed.
+
+```sh
+bash /tmp/ds41rt-nvfp4-baseline-launch.sh
+.venv/bin/python scripts/bench-ds41-release-decode.py \
+  --base-url http://127.0.0.1:8000 \
+  --tokenizer /home/tj/.cache/huggingface/hub/models--nvidia--DeepSeek-V4.1-Flash-NVFP4/snapshots/3431dde3247c13b5957f682b1e3c6fcae2566079/tokenizer.json \
+  --label nvfp4-v7-published-1x-m16-shard1 --repeats 3 \
+  --nonce-seed 198473621 --include-counting \
+  --output /tmp/nvfp4-v7-baseline-198473621.json
+```
+
+| Metric (tok/s) | Repeat1 | Repeat2 | Repeat3 | Median |
+| --- | ---: | ---: | ---: | ---: |
+| Weighted decode | 65.820441 | 67.048520 | 64.711036 | 65.820441 |
+| C1 code | 88.320296 | 88.625795 | 89.361311 | 88.625795 |
+| Counting | 111.849745 | 113.749206 | 113.533224 | 113.533224 |
+
+Benchmark exit0, **30/30 samples pass**, complete weighted corpus on all three
+repeats. Raw requests, output, timing and pass/fail are retained in
+`measurements/nvfp4-v7-ab/nvfp4-v7-baseline-198473621.json`; console log adjacent.
+Prefill throughput is not measured by this decode workload.
+
+### Opt-in A/B result: no demonstrated improvement
+
+Both roles were fully rebuilt inside the WIP CUDA containers, serially, using
+`scripts/build-release-artifacts.sh`, SM120 coordinator then SM121 expert.
+Isolated `/wip/nvfp4-ab-source` differs only in its NVFP4 CMake policy:
+`DS41RT_V41_NVFP4_TILE_M` default changed to `auto`, and exporter receives
+`--output-shards 5`. The checked-in CMake/defaults are unchanged. This is an
+export/build-time lever, not a serving environment variable. Exact command
+record: `measurements/nvfp4-v7-ab/experiment-commands.sh`; both full build logs
+and the isolated CMake file are adjacent. Both builds exit0.
+
+Only the native library was copied into each stopped experiment container;
+published daemon, model, launch options, hardware and EXL3 packages remained
+unchanged. Full library rebuild is a qualification caveat versus a binary
+patch of just the NVFP4 symbols. No container was published or retagged.
+
+Native-library SHA256:
+- Coordinator: `ed35a345a65e51859c425ca8b863df22624acf49ac4c99f2327a789611cc0f63`.
+- Expert: `1e4031f49bd01023f80f78a2ad947fa6b936d945bc232b3122dcd9f7d08c935d`.
+
+Retained manifests prove capacities1/16/80/256/1024/4096 resolve to tiles
+16/16/16/16/32/64 for both RTX roles, 16/16/16/16/32/32 for Spark.
+Only direct capacity1 uses shard5; grouped capacities retain shard1. Thus
+this is a combined opt-in policy experiment, not separate attribution of
+sharding and tiles, and decode does not exercise the larger tile ladder.
+
+| Opt-in metric (tok/s) | Repeat1 | Repeat2 | Repeat3 | Median | vs baseline |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Weighted decode | 63.241250 | 64.272685 | 65.388733 | 64.272685 | -2.35% |
+| C1 code | 87.389432 | 88.004415 | 89.918810 | 88.004415 | -0.70% |
+| Counting | 114.107198 | 113.888325 | 113.508252 | 113.888325 | +0.31% |
+
+Successful run seed198473623, repeats3, fresh output
+`/tmp/nvfp4-v7-optin-198473623.json`, exit0, **30/30 pass**. Raw JSON/log
+are committed adjacent to baseline. Nonce seeds differ deliberately; this
+is the same corpus and controls, not token-identical requests or a proof
+of deterministic real-checkpoint token equivalence. Three repeats do not
+establish statistical significance. Counting's tiny gain is not evidence
+of a useful optimization; weighted decode is worse. Keep defaults M16/shard1.
+
+| Reference (tok/s) | Weighted | Counting | C1 code | Prefill |
+| --- | ---: | ---: | ---: | ---: |
+| Historical NVFP4 1x | 66.60 | 113.32 | 88.77 | not measured |
+| New published baseline 1x | 65.82 | 113.53 | 88.63 | not measured |
+| New opt-in 1x | 64.27 | 113.89 | 88.00 | not measured |
+| Historical NVFP4 2x | 80.12 | 152.25 | 109.20 | 7432 |
+| Official MXFP4 1x reference | 92.00 | 161.58 | 130.41 | 7824 |
+| User's latest official 1x check | 93.57 | 166.05 | 134.38 | not supplied |
+
+The opt-in 1x does not beat recorded v7 1x or the official 1x path. The 2x
+row is historical context, not a same-topology A/B; no new 2x or prefill
+measurement was made. No claim that these changes close the W4A8 gap.
+
+### Qualification, failures and operational cleanup
+
+- GPU numerical and launch-contract tests: **18/18 invocations passed**:
+  three roles (RTX backbone, RTX TP2, Spark), capacities1/1024/4096,
+  numerical + launch test each, device0. Exact initial/mutated public-oracle
+  agreement, graph replay and launch guards pass. Logs retained. These are
+  synthetic weights, not exhaustive/random checkpoint-scale qualification.
+- Python suite: **454 passed, 2 skipped**, 27 subtests, existing NumPy warning.
+- Scripts suite: **235 passed, 1 skipped**, 78 subtests. Both suites exit0.
+- Host system Python initially lacked `tokenizers`; `.venv/bin/python`
+  provides0.23.1 and ran both benchmark arms. No host CUDA build attempted.
+- Initial opt-in run seed198473622: **0/30 pass**, exit1, every sample reports
+  `IncompleteStreamError('incomplete SSE: done=False, first=None, finish=None, usage=None')`.
+  `/v1/models` was available but did not establish inference readiness.
+  Shortly afterward an eight-token streaming Hello probe completed through
+  `[DONE]`; rerun used a fresh seed/path without any library/service change.
+  Startup readiness is the likely explanation, not a proven root cause.
+  Failed JSON/log retained; no throughput credited to that attempt.
+- Retained `/wip/build` native libraries differed from published v7, so they
+  were not reused for linking. Full clean builds avoided that provenance risk.
+- All five experiment serving containers are stopped; original v7 native
+  libraries restored. Three remote WIP containers lacked `expert-v7` outputs
+  during initial restoration; copied the original from ostrich instead.
+  RTX memory is back to2MiB/12MiB. Published images and source defaults untouched.
+
+No FP4 wire, prequantized input, or `silu_v41` gate relaxation was implemented:
+per-expert scale semantics and V4.1 rounding remain the concrete correctness
+risks described below. This result does not justify broadening that scope
+without independent numerical work. Official MXFP4/EXL3 serving was not
+rerun; their source policies and installed published images were not changed,
+but unchanged configuration alone is not a new performance-regression test.
+Remaining work is prefill-specific A/B, 2x qualification, isolated lever
+attribution and real-checkpoint equivalence. There is no image-revision blocker.
+
 ## Status and scope
 
 Work starts from DS41RT `90451c8` on `dev`, with the user's existing README,

@@ -1,0 +1,14 @@
+........................................................................ [ 15%]
+.................................................s... [ 27%]
+.................................................................. [ 41%]
+........................................................................ [ 57%]
+........................................................................ [ 73%]
+...................................................................... [ 89%]
+..................................................                       [100%]
+=============================== warnings summary ===============================
+tests/test_upstream_fp4_pack_math.py::test_e4m3_encode_nan_roundtrips_to_nan_with_sign
+  /home/tj/Developer/ds41rt/python/tests/test_upstream_fp4_pack_math.py:205: RuntimeWarning: invalid value encountered in cast
+    sub_byte = sub_quantum.astype(np.int64)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+454 passed, 2 skipped, 1 warning, 27 subtests passed in 5.26s

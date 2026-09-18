@@ -1,0 +1,1972 @@
+{
+  "scope": "Run the nine-category and counting release decode workloads.",
+  "label": "nvfp4-v7-optin-1x-auto-shard5-ready",
+  "base_url": "http://127.0.0.1:8000",
+  "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+  "corpus_sha256": "1972e572fbf9d468cd86c2db5d3d3de60641329edca152fe013a179eb55001de",
+  "tokenizer_sha256": "c90dfa01249db1be4245780a052ede752e1361c612ac6d08e2bdada7d599476b",
+  "repeats": 3,
+  "nonce_seed": 198473623,
+  "selected_cases": [
+    "code",
+    "code-reasoning",
+    "math",
+    "fable",
+    "hello",
+    "topic",
+    "structured-json",
+    "structured-json-schema",
+    "multilingual"
+  ],
+  "include_orchid": false,
+  "include_counting": true,
+  "remote_reference": false,
+  "controls": {
+    "temperature": 0,
+    "thinking": "per-case; default disabled"
+  },
+  "samples": [
+    {
+      "repeat": 1,
+      "case": "code",
+      "category": "code",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "覚 request nonce 198473623-0.\n",
+        "marker": "覚",
+        "first_content_token_id": 55650
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "覚 request nonce 198473623-0.\nWrite a Python function merge_intervals(intervals) that merges overlapping integer intervals. Include type hints, a short docstring, and three assert-based examples. Return only one Python code block."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 320,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775239804011453,
+      "reasoning": "",
+      "first_output_seconds": 0.22999271199660143,
+      "first_content_seconds": 0.22999271199660143,
+      "finish_seconds": 2.67880139999761,
+      "finish_reason": "stop",
+      "observed_decode_tokens_per_second": 87.3894318688859,
+      "usage": {
+        "prompt_tokens": 55,
+        "completion_tokens": 215,
+        "total_tokens": 270,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 55
+      },
+      "content": "```python\nfrom typing import List, Tuple\n\ndef merge_intervals(intervals: List[Tuple[int, int]]) -> List[Tuple[int, int]]:\n    \"\"\"Merge overlapping integer intervals and return sorted disjoint intervals.\"\"\"\n    if not intervals:\n        return []\n    intervals = sorted(intervals)\n    merged = [intervals[0]]\n    for start, end in intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1] = (last_start, max(last_end, end))\n        else:\n            merged.append((start, end))\n    return merged\n\nassert merge_intervals([(1, 3), (2, 6), (8, 10), (15, 18)]) == [(1, 6), (8, 10), (15, 18)]\nassert merge_intervals([(1, 4), (4, 5)]) == [(1, 5)]\nassert merge_intervals([]) == []\n```",
+      "content_sha256": "bc69696b7fbd5be2910ab18064b53eca845f5489e399b583c25a0cbdfed57334",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {
+        "python_structure": {
+          "passed": true,
+          "issues": []
+        }
+      },
+      "objective_checks_passed": true,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "reasoning_present": false,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 1,
+      "case": "code-reasoning",
+      "category": "code-with-reasoning",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "覧 request nonce 198473623-1.\n",
+        "marker": "覧",
+        "first_content_token_id": 63682
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "覧 request nonce 198473623-1.\nWrite a Python function merge_intervals(intervals) that merges overlapping integer intervals. Include type hints, a short docstring, and three assert-based examples. Return only one Python code block."
+          }
+        ],
+        "thinking": {
+          "type": "enabled"
+        },
+        "temperature": 0,
+        "max_tokens": 4096,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        },
+        "reasoning_effort": "high"
+      },
+      "started_ns": 1789775242486527061,
+      "reasoning": "We need answer user. Need comply. They ask: \"覧 request nonce 198473623-1. Write a Python function merge_intervals(intervals) that merges overlapping integer intervals. Include type hints, a short docstring, and three assert-based examples. Return only one Python code block.\"\n\nNeed provide only one Python code block. Need function merge_intervals(intervals). Type hints. Short docstring. Three assert-based examples. Need decide behavior. Intervals likely list of tuples/list pairs [start, end], inclusive? Merge overlapping integer intervals. Need handle overlapping and adjacent? \"overlapping integer intervals\" Usually merge if next.start <= current.end. For integer intervals, if [1,3] and [4,5] are not overlapping (unless adjacent? integer intervals [1,3] and [4,5] no overlap). If [1,3] and [3,5] overlap at 3. So condition start <= current_end. Need sort by start. Return list of tuples? Type hints: def merge_intervals(intervals: list[tuple[int, int]]) -> list[tuple[int, int]]: ... Could accept list[list[int]]? Better use list[tuple[int,int]]. But examples can use tuples. Need maybe handle empty. Include asserts. Return only code block. No extra text. Need ensure code block only. Could include from typing import List? Type hints can use list. Python 3.9+. Fine.\n\nNeed maybe \"integer intervals\" inclusive. Implementation:\n\ndef merge_intervals(intervals: list[tuple[int, int]]) -> list[tuple[int, int]]:\n    \"\"\"Merge overlapping inclusive integer intervals and return sorted merged intervals.\"\"\"\n    if not intervals:\n        return []\n    sorted_intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [sorted_intervals[0]]\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1] = (last_start, max(last_end, end))\n        else:\n            merged.append((start, end))\n    return merged\n\nassert merge_intervals([(1, 3), (2, 6), (8, 10), (15, 18)]) == [(1, 6), (8, 10), (15, 18)]\nassert merge_intervals([(1, 4), (4, 5)]) == [(1, 5)]\nassert merge_intervals([]) == []\n\nNeed maybe if intervals are lists, output tuples? Type hints list[tuple]. If input list of lists, sorted works, merged first is list, then merged[-1] = (last_start, max(...)) tuple. Output mixed? Actually if input list of lists, sorted_intervals[0] is list, merged = [list]. Then if overlap, merged[-1] = tuple. If no overlap, append tuple. Output may have first list if no overlap? Example intervals [[1,2],[3,4]] -> merged = [[1,2]], then append (3,4) -> [[1,2], (3,4)]. Not ideal. Better normalize to tuples at start: sorted_intervals = sorted((tuple(i) for i in intervals), key=lambda x: x[0])? But type hints list[tuple]. If input list[tuple], fine. Could also accept list[list[int]]? Maybe type hint list[tuple[int,int]] only. But robust: intervals: list[tuple[int, int]] -> list[tuple[int, int]]. Use sorted(intervals). If input tuples, output tuples. Good.\n\nNeed \"three assert-based examples\" maybe exactly three asserts. Include them after function. Return only one Python code block. No markdown? They said Return only one Python code block. So final should be code block with python. No extra text. Ensure no non-code. Use ```python ... ```. That's one code block. Good.\n\nNeed maybe include nonce? They mention \"覧 request nonce 198473623-1.\" Maybe irrelevant. Could ignore. But maybe they expect no mention. Fine.\n\nNeed ensure docstring short. Type hints. Three asserts. Could include if __name__? Not needed.\n\nPotential issue: \"overlapping integer intervals\" maybe if intervals are inclusive and [1,2] [2,3] overlap at 2. Condition start <= last_end. Good.\n\nNeed maybe if intervals are not sorted. We sort.\n\nLet's final.",
+      "first_output_seconds": 0.29644261299836216,
+      "first_content_seconds": 14.810316153998428,
+      "finish_seconds": 17.008450825996988,
+      "finish_reason": "stop",
+      "observed_decode_tokens_per_second": 69.2914929936012,
+      "usage": {
+        "prompt_tokens": 81,
+        "completion_tokens": 1159,
+        "total_tokens": 1240,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 81
+      },
+      "content": "```python\ndef merge_intervals(intervals: list[tuple[int, int]]) -> list[tuple[int, int]]:\n    \"\"\"Merge overlapping inclusive integer intervals.\"\"\"\n    if not intervals:\n        return []\n\n    intervals = sorted(intervals, key=lambda interval: interval[0])\n    merged = [intervals[0]]\n\n    for start, end in intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1] = (last_start, max(last_end, end))\n        else:\n            merged.append((start, end))\n\n    return merged\n\n\nassert merge_intervals([(1, 3), (2, 6), (8, 10), (15, 18)]) == [(1, 6), (8, 10), (15, 18)]\nassert merge_intervals([(1, 4), (4, 5)]) == [(1, 5)]\nassert merge_intervals([]) == []\n```",
+      "content_sha256": "37767266751ef7ecebe0dc6e9982b4348325d96f420fa8b45776e06a42a9b5b7",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {
+        "python_structure": {
+          "passed": true,
+          "issues": []
+        }
+      },
+      "objective_checks_passed": true,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "reasoning_present": true,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 1,
+      "case": "math",
+      "category": "reasoning",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "親 request nonce 198473623-2.\n",
+        "marker": "親",
+        "first_content_token_id": 14418
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "親 request nonce 198473623-2.\nA shop discounts a $240 jacket by 25%, then applies 8% sales tax to the discounted price. What is the final price? Show the calculation briefly."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 128,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775259496246964,
+      "reasoning": "",
+      "first_output_seconds": 0.20659410599910188,
+      "first_content_seconds": 0.20659410599910188,
+      "finish_seconds": 1.6270780519989785,
+      "finish_reason": "stop",
+      "observed_decode_tokens_per_second": 78.84636803914272,
+      "usage": {
+        "prompt_tokens": 49,
+        "completion_tokens": 113,
+        "total_tokens": 162,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 49
+      },
+      "content": "Let's calculate step by step.\n\n1. **Discount of 25% on $240**  \n   Discount amount = \\( 240 \\times 0.25 = 60 \\)  \n   Discounted price = \\( 240 - 60 = 180 \\)\n\n2. **Apply 8% sales tax**  \n   Tax = \\( 180 \\times 0.08 = 14.40 \\)  \n   Final price = \\( 180 + 14.40 = 194.40 \\)\n\n**Final price: $194.40**",
+      "content_sha256": "55ba61f28deed28e1af6a455089f9ff2649fc9a63cba733015ddc8bc39db548a",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {
+        "arithmetic_answer_and_calculation": {
+          "passed": true,
+          "issues": []
+        }
+      },
+      "objective_checks_passed": true,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "reasoning_present": false,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 1,
+      "case": "fable",
+      "category": "creative-prose",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "観 request nonce 198473623-3.\n",
+        "marker": "観",
+        "first_content_token_id": 50199
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "観 request nonce 198473623-3.\nWrite a self-contained fable of about 150 words about two parrots who disagree about sharing credit. Output no title or preamble. End with a one-sentence moral."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 256,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775261124732320,
+      "reasoning": "",
+      "first_output_seconds": 0.21400853299564915,
+      "first_content_seconds": 0.21400853299564915,
+      "finish_seconds": 3.7199750910003786,
+      "finish_reason": "stop",
+      "observed_decode_tokens_per_second": 39.361470714808185,
+      "usage": {
+        "prompt_tokens": 50,
+        "completion_tokens": 139,
+        "total_tokens": 189,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 50
+      },
+      "content": "Two parrots, brilliant in emerald and gold, perched on a branch above a fallen mango. One had spotted it; the other had swooped down and carried it up. “We share the prize,” said the first, “for I found it.” “No,” said the second, “I fetched it, so it is mine.” They squabbled as the sun climbed, each certain the other owed him gratitude. A passing monkey listened, then took the mango while they argued. The parrots stared at the empty branch, then at each other. “We lost it together,” they admitted, “by claiming it alone.” Credit sought in vanity is often seized by opportunity.",
+      "content_sha256": "b2236b387787ae74ba681a716efc7558994b3fd6b933c03b4624c3af0fbd7861",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {},
+      "objective_checks_passed": null,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "reasoning_present": false,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 1,
+      "case": "hello",
+      "category": "short-response",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "覺 request nonce 198473623-4.\n",
+        "marker": "覺",
+        "first_content_token_id": 10873
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "覺 request nonce 198473623-4.\nhi"
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 32,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775264845489706,
+      "reasoning": "",
+      "first_output_seconds": 0.11521780399925774,
+      "first_content_seconds": 0.11521780399925774,
+      "finish_seconds": 0.2869369460022426,
+      "finish_reason": "stop",
+      "observed_decode_tokens_per_second": 52.411163339283156,
+      "usage": {
+        "prompt_tokens": 16,
+        "completion_tokens": 10,
+        "total_tokens": 26,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 16
+      },
+      "content": "Hello! How can I help you today?",
+      "content_sha256": "fda564ba3f7a0f028106d468420f674898ed99ac5bf2765ac9586206e39d73c5",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {},
+      "objective_checks_passed": null,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "reasoning_present": false,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 1,
+      "case": "topic",
+      "category": "exposition",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "覽 request nonce 198473623-5.\n",
+        "marker": "覽",
+        "first_content_token_id": 62850
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "覽 request nonce 198473623-5.\nExplain virtual memory to a junior programmer in five concise bullet points, including paging, page faults, and the role of the TLB."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 384,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775265133400494,
+      "reasoning": "",
+      "first_output_seconds": 0.20190320999972755,
+      "first_content_seconds": 0.20190320999972755,
+      "finish_seconds": 5.73774107000645,
+      "finish_reason": "stop",
+      "observed_decode_tokens_per_second": 50.94079832743829,
+      "usage": {
+        "prompt_tokens": 43,
+        "completion_tokens": 283,
+        "total_tokens": 326,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 43
+      },
+      "content": "Here's a concise explanation of virtual memory for a junior programmer:\n\n- **Virtual memory gives each process its own private, contiguous address space**, so programs don't need to know where data physically lives in RAM or worry about other processes' memory. The OS maps virtual addresses to physical ones behind the scenes.\n\n- **Memory is divided into fixed-size blocks called pages** (typically 4 KB). The OS keeps a *page table* per process mapping virtual pages to physical frames, so only the pages actually in use need to be resident in RAM.\n\n- **A page fault occurs when a program accesses a page not currently in RAM.** The CPU traps to the OS, which loads the page from disk (swap) into a free frame, updates the page table, and resumes execution — this is why the first access to data can be dramatically slower.\n\n- **The TLB (Translation Lookaside Buffer) is a small hardware cache of recent virtual→physical translations.** It lets the CPU skip walking the page table on most accesses; a TLB miss means the hardware must consult the page table (or the OS, on some architectures) before proceeding.\n\n- **Practical takeaway:** locality matters. Sequential access and reusing recently touched data keep pages hot in the TLB and RAM, while random access across a large working set causes frequent page faults and TLB misses — the usual cause of mysterious performance cliffs.",
+      "content_sha256": "ea6125f645b34d303d0382766533f11e07cb3dc8a7c2da7e6810ee92217c9c34",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {},
+      "objective_checks_passed": null,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "reasoning_present": false,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 1,
+      "case": "structured-json",
+      "category": "structured-output-natural",
+      "weight": 0.5,
+      "nonce": {
+        "prefix": "觀 request nonce 198473623-6.\n",
+        "marker": "觀",
+        "first_content_token_id": 16809
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "觀 request nonce 198473623-6.\nReturn only a JSON object describing a file edit with keys path, operation, line_start, line_end, and rationale. Use path src/cache.rs, operation replace, lines 41 through 47, and a one-sentence rationale about removing a redundant copy."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 128,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775270872314917,
+      "reasoning": "",
+      "first_output_seconds": 0.2511751189958886,
+      "first_content_seconds": 0.2511751189958886,
+      "finish_seconds": 0.8948287129969685,
+      "finish_reason": "stop",
+      "observed_decode_tokens_per_second": 83.89605915866198,
+      "usage": {
+        "prompt_tokens": 68,
+        "completion_tokens": 55,
+        "total_tokens": 123,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 68
+      },
+      "content": "{\n  \"path\": \"src/cache.rs\",\n  \"operation\": \"replace\",\n  \"line_start\": 41,\n  \"line_end\": 47,\n  \"rationale\": \"Removing a redundant copy simplifies the code and avoids unnecessary duplication.\"\n}",
+      "content_sha256": "fa840538c02bd5afd149071cdeed2dc5b8cb2c27e66a5cbb3f65ff5df0c017b2",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {
+        "json_edit_fields": {
+          "passed": true,
+          "issues": []
+        }
+      },
+      "objective_checks_passed": true,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "reasoning_present": false,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 1,
+      "case": "structured-json-schema",
+      "category": "structured-output-constrained",
+      "weight": 0.5,
+      "nonce": {
+        "prefix": "见 request nonce 198473623-7.\n",
+        "marker": "见",
+        "first_content_token_id": 1724
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "见 request nonce 198473623-7.\nReturn only a JSON object describing a file edit with keys path, operation, line_start, line_end, and rationale. Use path src/cache.rs, operation replace, lines 41 through 47, and a one-sentence rationale about removing a redundant copy."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 128,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        },
+        "response_format": {
+          "type": "json_schema",
+          "json_schema": {
+            "name": "file_edit",
+            "strict": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "operation": {
+                  "type": "string"
+                },
+                "line_start": {
+                  "type": "integer"
+                },
+                "line_end": {
+                  "type": "integer"
+                },
+                "rationale": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "operation",
+                "line_start",
+                "line_end",
+                "rationale"
+              ],
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "started_ns": 1789775271768793608,
+      "reasoning": "",
+      "first_output_seconds": 0.22771290800301358,
+      "first_content_seconds": 0.22771290800301358,
+      "finish_seconds": 0.8598663079974358,
+      "finish_reason": "stop",
+      "observed_decode_tokens_per_second": 85.42230414402022,
+      "usage": {
+        "prompt_tokens": 68,
+        "completion_tokens": 55,
+        "total_tokens": 123,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 68
+      },
+      "content": "{\n  \"path\": \"src/cache.rs\",\n  \"operation\": \"replace\",\n  \"line_start\": 41,\n  \"line_end\": 47,\n  \"rationale\": \"Removing a redundant copy simplifies the code and avoids unnecessary duplication.\"\n}",
+      "content_sha256": "fa840538c02bd5afd149071cdeed2dc5b8cb2c27e66a5cbb3f65ff5df0c017b2",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {
+        "json_edit_fields": {
+          "passed": true,
+          "issues": []
+        }
+      },
+      "objective_checks_passed": true,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "reasoning_present": false,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 1,
+      "case": "multilingual",
+      "category": "multilingual",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "观 request nonce 198473623-8.\n",
+        "marker": "观",
+        "first_content_token_id": 2202
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "观 request nonce 198473623-8.\n請用繁體中文，以四個簡短條列解釋什麼是寫入時複製（copy-on-write），並包含一個行程 fork 後修改記憶體頁面的例子。"
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 384,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775272629811045,
+      "reasoning": "",
+      "first_output_seconds": 0.2121301119987038,
+      "first_content_seconds": 0.2121301119987038,
+      "finish_seconds": 4.377074040996376,
+      "finish_reason": "stop",
+      "observed_decode_tokens_per_second": 53.06193883219586,
+      "usage": {
+        "prompt_tokens": 54,
+        "completion_tokens": 222,
+        "total_tokens": 276,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 54
+      },
+      "content": "- **寫入時複製（Copy-on-Write, COW）**：一種資源管理策略，當多個行程共享同一份資料時，不立即複製，而是等到某個行程真的要「寫入」時才為它建立私有副本。\n- **共享唯讀、寫時才複製**：核心好處是節省記憶體與複製成本；只要大家都只讀，就繼續共用同一份實體頁面。\n- **以記憶體頁為單位**：作業系統通常用頁表追蹤，將被寫入的頁標記為私有，並把該頁複製一份給寫入者，其他頁仍共享。\n- **fork 例子**：行程 A 呼叫 `fork()` 產生子行程 B 後，A 與 B 起初共享同一批實體頁面；若 B 修改其中某一頁（例如寫入全域變數），核心僅複製那一頁給 B，A 仍保有原頁，其餘未寫入的頁繼續共享。",
+      "content_sha256": "674ebab086ef414880acc75cd9f0ce02e7998f122cc2bf3545b3f2f762b258fc",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {},
+      "objective_checks_passed": null,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "reasoning_present": false,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 1,
+      "case": "counting",
+      "category": "low-entropy",
+      "weight": 0.0,
+      "nonce": null,
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Count from 1 to 200, separated by commas. Output only the sequence."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 640,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775277008483566,
+      "reasoning": "",
+      "first_output_seconds": 0.12358517200482311,
+      "first_content_seconds": 0.12358517200482311,
+      "finish_seconds": 5.364271197002381,
+      "finish_reason": "stop",
+      "observed_decode_tokens_per_second": 114.107198398759,
+      "usage": {
+        "prompt_tokens": 21,
+        "completion_tokens": 599,
+        "total_tokens": 620,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 21
+      },
+      "content": "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200",
+      "content_sha256": "d92f809bf43027881e5c4f50091f59982e572557f84c2cb6464304bf028ced0b",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "quality_contract_passed": true,
+      "quality_contract_issues": [],
+      "bounded_static_prefix_hit": true,
+      "reasoning_present": false,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 2,
+      "case": "code",
+      "category": "code",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "觅 request nonce 198473623-10.\n",
+        "marker": "觅",
+        "first_content_token_id": 51312
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "觅 request nonce 198473623-10.\nWrite a Python function merge_intervals(intervals) that merges overlapping integer intervals. Include type hints, a short docstring, and three assert-based examples. Return only one Python code block."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 320,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775282374890561,
+      "reasoning": "",
+      "first_output_seconds": 0.2064860540049267,
+      "first_content_seconds": 0.2064860540049267,
+      "finish_seconds": 2.63818223799899,
+      "finish_reason": "stop",
+      "observed_decode_tokens_per_second": 88.00441494648595,
+      "usage": {
+        "prompt_tokens": 55,
+        "completion_tokens": 215,
+        "total_tokens": 270,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 55
+      },
+      "content": "```python\nfrom typing import List, Tuple\n\ndef merge_intervals(intervals: List[Tuple[int, int]]) -> List[Tuple[int, int]]:\n    \"\"\"Merge overlapping integer intervals and return sorted disjoint intervals.\"\"\"\n    if not intervals:\n        return []\n    intervals = sorted(intervals)\n    merged = [intervals[0]]\n    for start, end in intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1] = (last_start, max(last_end, end))\n        else:\n            merged.append((start, end))\n    return merged\n\nassert merge_intervals([(1, 3), (2, 6), (8, 10), (15, 18)]) == [(1, 6), (8, 10), (15, 18)]\nassert merge_intervals([(1, 4), (4, 5)]) == [(1, 5)]\nassert merge_intervals([]) == []\n```",
+      "content_sha256": "bc69696b7fbd5be2910ab18064b53eca845f5489e399b583c25a0cbdfed57334",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {
+        "python_structure": {
+          "passed": true,
+          "issues": []
+        }
+      },
+      "objective_checks_passed": true,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "reasoning_present": false,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 2,
+      "case": "code-reasoning",
+      "category": "code-with-reasoning",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "视 request nonce 198473623-11.\n",
+        "marker": "视",
+        "first_content_token_id": 2427
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "视 request nonce 198473623-11.\nWrite a Python function merge_intervals(intervals) that merges overlapping integer intervals. Include type hints, a short docstring, and three assert-based examples. Return only one Python code block."
+          }
+        ],
+        "thinking": {
+          "type": "enabled"
+        },
+        "temperature": 0,
+        "max_tokens": 4096,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        },
+        "reasoning_effort": "high"
+      },
+      "started_ns": 1789775285015264561,
+      "reasoning": "We need answer. Need comply. User asks: \"视 request nonce 198473623-11. Write a Python function merge_intervals(intervals) that merges overlapping integer intervals. Include type hints, a short docstring, and three assert-based examples. Return only one Python code block.\"\n\nNeed provide only one Python code block. Need function merge_intervals(intervals). Type hints. Docstring. Three assert-based examples. Need decide behavior: intervals list of tuples? \"integer intervals\" likely list[tuple[int,int]] inclusive? Merge overlapping. Need handle empty. Sort by start. Merge if next_start <= current_end? For integer intervals, overlapping if start <= end? If intervals [1,3], [3,5] overlap at 3, merge to [1,5]. If adjacent [1,2], [3,4] not overlap. If inclusive, [1,2] and [2,3] overlap at 2. Use <=. If half-open? Usually intervals [start,end] inclusive. We'll state inclusive. Type hints: def merge_intervals(intervals: list[tuple[int, int]]) -> list[tuple[int, int]]:.\n\nNeed three assert-based examples. Could include asserts after function. Return only one code block. Ensure no extra text. Need maybe include if not intervals return [].\n\nLet's craft:\n\nfrom typing import List, Tuple? Type hints can use list[tuple[int,int]] Python 3.9+. Fine.\n\ndef merge_intervals(intervals: list[tuple[int, int]]) -> list[tuple[int, int]]:\n    \"\"\"Merge overlapping inclusive integer intervals.\n\n    Args:\n        intervals: A list of (start, end) integer intervals.\n\n    Returns:\n        A new list of merged intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n    sorted_intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [sorted_intervals[0]]\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1] = (last_start, max(last_end, end))\n        else:\n            merged.append((start, end))\n    return merged\n\nassert merge_intervals([(1, 3), (2, 6), (8, 10), (15, 18)]) == [(1, 6), (8, 10), (15, 18)]\nassert merge_intervals([(1, 4), (4, 5)]) == [(1, 5)]\nassert merge_intervals([]) == []\n\nNeed maybe examples include non-overlap. That's three. Good.\n\nNeed \"Return only one Python code block.\" So final only code block. Ensure no markdown? They said one Python code block. Use ```python ...```. That's okay. No extra text.",
+      "first_output_seconds": 0.2877047380025033,
+      "first_content_seconds": 9.0269221119961,
+      "finish_seconds": 11.243195299997751,
+      "finish_reason": "stop",
+      "observed_decode_tokens_per_second": 75.76109853805012,
+      "usage": {
+        "prompt_tokens": 81,
+        "completion_tokens": 831,
+        "total_tokens": 912,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 81
+      },
+      "content": "```python\ndef merge_intervals(intervals: list[tuple[int, int]]) -> list[tuple[int, int]]:\n    \"\"\"Merge overlapping inclusive integer intervals and return sorted merged intervals.\"\"\"\n    if not intervals:\n        return []\n\n    sorted_intervals = sorted(intervals, key=lambda interval: interval[0])\n    merged = [sorted_intervals[0]]\n\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1] = (last_start, max(last_end, end))\n        else:\n            merged.append((start, end))\n\n    return merged\n\n\nassert merge_intervals([(1, 3), (2, 6), (8, 10), (15, 18)]) == [(1, 6), (8, 10), (15, 18)]\nassert merge_intervals([(1, 4), (4, 5)]) == [(1, 5)]\nassert merge_intervals([]) == []\n```",
+      "content_sha256": "cda6616d72e87011604a855dd4b4ac28feea787f31e34c729b323ece8587c689",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {
+        "python_structure": {
+          "passed": true,
+          "issues": []
+        }
+      },
+      "objective_checks_passed": true,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "reasoning_present": true,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 2,
+      "case": "math",
+      "category": "reasoning",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "览 request nonce 198473623-12.\n",
+        "marker": "览",
+        "first_content_token_id": 10127
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "览 request nonce 198473623-12.\nA shop discounts a $240 jacket by 25%, then applies 8% sales tax to the discounted price. What is the final price? Show the calculation briefly."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 128,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775296260670391,
+      "reasoning": "",
+      "first_output_seconds": 0.195136647002073,
+      "first_content_seconds": 0.195136647002073,
+      "finish_seconds": 1.2292340190033428,
+      "finish_reason": "stop",
+      "observed_decode_tokens_per_second": 78.32918078424488,
+      "usage": {
+        "prompt_tokens": 49,
+        "completion_tokens": 82,
+        "total_tokens": 131,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 49
+      },
+      "content": "Nonce: 198473623-12\n\nDiscount:  \n\\(240 \\times 25\\% = 60\\)  \nDiscounted price: \\(240 - 60 = 180\\)\n\nSales tax:  \n\\(180 \\times 8\\% = 14.40\\)\n\nFinal price:  \n\\(180 + 14.40 = 194.40\\)\n\n**Final price: $194.40**",
+      "content_sha256": "1b3747c36806bd8e14fff630284844f097a7772c9620508ff4a6be92ebffe8b5",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {
+        "arithmetic_answer_and_calculation": {
+          "passed": true,
+          "issues": []
+        }
+      },
+      "objective_checks_passed": true,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "reasoning_present": false,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 2,
+      "case": "fable",
+      "category": "creative-prose",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "觉 request nonce 198473623-13.\n",
+        "marker": "觉",
+        "first_content_token_id": 2330
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "觉 request nonce 198473623-13.\nWrite a self-contained fable of about 150 words about two parrots who disagree about sharing credit. Output no title or preamble. End with a one-sentence moral."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 256,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775297491827107,
+      "reasoning": "",
+      "first_output_seconds": 0.2038220620015636,
+      "first_content_seconds": 0.2038220620015636,
+      "finish_seconds": 4.2149378929971135,
+      "finish_reason": "stop",
+      "observed_decode_tokens_per_second": 39.6398425523744,
+      "usage": {
+        "prompt_tokens": 50,
+        "completion_tokens": 160,
+        "total_tokens": 210,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 50
+      },
+      "content": "Two parrots, Rico and Mango, found a pile of gleaming mango seeds. Rico, older and louder, declared he had spotted them first, so the glory was his alone. Mango, who had actually scratched them from beneath a leaf, squawked that discovery meant nothing without the digging. They argued for hours, feathers ruffled, while a line of ants quietly carried every seed away. When the parrots finally looked down, the pile was gone. Rico blamed Mango’s stubbornness; Mango blamed Rico’s pride. Neither noticed the ants, who had shared the work and the feast without a single tweet of complaint. The two flew off hungry, still certain each deserved the larger half of nothing. Credit claimed in vanity is a meal shared by no one.",
+      "content_sha256": "c4ea4c0d29e4c55653397d0a8cade35b5d71848789e2b535ae202139e099408c",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {},
+      "objective_checks_passed": null,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "reasoning_present": false,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 2,
+      "case": "hello",
+      "category": "short-response",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "觑 request nonce 198473623-14.\n",
+        "marker": "觑",
+        "first_content_token_id": 77740
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "觑 request nonce 198473623-14.\nhi"
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 32,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775301707973676,
+      "reasoning": "",
+      "first_output_seconds": 0.09609325700148474,
+      "first_content_seconds": 0.09609325700148474,
+      "finish_seconds": 0.2559826900032931,
+      "finish_reason": "stop",
+      "observed_decode_tokens_per_second": 56.28889809058369,
+      "usage": {
+        "prompt_tokens": 16,
+        "completion_tokens": 10,
+        "total_tokens": 26,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 16
+      },
+      "content": "Hello! How can I help you today?",
+      "content_sha256": "fda564ba3f7a0f028106d468420f674898ed99ac5bf2765ac9586206e39d73c5",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {},
+      "objective_checks_passed": null,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "reasoning_present": false,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 2,
+      "case": "topic",
+      "category": "exposition",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "角 request nonce 198473623-15.\n",
+        "marker": "角",
+        "first_content_token_id": 2877
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "角 request nonce 198473623-15.\nExplain virtual memory to a junior programmer in five concise bullet points, including paging, page faults, and the role of the TLB."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 384,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775301965582249,
+      "reasoning": "",
+      "first_output_seconds": 0.19315531000029296,
+      "first_content_seconds": 0.19315531000029296,
+      "finish_seconds": 5.442021832001046,
+      "finish_reason": "stop",
+      "observed_decode_tokens_per_second": 50.296573344633074,
+      "usage": {
+        "prompt_tokens": 43,
+        "completion_tokens": 265,
+        "total_tokens": 308,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 43
+      },
+      "content": "Here's a concise explanation of virtual memory for a junior programmer:\n\n- **Virtual memory gives each process its own private, contiguous address space**, so programs don't need to know where data physically lives in RAM or worry about other processes' memory. The OS maps virtual addresses to physical ones behind the scenes.\n\n- **Memory is divided into fixed-size blocks called pages** (typically 4 KB). The OS keeps a page table per process mapping virtual pages to physical frames, so only the pages actually in use need to occupy RAM.\n\n- **A page fault occurs when a program accesses a page not currently in RAM.** The CPU traps to the OS, which loads the page from disk (swap) into a free frame, updates the page table, and resumes the program—this is why the first access to data can be slow.\n\n- **The TLB (Translation Lookaside Buffer) is a small hardware cache of recent virtual-to-physical translations.** It lets the CPU skip walking the page table on most accesses, which is essential because a page-table walk on every memory reference would be far too slow.\n\n- **The net effect:** programs can use more memory than physically installed, processes are isolated from each other, and the OS can swap idle pages to disk—all while the TLB keeps the common case fast.",
+      "content_sha256": "773bfea1840112ff3399f2a61c31b728828576b17297cd097e0300b453cd0ce3",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {},
+      "objective_checks_passed": null,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "reasoning_present": false,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 2,
+      "case": "structured-json",
+      "category": "structured-output-natural",
+      "weight": 0.5,
+      "nonce": {
+        "prefix": "解 request nonce 198473623-16.\n",
+        "marker": "解",
+        "first_content_token_id": 1335
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "解 request nonce 198473623-16.\nReturn only a JSON object describing a file edit with keys path, operation, line_start, line_end, and rationale. Use path src/cache.rs, operation replace, lines 41 through 47, and a one-sentence rationale about removing a redundant copy."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 128,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775307408978525,
+      "reasoning": "",
+      "first_output_seconds": 0.23544002500420902,
+      "first_content_seconds": 0.23544002500420902,
+      "finish_seconds": 0.9029576829998405,
+      "finish_reason": "stop",
+      "observed_decode_tokens_per_second": 80.89673636821365,
+      "usage": {
+        "prompt_tokens": 68,
+        "completion_tokens": 55,
+        "total_tokens": 123,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 68
+      },
+      "content": "{\n  \"path\": \"src/cache.rs\",\n  \"operation\": \"replace\",\n  \"line_start\": 41,\n  \"line_end\": 47,\n  \"rationale\": \"Removing a redundant copy simplifies the code and avoids duplicated data.\"\n}",
+      "content_sha256": "1d4d4e0378cdcc422eee33fefb81825b61893142025be47924d6dbb54fdd32da",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {
+        "json_edit_fields": {
+          "passed": true,
+          "issues": []
+        }
+      },
+      "objective_checks_passed": true,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "reasoning_present": false,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 2,
+      "case": "structured-json-schema",
+      "category": "structured-output-constrained",
+      "weight": 0.5,
+      "nonce": {
+        "prefix": "触 request nonce 198473623-17.\n",
+        "marker": "触",
+        "first_content_token_id": 6619
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "触 request nonce 198473623-17.\nReturn only a JSON object describing a file edit with keys path, operation, line_start, line_end, and rationale. Use path src/cache.rs, operation replace, lines 41 through 47, and a one-sentence rationale about removing a redundant copy."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 128,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        },
+        "response_format": {
+          "type": "json_schema",
+          "json_schema": {
+            "name": "file_edit",
+            "strict": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "operation": {
+                  "type": "string"
+                },
+                "line_start": {
+                  "type": "integer"
+                },
+                "line_end": {
+                  "type": "integer"
+                },
+                "rationale": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "operation",
+                "line_start",
+                "line_end",
+                "rationale"
+              ],
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "started_ns": 1789775308313807279,
+      "reasoning": "",
+      "first_output_seconds": 0.23026592200039886,
+      "first_content_seconds": 0.23026592200039886,
+      "finish_seconds": 0.8570787899952848,
+      "finish_reason": "stop",
+      "observed_decode_tokens_per_second": 86.15011394507711,
+      "usage": {
+        "prompt_tokens": 68,
+        "completion_tokens": 55,
+        "total_tokens": 123,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 68
+      },
+      "content": "{\n  \"path\": \"src/cache.rs\",\n  \"operation\": \"replace\",\n  \"line_start\": 41,\n  \"line_end\": 47,\n  \"rationale\": \"Removing a redundant copy simplifies the code and avoids unnecessary duplication.\"\n}",
+      "content_sha256": "fa840538c02bd5afd149071cdeed2dc5b8cb2c27e66a5cbb3f65ff5df0c017b2",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {
+        "json_edit_fields": {
+          "passed": true,
+          "issues": []
+        }
+      },
+      "objective_checks_passed": true,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "reasoning_present": false,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 2,
+      "case": "multilingual",
+      "category": "multilingual",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "觸 request nonce 198473623-18.\n",
+        "marker": "觸",
+        "first_content_token_id": 42053
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "觸 request nonce 198473623-18.\n請用繁體中文，以四個簡短條列解釋什麼是寫入時複製（copy-on-write），並包含一個行程 fork 後修改記憶體頁面的例子。"
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 384,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775309172629959,
+      "reasoning": "",
+      "first_output_seconds": 0.19315411799470894,
+      "first_content_seconds": 0.19315411799470894,
+      "finish_seconds": 3.4926871930001653,
+      "finish_reason": "stop",
+      "observed_decode_tokens_per_second": 53.03780747817193,
+      "usage": {
+        "prompt_tokens": 54,
+        "completion_tokens": 176,
+        "total_tokens": 230,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 54
+      },
+      "content": "- **定義**：寫入時複製（copy-on-write, COW）是一種資源管理策略，當多個行程共享同一份資料時，只有某行程嘗試**寫入**才會複製該資料，讀取則繼續共享。\n- **目的**：避免不必要的複製，節省記憶體與時間，常用於作業系統的行程 fork、虛擬記憶體與快照機制。\n- **行程 fork 例子**：父行程 fork 出子行程後，兩者最初共享同一批實體記憶頁面；若子行程修改某一頁，核心會為子行程複製該頁，父行程仍保有原頁。\n- **結果**：未修改的頁面持續共享，已修改的頁面各自獨立，因此隔離了寫入、降低整體記憶體用量。",
+      "content_sha256": "40c1fd448cee2d17ea4a1b1afe7ada6a412ff82c8aa5cc6032a853db9fe8167a",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {},
+      "objective_checks_passed": null,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "reasoning_present": false,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 2,
+      "case": "counting",
+      "category": "low-entropy",
+      "weight": 0.0,
+      "nonce": null,
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Count from 1 to 200, separated by commas. Output only the sequence."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 640,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775312667088872,
+      "reasoning": "",
+      "first_output_seconds": 0.0010297959961462766,
+      "first_content_seconds": 0.0010297959961462766,
+      "finish_seconds": 5.251787499000784,
+      "finish_reason": "stop",
+      "observed_decode_tokens_per_second": 113.88832504265181,
+      "usage": {
+        "prompt_tokens": 21,
+        "completion_tokens": 599,
+        "total_tokens": 620,
+        "prompt_tokens_details": {
+          "cached_tokens": 21
+        },
+        "prompt_cache_hit_tokens": 21,
+        "prompt_cache_miss_tokens": 0
+      },
+      "content": "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200",
+      "content_sha256": "d92f809bf43027881e5c4f50091f59982e572557f84c2cb6464304bf028ced0b",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 21,
+      "quality_contract_passed": true,
+      "quality_contract_issues": [],
+      "bounded_static_prefix_hit": true,
+      "reasoning_present": false,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 3,
+      "case": "code",
+      "category": "code",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "訂 request nonce 198473623-20.\n",
+        "marker": "訂",
+        "first_content_token_id": 44428
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "訂 request nonce 198473623-20.\nWrite a Python function merge_intervals(intervals) that merges overlapping integer intervals. Include type hints, a short docstring, and three assert-based examples. Return only one Python code block."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 320,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775317921143157,
+      "reasoning": "",
+      "first_output_seconds": 0.20778432399674784,
+      "first_content_seconds": 0.20778432399674784,
+      "finish_seconds": 2.587709054998413,
+      "finish_reason": "stop",
+      "observed_decode_tokens_per_second": 89.91881012553344,
+      "usage": {
+        "prompt_tokens": 55,
+        "completion_tokens": 215,
+        "total_tokens": 270,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 55
+      },
+      "content": "```python\nfrom typing import List, Tuple\n\ndef merge_intervals(intervals: List[Tuple[int, int]]) -> List[Tuple[int, int]]:\n    \"\"\"Merge overlapping integer intervals and return sorted disjoint intervals.\"\"\"\n    if not intervals:\n        return []\n    intervals = sorted(intervals)\n    merged = [intervals[0]]\n    for start, end in intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1] = (last_start, max(last_end, end))\n        else:\n            merged.append((start, end))\n    return merged\n\nassert merge_intervals([(1, 3), (2, 6), (8, 10), (15, 18)]) == [(1, 6), (8, 10), (15, 18)]\nassert merge_intervals([(1, 4), (4, 5)]) == [(1, 5)]\nassert merge_intervals([]) == []\n```",
+      "content_sha256": "bc69696b7fbd5be2910ab18064b53eca845f5489e399b583c25a0cbdfed57334",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {
+        "python_structure": {
+          "passed": true,
+          "issues": []
+        }
+      },
+      "objective_checks_passed": true,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "reasoning_present": false,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 3,
+      "case": "code-reasoning",
+      "category": "code-with-reasoning",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "計 request nonce 198473623-21.\n",
+        "marker": "計",
+        "first_content_token_id": 9925
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "計 request nonce 198473623-21.\nWrite a Python function merge_intervals(intervals) that merges overlapping integer intervals. Include type hints, a short docstring, and three assert-based examples. Return only one Python code block."
+          }
+        ],
+        "thinking": {
+          "type": "enabled"
+        },
+        "temperature": 0,
+        "max_tokens": 4096,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        },
+        "reasoning_effort": "high"
+      },
+      "started_ns": 1789775320511156963,
+      "reasoning": "We need answer. Need comply. User asks: \"計 request nonce 198473623-21. Write a Python function merge_intervals(intervals) that merges overlapping integer intervals. Include type hints, a short docstring, and three assert-based examples. Return only one Python code block.\"\n\nNeed provide only one Python code block. Need include function merge_intervals with type hints, docstring, three assert-based examples. Need maybe nonce irrelevant? They included \"計 request nonce...\" likely prompt injection? We just answer. Need only code block. Need decide semantics: intervals list of tuples? \"integer intervals\" likely list[tuple[int,int]] inclusive? Merge overlapping. Need handle touching? Overlapping means if next.start <= current.end? Usually merge if start <= current_end (overlap or touch). For integer intervals, if [1,3] and [4,5] not overlapping (3<4). If [1,3] and [3,5] overlap at 3, merge. Need sort by start. Return list of tuples. Type hints: def merge_intervals(intervals: list[tuple[int, int]]) -> list[tuple[int, int]]:.\n\nDocstring short. Three assert-based examples. Need ensure examples pass. Could include asserts after function. Return only one Python code block. Need no extra text. Let's craft.\n\nPotential code:\n\nfrom typing import List, Tuple\n\ndef merge_intervals(intervals: list[tuple[int, int]]) -> list[tuple[int, int]]:\n    \"\"\"Merge overlapping integer intervals and return sorted disjoint intervals.\"\"\"\n    if not intervals:\n        return []\n    sorted_intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [sorted_intervals[0]]\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1] = (last_start, max(last_end, end))\n        else:\n            merged.append((start, end))\n    return merged\n\nassert merge_intervals([(1, 3), (2, 6), (8, 10), (15, 18)]) == [(1, 6), (8, 10), (15, 18)]\nassert merge_intervals([(1, 4), (4, 5)]) == [(1, 5)]\nassert merge_intervals([]) == []\n\nNeed maybe type hints use List/Tuple? Python 3.9 list[tuple]. Fine. \"Return only one Python code block.\" So final should be code block only. Ensure no markdown outside. Use ```python ...```. That's one code block. Good.\n\nNeed consider if intervals can be unsorted. Yes.\n\nNeed maybe \"integer intervals\" inclusive. Good.\n\nNeed maybe \"overlapping\" not touching? If [1,4] and [4,5] overlap at point 4. If intervals are integer, [1,4] and [5,6] not. Good.\n\nNeed maybe if intervals are lists not tuples? Type hints tuple. Could accept list? But examples tuples. Fine.\n\nNeed maybe include from typing import List, Tuple? If using list[tuple] no import. But for compatibility maybe use List, Tuple. Type hints. Let's use from typing import List, Tuple. Then def merge_intervals(intervals: List[Tuple[int, int]]) -> List[Tuple[int, int]]:.\n\nNeed docstring. Three assert-based examples. Good.\n\nFinal only code block.",
+      "first_output_seconds": 0.2913663279978209,
+      "first_content_seconds": 11.015705896999862,
+      "finish_seconds": 13.227484031995118,
+      "finish_reason": "stop",
+      "observed_decode_tokens_per_second": 74.75194815993319,
+      "usage": {
+        "prompt_tokens": 81,
+        "completion_tokens": 968,
+        "total_tokens": 1049,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 81
+      },
+      "content": "```python\nfrom typing import List, Tuple\n\n\ndef merge_intervals(intervals: List[Tuple[int, int]]) -> List[Tuple[int, int]]:\n    \"\"\"Merge overlapping integer intervals and return sorted disjoint intervals.\"\"\"\n    if not intervals:\n        return []\n\n    sorted_intervals = sorted(intervals, key=lambda interval: interval[0])\n    merged = [sorted_intervals[0]]\n\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1] = (last_start, max(last_end, end))\n        else:\n            merged.append((start, end))\n\n    return merged\n\n\nassert merge_intervals([(1, 3), (2, 6), (8, 10), (15, 18)]) == [(1, 6), (8, 10), (15, 18)]\nassert merge_intervals([(1, 4), (4, 5)]) == [(1, 5)]\nassert merge_intervals([]) == []\n```",
+      "content_sha256": "78529eaa39975a2c00a532067bbd8ed507d8007ac669057f7fcfff1ea2b28d7a",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {
+        "python_structure": {
+          "passed": true,
+          "issues": []
+        }
+      },
+      "objective_checks_passed": true,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "reasoning_present": true,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 3,
+      "case": "math",
+      "category": "reasoning",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "訊 request nonce 198473623-22.\n",
+        "marker": "訊",
+        "first_content_token_id": 29637
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "訊 request nonce 198473623-22.\nA shop discounts a $240 jacket by 25%, then applies 8% sales tax to the discounted price. What is the final price? Show the calculation briefly."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 128,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775333740985046,
+      "reasoning": "",
+      "first_output_seconds": 0.19718102700426243,
+      "first_content_seconds": 0.19718102700426243,
+      "finish_seconds": 0.8571409639989724,
+      "finish_reason": "stop",
+      "observed_decode_tokens_per_second": 80.30790511519312,
+      "usage": {
+        "prompt_tokens": 49,
+        "completion_tokens": 54,
+        "total_tokens": 103,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 49
+      },
+      "content": "Discount: 25% of $240 = $60, so discounted price = $180.  \nSales tax: 8% of $180 = $14.40.  \nFinal price = $180 + $14.40 = **$194.40**.",
+      "content_sha256": "8e5577b44f41b348dce1dd25f19604e61ba018b74c6ae194c62fe4676c64b6a2",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {
+        "arithmetic_answer_and_calculation": {
+          "passed": true,
+          "issues": []
+        }
+      },
+      "objective_checks_passed": true,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "reasoning_present": false,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 3,
+      "case": "fable",
+      "category": "creative-prose",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "討 request nonce 198473623-23.\n",
+        "marker": "討",
+        "first_content_token_id": 29983
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "討 request nonce 198473623-23.\nWrite a self-contained fable of about 150 words about two parrots who disagree about sharing credit. Output no title or preamble. End with a one-sentence moral."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 256,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775334600565384,
+      "reasoning": "",
+      "first_output_seconds": 0.2035509049965185,
+      "first_content_seconds": 0.2035509049965185,
+      "finish_seconds": 3.2934335120007745,
+      "finish_reason": "stop",
+      "observed_decode_tokens_per_second": 39.48370068281755,
+      "usage": {
+        "prompt_tokens": 50,
+        "completion_tokens": 123,
+        "total_tokens": 173,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 50
+      },
+      "content": "Two parrots, Ruby and Jade, found a pile of seeds. Ruby cracked them open, while Jade kept watch. “We share the credit,” Ruby said. “Half each.” Jade squawked. “You ate the easy work! I guarded us from hawks. My vigilance earned the feast.” They argued as the sun sank, each certain the other owed more. Neither noticed the shadow of a cat until it was too late. They flew off, still bickering, seeds scattered behind. The cat ate well that night. Moral: Those who fight over credit often lose the prize entirely.",
+      "content_sha256": "deaed0b6308df52d8692574058e954894534005222bed688f6414c3eab64ac24",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {},
+      "objective_checks_passed": null,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "reasoning_present": false,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 3,
+      "case": "hello",
+      "category": "short-response",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "訓 request nonce 198473623-24.\n",
+        "marker": "訓",
+        "first_content_token_id": 33275
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "訓 request nonce 198473623-24.\nhi"
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 32,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775337896770579,
+      "reasoning": "",
+      "first_output_seconds": 0.09845739900629269,
+      "first_content_seconds": 0.09845739900629269,
+      "finish_seconds": 0.2036806800024351,
+      "finish_reason": "stop",
+      "observed_decode_tokens_per_second": 47.51800126992148,
+      "usage": {
+        "prompt_tokens": 16,
+        "completion_tokens": 6,
+        "total_tokens": 22,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 16
+      },
+      "content": "198473623-24",
+      "content_sha256": "10a260597fb9f900f9992283642bebc95c254aabc03954297903fd64182e0c0a",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {},
+      "objective_checks_passed": null,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "reasoning_present": false,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 3,
+      "case": "topic",
+      "category": "exposition",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "託 request nonce 198473623-25.\n",
+        "marker": "託",
+        "first_content_token_id": 70726
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "託 request nonce 198473623-25.\nExplain virtual memory to a junior programmer in five concise bullet points, including paging, page faults, and the role of the TLB."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 384,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775338102536041,
+      "reasoning": "",
+      "first_output_seconds": 0.18315298699599225,
+      "first_content_seconds": 0.18315298699599225,
+      "finish_seconds": 5.468776269997761,
+      "finish_reason": "stop",
+      "observed_decode_tokens_per_second": 50.70357565244407,
+      "usage": {
+        "prompt_tokens": 43,
+        "completion_tokens": 269,
+        "total_tokens": 312,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 43
+      },
+      "content": "Here's a concise explanation of virtual memory:\n\n- **Virtual vs. physical addresses**: Each program sees a flat, private address space (virtual addresses). The OS and CPU translate these to real RAM locations (physical addresses) via a per-process page table, so programs never touch raw hardware addresses directly.\n\n- **Paging**: Memory is split into fixed-size blocks — *pages* (virtual) and *frames* (physical), typically 4 KB. The page table maps each virtual page to a physical frame, letting the OS allocate memory lazily and non-contiguously.\n\n- **Page faults**: When a program accesses a page not currently in RAM, the CPU raises a page fault. The OS then loads the page from disk (swap) into a free frame, updates the page table, and resumes execution — the program never knows it happened.\n\n- **TLB (Translation Lookaside Buffer)**: A small, fast hardware cache inside the CPU holding recent virtual→physical translations. It avoids walking the page table on every access; a TLB miss falls back to the (slower) page table lookup.\n\n- **Why it matters**: Virtual memory gives each process isolation, lets programs use more memory than physically installed (via swap), and enables sharing and protection — all while the TLB keeps translation fast enough to be practical.",
+      "content_sha256": "81cfd3078b64653b5ab9a91002d81ac240043cc70349239534e1f7b16c53e339",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {},
+      "objective_checks_passed": null,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "reasoning_present": false,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 3,
+      "case": "structured-json",
+      "category": "structured-output-natural",
+      "weight": 0.5,
+      "nonce": {
+        "prefix": "記 request nonce 198473623-26.\n",
+        "marker": "記",
+        "first_content_token_id": 10387
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "記 request nonce 198473623-26.\nReturn only a JSON object describing a file edit with keys path, operation, line_start, line_end, and rationale. Use path src/cache.rs, operation replace, lines 41 through 47, and a one-sentence rationale about removing a redundant copy."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 128,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775343573781970,
+      "reasoning": "",
+      "first_output_seconds": 0.23654485399310943,
+      "first_content_seconds": 0.23654485399310943,
+      "finish_seconds": 0.8706950829946436,
+      "finish_reason": "stop",
+      "observed_decode_tokens_per_second": 85.15332413428705,
+      "usage": {
+        "prompt_tokens": 68,
+        "completion_tokens": 55,
+        "total_tokens": 123,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 68
+      },
+      "content": "{\n  \"path\": \"src/cache.rs\",\n  \"operation\": \"replace\",\n  \"line_start\": 41,\n  \"line_end\": 47,\n  \"rationale\": \"Removing a redundant copy simplifies the code and avoids unnecessary duplication.\"\n}",
+      "content_sha256": "fa840538c02bd5afd149071cdeed2dc5b8cb2c27e66a5cbb3f65ff5df0c017b2",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {
+        "json_edit_fields": {
+          "passed": true,
+          "issues": []
+        }
+      },
+      "objective_checks_passed": true,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "reasoning_present": false,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 3,
+      "case": "structured-json-schema",
+      "category": "structured-output-constrained",
+      "weight": 0.5,
+      "nonce": {
+        "prefix": "訝 request nonce 198473623-27.\n",
+        "marker": "訝",
+        "first_content_token_id": 83691
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "訝 request nonce 198473623-27.\nReturn only a JSON object describing a file edit with keys path, operation, line_start, line_end, and rationale. Use path src/cache.rs, operation replace, lines 41 through 47, and a one-sentence rationale about removing a redundant copy."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 128,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        },
+        "response_format": {
+          "type": "json_schema",
+          "json_schema": {
+            "name": "file_edit",
+            "strict": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "operation": {
+                  "type": "string"
+                },
+                "line_start": {
+                  "type": "integer"
+                },
+                "line_end": {
+                  "type": "integer"
+                },
+                "rationale": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "operation",
+                "line_start",
+                "line_end",
+                "rationale"
+              ],
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "started_ns": 1789775344446968946,
+      "reasoning": "",
+      "first_output_seconds": 0.23762992300180485,
+      "first_content_seconds": 0.23762992300180485,
+      "finish_seconds": 0.8754948419955326,
+      "finish_reason": "stop",
+      "observed_decode_tokens_per_second": 84.65742258594251,
+      "usage": {
+        "prompt_tokens": 68,
+        "completion_tokens": 55,
+        "total_tokens": 123,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 68
+      },
+      "content": "{\n  \"path\": \"src/cache.rs\",\n  \"operation\": \"replace\",\n  \"line_start\": 41,\n  \"line_end\": 47,\n  \"rationale\": \"Removing a redundant copy simplifies the code and avoids unnecessary duplication.\"\n}",
+      "content_sha256": "fa840538c02bd5afd149071cdeed2dc5b8cb2c27e66a5cbb3f65ff5df0c017b2",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {
+        "json_edit_fields": {
+          "passed": true,
+          "issues": []
+        }
+      },
+      "objective_checks_passed": true,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "reasoning_present": false,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 3,
+      "case": "multilingual",
+      "category": "multilingual",
+      "weight": 1.0,
+      "nonce": {
+        "prefix": "訟 request nonce 198473623-28.\n",
+        "marker": "訟",
+        "first_content_token_id": 113761
+      },
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "訟 request nonce 198473623-28.\n請用繁體中文，以四個簡短條列解釋什麼是寫入時複製（copy-on-write），並包含一個行程 fork 後修改記憶體頁面的例子。"
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 384,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775345324714558,
+      "reasoning": "",
+      "first_output_seconds": 0.18513589399663033,
+      "first_content_seconds": 0.18513589399663033,
+      "finish_seconds": 3.476491694993456,
+      "finish_reason": "stop",
+      "observed_decode_tokens_per_second": 52.561925984302555,
+      "usage": {
+        "prompt_tokens": 54,
+        "completion_tokens": 174,
+        "total_tokens": 228,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 54
+      },
+      "content": "# 寫入時複製（Copy-on-Write, COW）\n\n- **核心概念**：多個行程共享同一份資料，直到有人要「寫入」時才複製出私有副本，避免不必要的複製開銷。\n- **共享唯讀**：讀取時大家共用同一實體記憶體頁，因此省記憶體、省時間。\n- **寫入觸發複製**：當某行程嘗試修改共享頁面，核心才為它建立一份私有副本，之後的修改只影響自己。\n- **典型例子（fork）**：`fork()` 後父子行程共享所有記憶體頁；若子行程修改某頁（如寫入全域變數），核心僅複製該頁給子行程，父行程仍保有原頁，兩者自此各自獨立。",
+      "content_sha256": "510055c8a664b1151dbee30f43ce87bc9ad37c9f2670ff71718509bd96243e2c",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 0,
+      "response_nonempty": true,
+      "objective_checks": {},
+      "objective_checks_passed": null,
+      "prose_quality_assessed": false,
+      "bounded_static_prefix_hit": true,
+      "reasoning_present": false,
+      "serving_completed": true,
+      "passed": true
+    },
+    {
+      "repeat": 3,
+      "case": "counting",
+      "category": "low-entropy",
+      "weight": 0.0,
+      "nonce": null,
+      "request": {
+        "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Count from 1 to 200, separated by commas. Output only the sequence."
+          }
+        ],
+        "thinking": {
+          "type": "disabled"
+        },
+        "temperature": 0,
+        "max_tokens": 640,
+        "stream": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+      "started_ns": 1789775348803914622,
+      "reasoning": "",
+      "first_output_seconds": 0.0012065229966538027,
+      "first_content_seconds": 0.0012065229966538027,
+      "finish_seconds": 5.269545973998902,
+      "finish_reason": "stop",
+      "observed_decode_tokens_per_second": 113.50825161545666,
+      "usage": {
+        "prompt_tokens": 21,
+        "completion_tokens": 599,
+        "total_tokens": 620,
+        "prompt_tokens_details": {
+          "cached_tokens": 21
+        },
+        "prompt_cache_hit_tokens": 21,
+        "prompt_cache_miss_tokens": 0
+      },
+      "content": "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200",
+      "content_sha256": "d92f809bf43027881e5c4f50091f59982e572557f84c2cb6464304bf028ced0b",
+      "system_fingerprint": "ds41rt-native-fp4-kv-dspark",
+      "cached_tokens": 21,
+      "quality_contract_passed": true,
+      "quality_contract_issues": [],
+      "bounded_static_prefix_hit": true,
+      "reasoning_present": false,
+      "serving_completed": true,
+      "passed": true
+    }
+  ],
+  "repeat_summaries": [
+    {
+      "repeat": 1,
+      "weighted_cases": 9,
+      "serving_completed": 9,
+      "objective_checks_passed": 5,
+      "objective_checks_assessed": 5,
+      "weighted_observed_decode_tokens_per_second": 63.241249600860314,
+      "partial_weighted_observed_decode_tokens_per_second": 63.241249600860314,
+      "complete_weighted_corpus": true,
+      "all_samples_passed": true
+    },
+    {
+      "repeat": 2,
+      "weighted_cases": 9,
+      "serving_completed": 9,
+      "objective_checks_passed": 5,
+      "objective_checks_assessed": 5,
+      "weighted_observed_decode_tokens_per_second": 64.27268490926615,
+      "partial_weighted_observed_decode_tokens_per_second": 64.27268490926615,
+      "complete_weighted_corpus": true,
+      "all_samples_passed": true
+    },
+    {
+      "repeat": 3,
+      "weighted_cases": 9,
+      "serving_completed": 9,
+      "objective_checks_passed": 5,
+      "objective_checks_assessed": 5,
+      "weighted_observed_decode_tokens_per_second": 65.38873285769762,
+      "partial_weighted_observed_decode_tokens_per_second": 65.38873285769762,
+      "complete_weighted_corpus": true,
+      "all_samples_passed": true
+    }
+  ],
+  "passed": true,
+  "median_weighted_observed_decode_tokens_per_second": 64.27268490926615
+}
