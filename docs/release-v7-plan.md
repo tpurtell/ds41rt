@@ -390,6 +390,29 @@ This means the release image needs no second AOT set and no rebuild for a 5090
 owner - which is the outcome the plan wanted. A per-SM-count export could not
 even be generated correctly here without the hardware.
 
+### 5090 support landed; the ceiling test needs the engine path
+
+Implemented: `reject_expert_device` now requires only the same compute
+capability (an SM-count difference logs a note instead of refusing to load),
+and the launch clamps `max_active_clusters` to the live device's SM count.
+Both are in `native/src/v41_experts.cc`. Verified regression-free: the dual
+NVFP4 config still serves correctly after the change.
+
+Why the ceiling test is not a config change: setting a positive
+`max_active_clusters` through the public b12x config raises
+"max_active_clusters requires the Triton route planner", and the internal
+planner ignores the cap entirely - which is exactly why the runtime passes
+-1 and why the engine supplies the value to the compiled entry itself. So
+the proof that a reduced cap reproduces the same output has to go through the
+engine's own launch, e.g. the Python bridge probe driving
+`ds41rt_v41_nvfp4_tp2_expert_launch` with two different scalar values and
+comparing slot 41. `native/tests/v41_nvfp4_cluster_cap_selftest.py` is the
+scaffold for that and currently stops at the upstream planner restriction.
+
+Also: the single-card NVFP4 prefill campaign was cut short by a service
+restart during the run (my own regression check), not by a fault; it needs a
+re-run for the 1x best-prefill cell, which stays a dash until then.
+
 ### v7 release deliverables (agreed scope)
 
 Three performance table sets, all measured with the v7 protocol:
