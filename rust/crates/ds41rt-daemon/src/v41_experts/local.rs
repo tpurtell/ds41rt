@@ -45,12 +45,23 @@ impl<'a> LocalExpertWave<'a> {
         Ok(capacities)
     }
     pub fn device_bytes(library: &NativeLibrary, capacity: u32) -> Result<usize> {
+        Self::device_bytes_for(library, capacity, false)
+    }
+    /// The W4A4 family reports its own scratch plan and uses its own kernels.
+    pub fn device_bytes_for(
+        library: &NativeLibrary,
+        capacity: u32,
+        nvfp4: bool,
+    ) -> Result<usize> {
         let arena = Self::capacities(capacity)?
             .into_iter()
             .try_fold(0usize, |largest, c| {
-                Ok::<_, anyhow::Error>(largest.max(usize::try_from(
-                    library.v41_local_expert_info(c)?.scratch_bytes,
-                )?))
+                let info = if nvfp4 {
+                    library.v41_nvfp4_local_expert_info(c)?
+                } else {
+                    library.v41_local_expert_info(c)?
+                };
+                Ok::<_, anyhow::Error>(largest.max(usize::try_from(info.scratch_bytes)?))
             })?;
         arena
             .checked_add(capacity as usize * 10240)
@@ -73,8 +84,9 @@ impl<'a> LocalExpertWave<'a> {
                 "local layer ownership differs"
             );
         }
+        let nvfp4 = weights.first().is_some_and(|weight| weight.is_nvfp4());
         ensure!(
-            Self::device_bytes(library, capacity)? <= budget,
+            Self::device_bytes_for(library, capacity, nvfp4)? <= budget,
             "local expert workspace exceeds budget"
         );
         let stream = LoadStream {
@@ -83,11 +95,15 @@ impl<'a> LocalExpertWave<'a> {
         };
         let scratch = DeviceAllocation::new(
             library,
-            Self::device_bytes(library, capacity)? - capacity as usize * 10240,
+            Self::device_bytes_for(library, capacity, nvfp4)? - capacity as usize * 10240,
         )?;
         let mut states = Vec::new();
         for c in Self::capacities(capacity)? {
-            let kernel = library.v41_local_expert_kernel(c)?;
+            let kernel = if nvfp4 {
+                library.v41_nvfp4_local_expert_kernel(c)?
+            } else {
+                library.v41_local_expert_kernel(c)?
+            };
             let mut slots = [std::ptr::null_mut(); 44];
             unsafe {
                 kernel.bind_scratch(scratch.buffer.ptr, scratch.buffer.bytes as u64, &mut slots)?;

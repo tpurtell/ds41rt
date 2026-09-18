@@ -323,7 +323,9 @@ fn worker(
         let exl3_directory = crate::v41_experts::exl3::aot_layout_directory(&args.native_lib, exl3_tiers, "rtx-tp1");
         let compressed = catalog.exl3().is_some();
         let per_lane = if compressed { LocalExpertWave::exl3_device_bytes(&exl3_directory, capacity)? }
-            else { LocalExpertWave::device_bytes(&lib, capacity)? };
+            else {
+                LocalExpertWave::device_bytes_for(&lib, capacity, catalog.nvfp4().is_some())?
+            };
         let budgets = (0..40).map(|layer| {
             let selection = ExpertLayer::BackboneFull { layer };
             if compressed { Exl3Weights::plan(&catalog, selection) }
