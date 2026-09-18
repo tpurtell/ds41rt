@@ -12,6 +12,12 @@ else()
   message(FATAL_ERROR "NVFP4 expert AOT requires a single native SM120 or SM121 target")
 endif()
 set(DS41RT_V41_NVFP4_CAPACITIES "1;16;80;256;1024;4096" CACHE STRING "NVFP4 expert capacities to package")
+# Keep the conservative tile-16 default until the tile ladder is GPU qualified.
+set(DS41RT_V41_NVFP4_TILE_M "16" CACHE STRING "NVFP4 expert tile M (auto opts into the planner ladder; GPU qualification required)")
+set_property(CACHE DS41RT_V41_NVFP4_TILE_M PROPERTY STRINGS auto 16 32 64 128)
+if(NOT "${DS41RT_V41_NVFP4_TILE_M}" MATCHES "^(auto|16|32|64|128)$")
+  message(FATAL_ERROR "DS41RT_V41_NVFP4_TILE_M must be auto, 16, 32, 64, or 128")
+endif()
 set(DS41RT_V41_NVFP4_INCLUDE_DIRS)
 list(JOIN DS41RT_V41_NVFP4_CAPACITIES "," DS41RT_V41_NVFP4_CAPACITY_ARG)
 foreach(role IN LISTS DS41RT_V41_NVFP4_ROLES)
@@ -32,6 +38,7 @@ foreach(role IN LISTS DS41RT_V41_NVFP4_ROLES)
       "${CMAKE_CURRENT_SOURCE_DIR}/../python/tools/export_b12x_v41_nvfp4_aot.py"
       --output-dir "${nvfp4_dir}" --role "${role}"
       --rows "${DS41RT_V41_NVFP4_CAPACITY_ARG}"
+      --tile-m "${DS41RT_V41_NVFP4_TILE_M}"
     COMMAND "${CMAKE_COMMAND}" -E copy
       "${nvfp4_dir}/v41_expert_variants.h"
       "${nvfp4_dir}/v41_nvfp4_${role}_variants.h"

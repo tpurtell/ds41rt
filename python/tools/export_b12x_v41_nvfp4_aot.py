@@ -39,6 +39,17 @@ ROLES = {
     "dspark_tp2": (128, 1152, 3, (12, 0)),
 }
 DEFAULT_ROWS = (1, 16, 80, 256, 1024, 4096)
+TILE_M_CHOICES = (16, 32, 64, 128)
+
+
+def parse_tile_m(value: str) -> int | None:
+    if value == "auto":
+        return None
+    if value not in tuple(str(tile) for tile in TILE_M_CHOICES):
+        raise argparse.ArgumentTypeError("tile-m must be auto, 16, 32, 64, or 128")
+    return int(value)
+
+
 # Small-M decode uses direct routing (no route-packing pass); larger
 # prefill capacities use grouped routing.
 DIRECT_ROUTE_MAX_ROWS = 4
@@ -94,9 +105,15 @@ def export(
     output: Path,
     role: str,
     rows: list[int],
-    tile_m: int,
+    tile_m: int | None,
     max_active_clusters: int | None = None,
+    output_shards: int = 1,
 ) -> None:
+    if type(output_shards) is not int or output_shards < 1 or 40 % output_shards:
+        raise ValueError("output_shards must be a positive divisor of 40")
+    if tile_m is not None and (type(tile_m) is not int or tile_m not in TILE_M_CHOICES):
+        raise ValueError("tile_m must be None (auto), 16, 32, 64, or 128")
+
     import torch
     from b12x.moe.fused_moe import _impl as moe
     from b12x.moe.fused_moe._tuning import MoeDecodeConfig
@@ -199,10 +216,12 @@ def export(
             w4a8_repacked=False,
             nvfp4_materialize_intermediate=False,
             direct_routing=route_mode == "direct",
-            planned_tile_m=tile_m,
+            # Compile with the same resolved tile that sized the scratch arena.
+            planned_tile_m=plan.execution.tile_m,
             deterministic_output=True,
             swiglu_limit=10,
             mac_override=max_active_clusters,
+            nvfp4_output_shards=output_shards if route_mode == "direct" else 1,
         )
         if not 0 < clusters <= 2 * properties.multi_processor_count:
             raise ValueError(f"invalid NVFP4 cooperative launch grid: {clusters}")
@@ -322,6 +341,8 @@ def export(
                 "name": label,
                 "native_entry": entry[0],
                 "route_mode": route_mode,
+                "output_shards": output_shards if route_mode == "direct" else 1,
+                "tile_m": plan.execution.tile_m,
                 "output_kind": 2,
                 "output_format": "bf16_routes",
                 "requested_rows": requested_rows,
@@ -366,16 +387,25 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--role", choices=tuple(ROLES), required=True)
     parser.add_argument("--rows", default=",".join(str(row) for row in DEFAULT_ROWS))
-    parser.add_argument("--tile-m", type=int, default=16)
+    parser.add_argument(
+        "--tile-m",
+        type=parse_tile_m,
+        default=16,
+        metavar="{auto,16,32,64,128}",
+        help="default 16 until GPU qualified; auto opts into the planner's tile ladder",
+    )
     parser.add_argument(
         "--max-active-clusters",
         type=int,
         default=None,
         help="positive cooperative grid override; unset uses measured kernel occupancy",
     )
+    parser.add_argument("--output-shards", type=int, default=1,
+                        help="experimental direct-route output shards; positive divisor of 40")
     args = parser.parse_args()
     rows = [int(value) for value in args.rows.split(",") if value]
-    export(args.output_dir, args.role, rows, args.tile_m, args.max_active_clusters)
+    export(args.output_dir, args.role, rows, args.tile_m, args.max_active_clusters,
+           args.output_shards)
 
 
 if __name__ == "__main__":

@@ -144,7 +144,7 @@ def main():
         invocation=FrozenMapping({"fast_math": True}),
         override=MoeDecodeConfig(backend="dynamic", route_planner="internal",
                                  max_active_clusters=None,
-                                 dynamic_tile_m=manifest["tile_m"],
+                                 dynamic_tile_m=variant.get("tile_m", manifest["tile_m"]),
                                  # Public planner forbids direct+deterministic NVFP4;
                                  # grouped is the supported independent route oracle.
                                  dynamic_route_mode="grouped",
