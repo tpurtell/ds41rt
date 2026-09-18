@@ -436,6 +436,25 @@ report's prefill table with its partial-coverage disclosure, but it is not
 promoted to a headline. If the matrix is later completed, the headline gate
 opens by itself and no document needs editing.
 
+### What the AArch64 expert image build needs
+
+Ostrich currently has no release base image - `docker images` shows only the
+local `ds41rt-spark-expert-dev` used by the WIP container, and nothing matching
+`pytorch` or `26.05`. So building the expert image there requires the AArch64
+`nvcr.io/nvidia/pytorch:26.05-py3` to be present or pulled first (it is
+published multi-arch, so the pull should work where registry auth is
+available), plus the build context.
+
+The context is the repository root with the expert artifacts staged at
+`.ds41rt-release-image/` (copy `.ds41rt-release-expert` there), because the
+Dockerfile always copies from that path. The build command is the same as the
+coordinator's with `DS41RT_ROLE=expert CUDA_ARCH=121`; the runtime digest check
+then compares against the AArch64 `libcute_dsl_runtime.so`, which is the one
+the expert packages recorded, so it should verify.
+
+Do not cross-build this image on x86_64: its CuTe runtime cannot match
+AArch64-built kernels and the packaging check will - correctly - reject it.
+
 ### Expert image needs the expert AOT built in the release runtime
 
 The coordinator image builds and verifies (`ghcr.io/tpurtell/ds41rt-coordinator:v7`,
