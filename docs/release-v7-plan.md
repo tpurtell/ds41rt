@@ -183,6 +183,39 @@ one headline table per checkpoint linking to full per-checkpoint reports.
 - 3 samples per cell, 400 W + stock memory hard-asserted, telemetry must
   survive each phase, corpus/context sha256 pinned.
 
+## NVFP4 execution plan (from the subsystem maps)
+
+Confirmed by read-only analysis of the export and daemon paths:
+
+- **Packing needs no new CUDA.** `cuda_b12x_w4a16_pack_weight_async` /
+  `pack_scale_async` (`native/cuda/kernels/b12x_direct.cu:292-357`, FFI
+  `ds41rt-ffi/src/lib.rs:7081+`) are geometry-agnostic and byte-equivalent
+  to sparkinfer's host `weight_layout="packed", scale_format="e4m3_k16"`
+  preparation. V4.1 satisfies their divisibility rules. Alpha =
+  `weight_scale_2 * 2^119` (matches `route.rs:6489-6491` and sparkinfer's
+  bf16 global compensation).
+- **W4A16 e4m3_k16 at V4.1 shapes is structurally valid**
+  (`compile_w4a16_fused_moe(hidden=5120, intermediate in {576,1152,2304},
+  experts=384, top_k=6)`), so the qualified W4A16 family is the baseline.
+- **W4A4 hits an ABI gap**: `quant_mode="nvfp4"` selects
+  `_DynamicMoELaunch` (37 pointers), not the engine's 44-slot
+  `_DynamicMoEW4A8Launch`; it needs a new ABI variant plus real per-expert
+  scale binding (slots 37/40 are constant 1.0 today, 38/39 alias 37).
+- **Roles**: spark 384x576(topk6), rtx_backbone 384x2304, rtx_tp2 384x1152,
+  dspark_tp2 128x1152; the dual zero-Spark critical path is rtx_tp2.
+- Sliced plan: 0 staging (done) - 1 daemon load - 2 device pack (reuse GLM
+  packers) - 3 AOT export + FFI/ABI - 4 three-state format branch - 5 W4A4.
+
+### Slice 0 committed
+
+`rust/crates/ds41rt-loader/src/v41_nvfp4_staging.rs`: twelve staged regions
+(W1,W3,W2 packed weights and scales, then six replicated FP32 scalars) in
+the device packer's order, with W1/W3 and their scale planes adjacent so
+one pack call can consume each `[2*intermediate, ...]` matrix. TP4, TP2 and
+full selections read through the existing catalog windows. Verified against
+the local NVIDIA snapshot (packed payload non-zero, scalar scales finite
+and non-zero, adjacency holds).
+
 ## Quick performance read (2x RTX EXL3 K2 zero-Spark, dSpark width 7)
 
 Same bench scripts and controls as the v6 campaign; quick subset, not the

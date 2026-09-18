@@ -25,6 +25,8 @@ mod v41_nvfp4;
 pub use v41_nvfp4::{
     is_v41_nvfp4_publication, read_v41_nvfp4_contract, V41Nvfp4Contract, V41Nvfp4ExpertLayout,
 };
+mod v41_nvfp4_staging;
+pub use v41_nvfp4_staging::{V41Nvfp4Staging, V41_NVFP4_STAGING_SLOTS};
 mod v41_image;
 pub use v41_image::{V41Image, V41ImageGrid, V41ImageSpan, V41VisionPrompt, V41ImageTokenType,
     V41_IMAGE_TOKEN_ID, V41_MAX_IMAGES};
