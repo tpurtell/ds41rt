@@ -73,17 +73,16 @@ def load_prefill(package: Path, stem: str):
     """The full matrix if it has cells, else the base-0 row, else whatever
     partial file exists. The best-prefill cell comes from the base-0 row in
     every configuration measured so far."""
-    candidates = [f"{stem}-prefill", f"{stem}-prefill-base0"]
-    fallback = None
-    for name in candidates:
-        document = load(package, name)
-        if document is None:
-            continue
-        cells = document.get("cells") or []
-        if any(c.get("median_effective_prefill_tokens_per_second") for c in cells):
-            return document
-        fallback = fallback or document
-    return fallback
+    document = load(package, f"{stem}-prefill")
+    if document is None:
+        return None
+    cells = document.get("cells") or []
+    if any(c.get("median_effective_prefill_tokens_per_second") for c in cells):
+        return document
+    # A campaign that ran but produced no usable cell: the reduced base-0 row
+    # is still a real measurement, so prefer it to reporting nothing. Files
+    # that do not exist are not probed, which keeps reads to one per source.
+    return load(package, f"{stem}-prefill-base0") or document
 
 
 def load(package: Path, stem: str):
