@@ -678,11 +678,22 @@ Sparks) under that scenario, not something the harness does in general. The
 ordinary-streaming test proved only that a *short* multi-turn request
 terminates; it did not reproduce the scenario's shape.
 
-TC-26 is "State Consistency (Multi-Turn)", the first multi-turn scenario in
-the set, so the compact profile's cross-turn handling under a 2 GiB pool is
-still the leading candidate and remains untested rather than exonerated. The
-compact report's quality section should not claim the quality result is
-merely pending-harness; it is pending an investigation into that profile.
+**Resolved, and this reverses the correction above.** The isolated replay
+(`tool-eval-bench --scenarios TC-26` against the compact profile, two Sparks
+at first-layer 1) **passed**: status pass, 2/2 points, 8.08 s, final score 100.
+
+So TC-26 completes on this profile in seconds when run on its own. The wedge
+was neither harness-wide nor profile-specific: it was a one-off in that
+particular full-suite run, and my second framing was as wrong as the first.
+The lesson is that one run's stall - however reproducible it looked from two
+data points - is not evidence about a component until the failing case is
+replayed in isolation, which took eight seconds to settle after several rounds
+of inference from circumstantial signals.
+
+Consequence for the release: the compact profile has **no known multi-turn
+defect**, and `release-v7-exl3-k2-performance.md` needs no known-limitation
+note. Its quality section stands as written - the campaign is incomplete, not
+failing.
 
 ### Tool-call evaluation notes (round 27)
 
