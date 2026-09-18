@@ -297,6 +297,41 @@ weights) and trails on prefill (trellis decode compute). One
 code-reasoning repeat produced an empty final response because all tokens
 went to reasoning; the campaign should confirm the budget is sufficient.
 
+### NVFP4 W4A4 serves end to end; request path fails at the expert launch
+
+Status: the full serving stack now starts on the real NVFP4 checkpoint in the
+current topology. The dual coordinator plans 20 TP2 layers on the RTX pair
+(3.82 GB/rank/layer) and the four Sparks load layers 20-39 (~0.97 GB/rank/layer);
+the API reaches ready and the placement handoff completes. Both sides load
+W4A4 exactly: payload lands as [up(w3); gate(w1)] plus FC2 with one D2D copy
+per expert, both scale planes are swizzled on device, and per-expert alphas
+and activation scales ride in device vectors.
+
+A chat request is admitted and reaches the expert launch, then fails with
+`V4.1 expert launch failed with CUDA status 1` (cudaErrorInvalidValue) on the
+RTX TP2 side (the Spark logs stay clean). Ruled out so far:
+
+* `scatter_rows`: the runtime uses `routed_rows = num_tokens * num_topk` when
+  `deterministic_output` is set (verified: rows=1 -> routed_rows=6,
+  rows=16 -> routed_rows=96), which is what the engine already passes.
+* slot coverage: every engine slot the generated bridge reads (0..25, 34..43)
+  is populated on this path (scratch, weights, vectors).
+* input format: the engine sizes the wire from `input_row_bytes()` = 10,240 B
+  for BF16, and the Spark execution now selects the NVFP4 kernel and info
+  (this was a real bug: ExpertExecution resolved the native accessors).
+
+Remaining hypothesis for the next round: the launch scalars recorded at export
+time. `max_active_clusters` in particular is a compile-time policy value (188)
+in the exporter, while the b12x runtime derives the launch value from the
+occupancy API per shape; a stale value reaching the cluster launch surfaces as
+exactly cudaErrorInvalidValue. Next step is to record the runtime's own launch
+policy for each capacity by planning an execution through the public API and
+reading the encoded policy, then re-export and retry. If that is not it, the
+next discriminator is a bridge-level GPU test that calls the exported variant
+with the engine's exact 53-slot argument array and compares against the public
+runtime's launch of the same shape, which isolates the scalar values from the
+weights and workspace.
+
 ### NVFP4 topology correction (important)
 
 W4A4 resident cost is ~3.82 GB per rank per TP2 layer (0.5 byte/weight plus
