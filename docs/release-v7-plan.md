@@ -297,6 +297,27 @@ weights) and trails on prefill (trellis decode compute). One
 code-reasoning repeat produced an empty final response because all tokens
 went to reasoning; the campaign should confirm the budget is sufficient.
 
+### NVFP4 open integration questions (next)
+
+1. **Expert output semantics.** The nvfp4 core workspace exposes a bf16
+   token-major `route_output` (with `scatter_ptr`), not the FP32 route
+   planes the W4A8 slices emit. Before wiring the engine I must confirm how
+   the dynamic kernel publishes results (scatter vs per-route partials under
+   `deterministic_output=True`) and what `ds41rt_v41_expert_output_kind`
+   should report per capacity, because the TP2 rank reduction and the
+   dSpark/local reducers branch on it. Getting this wrong yields plausible
+   but incorrect numbers, so it needs a bridge-level end-to-end test rather
+   than inspection alone.
+2. **Remaining wiring** once (1) is settled: cmake module + per-role native
+   TUs with nvfp4 symbol names (`ds41rt_v41_nvfp4_*`), FFI resolution for
+   those symbols (input_dtype=1 is already accepted), the Rust
+   `Nvfp4Weights` plan/load/bind (payload H2D in `[up; gate]` order, the
+   verified scale swizzle, alpha vectors computed host-side), and the
+   three-site format branch.
+3. **Wire decision for the 4-Spark topology**: BF16 routed rows (10,240
+   B/row) versus today's FP8-K32 (5,280 B/row). The RTX-resident profile
+   avoids the question entirely and should be the first served target.
+
 ## Implementation sequence
 
 1. [ ] EXL3: raw-publication contract in the loader (synthesize manifest
