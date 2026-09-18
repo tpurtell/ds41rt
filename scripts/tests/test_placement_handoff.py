@@ -23,7 +23,7 @@ else:
 '''
 
 class PlacementHandoffTest(unittest.TestCase):
-    def run_startup(self, gpus, plan, options=()):
+    def run_startup(self, gpus, plan, options=(), spark_count=4):
         source=(ROOT/'run.sh').read_text()
         block=source[source.index('placement_directory='):source.index('api_url=')]
         with tempfile.TemporaryDirectory() as directory:
@@ -68,6 +68,9 @@ EXPERT_PORT=19441
 expert_capacity=4096
 spark_first_layer=0
 '''
+            setup+=f'\nSPARK_COUNT={spark_count}\nhosts=("${{hosts[@]:0:SPARK_COUNT}}")\n'
+            if spark_count == 2:
+                setup+='MEMORY_RESERVATION=32GiB\nKV_POOL_SIZE=2GiB\npeers=10.55.0.1:19441,10.55.0.2:19441\n'
             setup+=''.join(f'\nTP2_{option}=on\n' for option in options)
             result=subprocess.run(['bash','-c',setup+block,'test',str(gpus)],env=env,cwd=ROOT,capture_output=True,text=True,timeout=10)
             events=[json.loads(line) for line in (root/'events').read_text().splitlines()]
@@ -83,12 +86,28 @@ spark_first_layer=0
                 self.assertIn('--placement-directory',events[0][1])
                 starts=[args for tool,args in events if tool=='ssh' and '-s' in args]
                 self.assertEqual(len(starts),4)
-                self.assertTrue(all(args[-1]==str(min(layers,39)) for args in starts))
+                self.assertTrue(all(args[-2]==str(min(layers,39)) and args[-1]=='4' for args in starts))
                 ack=[i for i,(tool,args) in enumerate(events) if tool=='docker' and args[:3]==['exec','coordinator','sh']]
                 self.assertEqual(len(ack),1)
                 ready=[i for i,(tool,args) in enumerate(events) if tool=='ssh' and any('timeout 1' in a for a in args)]
                 self.assertEqual(len(ready),4)
                 self.assertGreater(ack[0],max(ready))
+
+    def test_compact_starts_exactly_two_workers_and_passes_ceiling(self):
+        result,events=self.run_startup(1,{},spark_count=2)
+        self.assertEqual(result.returncode,0,result.stderr)
+        starts=[args for tool,args in events if tool=='ssh' and '-s' in args]
+        self.assertEqual(len(starts),2)
+        self.assertTrue(all(args[-1]=='2' for args in starts))
+        coordinator=next(args for tool,args in events if tool=='docker' and args[0]=='run')
+        self.assertEqual(coordinator[coordinator.index('--peers')+1], '10.55.0.1:19441,10.55.0.2:19441')
+        self.assertEqual(coordinator[coordinator.index('--memory-reservation')+1], '32GiB')
+        self.assertEqual(coordinator[coordinator.index('--kv-pool-size')+1], '2GiB')
+
+    def test_zero_spark_launch_has_no_remote_workers(self):
+        result,events=self.run_startup(2,dict(version=1,rtx_gpus=2,nonce='fresh',rtx_expert_layers=40,spark_first_layer=39),spark_count=0)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertFalse(any(tool=='ssh' for tool,_ in events))
 
     def test_cli_tp2_overrides_and_invalid_config(self):
         source=(ROOT/'run.sh').read_text()

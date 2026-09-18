@@ -8,7 +8,8 @@ usage() {
   cat <<'EOF'
 Usage: ./run.sh [OPTIONS]
 
-Starts native DeepSeek V4.1 on the RTX coordinator and four Spark TP ranks.
+Starts native DeepSeek V4.1 on the RTX coordinator and configured Spark ranks.
+SPARK_COUNT=2 requires EXL3 on one RTX, with a hard 32GiB GPU ceiling.
 Command-line values override ds41rt.config for this launch.
 
   --config FILE                 alternate complete configuration
@@ -90,6 +91,11 @@ case "$RTX_GPUS" in auto|1|2) ;; *) release_die "RTX_GPUS must be auto, 1, or 2"
 [[ -z "$KV_POOL_SIZE" || "$KV_POOL_SIZE" =~ ^[0-9]+([.][0-9]{1,6})?(B|MB|GB|MiB|GiB)?$ ]] || release_die "KV_POOL_SIZE has an invalid unit"
 [[ -z "$MEMORY_RESERVATION" || "$MEMORY_RESERVATION" =~ ^[0-9]+([.][0-9]{1,6})?((B|MB|GB|MiB|GiB)|%)$ ]] || release_die "MEMORY_RESERVATION has an invalid unit"
 ((restart == 0 || dry_run == 0)) || release_die "--restart and --dry-run are mutually exclusive"
+release_validate_compact_tp2
+if ((SPARK_COUNT == 0)); then
+  [[ "$RTX_EXPERT_LAYERS" == 40 && "$RTX_GPUS" != 1 ]] ||
+    release_die "SPARK_COUNT=0 requires two RTX GPUs and RTX_EXPERT_LAYERS=40"
+fi
 
 for tool in docker ssh curl jq ss nvidia-smi sha256sum python3; do release_need "$tool"; done
 docker info >/dev/null 2>&1 || release_die "local Docker daemon is unavailable"
@@ -99,6 +105,9 @@ release_resolve_local_model_revision "$hf_home"
 release_resolve_coordinator_gpu_identity
 snapshot_rel="hub/models--${RELEASE_MODEL_ID//\//--}/snapshots/$RELEASE_MODEL_REVISION"
 model_is_exl3="$(jq -r '.quantization_config.quant_method == "exl3"' "$hf_home/$snapshot_rel/config.json")"
+if ((SPARK_COUNT == 2)); then
+  [[ "$model_is_exl3" == true ]] || release_die "SPARK_COUNT=2 requires an EXL3 checkpoint"
+fi
 # Multi-family EXL3 images ship exl3-kXX packages per decoder-tier family.
 # The deployed checkpoint's resident tiers are [floor(bits), floor(bits)+1]
 # for both raw integer-bit publications and staged fractional-bit snapshots.
@@ -134,8 +143,15 @@ if [[ "$model_is_exl3" == true ]]; then
     *) expert_format=native ;;
   esac
 fi
+gpu_selection_mode="$RTX_GPUS"
+# Auto must not turn the compact topology into a two-RTX launch.
+compact_selection_args=()
+if ((SPARK_COUNT == 2)); then
+  gpu_selection_mode=1
+  compact_selection_args+=(--compact-spark-tp2)
+fi
 gpu_selection="$(python3 "$repo_root/scripts/select-release-gpus.py" \
-  --mode "$RTX_GPUS" \
+  --mode "$gpu_selection_mode" \
   --minimum-expert-layers "$minimum_expert_layers" \
   --primary-uuid "$RELEASE_COORDINATOR_GPU_UUID" \
   --concurrency "$CONCURRENCY" \
@@ -144,8 +160,10 @@ gpu_selection="$(python3 "$repo_root/scripts/select-release-gpus.py" \
   --kv-pool-size "$KV_POOL_SIZE" \
   --memory-reservation "$MEMORY_RESERVATION" \
   --expert-format "$expert_format" \
-  "${reclaim_args[@]}")"
+  "${compact_selection_args[@]}" "${reclaim_args[@]}")"
 RELEASE_RTX_GPUS="$(jq -r '.count' <<<"$gpu_selection")"
+((SPARK_COUNT != 2 || RELEASE_RTX_GPUS == 1)) || release_die "SPARK_COUNT=2 requires one selected RTX GPU"
+((SPARK_COUNT != 0 || RELEASE_RTX_GPUS == 2)) || release_die "SPARK_COUNT=0 requires two selected RTX GPUs"
 if release_tp2_enabled; then
   ((RELEASE_RTX_GPUS == 2)) || release_die "TP2 options require two selected RTX GPUs; use --rtx-gpus 2"
 fi
@@ -169,12 +187,13 @@ image_sparkinfer="$(docker image inspect -f '{{index .Config.Labels "io.ds41rt.s
 [[ -n "$engine_commit" && "$engine_commit" != '<no value>' ]] || release_die "coordinator image has no engine revision"
 [[ "$image_sparkinfer" == "$sparkinfer_commit" ]] || release_die "coordinator image uses another SparkInfer revision (run ./build.sh)"
 
-hosts=()
-lanes=()
-if ((SPARK_COUNT > 0)); then
-  hosts=("$SPARK_0_HOST" "$SPARK_1_HOST" "$SPARK_2_HOST" "$SPARK_3_HOST")
-  lanes=("$SPARK_0_LANE_A" "$SPARK_1_LANE_A" "$SPARK_2_LANE_A" "$SPARK_3_LANE_A")
+expert_capacity=4096
+if ((PREFILL_BATCH_TOKENS <= 80)); then expert_capacity=80
+elif ((PREFILL_BATCH_TOKENS <= 256)); then expert_capacity=256
+elif ((PREFILL_BATCH_TOKENS <= 1024)); then expert_capacity=1024
 fi
+mapfile -t hosts < <(release_spark_values HOST)
+mapfile -t lanes < <(release_spark_values LANE_A)
 spark_exl3_identity=""
 for host in "${hosts[@]}"; do
   spark_manifest="$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" bash -s -- "$SPARK_EXPERT_DOCKER_INFERENCE" "$engine_commit" "$sparkinfer_commit" "$snapshot_rel" "$model_is_exl3" "$exl3_family_tag" <<'REMOTE'
@@ -194,25 +213,27 @@ REMOTE
 )"
   if [[ "$model_is_exl3" == true ]]; then
     identity="$(release_exl3_package_identity "$sparkinfer_commit" <<<"$spark_manifest")"
+    [[ "$SPARK_COUNT" != 2 || "$identity" != paired:* ]] ||
+      release_die "SPARK_COUNT=2 requires disjoint EXL3 packages, not paired TP4"
+    if ((SPARK_COUNT == 2)); then
+      release_validate_exl3_tp2_variants "$expert_capacity" "$exl3_family_tag" <<<"$spark_manifest"
+    fi
     [[ -z "$spark_exl3_identity" || "$spark_exl3_identity" == "$identity" ]] ||
       release_die "Spark EXL3 packages differ across hosts; rebuild/distribute matching images"
     spark_exl3_identity="$identity"
   fi
 done
 
-expert_capacity=4096
-if ((PREFILL_BATCH_TOKENS <= 80)); then expert_capacity=80
-elif ((PREFILL_BATCH_TOKENS <= 256)); then expert_capacity=256
-elif ((PREFILL_BATCH_TOKENS <= 1024)); then expert_capacity=1024
-fi
 # Zero-Spark deployments hold every routed layer on the RTX pair; the daemon
 # still requires four peer addresses but never connects to them.
 if ((SPARK_COUNT == 0)); then
   peers="127.0.0.1:1,127.0.0.1:2,127.0.0.1:3,127.0.0.1:4"
 else
-  peers="${lanes[0]}:$EXPERT_PORT,${lanes[1]}:$EXPERT_PORT,${lanes[2]}:$EXPERT_PORT,${lanes[3]}:$EXPERT_PORT"
+  peer_addresses=()
+  for lane in "${lanes[@]}"; do peer_addresses+=("$lane:$EXPERT_PORT"); done
+  peers="$(IFS=,; echo "${peer_addresses[*]}")"
 fi
-fingerprint="$(printf '%s\n' "$engine_commit" "$RELEASE_MODEL_ID" "$RELEASE_MODEL_REVISION" "$ADDR" "$RELEASE_RTX_GPUS" "$gpu_uuid_csv" "$gpu_pci_csv" "$CONCURRENCY" "${HTTP_QUEUE_DEPTH:-$CONCURRENCY}" "$HTTP_QUEUE_WAIT_MS" "$HOST_CACHE_BYTES" "$RTX_EXPERT_LAYERS" "$KV_POOL_SIZE" "$MEMORY_RESERVATION" "$PREFIX_CACHE_ENTRIES" "$MAX_CONTEXT_TOKENS" "$MAX_OUTPUT_TOKENS" "$PREFILL_BATCH_TOKENS" "$DSPARK" "$TP2_ATTENTION" "$TP2_QUERY_PROJECTION" "$TP2_OUTPUT_PROJECTION" "$TP2_DSPARK_EXPERTS" "$SPARK_DEVICE_BUDGET_BYTES" "$spark_first_layer" "$peers" "$spark_exl3_identity" | sha256sum | awk '{print $1}')"
+fingerprint="$(printf '%s\n' "$engine_commit" "$RELEASE_MODEL_ID" "$RELEASE_MODEL_REVISION" "$ADDR" "$RELEASE_RTX_GPUS" "$gpu_uuid_csv" "$gpu_pci_csv" "$CONCURRENCY" "${HTTP_QUEUE_DEPTH:-$CONCURRENCY}" "$HTTP_QUEUE_WAIT_MS" "$HOST_CACHE_BYTES" "$RTX_EXPERT_LAYERS" "$KV_POOL_SIZE" "$MEMORY_RESERVATION" "$PREFIX_CACHE_ENTRIES" "$MAX_CONTEXT_TOKENS" "$MAX_OUTPUT_TOKENS" "$PREFILL_BATCH_TOKENS" "$DSPARK" "$TP2_ATTENTION" "$TP2_QUERY_PROJECTION" "$TP2_OUTPUT_PROJECTION" "$TP2_DSPARK_EXPERTS" "$SPARK_DEVICE_BUDGET_BYTES" "$spark_first_layer" "$SPARK_COUNT" "$(release_hosts_csv)" "$peers" "$spark_exl3_identity" | sha256sum | awk '{print $1}')"
 spark_prefix="$RELEASE_SPARK_CONTAINER_PREFIX"
 
 if ((dry_run)); then
@@ -220,7 +241,12 @@ if ((dry_run)); then
   echo "  RTX layout: $RELEASE_RTX_GPUS GPU(s), host indices $gpu_index_csv"
   echo "  physical GPUs: $gpu_uuid_csv"
   echo "  TP2 attention/query/output/draft experts: $TP2_ATTENTION/$TP2_QUERY_PROJECTION/$TP2_OUTPUT_PROJECTION/$TP2_DSPARK_EXPERTS"
+  echo "  Spark ranks: $SPARK_COUNT; hosts: $(release_hosts_csv)"
+  echo "  Spark peers: $peers"
   echo "  Spark first routed layer: $spark_first_layer"
+  echo "  coordinator memory reservation: ${MEMORY_RESERVATION:-runtime default}"
+  echo "  prefill batch tokens: $PREFILL_BATCH_TOKENS; expert capacity: $expert_capacity"
+  echo "  release identity: $fingerprint"
   [[ -z "$spark_exl3_identity" ]] || echo "  Spark EXL3 package: $spark_exl3_identity"
   exit 0
 fi
@@ -292,11 +318,11 @@ echo "== starting native Spark experts =="
 pids=()
 for i in "${!hosts[@]}"; do
   host="${hosts[$i]}"; remote="${spark_prefix}-${host}-${EXPERT_PORT}"
-  ssh -o BatchMode=yes "$host" bash -s -- "$SPARK_EXPERT_DOCKER_INFERENCE" "$remote" "$i" "$expert_capacity" "$SPARK_DEVICE_BUDGET_BYTES" "$EXPERT_PORT" "$snapshot_rel" "$fingerprint" "$spark_first_layer" <<'REMOTE' &
+  ssh -o BatchMode=yes "$host" bash -s -- "$SPARK_EXPERT_DOCKER_INFERENCE" "$remote" "$i" "$expert_capacity" "$SPARK_DEVICE_BUDGET_BYTES" "$EXPERT_PORT" "$snapshot_rel" "$fingerprint" "$spark_first_layer" "$SPARK_COUNT" <<'REMOTE' &
 set -euo pipefail
-image="$1"; name="$2"; rank="$3"; capacity="$4"; budget="$5"; port="$6"; snapshot_rel="$7"; fingerprint="$8"; first_layer="$9"
+image="$1"; name="$2"; rank="$3"; capacity="$4"; budget="$5"; port="$6"; snapshot_rel="$7"; fingerprint="$8"; first_layer="$9"; world="${10}"
 hf_home="${HF_HOME:-$HOME/.cache/huggingface}"
-docker run -d --name "$name" --restart no --gpus all --network host --ipc host --ulimit memlock=-1:-1 --device=/dev/infiniband -e "DS41RT_RELEASE_CONFIG_SHA256=$fingerprint" -v "$hf_home:/root/.cache/huggingface:ro" "$image" ds41rt expertd-native --snapshot "/root/.cache/huggingface/$snapshot_rel" --native-lib /opt/ds41rt/lib/libds41rt_native.so --rank "$rank" --capacity "$capacity" --device-budget-bytes "$budget" --first-layer "$first_layer" --listen "0.0.0.0:$port" >/dev/null
+docker run -d --name "$name" --restart no --gpus all --network host --ipc host --ulimit memlock=-1:-1 --device=/dev/infiniband -e "DS41RT_RELEASE_CONFIG_SHA256=$fingerprint" -v "$hf_home:/root/.cache/huggingface:ro" "$image" ds41rt expertd-native --snapshot "/root/.cache/huggingface/$snapshot_rel" --native-lib /opt/ds41rt/lib/libds41rt_native.so --rank "$rank" --world "$world" --capacity "$capacity" --device-budget-bytes "$budget" --first-layer "$first_layer" --listen "0.0.0.0:$port" >/dev/null
 REMOTE
   pids+=("$!")
 done

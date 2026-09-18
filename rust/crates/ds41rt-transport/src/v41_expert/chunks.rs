@@ -122,6 +122,21 @@ impl V41Tp4ChunkReceiver {
             max_frame_bytes,
         })
     }
+    /// Collect exactly two complete rank planes while preserving TP4 APIs.
+    pub fn new_tp2(
+        request: &V41BackboneRequest<'_>,
+        executors: [u64; 2],
+        max_frame_bytes: usize,
+    ) -> Result<Self> {
+        request.response_chunk_rows(max_frame_bytes)?;
+        ensure!(!request.is_paired(), "paired EXL3 requires four ranks");
+        Ok(Self {
+            identity: V41Tp4Planes::from_header_ranks(&request.view.header, &executors)?,
+            received: [0; 4],
+            finished: [false; 4],
+            max_frame_bytes,
+        })
+    }
     /// Validate the owned request without serializing its activation payload.
     pub(crate) fn from_owned(
         request: &crate::ExpertProtocolV2Request,
@@ -129,7 +144,16 @@ impl V41Tp4ChunkReceiver {
         executors: [u64; 4],
         max_frame_bytes: usize,
     ) -> Result<Self> {
+        Self::from_owned_ranks(request, max_rows, &executors, max_frame_bytes)
+    }
+    pub(crate) fn from_owned_ranks(
+        request: &crate::ExpertProtocolV2Request,
+        max_rows: u32,
+        executors: &[u64],
+        max_frame_bytes: usize,
+    ) -> Result<Self> {
         if request.header.flags & super::V41_EXL3_PAIRED_REQUEST_FLAG != 0 {
+            ensure!(executors.len() == 4, "paired EXL3 requires four ranks");
             V41BackboneRequest::validate_owned_paired(request, max_rows)?;
         } else {
             V41BackboneRequest::validate_owned(request, max_rows)?;
@@ -144,14 +168,14 @@ impl V41Tp4ChunkReceiver {
         ensure!(max_frame_bytes >= header_bytes + V41_PARTIAL_ROW_BYTES as usize + 4,
             "response frame cannot fit one native token row");
         Ok(Self {
-            identity: V41Tp4Planes::from_header(&request.header, executors)?,
+            identity: V41Tp4Planes::from_header_ranks(&request.header, executors)?,
             received: [0; 4],
             finished: [false; 4],
             max_frame_bytes,
         })
     }
     pub fn complete(&self) -> bool {
-        self.finished.iter().all(|value| *value)
+        self.finished[..self.identity.executors.len()].iter().all(|value| *value)
     }
     pub fn received_rows(&self) -> [u32; 4] {
         self.received

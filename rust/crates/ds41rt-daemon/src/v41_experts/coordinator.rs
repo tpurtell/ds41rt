@@ -11,7 +11,7 @@ pub(crate) struct NativeTp4Wave<'a> {
     transport: V41Tp4Roce,
     // Drop drains the stream before fields release any GPU allocations.
     stream: LoadStream<'a>,
-    planes: [DeviceAllocation<'a>; 4],
+    planes: Vec<DeviceAllocation<'a>>,
     upload_frames: Vec<VerbsHostProtocolV2ResponsePayload>,
     shared: DeviceAllocation<'a>,
     output: DeviceAllocation<'a>,
@@ -23,6 +23,7 @@ pub(crate) struct NativeTp4Wave<'a> {
     paired: Option<Box<(super::paired::PairedAssignment, std::rc::Rc<super::paired::PairedProfile>)>>,
 }
 impl<'a> NativeTp4Wave<'a> {
+    pub(crate) fn spark_world(&self) -> usize { self.transport.world_size() }
     pub(crate) fn install_paired(&mut self, profile: std::rc::Rc<super::paired::PairedProfile>) -> Result<()> {
         ensure!(self.paired.is_none(), "paired assignment already installed");
         self.paired = Some(Box::new((super::paired::PairedAssignment::new(), profile)));
@@ -99,6 +100,7 @@ impl<'a> NativeTp4Wave<'a> {
         self.ready_rows = None;
         self.transport.reset_connections();
     }
+    /// TP4 upper-bound reservation, also sufficient for a TP2 transport.
     pub fn device_bytes(capacity: u32) -> Result<usize> {
         ensure!(
             capacity > 0 && capacity <= 4096,
@@ -114,17 +116,18 @@ impl<'a> NativeTp4Wave<'a> {
         available_bytes: usize,
     ) -> Result<Self> {
         let capacity = transport.capacity();
+        let world_size = transport.world_size();
+        ensure!(matches!(world_size, 2 | 4), "native TP wave requires two or four ranks");
         ensure!(
             Self::device_bytes(capacity)? <= available_bytes,
             "native TP wave exceeds device budget"
         );
         let reducer = library.v41_compact_reducer()?;
         let plane_bytes = capacity as usize * V41_PARTIAL_ROW_BYTES as usize;
-        let mut planes = Vec::with_capacity(4);
-        for _ in 0..4 {
+        let mut planes = Vec::with_capacity(world_size);
+        for _ in 0..world_size {
             planes.push(DeviceAllocation::new(library, plane_bytes)?);
         }
-        let planes = planes.try_into().ok().expect("four native TP planes");
         let hidden_bytes = capacity as usize * 5120 * 2;
         Ok(Self {
             transport,
@@ -133,7 +136,7 @@ impl<'a> NativeTp4Wave<'a> {
                 raw: library.cuda_stream_create()?,
             },
             planes,
-            upload_frames: Vec::with_capacity(capacity as usize * 4),
+            upload_frames: Vec::with_capacity(capacity as usize * world_size),
             shared: DeviceAllocation::new(library, hidden_bytes)?,
             output: DeviceAllocation::new(library, hidden_bytes)?,
             library,
@@ -187,7 +190,7 @@ impl<'a> NativeTp4Wave<'a> {
         )?;
         unsafe { self.dispatch_ffn(request).await?.finish(shared).await }
     }
-    /// Enqueue all four expert requests before returning. The caller can then run
+    /// Enqueue all TP rank expert requests before returning. The caller can then run
     /// shared FFN work on RTX while the Spark workers execute the routed experts.
     pub async fn dispatch_ffn<'w, 'r>(
         &'w mut self,
@@ -267,7 +270,7 @@ impl Drop for NativeTp4Wave<'_> {
     }
 }
 
-/// Complete ordered TP4 reduction plus the shared expert, borrowed until consumed.
+/// Complete ordered TP reduction plus the shared expert, borrowed until consumed.
 pub(crate) struct NativeFfnOutput<'a> {
     pub values: Ds41rtDeviceBuffer,
     binding: crate::v41_attention_binding::QueryBinding,
@@ -300,7 +303,7 @@ fn validate_shared(
 }
 fn copy_chunk(
     library: &NativeLibrary,
-    planes: &[DeviceAllocation<'_>; 4],
+    planes: &[DeviceAllocation<'_>],
     rank: usize,
     first_row: u32,
     bytes: &[u8],
@@ -308,12 +311,12 @@ fn copy_chunk(
     library.copy_h2d(chunk_destination(planes, rank, first_row, bytes.len())?, bytes)
 }
 fn chunk_destination(
-    planes: &[DeviceAllocation<'_>; 4],
+    planes: &[DeviceAllocation<'_>],
     rank: usize,
     first_row: u32,
     bytes: usize,
 ) -> Result<Ds41rtDeviceBuffer> {
-    ensure!(rank < 4, "native route rank exceeds TP4");
+    ensure!(rank < planes.len(), "native route rank exceeds TP plane count");
     let offset = (first_row as usize)
         .checked_mul(V41_PARTIAL_ROW_BYTES as usize)
         .context("native route chunk offset overflow")?;
@@ -335,7 +338,7 @@ fn chunk_destination(
 struct PlaneUploads<'s, 'a> {
     library: &'a NativeLibrary,
     stream: &'s LoadStream<'a>,
-    planes: &'s [DeviceAllocation<'a>; 4],
+    planes: &'s [DeviceAllocation<'a>],
     frames: &'s mut Vec<VerbsHostProtocolV2ResponsePayload>,
     rows: u32,
     pending: bool,
@@ -368,21 +371,28 @@ impl Drop for PlaneUploads<'_, '_> {
     }
 }
 unsafe fn enqueue_reduce_planes(reducer: &V41CompactReducer<'_>, stream: &LoadStream<'_>,
-    planes: &[DeviceAllocation<'_>; 4], output: Ds41rtDeviceBuffer,
+    planes: &[DeviceAllocation<'_>], output: Ds41rtDeviceBuffer,
     shared: Option<Ds41rtDeviceBuffer>, rows: u32) -> Result<()> {
-    unsafe { reducer.reduce(
-        std::array::from_fn(|rank| planes[rank].buffer.ptr.cast::<u16>().cast_const()),
-        shared.map_or(std::ptr::null(), |b| b.ptr.cast()), output.ptr.cast(), rows, stream.raw) }
+    let shared = shared.map_or(std::ptr::null(), |b| b.ptr.cast());
+    match planes.len() {
+        2 => unsafe { reducer.reduce_tp2(
+            std::array::from_fn(|rank| planes[rank].buffer.ptr.cast::<u16>().cast_const()),
+            shared, output.ptr.cast(), rows, stream.raw) },
+        4 => unsafe { reducer.reduce(
+            std::array::from_fn(|rank| planes[rank].buffer.ptr.cast::<u16>().cast_const()),
+            shared, output.ptr.cast(), rows, stream.raw) },
+        _ => anyhow::bail!("native compact reduction requires two or four TP planes"),
+    }
 }
 fn reduce_planes(library: &NativeLibrary, reducer: &V41CompactReducer<'_>,
-    stream: &LoadStream<'_>, planes: &[DeviceAllocation<'_>; 4], output: Ds41rtDeviceBuffer,
+    stream: &LoadStream<'_>, planes: &[DeviceAllocation<'_>], output: Ds41rtDeviceBuffer,
     shared: Option<Ds41rtDeviceBuffer>, rows: u32) -> Result<()> {
     let launched = unsafe { enqueue_reduce_planes(reducer, stream, planes, output, shared, rows) };
     launched.and(unsafe { library.cuda_stream_synchronize(stream.raw) })
 }
 /// Retain planes, upload frames, output and shared input through completion.
 async unsafe fn reduce_planes_cooperative(reducer: &V41CompactReducer<'_>,
-    stream: &LoadStream<'_>, planes: &[DeviceAllocation<'_>; 4], output: Ds41rtDeviceBuffer,
+    stream: &LoadStream<'_>, planes: &[DeviceAllocation<'_>], output: Ds41rtDeviceBuffer,
     shared: Option<Ds41rtDeviceBuffer>, rows: u32) -> Result<()> {
     let launched = unsafe { enqueue_reduce_planes(reducer, stream, planes, output, shared, rows) };
     let drained = stream.wait().await;
@@ -397,7 +407,7 @@ pub(crate) struct NativePendingFfn<'w, 'a, 'r> {
     capacity: u32,
     library: &'a NativeLibrary,
     stream: &'w LoadStream<'a>,
-    planes: &'w [DeviceAllocation<'a>; 4],
+    planes: &'w [DeviceAllocation<'a>],
     upload_frames: &'w mut Vec<VerbsHostProtocolV2ResponsePayload>,
     shared: Ds41rtDeviceBuffer,
     output: Ds41rtDeviceBuffer,
@@ -504,18 +514,43 @@ mod upload_tests {
     use super::*;
 
     #[test]
+    fn tp_wave_budget_remains_tp4_upper_bound() -> Result<()> {
+        assert!(NativeTp4Wave::device_bytes(0).is_err());
+        assert!(NativeTp4Wave::device_bytes(4097).is_err());
+        for capacity in [1, 16, 80, 4096] {
+            let reserved = NativeTp4Wave::device_bytes(capacity)?;
+            assert_eq!(reserved, capacity as usize * 6 * 10240);
+            assert!(reserved >= capacity as usize * (2 * V41_PARTIAL_ROW_BYTES as usize + 2 * 10240));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn missing_tp_planes_reject_copy_before_pointer_arithmetic() {
+        for rank in [0, 1, 2, 4, usize::MAX] {
+            assert!(chunk_destination(&[], rank, 0, 10240).is_err());
+        }
+    }
+
+    #[test]
     fn pageable_rank_upload_fallback_matches_sync_and_checks_bounds() -> Result<()> {
         let Some(path) = std::env::var_os("DS41RT_PLANE_UPLOAD_LIBRARY") else {
             eprintln!("skip GPU rank upload test: DS41RT_PLANE_UPLOAD_LIBRARY unset");
             return Ok(());
         };
         let library = unsafe { NativeLibrary::load(path)? };
-        let stream = LoadStream { library: &library, raw: library.cuda_stream_create()? };
-        let planes = (0..4)
+        for world_size in [2, 4] {
+            check_pageable_uploads(&library, world_size)?;
+        }
+        Ok(())
+    }
+
+    fn check_pageable_uploads(library: &NativeLibrary, world_size: usize) -> Result<()> {
+        let stream = LoadStream { library, raw: library.cuda_stream_create()? };
+        let planes = (0..world_size)
             .map(|_| DeviceAllocation::new(&library, 4096 * 10240))
-            .collect::<Result<Vec<_>>>()?
-            .try_into().ok().expect("four planes");
-        let mut frames = Vec::with_capacity(4096 * 4);
+            .collect::<Result<Vec<_>>>()?;
+        let mut frames = Vec::with_capacity(4096 * world_size);
         let shared = DeviceAllocation::new(&library, 4096 * 10240)?;
         let output = DeviceAllocation::new(&library, 4096 * 10240)?;
         let reducer = library.v41_compact_reducer()?;
@@ -525,7 +560,7 @@ mod upload_tests {
             let shared_bytes: Vec<u8> = (0..bytes / 2)
                 .flat_map(|_| 0x3f00u16.to_ne_bytes()).collect();
             library.copy_h2d(shared.buffer, &shared_bytes)?;
-            let payloads: Vec<Vec<u8>> = (0..4).map(|rank| {
+            let payloads: Vec<Vec<u8>> = (0..world_size).map(|rank| {
                 (0..bytes / 2).flat_map(|i| {
                     let value = rank as f32 + 1.0 + (i % 31) as f32 / 32.0;
                     ((value.to_bits() >> 16) as u16).to_ne_bytes()
@@ -546,7 +581,7 @@ mod upload_tests {
                 };
                 for first in (0..rows).step_by(3) {
                     let end = (first + 3).min(rows);
-                    for rank in [3, 1, 0, 2] {
+                    for rank in [3, 1, 0, 2].into_iter().filter(|&rank| rank < world_size) {
                         uploads.copy(rank, first,
                             VerbsHostProtocolV2ResponsePayload::from_owned(payloads[rank][first as usize * 10240..end as usize * 10240].to_vec()))?;
                     }
@@ -582,14 +617,17 @@ mod upload_tests {
                         frames: &mut frames, rows: 1, pending: false,
                     };
                     uploads.copy(0, 0, VerbsHostProtocolV2ResponsePayload::from_owned(payloads[0][..10240].to_vec()))?;
-                    if error { assert!(uploads.copy(4, 0, VerbsHostProtocolV2ResponsePayload::from_owned(payloads[0][..10240].to_vec())).is_err()); }
+                    if error {
+                        assert!(uploads.copy(world_size, 0, VerbsHostProtocolV2ResponsePayload::from_owned(payloads[0][..10240].to_vec())).is_err());
+                        assert!(uploads.copy(0, 1, VerbsHostProtocolV2ResponsePayload::from_owned(payloads[0][..10240].to_vec())).is_err());
+                    }
                 }
                 assert!(frames.is_empty());
                 let mut actual = vec![0; 10240];
                 library.copy_d2h(&mut actual, Ds41rtDeviceBuffer { bytes: 10240, ..planes[0].buffer })?;
                 assert_eq!(actual, payloads[0][..10240]);
             }
-            eprintln!("PASS rows={rows}: pageable interleaved chunks/reduction exact, stable owner capacity, bounds errors");
+            eprintln!("PASS TP{world_size} rows={rows}: pageable interleaved chunks/reduction exact, stable owner capacity, bounds errors");
         }
         Ok(())
     }
@@ -606,7 +644,7 @@ mod upload_tests {
         let mut client = V41Tp4Roce::new(peers, [1,2,3,4], 4096, TcpTransportConfig {
             timeout: std::time::Duration::from_secs(30), max_frame_bytes: 64 << 20,
         })?;
-        let planes = (0..4).map(|_| DeviceAllocation::new(&library, 4096 * 10240))
+        let planes: [DeviceAllocation<'_>; 4] = (0..4).map(|_| DeviceAllocation::new(&library, 4096 * 10240))
             .collect::<Result<Vec<_>>>()?.try_into().ok().expect("four planes");
         let mut frames = Vec::with_capacity(4096 * 4);
         let frame_address = frames.as_ptr();

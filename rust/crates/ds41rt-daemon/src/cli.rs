@@ -157,6 +157,9 @@ pub(crate) struct NativeExpertDaemonArgs {
     pub(crate) exl3_aot_dir: Option<PathBuf>,
     #[arg(long, value_parser = clap::value_parser!(u32).range(0..4))]
     pub(crate) rank: u32,
+    /// Spark tensor-parallel world; two ranks require an EXL3 checkpoint.
+    #[arg(long, default_value_t = 4, value_parser = clap::value_parser!(u32).range(2..=4))]
+    pub(crate) world: u32,
     #[arg(long, default_value_t = 16)]
     pub(crate) capacity: u32,
     /// Total device bytes allowed for resident weights, loading and execution.

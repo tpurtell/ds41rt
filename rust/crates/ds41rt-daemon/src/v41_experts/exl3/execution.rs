@@ -366,6 +366,8 @@ impl<'a> Exl3Execution<'a> {
         );
         let mut storage = Vec::new();
         let mut pointers = BTreeMap::new();
+        // Never resize to the current device's SM count: compiled grid barriers
+        // retain export-time offsets, even when the bridge caps the launch grid.
         for (name, spec) in &meta.buffers {
             if name != &spec.allocation {
                 continue;
@@ -431,7 +433,10 @@ impl<'a> Exl3Execution<'a> {
                 ("active_m".into(), 1),
                 (
                     "grid_x".into(),
-                    i32::try_from(meta.sms * meta.blocks_per_sm)?,
+                    // The native bridge caps this request to the smaller of
+                    // export/current SM counts; larger devices cannot expand it.
+                    i32::try_from(meta.sms.checked_mul(meta.blocks_per_sm)
+                        .context("EXL3 grid capacity overflow")?)?,
                 ),
                 ("route_num_experts".into(), meta.experts as i32),
                 (

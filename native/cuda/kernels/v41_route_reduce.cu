@@ -84,6 +84,7 @@ __global__ void compact_routes(const float* routes, __nv_bfloat16* output,
   }
 }
 
+template<int Ranks>
 __global__ void reduce_compact(const __nv_bfloat16* p0,
     const __nv_bfloat16* p1, const __nv_bfloat16* p2,
     const __nv_bfloat16* p3, const __nv_bfloat16* shared,
@@ -92,8 +93,10 @@ __global__ void reduce_compact(const __nv_bfloat16* p0,
        offset < count; offset += uint64_t(gridDim.x) * blockDim.x) {
     float value = __bfloat162float(p0[offset]);
     value = __fadd_rn(value, __bfloat162float(p1[offset]));
-    value = __fadd_rn(value, __bfloat162float(p2[offset]));
-    value = __fadd_rn(value, __bfloat162float(p3[offset]));
+    if constexpr (Ranks == 4) {
+      value = __fadd_rn(value, __bfloat162float(p2[offset]));
+      value = __fadd_rn(value, __bfloat162float(p3[offset]));
+    }
     if (shared) value = __fadd_rn(value, __bfloat162float(shared[offset]));
     output[offset] = __float2bfloat16_rn(value);
   }
@@ -166,11 +169,38 @@ extern "C" int32_t ds41rt_v41_reduce_compact_bf16_async(
       (shared != output && overlaps(shared, count * 2, output, count * 2))))
     return cudaErrorInvalidValue;
   const unsigned blocks = static_cast<unsigned>(count / 256 < 4096 ? count / 256 : 4096);
-  reduce_compact<<<blocks, 256, 0, static_cast<cudaStream_t>(stream)>>>(
+  reduce_compact<4><<<blocks, 256, 0, static_cast<cudaStream_t>(stream)>>>(
       reinterpret_cast<const __nv_bfloat16*>(planes[0]),
       reinterpret_cast<const __nv_bfloat16*>(planes[1]),
       reinterpret_cast<const __nv_bfloat16*>(planes[2]),
       reinterpret_cast<const __nv_bfloat16*>(planes[3]),
+      reinterpret_cast<const __nv_bfloat16*>(shared),
+      reinterpret_cast<__nv_bfloat16*>(output), count);
+  return cudaGetLastError();
+}
+
+extern "C" int32_t ds41rt_v41_reduce_tp2_compact_bf16_async(
+    const uint16_t* const planes[2], const uint16_t* shared, uint16_t* output,
+    uint32_t rows, void* stream) {
+  const uint64_t count = uint64_t(rows) * hidden;
+  const uint64_t bytes = count * 2;
+  if (!rows || rows > 4096 || !planes || !output ||
+      reinterpret_cast<uintptr_t>(output) % 2 ||
+      reinterpret_cast<uintptr_t>(output) > UINTPTR_MAX - bytes)
+    return cudaErrorInvalidValue;
+  for (int rank = 0; rank < 2; ++rank)
+    if (!planes[rank] || reinterpret_cast<uintptr_t>(planes[rank]) % 2 ||
+        reinterpret_cast<uintptr_t>(planes[rank]) > UINTPTR_MAX - bytes ||
+        overlaps(planes[rank], bytes, output, bytes))
+      return cudaErrorInvalidValue;
+  if (shared && (reinterpret_cast<uintptr_t>(shared) % 2 ||
+      reinterpret_cast<uintptr_t>(shared) > UINTPTR_MAX - bytes ||
+      (shared != output && overlaps(shared, bytes, output, bytes))))
+    return cudaErrorInvalidValue;
+  const unsigned blocks = static_cast<unsigned>(count / 256 < 4096 ? count / 256 : 4096);
+  reduce_compact<2><<<blocks, 256, 0, static_cast<cudaStream_t>(stream)>>>(
+      reinterpret_cast<const __nv_bfloat16*>(planes[0]),
+      reinterpret_cast<const __nv_bfloat16*>(planes[1]), nullptr, nullptr,
       reinterpret_cast<const __nv_bfloat16*>(shared),
       reinterpret_cast<__nv_bfloat16*>(output), count);
   return cudaGetLastError();

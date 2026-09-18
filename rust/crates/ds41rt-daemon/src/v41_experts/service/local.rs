@@ -65,9 +65,11 @@ pub(super) fn run(config: NativeExpertServiceConfig, listen: &str) -> Result<()>
                 }
             }
         })?;
+    let executor_id = ds41rt_transport::v41_expert::v41_spark_executor_id(config.world, config.rank)?;
     let mut connections = Vec::<LocalVerbsExpertConnection>::with_capacity(16);
     tracing::info!(
         rank = config.rank,
+        world = config.world,
         capacity = config.capacity,
         first_layer = config.first_layer,
         layers = weights.len(),
@@ -97,7 +99,7 @@ pub(super) fn run(config: NativeExpertServiceConfig, listen: &str) -> Result<()>
                 execution.bind_layer(&weights, layer)?;
                 if let Some(slot) = mapped.response_slot {
                     let response = unsafe { execution.execute_mapped_request(&request,
-                        config.rank as u64 + 1, &mut exchange, slot) };
+                        executor_id, &mut exchange, slot) };
                     let response = match response {
                         Ok(response) => response,
                         Err(error) => { execution_failed = true; return Err(error); }
@@ -109,7 +111,7 @@ pub(super) fn run(config: NativeExpertServiceConfig, listen: &str) -> Result<()>
                 let mut emit_failed = false;
                 let result = execution.execute_host_chunks(
                     &request,
-                    config.rank as u64 + 1,
+                    executor_id,
                     &mut exchange,
                     &mut row_indices,
                     config.max_frame_bytes,

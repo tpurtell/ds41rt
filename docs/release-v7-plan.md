@@ -623,6 +623,15 @@ BF16 output allocation, and the compact-BF16 reduction branch in
    B/row) versus today's FP8-K32 (5,280 B/row). The RTX-resident profile
    avoids the question entirely and should be the first served target.
 
+## Compact TP2 implementation (current)
+
+The new single-RTX compact path uses Spark TP2, not whole-layer Spark
+partitioning. See [compact serving](release-v7-exl3-compact.md) for the design,
+absolute 32 GiB ceiling, 2 GiB KV default, two-worker launch, residency reporting,
+and the EXL3 same-SM120 reduced-grid compatibility work. This supersedes the
+older "TP4-only" gap descriptions above; qualification status is recorded in
+that document and the generated performance report.
+
 ## Implementation sequence
 
 1. [ ] EXL3: raw-publication contract in the loader (synthesize manifest

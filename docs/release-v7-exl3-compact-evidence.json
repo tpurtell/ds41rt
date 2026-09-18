@@ -1,0 +1,477 @@
+{
+  "schema": "ds41rt.v7-compact-evidence.v1",
+  "checkpoint": "diffbot/DeepSeek-V4.1-Flash-EXL3-2.0bpw-2x-RTX-PRO-6000",
+  "revision": "28b7ab71ba2eb15569b08b91a8ea07df8eda8a75",
+  "branch": "work/v7-nvfp4-exl3",
+  "topology": {
+    "rtx_gpus": 1,
+    "spark_world": 2,
+    "spark_hosts": [
+      "ostrich",
+      "dodo"
+    ],
+    "inactive_sparks": [
+      "emu",
+      "kiwi"
+    ],
+    "rtx_layers": [
+      0
+    ],
+    "spark_layers": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39
+    ],
+    "spark_intermediate": 1152,
+    "prefill_batch_tokens": 256,
+    "expert_capacity": 256,
+    "concurrency": 16,
+    "dspark_draft_limit": 5,
+    "prefix_cache_entries": 20,
+    "host_cache": "auto",
+    "kv_pool_requested_bytes": 2147483648
+  },
+  "memory": {
+    "ceiling_bytes": 34359738368,
+    "runtime_headroom_bytes": 2147483648,
+    "coordinator_ready_occupied_bytes": 30430986240,
+    "coordinator_peak_observed_mib": 29568,
+    "telemetry_samples": 1241,
+    "telemetry_period_seconds": 2,
+    "spark_resident_bytes_each": 67394076672,
+    "spark_workspace_bytes_each": 56007284
+  },
+  "artifacts": {
+    "coordinator_binary_sha256": "c3655ddbce1a22e31952139dcd79ad221770ccc2495c8d34fc81810e898a9109",
+    "coordinator_library_sha256": "6e96ce1619384ed42461076b7b8eac9e990ef6704e381c836087731390a5edc5",
+    "coordinator_k23_manifest_sha256": "bd88d421e8eb631ed3ec17845bd4b3cd88b2e5a863106d9feee95478c2a9aa21",
+    "spark_binary_sha256": "b28485c3de76a2abb5c41633b0795dca3c395fca844aafe6eaefe813a80029bb",
+    "spark_library_sha256": "0f02ed93a13f89c2c02d0df1303a09eb63a53cb170f886b320727f2212c03f7e",
+    "spark_k23_manifest_sha256": "01da1b41a9791fb48cf9edc50b33edb9c5e21f7abf14b10579c440b9d0de9cab"
+  },
+  "smoke": {
+    "compact_answer": "42",
+    "dual_zero_spark_answer": "42",
+    "dual_rtx_expert_layers": 40
+  },
+  "decode": {
+    "passed": false,
+    "passing_samples": 29,
+    "samples": 30,
+    "failures": [
+      {
+        "case": "code-reasoning",
+        "repeat": 3,
+        "finish_reason": "length",
+        "output_tokens": 4096,
+        "final_response_empty": true
+      }
+    ],
+    "median_weighted_tokens_per_second": 88.10309325516357,
+    "case_medians": {
+      "code": 123.54454199450207,
+      "code-reasoning": 92.57641401213505,
+      "math": 118.03319787990048,
+      "fable": 55.6201265809138,
+      "hello": 68.53956208464565,
+      "topic": 68.49480776496574,
+      "structured-json": 96.62759331468936,
+      "structured-json-schema": 101.2825288469608,
+      "multilingual": 71.6879053023531,
+      "counting": 163.5535951938403
+    }
+  },
+  "prefill": {
+    "passed": true,
+    "cells": 30,
+    "samples": 120,
+    "best_median_tokens_per_second": 2015.4472009569415
+  },
+  "reduced_grid_tests": [
+    {
+      "aot": "/wip/slots/v7q-a1/coordinator/workspace/.ds41rt-wip/exl3/exl3-k23/rtx-tp1/m16",
+      "passed": true,
+      "export_sms": 188,
+      "simulated_sms": 170,
+      "bits": [
+        2,
+        3
+      ],
+      "intermediate": 2304,
+      "capacity": 16,
+      "top_k": 6,
+      "manifest_sha256": "51be73761d5cd0974e5e67f599d46714b987098a68aa91cc0cf688b722c402bb",
+      "library_sha256": "b7cf696d68cb27acfd188eee85009afbc2814e0cee7ac69ca39c475be6561827",
+      "bitwise_equal": true,
+      "changed_input_graph": true,
+      "scope": "synthetic exact-object grid invariance only"
+    },
+    {
+      "aot": "/wip/slots/v7q-a1/coordinator/workspace/.ds41rt-wip/exl3/exl3-k23/rtx-tp2/m16",
+      "passed": true,
+      "export_sms": 188,
+      "simulated_sms": 170,
+      "bits": [
+        2,
+        3
+      ],
+      "intermediate": 1152,
+      "capacity": 16,
+      "top_k": 6,
+      "manifest_sha256": "c0763bd7ee927d7ec5924c41a12f7ae46cb0637a6a7a08357bbe7839bf51e46c",
+      "library_sha256": "5d33cac5b19a763da325988d5d89f843a622cd89561e7c34274a3694ea062887",
+      "bitwise_equal": true,
+      "changed_input_graph": true,
+      "scope": "synthetic exact-object grid invariance only"
+    },
+    {
+      "aot": "/wip/slots/v7q-a1/coordinator/workspace/.ds41rt-wip/exl3/exl3-k23/dspark/m16",
+      "passed": true,
+      "export_sms": 188,
+      "simulated_sms": 170,
+      "bits": [
+        2,
+        3
+      ],
+      "intermediate": 2304,
+      "capacity": 16,
+      "top_k": 3,
+      "manifest_sha256": "03be6fa421064087513b6396cf985e723499ba5327e52869c3bd4946194510cb",
+      "library_sha256": "99cd8c74c7429edd4f28f57043d04b17db7b6694d11343e8496500f18073eb95",
+      "bitwise_equal": true,
+      "changed_input_graph": true,
+      "scope": "synthetic exact-object grid invariance only"
+    },
+    {
+      "aot": "/wip/slots/v7q-a1/coordinator/workspace/.ds41rt-wip/exl3/exl3-k23/rtx-tp1/m1",
+      "passed": true,
+      "export_sms": 188,
+      "simulated_sms": 170,
+      "bits": [
+        2,
+        3
+      ],
+      "intermediate": 2304,
+      "capacity": 1,
+      "top_k": 6,
+      "manifest_sha256": "a1dd2dbf010c504a0dfda9a246b19bdbd8b5fa56952d548f1416743b4e8e2184",
+      "library_sha256": "c22cf7d11a411ac1d64b8b6008b19876d8ae1cfccb436a70801f1a3e920e338b",
+      "bitwise_equal": true,
+      "changed_input_graph": true,
+      "scope": "synthetic exact-object grid invariance only"
+    },
+    {
+      "aot": "/wip/slots/v7q-a1/coordinator/workspace/.ds41rt-wip/exl3/exl3-k23/rtx-tp1/m80",
+      "passed": true,
+      "export_sms": 188,
+      "simulated_sms": 170,
+      "bits": [
+        2,
+        3
+      ],
+      "intermediate": 2304,
+      "capacity": 80,
+      "top_k": 6,
+      "manifest_sha256": "ebea969b76c95d2252b8e82e0b795feeedacfdb60a52c460b09208277b86ed41",
+      "library_sha256": "c37d63d0023c5808609c807eb342fbe517b08dd4e34ade952b98c59d5985acff",
+      "bitwise_equal": true,
+      "changed_input_graph": true,
+      "scope": "synthetic exact-object grid invariance only"
+    },
+    {
+      "aot": "/wip/slots/v7q-a1/coordinator/workspace/.ds41rt-wip/exl3/exl3-k23/rtx-tp1/m256",
+      "passed": true,
+      "export_sms": 188,
+      "simulated_sms": 170,
+      "bits": [
+        2,
+        3
+      ],
+      "intermediate": 2304,
+      "capacity": 256,
+      "top_k": 6,
+      "manifest_sha256": "402200e640437d000c91981e75afd42089979f178fe9bdd0a33e3ba9ebde63df",
+      "library_sha256": "ca27a55d432d06c80d55d5c8e7ffadb7445e89f1113d45da8f2e7729de09eb6f",
+      "bitwise_equal": true,
+      "changed_input_graph": true,
+      "scope": "synthetic exact-object grid invariance only"
+    },
+    {
+      "aot": "/wip/slots/v7q-a1/coordinator/workspace/.ds41rt-wip/exl3/exl3-k23/rtx-tp1/m1024",
+      "passed": true,
+      "export_sms": 188,
+      "simulated_sms": 170,
+      "bits": [
+        2,
+        3
+      ],
+      "intermediate": 2304,
+      "capacity": 1024,
+      "top_k": 6,
+      "manifest_sha256": "0c5ef570a7f57e1f7488583e6dc64a3a0f40e4c84ab0d9cef3425c982782ff82",
+      "library_sha256": "ec91382ff0efabce45ef5667b237c1dd05b3384224c5cd14c26e7bad9153ac54",
+      "bitwise_equal": true,
+      "changed_input_graph": true,
+      "scope": "synthetic exact-object grid invariance only"
+    },
+    {
+      "aot": "/wip/slots/v7q-a1/coordinator/workspace/.ds41rt-wip/exl3/exl3-k23/rtx-tp1/m4096",
+      "passed": true,
+      "export_sms": 188,
+      "simulated_sms": 170,
+      "bits": [
+        2,
+        3
+      ],
+      "intermediate": 2304,
+      "capacity": 4096,
+      "top_k": 6,
+      "manifest_sha256": "9cad5253dee1dacd13aabf561a794e7b0aa364d993ca8e027913918aadc899e4",
+      "library_sha256": "db279fca79ac91fd060750134c4a59ac205da29efb66fb5635125d4425fc13c7",
+      "bitwise_equal": true,
+      "changed_input_graph": true,
+      "scope": "synthetic exact-object grid invariance only"
+    },
+    {
+      "aot": "/wip/slots/v7q-a1/coordinator/workspace/.ds41rt-wip/exl3/exl3-k23/rtx-tp2/m1",
+      "passed": true,
+      "export_sms": 188,
+      "simulated_sms": 170,
+      "bits": [
+        2,
+        3
+      ],
+      "intermediate": 1152,
+      "capacity": 1,
+      "top_k": 6,
+      "manifest_sha256": "35f5c30bad5d5defdd39b82f5296257ba902fe65a4de971391ea4668fcee8f47",
+      "library_sha256": "f1ad2621737fefa4e4c94278cb77e5cdfc097047a0160c2941f518ea4772a321",
+      "bitwise_equal": true,
+      "changed_input_graph": true,
+      "scope": "synthetic exact-object grid invariance only"
+    },
+    {
+      "aot": "/wip/slots/v7q-a1/coordinator/workspace/.ds41rt-wip/exl3/exl3-k23/rtx-tp2/m80",
+      "passed": true,
+      "export_sms": 188,
+      "simulated_sms": 170,
+      "bits": [
+        2,
+        3
+      ],
+      "intermediate": 1152,
+      "capacity": 80,
+      "top_k": 6,
+      "manifest_sha256": "18da3160dbcef695691347ec19621a3f6acd377dd3473daef1f6eeef5fc9c0f6",
+      "library_sha256": "fe7c5b8eaf7db1ec8d909a3469e51cb7178ac62f4e5cb5a9663092c62cd6609d",
+      "bitwise_equal": true,
+      "changed_input_graph": true,
+      "scope": "synthetic exact-object grid invariance only"
+    },
+    {
+      "aot": "/wip/slots/v7q-a1/coordinator/workspace/.ds41rt-wip/exl3/exl3-k23/rtx-tp2/m256",
+      "passed": true,
+      "export_sms": 188,
+      "simulated_sms": 170,
+      "bits": [
+        2,
+        3
+      ],
+      "intermediate": 1152,
+      "capacity": 256,
+      "top_k": 6,
+      "manifest_sha256": "943401a9ce38c04f2048ce019d94244657854ed3d0d62fb5589eb7d4c3400386",
+      "library_sha256": "a8cb390e2bc4b7710af565b010a6d3ec0a3c13fd4e748ba7cc8d3d2861012c48",
+      "bitwise_equal": true,
+      "changed_input_graph": true,
+      "scope": "synthetic exact-object grid invariance only"
+    },
+    {
+      "aot": "/wip/slots/v7q-a1/coordinator/workspace/.ds41rt-wip/exl3/exl3-k23/rtx-tp2/m1024",
+      "passed": true,
+      "export_sms": 188,
+      "simulated_sms": 170,
+      "bits": [
+        2,
+        3
+      ],
+      "intermediate": 1152,
+      "capacity": 1024,
+      "top_k": 6,
+      "manifest_sha256": "5ad7098d9c7af6cc41ad17089bcf671220d35479104a33ff5aafee689f77abec",
+      "library_sha256": "946cf7ca35f1c41590059deebe0279641288fb1b34d30432089a9447738e6770",
+      "bitwise_equal": true,
+      "changed_input_graph": true,
+      "scope": "synthetic exact-object grid invariance only"
+    },
+    {
+      "aot": "/wip/slots/v7q-a1/coordinator/workspace/.ds41rt-wip/exl3/exl3-k23/rtx-tp2/m4096",
+      "passed": true,
+      "export_sms": 188,
+      "simulated_sms": 170,
+      "bits": [
+        2,
+        3
+      ],
+      "intermediate": 1152,
+      "capacity": 4096,
+      "top_k": 6,
+      "manifest_sha256": "e4c1bd68bd7b22d4e30424e7616f0de973582fffc06812e2a00dbefb20d1d95f",
+      "library_sha256": "263af9d0fd802a95a0a6f5b080250560e77a9879057575b56664bd9f0b2c473a",
+      "bitwise_equal": true,
+      "changed_input_graph": true,
+      "scope": "synthetic exact-object grid invariance only"
+    },
+    {
+      "aot": "/wip/slots/v7q-a1/coordinator/workspace/.ds41rt-wip/exl3/exl3-k23/dspark/m1",
+      "passed": true,
+      "export_sms": 188,
+      "simulated_sms": 170,
+      "bits": [
+        2,
+        3
+      ],
+      "intermediate": 2304,
+      "capacity": 1,
+      "top_k": 3,
+      "manifest_sha256": "ba575680672261fdb07ebb0af271b5b3e366c045b9eab71400a0eed2a1eb7a49",
+      "library_sha256": "8f1795c7e5801ea00c0469861abcfdf69ef0e921fabe710ef505ff81847df7c0",
+      "bitwise_equal": true,
+      "changed_input_graph": true,
+      "scope": "synthetic exact-object grid invariance only"
+    },
+    {
+      "aot": "/wip/slots/v7q-a1/coordinator/workspace/.ds41rt-wip/exl3/exl3-k23/dspark/m80",
+      "passed": true,
+      "export_sms": 188,
+      "simulated_sms": 170,
+      "bits": [
+        2,
+        3
+      ],
+      "intermediate": 2304,
+      "capacity": 80,
+      "top_k": 3,
+      "manifest_sha256": "278619ab2d646d1633e730fad8d79e9c1023186e42f45fcca83b2b640484bff6",
+      "library_sha256": "6e1edc2e0ffbafb196c8ebddc96dc448ed619d4138027f50e7479f1747c5e067",
+      "bitwise_equal": true,
+      "changed_input_graph": true,
+      "scope": "synthetic exact-object grid invariance only"
+    },
+    {
+      "aot": "/wip/slots/v7q-a1/coordinator/workspace/.ds41rt-wip/exl3/exl3-k23/dspark/m256",
+      "passed": true,
+      "export_sms": 188,
+      "simulated_sms": 170,
+      "bits": [
+        2,
+        3
+      ],
+      "intermediate": 2304,
+      "capacity": 256,
+      "top_k": 3,
+      "manifest_sha256": "9f9ddb0166afda9e965ca9448ac65e9801f99934a3d3b83456bd569a5c3aaf0a",
+      "library_sha256": "256e1541f9e515c9c66ee8d16a15881db59b5eebd6368ef195866b513985bffb",
+      "bitwise_equal": true,
+      "changed_input_graph": true,
+      "scope": "synthetic exact-object grid invariance only"
+    },
+    {
+      "aot": "/wip/slots/v7q-a1/coordinator/workspace/.ds41rt-wip/exl3/exl3-k23/dspark/m1024",
+      "passed": true,
+      "export_sms": 188,
+      "simulated_sms": 170,
+      "bits": [
+        2,
+        3
+      ],
+      "intermediate": 2304,
+      "capacity": 1024,
+      "top_k": 3,
+      "manifest_sha256": "aeceb2ad9caa59cc5f8fa34edfbafc5fb1d620aee2284c4f36ab4531a0e831fb",
+      "library_sha256": "fe420a1b8df25ff2f00c89fdf6c4e0537fc7fd3551d9fc66f2e5c44fa1699638",
+      "bitwise_equal": true,
+      "changed_input_graph": true,
+      "scope": "synthetic exact-object grid invariance only"
+    },
+    {
+      "aot": "/wip/slots/v7q-a1/coordinator/workspace/.ds41rt-wip/exl3/exl3-k23/dspark/m4096",
+      "passed": true,
+      "export_sms": 188,
+      "simulated_sms": 170,
+      "bits": [
+        2,
+        3
+      ],
+      "intermediate": 2304,
+      "capacity": 4096,
+      "top_k": 3,
+      "manifest_sha256": "fbcb1c5a8bb5e466b0c73956c7bd31bc1a99f106626d55b27b0f57f01432ac31",
+      "library_sha256": "2e1848bd2329d643b94b9e1bbcc41aee7b6354c599181fe4f3992f62948bf48c",
+      "bitwise_equal": true,
+      "changed_input_graph": true,
+      "scope": "synthetic exact-object grid invariance only"
+    }
+  ],
+  "provenance": {
+    "single-exl3-dspark.json": {
+      "sha256": "0b27c1fb3c37241ec585b8c38f6729de22e3962482accdf0b11e9858030cdd45",
+      "bytes": 112284
+    },
+    "single-exl3-prefill.json": {
+      "sha256": "e048f7380d5081c5c8bd080a877f8251028a81dfba1b63b9e7c15e136a63d656",
+      "bytes": 227598
+    },
+    "dual-exl3-prefill.json": {
+      "sha256": "a6d139186f0a634d6cd5fa66618a749de6dfda15ac1cca2f03cda77924b43ae4",
+      "bytes": 227618
+    }
+  },
+  "logs": {
+    "compact-final-residency.log": "native target backbone/index/embedding weights loaded in 1.727s\n2026-09-18T19:08:16.280730Z  INFO ds41rt::v41_native_serve::speculative: lane-local dSpark draft workspaces (weights shared) lanes=2 lane_requests=8 draft_width=5 shared_workspace_bytes=433775544 lane_workspace_bytes=234347992 total_workspace_bytes=468695984 additional_workspace_bytes=34920440\n2026-09-18T19:08:16.372932Z  INFO ds41rt::v41_native_serve: snapshot arenas reserved before serving snapshot_slots=42 snapshot_bytes=122766336\n2026-09-18T19:08:16.372983Z  INFO ds41rt::v41_native_serve: native KV pool reservation retained_turn_limit=20 prompt_snapshot_limit=20 source_pages=[4712, 4712, 4712, 9424] global_bytes=2147164160 cache_bytes=2191668736 device_occupied_bytes=24594612224 reservation_bytes=34359738368 runtime_headroom_bytes=2147483648\n2026-09-18T19:08:16.470069Z  INFO ds41rt::v41_native_serve: bottom-up RTX expert placement layers=1 resident_bytes=3433037824 workspace_bytes=177724136 peak_bytes=3610761960\n2026-09-18T19:08:16.626014Z  INFO ds41rt::v41_native_serve: local RTX experts ready layers=1 elapsed_ms=250\n2026-09-18T19:08:16.626048Z  INFO ds41rt::v41_native_serve: native serving residency ready rtx_layers=1 first_remote_dispatch_layer=1 remote_dispatch_layers=39 spark_world=2 device_occupied_bytes=30430986240 device_budget_bytes=34359738368 runtime_headroom_bytes=2147483648\n2026-09-18T19:08:16.626082Z  INFO ds41rt::host_cache: automatic host cache budget (staging and snapshot overhead excluded from token capacity) capacity=Budget { device_tokens: 2383872, target_tokens: 20971520, host_tokens: 18588160, combined_tokens: 20972032, staging_tokens: 1048576, pinned_bytes: 18253611008 }\n2026-09-18T19:08:16.626170Z  INFO ds41rt::host_cache: host snapshot cache copy mechanism mechanism=\"cuda-memcpy-batch\" runtime_version=13020\n2026-09-18T19:08:19.553225Z  INFO ds41rt::host_cache: host snapshot cache enabled config=Config { bytes: 18253611008, chunk_bytes: 268435456, store: OnRetain, copy_budget_ns: 1000000000, restore_budget_ns: 500000000, store_pace_ns: 0, min_tokens: 512, max_tokens: 1048576, kinds: Kinds { prompt: true, turn: true } }\n2026-09-18T19:08:19.553365Z  INFO ds41rt::v41_native_serve: native V4.1 target API ready listen=0.0.0.0:8000\n",
+    "compact-final-ostrich.log": "2026-09-18T19:08:14.227612Z  INFO ds41rt::v41_experts::service::backend: EXL3 Spark residency plan rank=0 world=2 first_layer=1 layer_count=39 resident_bytes=67394076672 workspace_bytes=56007284 device_budget_bytes=107374182400\n2026-09-18T19:08:15.228297Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=1 resident_bytes=1728053248 elapsed_ms=1000\n2026-09-18T19:08:15.929620Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=2 resident_bytes=1728053248 elapsed_ms=701\n2026-09-18T19:08:16.623455Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=3 resident_bytes=1728053248 elapsed_ms=693\n2026-09-18T19:08:17.327676Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=4 resident_bytes=1728053248 elapsed_ms=704\n2026-09-18T19:08:18.023827Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=5 resident_bytes=1728053248 elapsed_ms=696\n2026-09-18T19:08:18.733740Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=6 resident_bytes=1728053248 elapsed_ms=709\n2026-09-18T19:08:19.433841Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=7 resident_bytes=1728053248 elapsed_ms=700\n2026-09-18T19:08:20.128482Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=8 resident_bytes=1728053248 elapsed_ms=694\n2026-09-18T19:08:20.816434Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=9 resident_bytes=1728053248 elapsed_ms=687\n2026-09-18T19:08:21.515667Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=10 resident_bytes=1728053248 elapsed_ms=699\n2026-09-18T19:08:22.203919Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=11 resident_bytes=1728053248 elapsed_ms=688\n2026-09-18T19:08:22.897624Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=12 resident_bytes=1728053248 elapsed_ms=693\n2026-09-18T19:08:23.585962Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=13 resident_bytes=1728053248 elapsed_ms=688\n2026-09-18T19:08:24.273521Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=14 resident_bytes=1728053248 elapsed_ms=687\n2026-09-18T19:08:24.962764Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=15 resident_bytes=1728053248 elapsed_ms=689\n2026-09-18T19:08:25.701185Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=16 resident_bytes=1728053248 elapsed_ms=738\n2026-09-18T19:08:26.442210Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=17 resident_bytes=1728053248 elapsed_ms=740\n2026-09-18T19:08:27.177245Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=18 resident_bytes=1728053248 elapsed_ms=734\n2026-09-18T19:08:27.936513Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=19 resident_bytes=1728053248 elapsed_ms=759\n2026-09-18T19:08:28.763599Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=20 resident_bytes=1728053248 elapsed_ms=827\n2026-09-18T19:08:29.529612Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=21 resident_bytes=1728053248 elapsed_ms=765\n2026-09-18T19:08:30.250521Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=22 resident_bytes=1728053248 elapsed_ms=720\n2026-09-18T19:08:30.942947Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=23 resident_bytes=1728053248 elapsed_ms=692\n2026-09-18T19:08:31.644899Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=24 resident_bytes=1728053248 elapsed_ms=701\n2026-09-18T19:08:32.317332Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=25 resident_bytes=1728053248 elapsed_ms=672\n2026-09-18T19:08:33.006136Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=26 resident_bytes=1728053248 elapsed_ms=688\n2026-09-18T19:08:33.694636Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=27 resident_bytes=1728053248 elapsed_ms=688\n2026-09-18T19:08:34.380475Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=28 resident_bytes=1728053248 elapsed_ms=685\n2026-09-18T19:08:35.086245Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=29 resident_bytes=1728053248 elapsed_ms=705\n2026-09-18T19:08:35.819780Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=30 resident_bytes=1728053248 elapsed_ms=733\n2026-09-18T19:08:36.573686Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=31 resident_bytes=1728053248 elapsed_ms=753\n2026-09-18T19:08:37.327104Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=32 resident_bytes=1728053248 elapsed_ms=753\n2026-09-18T19:08:38.034831Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=33 resident_bytes=1728053248 elapsed_ms=707\n2026-09-18T19:08:38.749113Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=34 resident_bytes=1728053248 elapsed_ms=714\n2026-09-18T19:08:39.479442Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=35 resident_bytes=1728053248 elapsed_ms=730\n2026-09-18T19:08:40.200561Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=36 resident_bytes=1728053248 elapsed_ms=721\n2026-09-18T19:08:40.931032Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=37 resident_bytes=1728053248 elapsed_ms=730\n2026-09-18T19:08:41.673328Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=38 resident_bytes=1728053248 elapsed_ms=742\n2026-09-18T19:08:42.412143Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=0 layer=39 resident_bytes=1728053248 elapsed_ms=738\n2026-09-18T19:08:42.462074Z  INFO ds41rt::v41_experts::service::local: native local RoCE expert worker ready rank=0 world=2 capacity=256 first_layer=1 layers=39\n",
+    "compact-final-dodo.log": "2026-09-18T19:08:14.931205Z  INFO ds41rt::v41_experts::service::backend: EXL3 Spark residency plan rank=1 world=2 first_layer=1 layer_count=39 resident_bytes=67394076672 workspace_bytes=56007284 device_budget_bytes=107374182400\n2026-09-18T19:08:15.922648Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=1 resident_bytes=1728053248 elapsed_ms=991\n2026-09-18T19:08:16.607693Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=2 resident_bytes=1728053248 elapsed_ms=685\n2026-09-18T19:08:17.309427Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=3 resident_bytes=1728053248 elapsed_ms=701\n2026-09-18T19:08:18.011570Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=4 resident_bytes=1728053248 elapsed_ms=702\n2026-09-18T19:08:18.713026Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=5 resident_bytes=1728053248 elapsed_ms=701\n2026-09-18T19:08:19.416919Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=6 resident_bytes=1728053248 elapsed_ms=703\n2026-09-18T19:08:20.128149Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=7 resident_bytes=1728053248 elapsed_ms=711\n2026-09-18T19:08:20.834992Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=8 resident_bytes=1728053248 elapsed_ms=706\n2026-09-18T19:08:21.559656Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=9 resident_bytes=1728053248 elapsed_ms=724\n2026-09-18T19:08:22.279191Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=10 resident_bytes=1728053248 elapsed_ms=719\n2026-09-18T19:08:22.994094Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=11 resident_bytes=1728053248 elapsed_ms=714\n2026-09-18T19:08:23.693159Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=12 resident_bytes=1728053248 elapsed_ms=699\n2026-09-18T19:08:24.472628Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=13 resident_bytes=1728053248 elapsed_ms=779\n2026-09-18T19:08:25.174871Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=14 resident_bytes=1728053248 elapsed_ms=702\n2026-09-18T19:08:25.868413Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=15 resident_bytes=1728053248 elapsed_ms=693\n2026-09-18T19:08:26.848765Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=16 resident_bytes=1728053248 elapsed_ms=980\n2026-09-18T19:08:27.655271Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=17 resident_bytes=1728053248 elapsed_ms=806\n2026-09-18T19:08:28.389741Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=18 resident_bytes=1728053248 elapsed_ms=734\n2026-09-18T19:08:29.173024Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=19 resident_bytes=1728053248 elapsed_ms=783\n2026-09-18T19:08:29.944326Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=20 resident_bytes=1728053248 elapsed_ms=771\n2026-09-18T19:08:30.782351Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=21 resident_bytes=1728053248 elapsed_ms=837\n2026-09-18T19:08:31.518532Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=22 resident_bytes=1728053248 elapsed_ms=736\n2026-09-18T19:08:32.308206Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=23 resident_bytes=1728053248 elapsed_ms=789\n2026-09-18T19:08:33.080210Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=24 resident_bytes=1728053248 elapsed_ms=771\n2026-09-18T19:08:33.887993Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=25 resident_bytes=1728053248 elapsed_ms=807\n2026-09-18T19:08:34.665811Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=26 resident_bytes=1728053248 elapsed_ms=777\n2026-09-18T19:08:35.384125Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=27 resident_bytes=1728053248 elapsed_ms=718\n2026-09-18T19:08:36.087712Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=28 resident_bytes=1728053248 elapsed_ms=703\n2026-09-18T19:08:36.834773Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=29 resident_bytes=1728053248 elapsed_ms=747\n2026-09-18T19:08:37.563514Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=30 resident_bytes=1728053248 elapsed_ms=728\n2026-09-18T19:08:38.269443Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=31 resident_bytes=1728053248 elapsed_ms=705\n2026-09-18T19:08:38.978553Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=32 resident_bytes=1728053248 elapsed_ms=709\n2026-09-18T19:08:39.680434Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=33 resident_bytes=1728053248 elapsed_ms=701\n2026-09-18T19:08:40.426776Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=34 resident_bytes=1728053248 elapsed_ms=746\n2026-09-18T19:08:41.189643Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=35 resident_bytes=1728053248 elapsed_ms=762\n2026-09-18T19:08:41.903799Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=36 resident_bytes=1728053248 elapsed_ms=714\n2026-09-18T19:08:42.633411Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=37 resident_bytes=1728053248 elapsed_ms=729\n2026-09-18T19:08:43.398939Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=38 resident_bytes=1728053248 elapsed_ms=765\n2026-09-18T19:08:44.185507Z  INFO ds41rt::v41_experts::service::backend: compressed EXL3 expert layer loaded rank=1 layer=39 resident_bytes=1728053248 elapsed_ms=786\n2026-09-18T19:08:44.278876Z  INFO ds41rt::v41_experts::service::local: native local RoCE expert worker ready rank=1 world=2 capacity=256 first_layer=1 layers=39\n",
+    "dual-regression.log": "2026-09-18T19:07:39.226814Z  INFO ds41rt::v41_native_serve::distributed: dual RTX startup memory stage=\"CUDA contexts and peer access\" occupied_bytes=[1405681664, 596901888]\n2026-09-18T19:07:39.733124Z  INFO ds41rt::v41_native_serve::distributed: EXL3 TP2 expert workspace plan per_gpu_per_lane_bytes=1152498180 capacity=2048\n2026-09-18T19:07:40.961072Z  INFO ds41rt::v41_native_serve::distributed: dual RTX startup memory stage=\"attention mHC router weights\" occupied_bytes=[3377725440, 3388211200]\n2026-09-18T19:07:41.107938Z  INFO ds41rt::v41_native_serve::distributed: dual RTX startup memory stage=\"cache producer weights\" occupied_bytes=[3499360256, 3478388736]\n2026-09-18T19:07:41.135056Z  INFO ds41rt::v41_native_serve::distributed: dual RTX startup memory stage=\"index query weights\" occupied_bytes=[3518234624, 3509846016]\n2026-09-18T19:07:41.163684Z  INFO ds41rt::v41_native_serve::distributed: dual RTX startup memory stage=\"Engram weights\" occupied_bytes=[3845390336, 3509846016]\n2026-09-18T19:07:41.260459Z  INFO ds41rt::v41_native_serve::distributed: dual RTX startup memory stage=\"embedding weights\" occupied_bytes=[5170790400, 3509846016]\n2026-09-18T19:07:41.350887Z  INFO ds41rt::v41_native_serve::distributed: dual RTX startup memory stage=\"vocabulary weights\" occupied_bytes=[5833490432, 4172546048]\n2026-09-18T19:07:41.354088Z  INFO ds41rt::v41_native_serve::distributed: dual RTX startup memory stage=\"head normalization weights\" occupied_bytes=[5833490432, 4172546048]\n2026-09-18T19:07:41.587041Z  INFO ds41rt::v41_native_serve::distributed: dual RTX startup memory stage=\"weights\" occupied_bytes=[6588465152, 4927520768]\n2026-09-18T19:07:41.587080Z  INFO ds41rt::v41_native_serve::distributed: dual RTX per-lane workspace plan capacity=2048 backbone_lane_bytes=1464654472 producer_bytes=[1110032464, 1027719248]\n2026-09-18T19:07:41.631487Z  INFO ds41rt::v41_sparse_attention: sparse decode batch reservation before KV sizing device=0 rows=64 additional_device_bytes=21055360\n2026-09-18T19:07:41.631713Z  INFO ds41rt::v41_sparse_attention: sparse decode batch reservation before KV sizing device=1 rows=64 additional_device_bytes=21055360\n2026-09-18T19:07:41.631736Z  INFO ds41rt::v41_native_serve::distributed: dual RTX startup memory stage=\"first target lane\" occupied_bytes=[11283988480, 8700297216]\n2026-09-18T19:07:41.669390Z  INFO ds41rt::v41_sparse_attention: sparse decode batch reservation before KV sizing device=0 rows=64 additional_device_bytes=21055360\n2026-09-18T19:07:41.669621Z  INFO ds41rt::v41_sparse_attention: sparse decode batch reservation before KV sizing device=1 rows=64 additional_device_bytes=21055360\n2026-09-18T19:07:41.669645Z  INFO ds41rt::v41_native_serve::distributed: dual RTX startup memory stage=\"second target lane\" occupied_bytes=[15981608960, 11523063808]\n2026-09-18T19:07:42.258073Z  INFO ds41rt::v41_native_serve::distributed: dual RTX startup memory stage=\"draft weights\" occupied_bytes=[15981608960, 19502727168]\n2026-09-18T19:07:42.273038Z  INFO ds41rt::v41_native_serve::speculative::distributed: distributed lane-local dSpark draft workspaces lanes=2 lane_requests=8 draft_width=7 gpu0_bytes_per_lane=19247552 gpu1_bytes_per_lane=418304888\n2026-09-18T19:07:42.273858Z  INFO ds41rt::v41_native_serve::distributed: dual RTX startup memory stage=\"draft runtime\" occupied_bytes=[16157769728, 20987510784]\n2026-09-18T19:07:42.362861Z  INFO ds41rt::v41_native_serve::distributed: dual RTX startup memory stage=\"vision\" occupied_bytes=[17866948608, 20987510784]\n2026-09-18T19:07:42.363193Z  INFO ds41rt::v41_native_serve::distributed: dual RTX startup memory stage=\"snapshot arenas\" occupied_bytes=[17982291968, 21000093696]\n2026-09-18T19:07:42.364106Z  INFO ds41rt::v41_native_serve::distributed: dual RTX bottom-up expert placement expert_layers=40 expert_budget=[72587299928, 71933570392] rank_peak_bytes=[69122129920, 69122129920] reserved_cache_bytes=[7877077888, 5258201728] transport_bytes=[2620852264, 2872510504] setup_headroom_bytes=67108864\nloading bottom 40 expert layers as TP2\n2026-09-18T19:07:53.051847Z  INFO ds41rt::v41_native_serve::distributed: dual RTX startup memory stage=\"TP2 transports\" occupied_bytes=[89748930560, 93018390528]\n2026-09-18T19:07:53.051888Z  INFO ds41rt::v41_native_serve::distributed: dual RTX cache reservation after fixed allocations tp2_attention=false source_pages=[28728, 28728, 28728, 57456] global_bytes=13090775040 cache_bytes=[7877077888, 5258201728] occupied_before=[89748930560, 93018390528] reservation_bytes=[101973491712, 101970345984] unused_bytes=[3508622464, 2854892928] desired_groups=28728 snapshot_slots=42 snapshot_bytes=122766336 runtime_headroom_bytes=838860800 rtx_expert_layers=40\n2026-09-18T19:07:53.443434Z  INFO ds41rt::v41_native_serve::distributed: dual RTX startup memory stage=\"allocated KV cache\" occupied_bytes=[97646804992, 98282242048]\n2026-09-18T19:07:53.443488Z  INFO ds41rt::host_cache: automatic host cache budget (staging and snapshot overhead excluded from token capacity) capacity=Budget { device_tokens: 14680064, target_tokens: 20971520, host_tokens: 6291968, combined_tokens: 20972032, staging_tokens: 1048576, pinned_bytes: 7247757312 }\n2026-09-18T19:07:53.443575Z  INFO ds41rt::host_cache: host snapshot cache copy mechanism mechanism=\"cuda-memcpy-batch\" runtime_version=13020\n2026-09-18T19:07:54.712887Z  INFO ds41rt::host_cache: host snapshot cache enabled config=Config { bytes: 7247757312, chunk_bytes: 268435456, store: OnRetain, copy_budget_ns: 1000000000, restore_budget_ns: 500000000, store_pace_ns: 0, min_tokens: 512, max_tokens: 1048576, kinds: Kinds { prompt: true, turn: true } }\n2026-09-18T19:07:54.712917Z  INFO ds41rt::v41_native_serve::distributed: dual RTX serving owners ready elapsed_ms=14984\n2026-09-18T19:07:54.713007Z  INFO ds41rt::v41_native_serve: native V4.1 target API ready listen=0.0.0.0:8000\n"
+  },
+  "limitations": [
+    "No physical RTX 5090 testing; 32GiB memory simulation on RTX PRO 6000",
+    "Release image publication pending; tested WIP binaries and k23 artifacts",
+    "One high-effort reasoning sample hit4096 output limit with empty final code; campaign retained unchanged"
+  ]
+}

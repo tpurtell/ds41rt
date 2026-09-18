@@ -15,6 +15,7 @@ pub(crate) async fn run(args: crate::cli::NativeExpertDaemonArgs) -> Result<()> 
         exl3_aot_dir: args.exl3_aot_dir,
         snapshot: args.snapshot,
         rank: args.rank as usize,
+        world: args.world as usize,
         first_layer: args.first_layer as usize,
         capacity: args.capacity,
         device_budget: args.device_budget_bytes,
@@ -30,6 +31,7 @@ pub(crate) struct NativeExpertServiceConfig {
     pub exl3_aot_dir: Option<PathBuf>,
     pub snapshot: PathBuf,
     pub rank: usize,
+    pub world: usize,
     pub first_layer: usize,
     pub capacity: u32,
     pub device_budget: usize,
@@ -42,6 +44,7 @@ fn load_weights<'a>(
 ) -> Result<(backend::Weights<'a>, usize)> {
     let catalog = read_official_v41_catalog(OFFICIAL_V41_MODEL_ID, &config.snapshot)?;
     ensure!(config.first_layer < 40, "native first layer must be 0..39");
+    validate_world(config.world, config.rank, catalog.exl3().is_some())?;
     if catalog.exl3().is_some() { return backend::load_exl3(library, &catalog, config); }
     // NVFP4 backbone experts load through the format-aware ExpertWeights path.
     let mut resident = 0usize;
@@ -114,7 +117,30 @@ fn load_weights<'a>(
     Ok((backend::Weights::Full(weights), remaining))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::validate_world;
+    #[test]
+    fn spark_world_is_format_and_rank_checked() {
+        for rank in 0..4 { validate_world(4, rank, false).unwrap(); }
+        for rank in 0..2 { validate_world(2, rank, true).unwrap(); }
+        for (world, rank, exl3) in [(2,0,false), (2,2,true), (3,0,true), (4,4,true), (0,0,true)] {
+            assert!(validate_world(world, rank, exl3).is_err());
+        }
+    }
+}
+
+fn validate_world(world: usize, rank: usize, exl3: bool) -> Result<()> {
+    ensure!(matches!(world, 2 | 4) && rank < world, "Spark world must be 2 or 4 and rank must be below world");
+    ensure!(world == 4 || exl3, "two Spark ranks require EXL3 experts");
+    Ok(())
+}
+
 impl NativeExpertServiceConfig {
+    fn selection(&self, layer: usize) -> ExpertLayer {
+        if self.world == 2 { ExpertLayer::BackboneTp2 { layer, rank: self.rank } }
+        else { ExpertLayer::Backbone { layer, rank: self.rank } }
+    }
     /// Resolve this rank's EXL3 AOT package for the running checkpoint's
     /// decoder tiers (multi-family images) with the legacy single-family
     /// location as fallback. An explicit --exl3-aot-dir is used verbatim.
@@ -123,7 +149,7 @@ impl NativeExpertServiceConfig {
             crate::v41_experts::exl3::aot_layout_directory(
                 &self.library,
                 tiers,
-                &format!("tp4-rank{}", self.rank),
+                &format!("tp{}-rank{}", self.world, self.rank),
             )
         })
     }

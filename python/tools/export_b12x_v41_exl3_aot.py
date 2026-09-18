@@ -19,11 +19,17 @@ import _pinned_sparkinfer
 
 def write_bridge(output: Path, manifest: dict) -> None:
     """Generate a small owned-device C bridge; reject unfamiliar exported types."""
+    if (manifest['blocks_per_sm'] not in (1, 2)
+            or not 1 <= manifest['sms'] <= (2**31 - 1) // manifest['blocks_per_sm']):
+        raise ValueError('invalid EXL3 cooperative grid capacity')
+    # Mixed Trellis owns a complete K reduction per MN tile; a smaller grid
+    # changes CTA assignment, not reduction order. Barriers count actual grid_x.
+    # Keep all exported buffer sizes: barrier offsets still embed export-time SMs.
     # CuTe AOT stores kernel handles in globals inside each loaded DSO. Every
     # context must retain the same CUDA libraries; recreating them per lane or
     # device replaces those globals and loses another device's launch attributes.
     lines = ['#include <new>', '#include <mutex>', '#include "v41_exl3_core.h"', '#include "v41_exl3_sum.h"',
-        'struct Context { int device; };',
+        'struct Context { int device; int32_t grid_cap; };',
         'struct Modules { std::mutex mutex; unsigned users = 0; ds41rt_v41_exl3_core_Kernel_Module_t core{}; ds41rt_v41_exl3_sum_Kernel_Module_t sum{}; };',
         'static Modules modules;',
         'static void unload_modules() { if (modules.sum.module) cudaLibraryUnload(modules.sum.module); if (modules.core.module) cudaLibraryUnload(modules.core.module); modules.sum.module = nullptr; modules.core.module = nullptr; }']
@@ -43,7 +49,8 @@ def write_bridge(output: Path, manifest: dict) -> None:
         'Context* ctx = new(std::nothrow) Context; if (!ctx) return int(cudaErrorMemoryAllocation);',
         'cudaError_t status = cudaGetDevice(&ctx->device); cudaDeviceProp props{};',
         'if (status == cudaSuccess) status = cudaGetDeviceProperties(&props, ctx->device);',
-        f'if (status != cudaSuccess || props.major != {manifest["compute"][0]} || props.minor != {manifest["compute"][1]} || props.multiProcessorCount != {manifest["sms"]}) {{ delete ctx; return int(cudaErrorInvalidDevice); }}',
+        f'if (status != cudaSuccess || props.major != {manifest["compute"][0]} || props.minor != {manifest["compute"][1]} || props.multiProcessorCount < 1) {{ delete ctx; return int(cudaErrorInvalidDevice); }}',
+        f'ctx->grid_cap = (props.multiProcessorCount < {manifest["sms"]} ? props.multiProcessorCount : {manifest["sms"]}) * {manifest["blocks_per_sm"]};',
         'std::lock_guard<std::mutex> lock(modules.mutex);',
         'int error = load_core(ctx->device); if (!error) error = load_sum(ctx->device);',
         'if (error) { if (!modules.users) unload_modules(); delete ctx; return error; }',
@@ -61,6 +68,10 @@ def write_bridge(output: Path, manifest: dict) -> None:
             elif type_name == 'int32_t':
                 index = len(scalars); scalars.append(name); args.append(f's[{index}]')
                 if name == 'active_m': checks.append(f'if (s[{index}] < 1 || s[{index}] > {manifest["capacity"]}) return int(cudaErrorInvalidValue);')
+                if name == 'grid_x':
+                    checks.append(f'if (s[{index}] < 1) return int(cudaErrorInvalidValue);')
+                    # Clamp a local argument, never mutate caller-owned launch tables.
+                    args[-1] = f'(s[{index}] < ctx->grid_cap ? s[{index}] : ctx->grid_cap)'
             elif type_name == 'void *' or re.fullmatch(r'ds41rt_v41_exl3_\w+_Tensor_\w+_t \*', type_name):
                 index = len(pointers); pointers.append(name)
                 checks.append(f'if (!p[{index}]) return int(cudaErrorInvalidValue);')

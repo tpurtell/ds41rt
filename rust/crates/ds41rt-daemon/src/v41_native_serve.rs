@@ -37,8 +37,18 @@ use speculative::DraftRuntime;
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, oneshot};
 
-pub(crate) async fn run(args: crate::cli::NativeServeArgs) -> Result<()> {
-    ensure!(args.peers.len() == 4, "four Spark peers required");
+pub(crate) async fn run(mut args: crate::cli::NativeServeArgs) -> Result<()> {
+    ensure!(matches!(args.peers.len(), 2 | 4), "two or four Spark peers required");
+    ensure!(args.peers.len() == 4 || (args.rtx_gpus == 1 && !args.exl3_paired_tp4),
+        "two Spark peers require the single-RTX, non-paired EXL3 profile");
+    if args.peers.len() == 2 {
+        compact_budget(&mut args.memory_reservation, &mut args.kv_pool_size)?;
+        if args.prefill_batch_tokens > 256 {
+            tracing::info!(requested=args.prefill_batch_tokens, effective=256,
+                "compact 32 GiB profile limits prefill workspace capacity");
+            args.prefill_batch_tokens = 256;
+        }
+    }
     args.host_cache_config()?;
     let listen = args.listen.clone();
     let limits = ds41rt_api::native_v41::NativeLimits::new(args.max_context_tokens, args.max_output_tokens)?;
@@ -97,7 +107,21 @@ fn prefill_capacity(batch_tokens: u32) -> Result<u32> {
 
 #[cfg(test)]
 mod prefill_capacity_tests {
-    use super::prefill_capacity;
+    use super::{prefill_capacity, compact_budget, memory};
+
+    #[test]
+    fn compact_budget_is_absolute_including_headroom() {
+        let (mut reservation, mut kv) = (None, None);
+        compact_budget(&mut reservation, &mut kv).unwrap();
+        assert!(matches!(reservation, Some(memory::Reservation::Bytes(memory::ByteSize(n))) if n == 32usize << 30));
+        assert_eq!(kv.unwrap().0, 2usize << 30);
+        for invalid in ["33GiB", "100%", "32%"] {
+            assert!(compact_budget(&mut Some(invalid.parse().unwrap()), &mut None).is_err());
+        }
+        let mut kv = Some(memory::ByteSize(1usize << 30));
+        compact_budget(&mut Some("31GiB".parse().unwrap()), &mut kv).unwrap();
+        assert_eq!(kv.unwrap().0, 1usize << 30);
+    }
 
     #[test]
     fn intermediate_batches_use_covering_preallocated_capacity() {
@@ -116,6 +140,32 @@ mod prefill_capacity_tests {
         for invalid in [0, 79, 4097, u32::MAX] {
             assert!(prefill_capacity(invalid).is_err());
         }
+    }
+}
+
+// Compact is a real total-device ceiling, including the planner's 2 GiB
+// runtime headroom. Bound KV explicitly so it cannot consume the entire
+// ceiling before bottom-up expert placement runs.
+fn compact_budget(reservation: &mut Option<memory::Reservation>, kv: &mut Option<memory::ByteSize>) -> Result<()> {
+    let ceiling = 32usize << 30;
+    match reservation {
+        None => *reservation = Some(memory::Reservation::Bytes(memory::ByteSize(ceiling))),
+        Some(memory::Reservation::Bytes(bytes)) => ensure!(bytes.0 <= ceiling, "compact EXL3 requires a total device budget at most 32 GiB including headroom"),
+        Some(memory::Reservation::Percent(_)) => anyhow::bail!("compact EXL3 requires an absolute device budget at most 32 GiB, not a percentage"),
+    }
+    if kv.is_none() { *kv = Some(memory::ByteSize(2usize << 30)); }
+    Ok(())
+}
+
+fn spark_transport(peers: &[std::net::SocketAddr], capacity: u32) -> Result<V41Tp4Roce> {
+    let config = TcpTransportConfig { timeout: Duration::from_secs(120), max_frame_bytes: 64 * 1024 * 1024 };
+    match peers.len() {
+        2 => V41Tp4Roce::new_tp2(peers.try_into().expect("two peers"), [
+            ds41rt_transport::v41_expert::v41_spark_executor_id(2, 0)?,
+            ds41rt_transport::v41_expert::v41_spark_executor_id(2, 1)?,
+        ], capacity, config),
+        4 => V41Tp4Roce::new(peers.try_into().expect("four peers"), [1, 2, 3, 4], capacity, config),
+        _ => anyhow::bail!("two or four Spark peers required"),
     }
 }
 
@@ -140,6 +190,8 @@ fn worker(
         ds41rt_loader::OFFICIAL_V41_MODEL_ID,
         &args.snapshot,
     )?;
+    ensure!(args.peers.len() == 4 || catalog.exl3().is_some(),
+        "two Spark peers require an EXL3 checkpoint");
     let paired_profile = crate::v41_experts::paired::PairedProfile::for_serving(&catalog, args.exl3_paired_tp4)?;
     let start = Instant::now();
     let weights = BackboneLaneWeights::load(
@@ -232,18 +284,7 @@ fn worker(
         )?,
         Duration::from_secs(120),
     )?;
-    let roce = V41Tp4Roce::new(
-        args.peers
-            .clone()
-            .try_into()
-            .map_err(|_| anyhow::anyhow!("four Spark peers required"))?,
-        [1, 2, 3, 4],
-        capacity,
-        TcpTransportConfig {
-            timeout: Duration::from_secs(120),
-            max_frame_bytes: 64 * 1024 * 1024,
-        },
-    )?;
+    let roce = spark_transport(&args.peers, capacity)?;
     let mut transport = NativeTp4Wave::new(&lib, roce, NativeTp4Wave::device_bytes(capacity)?)?;
     if let Some(profile) = &paired_profile { transport.install_paired(profile.clone())?; }
     let mut prefill_pass = TargetPass::new(
@@ -262,9 +303,7 @@ fn worker(
         pass.reserve_sparse_decode_rows(64)?;
         prefill_pass.reserve_sparse_decode_rows(64)?;
     }
-    let prefill_roce = V41Tp4Roce::new(args.peers.clone().try_into()
-        .map_err(|_| anyhow::anyhow!("four Spark peers required"))?, [1, 2, 3, 4], capacity,
-        TcpTransportConfig { timeout: Duration::from_secs(120), max_frame_bytes: 64 * 1024 * 1024 })?;
+    let prefill_roce = spark_transport(&args.peers, capacity)?;
     let mut prefill_transport = NativeTp4Wave::new(&lib, prefill_roce, NativeTp4Wave::device_bytes(capacity)?)?;
     if let Some(profile) = &paired_profile { prefill_transport.install_paired(profile.clone())?; }
     let exl3_tiers: &[usize] = catalog.exl3().map(|m| m.decoder_tiers()).unwrap_or(&[]);
@@ -308,14 +347,24 @@ fn worker(
     tracing::info!(snapshot_slots, snapshot_bytes, "snapshot arenas reserved before serving");
     // Size after vision, both lanes, transports and optional draft allocations are live.
     let (free, total) = lib.cuda_memory_info()?;
+    // A nominal 32 GiB card can expose slightly less memory to CUDA. The
+    // compact ceiling may become smaller, never larger, on that hardware.
+    let reservation = if args.peers.len() == 2 {
+        match args.memory_reservation {
+            Some(memory::Reservation::Bytes(memory::ByteSize(bytes))) =>
+                Some(memory::Reservation::Bytes(memory::ByteSize(bytes.min(total)))),
+            other => other,
+        }
+    } else { args.memory_reservation };
     let pool = memory::PoolPlan::new(args.concurrency as usize, args.max_context_tokens as usize,
-        args.prefix_cache_entries as usize, snapshot_bytes, args.kv_pool_size, args.memory_reservation, free, total)?;
+        args.prefix_cache_entries as usize, snapshot_bytes, args.kv_pool_size, reservation, free, total)?;
     tracing::info!(retained_turn_limit=args.prefix_cache_entries, prompt_snapshot_limit=args.prefix_cache_entries, source_pages=?pool.pages, global_bytes=pool.global_bytes,
         cache_bytes=pool.cache_bytes, device_occupied_bytes=pool.occupied_before,
         reservation_bytes=pool.reservation_bytes, runtime_headroom_bytes=memory::RUNTIME_HEADROOM,
         "native KV pool reservation");
     let mut requests = Requests::new(&lib, pipeline, args.concurrency as usize, pool.pages, pool.cache_bytes)?;
     if let Some(pool) = target_prefix_pool { requests.install_prefix_pool(pool)?; }
+    let mut local_layers = 0usize;
     if args.rtx_expert_layers != memory::LocalLayers::Count(0) {
         use crate::v41_experts::{ExpertLayer, ExpertWeights, local::LocalExpertWave};
         let local_started = Instant::now();
@@ -334,6 +383,7 @@ fn worker(
         let (free, total) = lib.cuda_memory_info()?;
         let plan = memory::LocalLayerPlan::new(args.rtx_expert_layers, &budgets,
             per_lane.checked_mul(2).context("local lane budget overflow")?, free, total, pool.reservation_bytes)?;
+        local_layers = plan.layers;
         tracing::info!(layers=plan.layers, resident_bytes=plan.resident_bytes,
             workspace_bytes=plan.workspace_bytes, peak_bytes=plan.peak_bytes,
             "bottom-up RTX expert placement");
@@ -361,6 +411,16 @@ fn worker(
         tracing::info!(layers=plan.layers, elapsed_ms=local_started.elapsed().as_millis(),
             "local RTX experts ready");
     }
+    let (free, total) = lib.cuda_memory_info()?;
+    let occupied = total - free;
+    if args.peers.len() == 2 {
+        ensure!(occupied.checked_add(memory::RUNTIME_HEADROOM).is_some_and(|n| n <= pool.reservation_bytes),
+            "compact residency {occupied} bytes plus runtime headroom exceeds {} byte device ceiling", pool.reservation_bytes);
+    }
+    tracing::info!(rtx_layers=local_layers, first_remote_dispatch_layer=local_layers,
+        remote_dispatch_layers=40-local_layers, spark_world=args.peers.len(),
+        device_occupied_bytes=occupied, device_budget_bytes=pool.reservation_bytes,
+        runtime_headroom_bytes=memory::RUNTIME_HEADROOM, "native serving residency ready");
     if let Some(draft) = &mut draft { draft.configure_cost_model(&transport)?; }
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()

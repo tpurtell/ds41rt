@@ -18,10 +18,21 @@ single-card one. Counting is outside the weighted score.
 
 | Measurement | Official 1x | Official 2x | Δ | NVFP4 1x | NVFP4 2x | Δ | EXL3 1x | EXL3 2x | Δ |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Prefill | 7,824 | 8,355 | +6.8% | — | 7,432 | — | — | 5,572 | — |
-| Counting decode | 161.58 | 221.64 | +37.2% | 113.30 | 152.30 | +34.4% | — | 337.40 | — |
-| Weighted decode | 92.00 | 109.44 | +19.0% | 66.60 | 80.12 | +20.3% | — | 145.10 | — |
-| C1 code decode | 130.41 | 155.70 | +19.4% | 88.80 | 109.20 | +23.0% | — | 222.10 | — |
+| Prefill | 7,824 | 8,355 | +6.8% | — | 7,432 | — | 2,015 | 5,702 | +182.9% |
+| Counting decode | 161.58 | 221.64 | +37.2% | 113.32 | 152.25 | +34.4% | 163.55 | 337.35 | +106.3% |
+| Weighted decode | 92.00 | 109.44 | +19.0% | 66.60 | 80.12 | +20.3% | 88.10 | 145.10 | +64.7% |
+| C1 code decode | 130.41 | 155.70 | +19.4% | 88.77 | 109.20 | +23.0% | 123.54 | 222.06 | +79.7% |
+
+EXL3 1x uses one RTX PRO 6000 with a **32 GiB total budget including headroom**
+and **two TP2 Sparks**; EXL3 2x uses no Sparks. This simulates RTX 5090 memory
+capacity, not its performance, and the change column is not isolated second-GPU
+scaling. Both EXL3 prefill campaigns completed all 30 cells. Decode completion
+checks passed **29/30 for EXL3 1x** and **28/30 for EXL3 2x**: the failed
+high-effort reasoning samples reached their output limit with no final code;
+throughput includes them. See [compact setup and residency](docs/release-v7-exl3-compact.md).
+Producer-built compact release images remain to be published; WIP runtime is verified.
+Official numbers are historical v6; v7 numbers are rendered from raw campaigns
+without fallback. NVFP4 1x prefill remains incomplete and is not estimated.
 
 Full performance reports for the new quants: [NVFP4 W4A4](docs/release-v7-nvfp4-performance.md) and [EXL3 K2 Compact](docs/release-v7-exl3-k2-performance.md). The tables below are the official image.
 

@@ -28,7 +28,8 @@ impl Model {
         if path.as_deref() == Some(std::ffi::OsStr::new("legacy")) { return Ok(None); }
         let placement: [String; 40] = std::array::from_fn(|layer| {
             let backend = if transport.has_tp2_layer(layer) { "rtx_tp2" }
-                else if transport.has_local_layer(layer) { "rtx_local" } else { "spark_tp4" };
+                else if transport.has_local_layer(layer) { "rtx_local" }
+                else if transport.spark_world() == 2 { "spark_tp2" } else { "spark_tp4" };
             let shared_tp = if transport.has_tp2_shared_layer(layer) { 2 } else { 1 };
             format!("{backend}_shared{shared_tp}")
         });
@@ -36,7 +37,9 @@ impl Model {
             || transport.has_tp2_layer(layer)) { 2 } else { 1 };
         let bytes = match &path {
             Some(path) => std::fs::read(path).context("reading adaptive cost profile")?,
-            None if gpus == 1 => include_bytes!("cost-profile.json").to_vec(),
+            // The built-in measurements are TP4, not TP2. Use the legacy
+            // adaptive heuristic until a Spark TP2 calibration is supplied.
+            None if gpus == 1 && transport.spark_world() == 4 => include_bytes!("cost-profile.json").to_vec(),
             None => return Ok(None),
         };
         let model = Self::parse(&bytes, &placement, gpus)?;

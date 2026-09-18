@@ -3,23 +3,30 @@
 use super::*;
 
 pub(crate) struct LocalTp4Client {
-    peers: [SocketAddr; 4],
+    peers: Vec<SocketAddr>,
     config: TcpTransportConfig,
-    sessions: [Option<VerbsHostProtocolV2PersistentClientSession>; 4],
-    pending: [VecDeque<VerbsHostProtocolV2PendingChunkRoundtrip>; 4],
+    sessions: Vec<Option<VerbsHostProtocolV2PersistentClientSession>>,
+    pending: Vec<VecDeque<VerbsHostProtocolV2PendingChunkRoundtrip>>,
     chunks: Option<tokio::sync::mpsc::UnboundedReceiver<VerbsHostProtocolV2ResponseChunk>>,
     done: Vec<tokio::sync::oneshot::Receiver<Result<VerbsHostProtocolV2ResponseStreamStats>>>,
     deadline: Option<Instant>,
 }
 impl LocalTp4Client {
     pub(crate) fn new(peers: [SocketAddr; 4], config: TcpTransportConfig) -> Self {
+        Self::with_peers(peers.to_vec(), config)
+    }
+    pub(crate) fn new_tp2(peers: [SocketAddr; 2], config: TcpTransportConfig) -> Self {
+        Self::with_peers(peers.to_vec(), config)
+    }
+    fn with_peers(peers: Vec<SocketAddr>, config: TcpTransportConfig) -> Self {
+        let world = peers.len();
         Self {
             peers,
             config,
-            sessions: std::array::from_fn(|_| None),
-            pending: std::array::from_fn(|_| VecDeque::with_capacity(1)),
+            sessions: (0..world).map(|_| None).collect(),
+            pending: (0..world).map(|_| VecDeque::with_capacity(1)).collect(),
             chunks: None,
-            done: Vec::with_capacity(4),
+            done: Vec::with_capacity(world),
             deadline: None,
         }
     }
@@ -30,7 +37,9 @@ impl LocalTp4Client {
         for pending in &mut self.pending {
             pending.clear();
         }
-        self.sessions = std::array::from_fn(|_| None);
+        for session in &mut self.sessions {
+            *session = None;
+        }
         self.deadline = None;
     }
     pub(crate) fn dispatch(&mut self, request: &ExpertProtocolV2Request) -> Result<()> {
@@ -44,7 +53,7 @@ impl LocalTp4Client {
     fn post(&mut self, request: &ExpertProtocolV2Request) -> Result<()> {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         self.chunks = Some(rx);
-        for rank in 0..4 {
+        for rank in 0..self.peers.len() {
             if self.sessions[rank]
                 .as_ref()
                 .map(|s| s.fits(request))
@@ -95,7 +104,7 @@ impl LocalTp4Client {
             Instant::now() < deadline,
             "local TP4 response deadline expired"
         );
-        for rank in 0..4 {
+        for rank in 0..self.peers.len() {
             if !self.pending[rank].is_empty() {
                 self.sessions[rank]
                     .as_mut()
@@ -122,5 +131,31 @@ impl LocalTp4Client {
         self.chunks = None;
         self.deadline = None;
         Ok(true)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tp2_reset_retains_only_two_actual_peer_slots() -> Result<()> {
+        let peers = ["127.0.0.1:19441".parse()?, "127.0.0.1:19442".parse()?];
+        let mut client = LocalTp4Client::new_tp2(peers, TcpTransportConfig {
+            timeout: std::time::Duration::from_secs(1), max_frame_bytes: 200_000,
+        });
+        let (_sender, receiver) = tokio::sync::mpsc::unbounded_channel();
+        let (_completion, completed) = tokio::sync::oneshot::channel();
+        client.chunks = Some(receiver);
+        client.done.push(completed);
+        client.deadline = Some(Instant::now());
+        client.reset();
+        assert_eq!(client.peers, peers);
+        assert_eq!(client.sessions.len(), 2);
+        assert_eq!(client.pending.len(), 2);
+        assert!(client.sessions.iter().all(Option::is_none));
+        assert!(client.pending.iter().all(VecDeque::is_empty));
+        assert!(client.chunks.is_none() && client.done.is_empty() && client.deadline.is_none());
+        Ok(())
     }
 }

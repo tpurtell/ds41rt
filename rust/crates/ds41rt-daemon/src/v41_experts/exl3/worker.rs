@@ -85,8 +85,8 @@ impl<'a> Exl3Worker<'a> {
         };
         let rank = first.layout.rank;
         ensure!(
-            rank < 4 && first.layout.world == 4,
-            "EXL3 worker requires Spark TP4 weights"
+            matches!(first.layout.world, 2 | 4) && rank < first.layout.world,
+            "EXL3 worker requires Spark TP2 or TP4 weights"
         );
         for (index, weight) in weights.iter().enumerate() {
             ensure!(
@@ -168,7 +168,7 @@ impl<'a> Exl3Worker<'a> {
             first_layer,
             layer_count,
             layer: 0,
-            executor_id: rank as u64 + 1,
+            executor_id: ds41rt_transport::v41_expert::v41_spark_executor_id(first.layout.world, rank)?,
         })
     }
 

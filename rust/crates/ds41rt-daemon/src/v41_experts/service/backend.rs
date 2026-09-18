@@ -124,16 +124,15 @@ pub(super) fn load_exl3<'a>(
         .unwrap_or(&[]);
     let exl3_directory = config.exl3_directory_for(exl3_tiers);
     let partition = Exl3Worker::partition(&exl3_directory, config.capacity, config.rank)?;
+    ensure!(config.world == 4 || partition == ds41rt_loader::V41Exl3Partition::Disjoint,
+        "Spark TP2 cannot use paired TP4 artifacts");
     let workspace = Exl3Worker::plan(&exl3_directory, config.capacity)
         .context("EXL3 checkpoint requires matching native AOT artifacts; set --exl3-aot-dir for a custom export")?;
     let plans = (config.first_layer..40)
         .map(|layer| {
             Exl3Weights::plan_with_layout(
                 catalog,
-                ExpertLayer::Backbone {
-                    layer,
-                    rank: config.rank,
-                },
+                config.selection(layer),
                 partition,
             )
         })
@@ -150,6 +149,9 @@ pub(super) fn load_exl3<'a>(
             <= config.device_budget,
         "compressed EXL3 weights and workspace exceed device budget"
     );
+    tracing::info!(rank=config.rank, world=config.world, first_layer=config.first_layer,
+        layer_count=plans.len(), resident_bytes=resident, workspace_bytes=workspace,
+        device_budget_bytes=config.device_budget, "EXL3 Spark residency plan");
     let mut weights = Vec::with_capacity(plans.len());
     let mut remaining = config.device_budget;
     for (index, plan) in plans.iter().enumerate() {
@@ -158,10 +160,7 @@ pub(super) fn load_exl3<'a>(
         let weight = Exl3Weights::load_with_layout(
             library,
             catalog,
-            ExpertLayer::Backbone {
-                layer,
-                rank: config.rank,
-            },
+            config.selection(layer),
             remaining,
             partition,
         )?;

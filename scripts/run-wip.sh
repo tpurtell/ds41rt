@@ -140,6 +140,7 @@ if ((config_explicit == 0)); then
   config="$slot_config"
   release_load_config "$config"
 fi
+[[ "$SPARK_COUNT" != 2 ]] || release_die "legacy WIP launcher does not support Spark TP2; use run.sh or runs/v7q-a1/serve-diffbot.sh"
 report_wip_startup_phase bootstrap
 
 hosts_csv="$(release_hosts_csv)"

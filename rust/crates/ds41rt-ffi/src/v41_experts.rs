@@ -240,6 +240,7 @@ pub struct V41CompactReducer<'a> {
     compact_tokens: Option<CompactFn>,
     compact_bf16_routes: Option<CompactBf16RoutesFn>,
     reduce: ReduceCompactFn,
+    reduce_tp2: Option<ReduceCompactFn>,
 }
 impl V41CompactReducer<'_> {
     /// Sum six local FP32 routes and round the rank partial once to BF16.
@@ -286,7 +287,29 @@ impl V41CompactReducer<'_> {
         Ok(())
     }
 
-    /// Sum compact partials in TP rank order, then add shared and round to BF16.
+    /// Sum exactly two compact BF16 partials in FP32, add optional BF16 shared,
+    /// then round once to BF16. Older native libraries remain TP4-compatible but
+    /// return an error here if the optional TP2 entry point is absent.
+    /// # Safety
+    /// Planes, output and optional shared are CUDA BF16 [rows,5120] on the
+    /// current device, with 1 <= rows <= 4096. Output cannot overlap planes and
+    /// may alias shared only exactly. Storage and library must outlive stream
+    /// completion/replay; order all producer writes before this operation.
+    pub unsafe fn reduce_tp2(
+        &self,
+        planes: [*const u16; 2],
+        shared: *const u16,
+        output: *mut u16,
+        rows: u32,
+        stream: *mut c_void,
+    ) -> Result<()> {
+        let function = self.reduce_tp2.context("native TP2 compact BF16 reduction unavailable")?;
+        let status = unsafe { function(planes.as_ptr(), shared, output, rows, stream) };
+        ensure!(status == 0, "V4.1 TP2 compact reduction failed with CUDA status {status}");
+        Ok(())
+    }
+
+    /// Sum four compact partials in TP rank order, then add shared and round to BF16.
     /// # Safety
     /// Planes, output and optional shared are CUDA BF16 [rows,5120] on the
     /// current device. Output cannot overlap planes and may alias shared only
@@ -363,6 +386,9 @@ impl NativeLibrary {
                 *self
                     .lib
                     .get::<ReduceCompactFn>(b"ds41rt_v41_reduce_compact_bf16_async")?
+            },
+            reduce_tp2: unsafe {
+                self.lib.get::<ReduceCompactFn>(b"ds41rt_v41_reduce_tp2_compact_bf16_async").ok().map(|f| *f)
             },
         })
     }
@@ -810,6 +836,90 @@ mod tests {
         })();
         library.free_device_buffer(&mut routes)?;
         library.free_device_buffer(&mut fp32_routes)?;
+        library.free_device_buffer(&mut shared)?;
+        library.free_device_buffer(&mut output)?;
+        result
+    }
+
+    #[test]
+    #[ignore = "requires DS41RT_NATIVE_LIB and CUDA; TP2/TP4 compact BF16 oracle"]
+    fn compact_planes_sum_in_fp32_before_shared_and_final_rounding() -> Result<()> {
+        let library = unsafe { NativeLibrary::load(std::env::var("DS41RT_NATIVE_LIB")?)? };
+        library.cuda_set_device(0)?;
+        let reducer = library.v41_compact_reducer()?;
+        let capacity = 80usize;
+        let mut planes = (0..4).map(|_| library.alloc_device_buffer(capacity * 10240))
+            .collect::<Result<Vec<_>>>()?;
+        let mut shared = library.alloc_device_buffer(capacity * 10240)?;
+        let mut output = library.alloc_device_buffer(capacity * 10240)?;
+        let bf16 = |value: f32| {
+            let bits = value.to_bits();
+            ((bits.wrapping_add(0x7fff + ((bits >> 16) & 1))) >> 16) as u16
+        };
+        let value = |rank: usize, i: usize| -> f32 {
+            match i % 8 {
+                // 256+1+shared(1) must be 258, not round(257)+1 = 256.
+                0 => [256., 1., 2., -1.][rank],
+                1 => [-256., -1., -2., 1.][rank],
+                // FP32 rank order, not a tree sum or BF16 intermediate sum.
+                2 => [16777216., 1., -16777216., 1.][rank],
+                3 => [1., 0.00390625, 0.0078125, -0.00390625][rank],
+                _ => (i as i32 / 5120 % 7 + rank as i32 * 3 - i as i32 % 11) as f32 * 0.25,
+            }
+        };
+        let result = (|| -> Result<()> {
+            for rows in [1usize, 16, 80, 3, 1] {
+                for (rank, plane) in planes.iter().enumerate() {
+                    let source: Vec<u8> = (0..rows * 5120)
+                        .flat_map(|i| bf16(value(rank, i)).to_ne_bytes()).collect();
+                    library.copy_h2d(*plane, &source)?;
+                }
+                for ranks in [2usize, 4] { for mode in 0..3 {
+                    let shared_bytes: Vec<u8> = (0..capacity * 5120)
+                        .flat_map(|_| bf16(1.).to_ne_bytes()).collect();
+                    library.copy_h2d(shared, &shared_bytes)?;
+                    library.copy_h2d(output, &vec![0xa5; output.bytes])?;
+                    let s = if mode == 0 { std::ptr::null() } else { shared.ptr.cast::<u16>().cast_const() };
+                    let out = if mode == 2 { shared } else { output };
+                    unsafe {
+                        if ranks == 2 {
+                            reducer.reduce_tp2(std::array::from_fn(|r| planes[r].ptr.cast::<u16>().cast_const()),
+                                s, out.ptr.cast(), rows as u32, std::ptr::null_mut())?;
+                        } else {
+                            reducer.reduce(std::array::from_fn(|r| planes[r].ptr.cast::<u16>().cast_const()),
+                                s, out.ptr.cast(), rows as u32, std::ptr::null_mut())?;
+                        }
+                        library.cuda_stream_synchronize(std::ptr::null_mut())?;
+                    }
+                    let mut actual = vec![0u8; out.bytes];
+                    library.copy_d2h(&mut actual, out)?;
+                    for i in 0..rows * 5120 {
+                        let mut sum = value(0, i);
+                        for rank in 1..ranks { sum += value(rank, i); }
+                        if mode != 0 { sum += 1.; }
+                        assert_eq!(u16::from_ne_bytes(actual[i*2..i*2+2].try_into()?), bf16(sum),
+                            "TP{ranks} rows={rows} mode={mode} element={i}");
+                    }
+                    if mode != 2 { assert!(actual[rows * 10240..].iter().all(|&b| b == 0xa5)); }
+                    else { assert_eq!(actual[rows * 10240..], shared_bytes[rows * 10240..]); }
+                } }
+            }
+            // Validation must reject invalid geometry, null/misaligned planes,
+            // routed/output aliasing, and partial shared/output overlap prelaunch.
+            let p = std::array::from_fn(|r| planes[r].ptr.cast::<u16>().cast_const());
+            let out = output.ptr.cast::<u16>();
+            unsafe {
+                for rows in [0, 4097] {
+                    assert!(reducer.reduce_tp2(p, std::ptr::null(), out, rows, std::ptr::null_mut()).is_err());
+                }
+                assert!(reducer.reduce_tp2([p[0], std::ptr::null()], std::ptr::null(), out, 1, std::ptr::null_mut()).is_err());
+                assert!(reducer.reduce_tp2([p[0], p[1].cast::<u8>().add(1).cast()], std::ptr::null(), out, 1, std::ptr::null_mut()).is_err());
+                assert!(reducer.reduce_tp2(p, std::ptr::null(), planes[0].ptr.cast(), 1, std::ptr::null_mut()).is_err());
+                assert!(reducer.reduce_tp2(p, out.add(1), out, 1, std::ptr::null_mut()).is_err());
+            }
+            Ok(())
+        })();
+        for plane in &mut planes { library.free_device_buffer(plane)?; }
         library.free_device_buffer(&mut shared)?;
         library.free_device_buffer(&mut output)?;
         result

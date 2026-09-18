@@ -102,6 +102,12 @@ int32_t ds41rt_v41_compact_routes_bf16_async(const float* routes,
  * overlap is not. Both compact functions allocate nothing and do not sync. */
 int32_t ds41rt_v41_reduce_compact_bf16_async(const uint16_t* const planes[4],
     const uint16_t* shared, uint16_t* output, uint32_t rows, void* stream);
+/* TP2 compact equivalent: exactly two BF16 [rows,5120] rank planes, summed
+ * in FP32 before optional BF16 shared addition and a single final BF16 rounding.
+ * planes is a host array of exactly two device pointers; 1 <= rows <= 4096.
+ * Same alias/lifetime rules as TP4 above; no allocation or synchronization. */
+int32_t ds41rt_v41_reduce_tp2_compact_bf16_async(const uint16_t* const planes[2],
+    const uint16_t* shared, uint16_t* output, uint32_t rows, void* stream);
 /* Full local routed output: sum six FP32 routes (token_sums=0) or consume
  * FP32 token sums (token_sums=1), round to BF16, add optional BF16 shared and
  * round to BF16. Output may equal shared exactly; no routed/output overlap.

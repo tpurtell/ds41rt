@@ -1,4 +1,4 @@
-//! TP4 dispatch through persistent RoCE QPs; TCP is used only for bootstrap.
+//! TP2/TP4 dispatch through persistent RoCE QPs; TCP is used only for bootstrap.
 #[cfg(test)]
 use super::V41BackboneRequest;
 use super::V41Tp4ChunkReceiver;
@@ -22,7 +22,7 @@ fn poll_quantum(rows: &[ExpertProtocolV2RowDescriptor]) -> std::time::Duration {
 
 pub struct V41Tp4Roce {
     clients: LocalTp4Client,
-    executors: [u64; 4],
+    executors: Vec<u64>,
     capacity: u32,
     max_frame_bytes: usize,
 }
@@ -33,6 +33,28 @@ impl V41Tp4Roce {
         capacity: u32,
         config: TcpTransportConfig,
     ) -> Result<Self> {
+        Self::with_clients(&peers, &executors, capacity, &config,
+            LocalTp4Client::new(peers, config.clone()))
+    }
+    /// Two actual Spark TP ranks; no placeholder peers or responses are used.
+    pub fn new_tp2(
+        peers: [SocketAddr; 2],
+        executors: [u64; 2],
+        capacity: u32,
+        config: TcpTransportConfig,
+    ) -> Result<Self> {
+        Self::with_clients(&peers, &executors, capacity, &config,
+            LocalTp4Client::new_tp2(peers, config.clone()))
+    }
+    fn with_clients(
+        peers: &[SocketAddr],
+        executors: &[u64],
+        capacity: u32,
+        config: &TcpTransportConfig,
+        clients: LocalTp4Client,
+    ) -> Result<Self> {
+        ensure!(peers.len() == executors.len() && matches!(peers.len(), 2 | 4),
+            "native TP requires two or four matching peers and executors");
         ensure!(
             capacity > 0 && capacity <= 4096,
             "invalid native TP capacity"
@@ -46,7 +68,7 @@ impl V41Tp4Roce {
                 && config.max_frame_bytes <= 64 * 1024 * 1024,
             "invalid native RoCE frame budget"
         );
-        for rank in 0..4 {
+        for rank in 0..peers.len() {
             ensure!(
                 executors[rank] != 0 && !executors[..rank].contains(&executors[rank]),
                 "native TP executor identities must be distinct and nonzero"
@@ -57,14 +79,17 @@ impl V41Tp4Roce {
             );
         }
         Ok(Self {
-            clients: LocalTp4Client::new(peers, config.clone()),
-            executors,
+            clients,
+            executors: executors.to_vec(),
             capacity,
             max_frame_bytes: config.max_frame_bytes,
         })
     }
     pub fn capacity(&self) -> u32 {
         self.capacity
+    }
+    pub fn world_size(&self) -> usize {
+        self.executors.len()
     }
     /// Reset persistent QPs before a new admission. Pending dispatches borrow this
     /// owner exclusively, so an in-flight wave cannot be reset through this API.
@@ -84,15 +109,20 @@ impl V41Tp4Roce {
         self.dispatch(request).await?.receive(sink).await
     }
 
-    /// Post all four requests directly from the inference owner. Remote work
+    /// Post every active rank's request directly from the inference owner. Remote work
     /// overlaps the shared FFN; dispatch completion is not send completion.
     pub async fn dispatch<'c, 'r>(
         &'c mut self,
         request: &'r ExpertProtocolV2Request,
     ) -> Result<V41Tp4RocePending<'c, 'r>> {
-        let receiver = V41Tp4ChunkReceiver::from_owned(
-            request, self.capacity, self.executors, self.max_frame_bytes,
-        )?;
+        let receiver = if self.world_size() == 4 {
+            V41Tp4ChunkReceiver::from_owned(request, self.capacity,
+                self.executors.as_slice().try_into().expect("four executors"), self.max_frame_bytes)?
+        } else {
+            V41Tp4ChunkReceiver::from_owned_ranks(
+                request, self.capacity, &self.executors, self.max_frame_bytes,
+            )?
+        };
         self.clients.dispatch(request)?;
         Ok(V41Tp4RocePending {
             receiver,
@@ -104,7 +134,7 @@ impl V41Tp4Roce {
     }
 }
 
-/// Holds exclusive admission until all four rank planes have been consumed.
+/// Holds exclusive admission until every active rank plane has been consumed.
 /// Cancellation resets the QPs before another wave can reuse them.
 pub struct V41Tp4RocePending<'c, 'r> {
     receiver: V41Tp4ChunkReceiver,
@@ -162,7 +192,7 @@ impl V41Tp4RocePending<'_, '_> {
         }
         ensure!(
             self.receiver.complete(),
-            "native TP4 RoCE response coverage is incomplete"
+            "native TP RoCE response coverage is incomplete"
         );
         self.complete = true;
         Ok(())
@@ -180,6 +210,59 @@ impl Drop for V41Tp4RocePending<'_, '_> {
 mod tests {
     use super::*;
     use crate::{VerbsHostProtocolV2ResponseChunk, VerbsHostProtocolV2ResponsePayload};
+
+    #[test]
+    fn tp2_constructor_validates_real_peers_and_identities() -> Result<()> {
+        let peers = ["127.0.0.1:19441".parse()?, "127.0.0.1:19442".parse()?];
+        let config = TcpTransportConfig {
+            timeout: std::time::Duration::from_secs(1), max_frame_bytes: 200_000,
+        };
+        let mut client = V41Tp4Roce::new_tp2(peers, [11, 27], 2, config.clone())?;
+        assert_eq!(client.world_size(), 2);
+        client.reset_connections();
+        assert_eq!(client.world_size(), 2);
+        assert!(V41Tp4Roce::new_tp2([peers[0]; 2], [11, 27], 2, config.clone()).is_err());
+        for ids in [[0, 27], [11, 11]] {
+            assert!(V41Tp4Roce::new_tp2(peers, ids, 2, config.clone()).is_err());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn tp2_chunks_require_both_exact_rank_planes() -> Result<()> {
+        let owned = super::super::tests::request(2);
+        let frame = owned.encode()?;
+        let native = V41BackboneRequest::parse(&frame, 2)?;
+        let mut receiver = V41Tp4ChunkReceiver::new_tp2(&native, [11, 27], 200_000)?;
+        assert!(!receiver.complete());
+        let payload = vec![0; super::super::V41_PARTIAL_ROW_BYTES as usize];
+        let mut indices = [0];
+        let mut make = |id, row| -> Result<Vec<u8>> {
+            native.response_chunk(id, row, &payload, &mut indices, 200_000)?.to_owned()?.encode()
+        };
+        let wrong = make(3, 0)?;
+        assert!(receiver.push(&wrong, |_, _, _| panic!("unknown executor reached sink")).is_err());
+        for (id, rank) in [(27, 1), (11, 0)] {
+            for row in 0..2 {
+                let chunk = make(id, row)?;
+                let mut stale = crate::ExpertProtocolV2Response::decode(&chunk)?;
+                stale.header.request_id += 1;
+                assert!(receiver.push(&stale.encode()?, |_, _, _| panic!("stale response reached sink")).is_err());
+                // A failed sink must not commit row coverage.
+                assert!(receiver.push(&chunk, |_, _, _| anyhow::bail!("injected sink failure")).is_err());
+                receiver.push(&chunk, |actual, start, _| {
+                    assert_eq!((actual, start), (rank, row)); Ok(())
+                })?;
+                assert!(receiver.push(&chunk, |_, _, _| panic!("duplicate reached sink")).is_err());
+                assert_eq!(receiver.complete(), id == 11 && row == 1);
+            }
+        }
+        assert_eq!(receiver.received_rows(), [2, 2, 0, 0]);
+        let mut paired = owned;
+        paired.header.flags |= super::super::V41_EXL3_PAIRED_REQUEST_FLAG;
+        assert!(V41Tp4ChunkReceiver::from_owned_ranks(&paired, 2, &[11, 27], 200_000).is_err());
+        Ok(())
+    }
 
     #[test]
     fn prefill_or_benchmark_rows_keep_original_polling_in_mixed_waves() {

@@ -41,6 +41,11 @@ if(DS41RT_V41_EXL3_PAIRED_TP4)
 elseif(DS41RT_V41_EXL3_RESIDENCY)
   message(FATAL_ERROR "EXL3 residency overrides require paired TP4")
 endif()
+# Disjoint Spark packages serve both TP4 and equal-width TP2 ownership.
+# Paired H128 packages remain TP4-only and must not declare TP2 byproducts.
+if(DS41RT_EXL3_ROLE STREQUAL "spark" AND NOT DS41RT_V41_EXL3_PAIRED_TP4)
+  list(APPEND DS41RT_EXL3_LAYOUTS tp2-rank0 tp2-rank1)
+endif()
 set(DS41RT_EXL3_OVERRIDE_CAPACITIES)
 foreach(override IN LISTS DS41RT_V41_EXL3_RESIDENCY)
   if(NOT override MATCHES "^([1-9][0-9]*)=([12])$")

@@ -22,6 +22,16 @@ pub const V41_HIDDEN: u32 = 5120;
 pub const V41_BACKBONE_TOPK: u32 = 6;
 pub const V41_PARTIAL_ROW_BYTES: u32 = V41_HIDDEN * 2;
 
+/// Bind native Spark responses to their tensor-parallel topology without a wire
+/// ABI change. TP4 retains executor IDs 1..=4; TP2 uses the disjoint namespace
+/// 5..=6, so a two-peer coordinator rejects stale TP4 rank-0/rank-1 workers.
+/// This identifies topology and rank, not checkpoint or deployment identity.
+pub fn v41_spark_executor_id(world: usize, rank: usize) -> Result<u64> {
+    ensure!(matches!(world, 2 | 4) && rank < world,
+        "native Spark executor requires world 2 or 4 and rank below world");
+    Ok(rank as u64 + if world == 2 { 5 } else { 1 })
+}
+
 // Shared by wire parsing on workers and validation of owned coordinator requests.
 fn validate_canonical(
     header: &crate::ExpertProtocolV2RequestHeader,
@@ -238,7 +248,19 @@ impl<'a> V41BackboneRequest<'a> {
     }
 }
 
-/// Collects complete planes in TP-rank order, independently of arrival order.
+// Fixed-size rank identities keep per-wave validation allocation-free.
+enum V41Executors {
+    Tp2([u64; 2]),
+    Tp4([u64; 4]),
+}
+impl V41Executors {
+    fn as_slice(&self) -> &[u64] {
+        match self { Self::Tp2(ids) => ids, Self::Tp4(ids) => ids }
+    }
+    fn len(&self) -> usize { self.as_slice().len() }
+}
+
+/// Collects complete TP4 planes in rank order, independently of arrival order.
 /// Payloads are borrowed; keep their frame storage alive until GPU copies finish.
 /// Request IDs must uniquely identify in-flight waves within a placement version.
 pub struct V41Tp4Planes<'a> {
@@ -246,7 +268,7 @@ pub struct V41Tp4Planes<'a> {
     placement_version: u64,
     layer: u32,
     rows: u32,
-    executors: [u64; 4],
+    executors: V41Executors,
     planes: [Option<&'a [u8]>; 4],
 }
 impl<'a> V41Tp4Planes<'a> {
@@ -254,10 +276,14 @@ impl<'a> V41Tp4Planes<'a> {
         Self::from_header(&request.view.header, executors)
     }
     fn from_header(h: &crate::ExpertProtocolV2RequestHeader, executors: [u64; 4]) -> Result<Self> {
+        Self::from_header_ranks(h, &executors)
+    }
+    fn from_header_ranks(h: &crate::ExpertProtocolV2RequestHeader, executors: &[u64]) -> Result<Self> {
+        ensure!(matches!(executors.len(), 2 | 4), "native TP requires two or four executors");
         for (rank, id) in executors.iter().enumerate() {
             ensure!(
                 *id != 0 && !executors[..rank].contains(id),
-                "TP4 requires four distinct executor identities"
+                "native TP requires distinct nonzero executor identities"
             );
         }
         Ok(Self {
@@ -265,7 +291,11 @@ impl<'a> V41Tp4Planes<'a> {
             placement_version: h.placement_version,
             layer: h.layer_id,
             rows: h.row_count,
-            executors,
+            executors: if executors.len() == 2 {
+                V41Executors::Tp2(executors.try_into().expect("two executors"))
+            } else {
+                V41Executors::Tp4(executors.try_into().expect("four executors"))
+            },
             planes: [None; 4],
         })
     }
@@ -311,6 +341,7 @@ impl<'a> V41Tp4Planes<'a> {
             "native TP route plane geometry mismatch"
         );
         self.executors
+            .as_slice()
             .iter()
             .position(|id| *id == h.executor_id)
             .context("unknown native TP executor")
@@ -334,6 +365,36 @@ mod tests {
         ExpertProtocolV2Request, ExpertProtocolV2RouteEntry, ExpertProtocolV2RowDescriptor,
         ExpertV2SourceKind, EXPERT_PROTOCOL_V2_FLAG_RESPONSE_FP8_E4M3_ROW_SCALED,
     };
+    #[test]
+    fn spark_executor_namespaces_reject_other_world_responses() -> Result<()> {
+        let tp4 = [0, 1, 2, 3].map(|rank| v41_spark_executor_id(4, rank).unwrap());
+        let tp2 = [0, 1].map(|rank| v41_spark_executor_id(2, rank).unwrap());
+        assert_eq!(tp4, [1, 2, 3, 4]);
+        assert_eq!(tp2, [5, 6]);
+        for (world, rank) in [(0, 0), (1, 0), (3, 0), (2, 2), (4, 4), (usize::MAX, 0), (2, usize::MAX)] {
+            assert!(v41_spark_executor_id(world, rank).is_err());
+        }
+        let frame = request(1).encode()?;
+        let native = V41BackboneRequest::parse(&frame, 1)?;
+        let payload = vec![0; V41_PARTIAL_ROW_BYTES as usize];
+        let mut two = V41Tp4ChunkReceiver::new_tp2(&native, tp2, 200_000)?;
+        let mut four = V41Tp4ChunkReceiver::new(&native, tp4, 200_000)?;
+        for id in tp4 {
+            let response = native.response(id, &payload)?.to_owned()?.encode()?;
+            assert!(two.push(&response, |_, _, _| panic!("TP4 response reached TP2 sink")).is_err());
+        }
+        for (rank, id) in tp2.into_iter().enumerate() {
+            let response = native.response(id, &payload)?.to_owned()?.encode()?;
+            assert!(four.push(&response, |_, _, _| panic!("TP2 response reached TP4 sink")).is_err());
+            two.push(&response, |actual, start, _| {
+                assert_eq!((actual, start), (rank, 0)); Ok(())
+            })?;
+            assert_eq!(two.complete(), rank == 1);
+        }
+        assert_eq!(four.received_rows(), [0; 4]);
+        Ok(())
+    }
+
     pub(super) fn request(rows: u32) -> ExpertProtocolV2Request {
         let mut request = ExpertProtocolV2Request::new(
             91,

@@ -35,6 +35,7 @@ include("{RULES}")
 
     def test_explicit_paired_residency_reaches_export_command(self):
         result, rules = self.configure('-DDS41RT_V41_EXL3_PAIRED_TP4=ON',
+                                       '-DDS41RT_V41_EXL3_BITS=3;4',
                                        '-DDS41RT_V41_EXL3_RESIDENCY=80=2;16=1')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('--paired-tp4 --residency 80=2 --residency 16=1', rules)
@@ -46,6 +47,40 @@ include("{RULES}")
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertNotIn('--paired-tp4', rules)
                 self.assertNotIn('--residency', rules)
+
+    def test_default_families_declare_all_disjoint_layouts(self):
+        for architecture, layouts in (
+            ('121', [f'tp4-rank{i}' for i in range(4)] + ['tp2-rank0', 'tp2-rank1']),
+            ('120', ['rtx-tp1', 'rtx-tp2', 'dspark']),
+            ('120f', ['rtx-tp1', 'rtx-tp2', 'dspark']),
+        ):
+            with self.subTest(architecture=architecture):
+                result, rules = self.configure(f'-DDS41RT_CUDA_ARCHITECTURES={architecture}')
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                for family, bits in (('23', '2 3'), ('34', '3 4')):
+                    self.assertIn(f'--bits {bits}', rules)
+                    for layout in layouts:
+                        for capacity in (1, 16, 80, 256, 1024, 4096):
+                            for name in ('v41_exl3.json', 'trellis_lut.bin', 'libds41rt_exl3.so'):
+                                self.assertIn(f'exl3-k{family}/{layout}/m{capacity}/{name}', rules)
+                if architecture != '121':
+                    self.assertNotIn('/tp2-rank', rules)
+
+    def test_paired_families_remain_tp4_only(self):
+        for bits, family in (('2;3', '23'), ('3;4', '34')):
+            with self.subTest(family=family):
+                result, rules = self.configure('-DDS41RT_V41_EXL3_PAIRED_TP4=ON',
+                                               f'-DDS41RT_V41_EXL3_BITS={bits}')
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn('--paired-tp4', rules)
+                self.assertNotIn('/tp2-rank', rules)
+                for rank in range(4):
+                    self.assertIn(f'exl3-k{family}/tp4-rank{rank}/m16/libds41rt_exl3.so', rules)
+
+    def test_paired_default_rejects_multiple_families(self):
+        result, _ = self.configure('-DDS41RT_V41_EXL3_PAIRED_TP4=ON')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('exactly one decoder tier family', result.stderr)
 
     def test_invalid_layouts_fail_during_configuration(self):
         paired = '-DDS41RT_V41_EXL3_PAIRED_TP4=ON'
@@ -59,7 +94,7 @@ include("{RULES}")
         ]
         for options, error in cases:
             with self.subTest(options=options):
-                result, _ = self.configure(*options)
+                result, _ = self.configure('-DDS41RT_V41_EXL3_BITS=3;4', *options)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn(error, result.stderr)
 

@@ -71,6 +71,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--retained-turns", type=int, required=True)
     parser.add_argument("--kv-pool-size", default="")
     parser.add_argument("--memory-reservation", default="")
+    parser.add_argument("--compact-spark-tp2", action="store_true",
+                        help="single RTX EXL3 two-Spark ceiling is capped by physical VRAM")
     parser.add_argument("--minimum-expert-layers", type=int, choices=range(1, 41), default=20)
     parser.add_argument("--expert-format", choices=tuple(DUAL_LAYER_BYTES_BY_FORMAT), default="native")
     parser.add_argument("--reclaim-pid", action="append", type=int, default=[])
@@ -194,11 +196,21 @@ def main() -> int:
         primary = next((gpu for gpu in gpus if gpu.uuid == args.primary_uuid), None)
         if primary is None:
             raise SelectionError(f"configured primary GPU is absent: {args.primary_uuid}")
+        if args.compact_spark_tp2:
+            if args.mode != "1" or not args.memory_reservation:
+                raise SelectionError("compact Spark TP2 requires mode 1 and a memory ceiling")
+            if parse_bytes(args.memory_reservation) > 32 * GIB:
+                raise SelectionError("compact Spark TP2 memory ceiling exceeds 32GiB")
         if args.mode == "1":
             if args.kv_pool_size:
                 parse_bytes(args.kv_pool_size)
             if args.memory_reservation:
-                reservation_bytes(args.memory_reservation, primary.total_mib)
+                # Compact runtime clamps its absolute ceiling to physical total;
+                # a nominal 32GiB board can report slightly less usable VRAM.
+                reservation = args.memory_reservation
+                if args.compact_spark_tp2:
+                    reservation = str(min(parse_bytes(reservation), primary.total_mib * MIB))
+                reservation_bytes(reservation, primary.total_mib)
             print(json.dumps({
                 "count": 1,
                 "groups": None,

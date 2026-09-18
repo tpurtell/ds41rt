@@ -154,7 +154,9 @@ def build(args: argparse.Namespace) -> None:
         raise ValueError(f'{args.role} package requires GPU {expected_compute}')
     profiles = (
         [('tp4-width640', 640, 384, 6, 'bf16', ['tp4-rank0', 'tp4-rank1']),
-         ('tp4-width512', 512, 384, 6, 'bf16', ['tp4-rank2', 'tp4-rank3'])]
+         ('tp4-width512', 512, 384, 6, 'bf16', ['tp4-rank2', 'tp4-rank3']),
+         # Equal TP2 shards share one export, independently of TP4 ownership.
+         ('tp2-width1152', 1152, 384, 6, 'bf16', ['tp2-rank0', 'tp2-rank1'])]
         if args.role == 'spark' else
         [('rtx-tp1', 2304, 384, 6, 'fp32', ['rtx-tp1']),
          ('rtx-tp2', 1152, 384, 6, 'fp32', ['rtx-tp2']),

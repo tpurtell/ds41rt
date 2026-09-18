@@ -31,6 +31,22 @@ release_exl3_package_identity() {
   printf '%s:%s\n' "$layout" "$digest"
 }
 
+release_validate_exl3_tp2_variants() {
+  local capacity="$1" family="$2"
+  [[ "$family" =~ ^k([23])([34])$ && ( "$family" == k23 || "$family" == k34 ) ]] || release_die "cannot resolve compact EXL3 package bit tiers"
+  local low="${BASH_REMATCH[1]}" high="${BASH_REMATCH[2]}"
+  jq -e --argjson capacity "$capacity" --argjson low "$low" --argjson high "$high" '
+    . as $manifest | .compute == [12,1] and
+    all([1,16,80,256,1024,4096][] | select(. <= $capacity); . as $m |
+      all([0,1][]; . as $rank |
+        [$manifest.variants[]? |
+          select(.directory == ("tp2-rank" + ($rank|tostring) + "/m" + ($m|tostring))) |
+          select(.capacity == $m and .intermediate == 1152 and .experts == 384
+                 and .top_k == 6 and .output_dtype == "bf16"
+                 and .bits == [$low,$high])] | length == 1))
+  ' >/dev/null || release_die "Spark EXL3 package lacks required TP2 rank/capacity/shape/bit variants"
+}
+
 release_model_list_matches() {
   local model_id="$1"
   local full_model_id="${model_id}-full"
@@ -241,13 +257,13 @@ release_load_config() {
       [[ "$RTX_EXPERT_LAYERS" == 40 ]] || release_die "SPARK_COUNT=0 requires RTX_EXPERT_LAYERS=40 (every routed layer must fit the RTX layout)"
       [[ "$RTX_GPUS" != 1 ]] || release_die "SPARK_COUNT=0 requires two RTX GPUs"
       ;;
+    2) release_validate_compact_tp2 ;;
     4) ;;
-    *) release_die "SPARK_COUNT must be 0 or 4 (2-Spark TP2 support is not implemented)" ;;
+    *) release_die "SPARK_COUNT must be 0, 2, or 4" ;;
   esac
 
-  local missing_b=0 present_b=0 spark_required=4
-  ((SPARK_COUNT == 0)) && spark_required=0
-  for release_i in 0 1 2 3; do
+  local missing_b=0 present_b=0 spark_required="$SPARK_COUNT"
+  for ((release_i = 0; release_i < spark_required; release_i++)); do
     local host_name="SPARK_${release_i}_HOST"
     local lane_a_name="SPARK_${release_i}_LANE_A"
     local lane_b_name="SPARK_${release_i}_LANE_B"
@@ -261,7 +277,7 @@ release_load_config() {
       ((missing_b += 1))
     fi
   done
-  ((present_b == 0 || missing_b == 0)) || release_die "secondary Spark rail must provide all four LANE_B values or none"
+  ((present_b == 0 || missing_b == 0)) || release_die "secondary Spark rail must provide all $SPARK_COUNT active LANE_B values or none"
 
   for release_image_name in COORDINATOR_DOCKER_DEV COORDINATOR_DOCKER_INFERENCE SPARK_EXPERT_DOCKER_DEV SPARK_EXPERT_DOCKER_INFERENCE; do
     [[ -n "${!release_image_name}" && "${!release_image_name}" != *[[:space:]]* ]] || release_die "$release_image_name must be a Docker image reference"
@@ -320,27 +336,58 @@ release_resolve_local_model_revision() {
     release_die "model snapshot is missing: $RELEASE_MODEL_ID@$RELEASE_MODEL_REVISION"
 }
 
-release_hosts_csv() {
-  printf '%s,%s,%s,%s' "$SPARK_0_HOST" "$SPARK_1_HOST" "$SPARK_2_HOST" "$SPARK_3_HOST"
-}
-
-release_lane_a_csv() {
-  printf '%s,%s,%s,%s' "$SPARK_0_LANE_A" "$SPARK_1_LANE_A" "$SPARK_2_LANE_A" "$SPARK_3_LANE_A"
-}
-
-release_lane_b_csv() {
-  if [[ -z "$SPARK_0_LANE_B" ]]; then
-    return
+# Two Spark ranks are an opt-in compact EXL3 topology, not RTX tensor
+# parallelism. Keep the coordinator ceiling explicit; never raise it to fit.
+release_validate_compact_tp2() {
+  [[ "$SPARK_COUNT" == 2 ]] || return 0
+  [[ "$EXPERT_FORMAT" == exl3 ]] || release_die "SPARK_COUNT=2 requires EXPERT_FORMAT=exl3"
+  [[ "$RTX_GPUS" != 2 ]] || release_die "SPARK_COUNT=2 requires a single RTX GPU"
+  [[ "$EXL3_PAIRED_TP4" == off ]] || release_die "SPARK_COUNT=2 is incompatible with EXL3_PAIRED_TP4"
+  MEMORY_RESERVATION="${MEMORY_RESERVATION:-32GiB}"
+  KV_POOL_SIZE="${KV_POOL_SIZE:-2GiB}"
+  PREFILL_BATCH_TOKENS="${PREFILL_BATCH_TOKENS:-256}"
+  [[ "$PREFILL_BATCH_TOKENS" =~ ^[1-9][0-9]*$ ]] &&
+    ((PREFILL_BATCH_TOKENS >= 80 && PREFILL_BATCH_TOKENS <= 4096)) ||
+    release_die "PREFILL_BATCH_TOKENS must be in 80..4096"
+  if ((PREFILL_BATCH_TOKENS > 256)); then
+    echo "ds41rt release: compact Spark TP2 caps PREFILL_BATCH_TOKENS=$PREFILL_BATCH_TOKENS to 256 to fit the 32GiB ceiling" >&2
+    PREFILL_BATCH_TOKENS=256
   fi
-  printf '%s,%s,%s,%s' "$SPARK_0_LANE_B" "$SPARK_1_LANE_B" "$SPARK_2_LANE_B" "$SPARK_3_LANE_B"
+  python3 - "$MEMORY_RESERVATION" <<'PY' || release_die "SPARK_COUNT=2 requires a positive absolute MEMORY_RESERVATION no greater than 32GiB (percentages are not allowed)"
+import re
+import sys
+from decimal import Decimal
+match = re.fullmatch(r'([0-9]+(?:\.[0-9]{1,6})?)(B|MB|GB|MiB|GiB)', sys.argv[1])
+if not match:
+    sys.exit(1)
+scale = {'B': 1, 'MB': 10**6, 'GB': 10**9, 'MiB': 2**20, 'GiB': 2**30}
+size = Decimal(match[1]) * scale[match[2]]
+sys.exit(0 if 1 <= size <= 32 * 2**30 else 1)
+PY
+}
+
+release_spark_values() {
+  local field="$1" i name
+  for ((i = 0; i < SPARK_COUNT; i++)); do
+    name="SPARK_${i}_${field}"
+    printf '%s\n' "${!name}"
+  done
+}
+
+release_hosts_csv() { release_spark_values HOST | paste -sd, -; }
+release_lane_a_csv() { release_spark_values LANE_A | paste -sd, -; }
+release_lane_b_csv() {
+  [[ -n "$SPARK_0_LANE_B" ]] || return 0
+  release_spark_values LANE_B | paste -sd, -
 }
 
 release_expert_hosts_csv() {
-  printf '%s=%s:%s,%s=%s:%s,%s=%s:%s,%s=%s:%s' \
-    "spark-0" "$SPARK_0_LANE_A" "$EXPERT_PORT" \
-    "spark-1" "$SPARK_1_LANE_A" "$EXPERT_PORT" \
-    "spark-2" "$SPARK_2_LANE_A" "$EXPERT_PORT" \
-    "spark-3" "$SPARK_3_LANE_A" "$EXPERT_PORT"
+  local i lane separator=
+  for ((i = 0; i < SPARK_COUNT; i++)); do
+    lane="SPARK_${i}_LANE_A"
+    printf '%sspark-%s=%s:%s' "$separator" "$i" "${!lane}" "$EXPERT_PORT"
+    separator=,
+  done
 }
 
 release_stop_local_container() {
@@ -416,7 +463,9 @@ release_stop_services() {
   local failed=0
   local -a stop_hosts=()
   local -a stop_pids=()
-  for host in "$SPARK_0_HOST" "$SPARK_1_HOST" "$SPARK_2_HOST" "$SPARK_3_HOST"; do
+  local -a active_hosts=()
+  mapfile -t active_hosts < <(release_spark_values HOST)
+  for host in "${active_hosts[@]}"; do
     [[ -n "$host" ]] || continue
     release_container="${spark_container_prefix}-${host}-${EXPERT_PORT}"
     legacy_container="ds41rt-phase0-tcp-expertd-${host}-${EXPERT_PORT}"
@@ -476,7 +525,9 @@ release_stop_wip_containers() {
 
   local host
   local -a hosts=() pids=()
-  for host in "$SPARK_0_HOST" "$SPARK_1_HOST" "$SPARK_2_HOST" "$SPARK_3_HOST"; do
+  local -a active_hosts=()
+  mapfile -t active_hosts < <(release_spark_values HOST)
+  for host in "${active_hosts[@]}"; do
     [[ -n "$host" ]] || continue
     release_stop_persistent_remote_container "$host" "$spark_container" &
     hosts+=("$host")
@@ -544,7 +595,9 @@ release_stop_wip_services() {
 
   local host
   local -a hosts=() pids=()
-  for host in "$SPARK_0_HOST" "$SPARK_1_HOST" "$SPARK_2_HOST" "$SPARK_3_HOST"; do
+  local -a active_hosts=()
+  mapfile -t active_hosts < <(release_spark_values HOST)
+  for host in "${active_hosts[@]}"; do
     [[ -n "$host" ]] || continue
     (
       if ! ssh -o BatchMode=yes "$host" \
