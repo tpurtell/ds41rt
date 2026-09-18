@@ -363,6 +363,28 @@ fresh requests returned `42`, `BLUE`, and `READY`, including 1,838-token
 prefill. Full root cause, artifact identities, commands, exact API responses,
 and qualification limits: [NVFP4 inference fix](release-v7-nvfp4-inference-fix.md).
 
+### NVFP4 single-card placement: progress and the next blocker
+
+The single-card W4A4 placement is wired: the full-width RTX backbone role is
+exported (its own TU and symbol family, cmake packaging, FFI interface 7 with
+role 2 geometry, `BackboneFull` selection), the single-RTX guard is gone, and
+`LocalExpertWave` no longer hardcodes the W4A8 accessors - it followed the
+resident weights' family for kernel selection and workspace sizing. That last
+one was the real bug: the MXFP4 local kernel shares role 2 with the W4A4 one
+and reports `Fp32Routes`, so W4A4 weights were being launched against the
+wrong kernel and rejected by the family check. The failure message now names
+the layer, both families and the kernel kind.
+
+The 1x run now loads 4 full-width layers on the card (30.6 GB resident of
+96 GiB), places layers 4-39 on the four Sparks, reaches API ready, and then a
+request fails with:
+
+    ExpertProtocolV2 route gate_weight must be finite
+
+so the next step is the Spark dispatch path for the single-card placement:
+the route weights reaching the transport are not finite, which points at the
+routing buffer or the BF16 row path that Astra reworked for the TP2 case.
+
 ### NVFP4 W4A4 serving RESOLVED
 
 Astra fixed and verified end-to-end inference; see
