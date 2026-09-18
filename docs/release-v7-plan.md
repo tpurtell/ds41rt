@@ -486,6 +486,20 @@ ROLE is `coordinator` or `expert`, CUDA_ARCH is `120` for the RTX role and
 release commit. Both roles must be built, and the Spark role builds on the
 SM121 host (ostrich), not here.
 
+Run the build inside the CUDA container, not on the host shell: the host has
+no `nvcc` (CMake fails at `enable_language(CUDA)`) and its Python 3.14 trips
+PyO3's forward-compatibility check. The container has nvcc and Python 3.12.
+
+**Sync the source into the container first.** The container's `/wip/source`
+lags the working tree between WIP builds, and it was missing the NVFP4
+placement fix - building from it would have shipped a release without that
+correction and nothing would have said so. The check that catches it is one
+line: `grep -c 'expert_format=nvfp4' /wip/source/run.sh` must be 1 before the
+build starts. Use the same rsync excludes as `wip.sh` (`-a --delete
+--delete-excluded`, excluding `.git`, `rust/target/`, `native/build*/`, the
+`.ds41rt-*` staging dirs), then `docker cp` into `/wip/source.next` and move it
+into place.
+
 Order that keeps the GPUs exclusive:
 1. Let the single-card NVFP4 prefill finish (it is running now) and re-render
    the reports with `scripts/render-ds41-v7-quant-reports.py` and the headline
