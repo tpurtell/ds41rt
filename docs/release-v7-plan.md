@@ -413,6 +413,30 @@ Also: the single-card NVFP4 prefill campaign was cut short by a service
 restart during the run (my own regression check), not by a fault; it needs a
 re-run for the 1x best-prefill cell, which stays a dash until then.
 
+### Tool-call evaluation notes (round 27)
+
+The EXL3 compact qualification run is in progress. Observable behaviour worth
+recording: scenario TC-26 ("State Consistency (Multi-Turn)") produced no log
+output for over thirteen minutes while the service kept answering ordinary
+requests, so the harness's 900 s per-request timeout is what will close it.
+TC-26 is the first multi-turn scenario in the set, so if it recurs across runs
+it is worth checking whether the compact profile's shorter KV pool (2 GiB) is
+truncating a long multi-turn chain rather than the harness stalling. Scenarios
+1-25 completed with recorded passes.
+
+Remaining sequence once the evaluation and the missing measurements are done,
+in the order that keeps the GPUs free when they are needed:
+1. NVFP4 1x best prefill re-run (needs the GPUs, about forty minutes).
+2. Release docker images: `scripts/build-release-artifacts.sh` for both roles,
+   then publish. This needs the GPUs exclusively for the AOT exports, so it
+   must not overlap a serving campaign.
+3. Cut `release/v7` and merge to `main`.
+
+Also fixed this round: `python/tests/test_upstream_fp4_pack_math.py` had a
+malformed module docstring that raised SyntaxError on import, hiding 51
+reference tests from every suite run. Repaired; combined suites are now 648
+passed, 3 skipped.
+
 ### v7 status at round 25
 
 Landed and verified:
