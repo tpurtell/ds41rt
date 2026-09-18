@@ -413,6 +413,37 @@ Also: the single-card NVFP4 prefill campaign was cut short by a service
 restart during the run (my own regression check), not by a fault; it needs a
 re-run for the 1x best-prefill cell, which stays a dash until then.
 
+### v7 status at round 25
+
+Landed and verified:
+- Both new quants serve, measured, and documented: NVFP4 W4A4 (1x/2x) and EXL3
+  2 bpw (2x zero-Spark and the 1x 32 GiB compact profile with two TP2 Sparks).
+- The 32 GiB compact budget is real (peak 29,568 MiB, headroom-inclusive
+  31,616 MiB, second card idle).
+- The AOT family is SM-count agnostic; the engine accepts a same-capability
+  part with fewer SMs and clamps the launch cluster cap. Astra checked all 18
+  K2 variants at 188 vs 170 SM inventories.
+- The Spark TP2 artifacts are packaged by the build, not just the WIP slot:
+  `native/cmake/v41_exl3.cmake` appends `tp2-rank0`/`tp2-rank1` for the Spark
+  role unless the paired-TP4 package is requested, and the release script
+  ships both EXL3 bit families by default.
+- Documentation: six-configuration headline in the README with the two
+  per-quant reports linked beneath it, per-quant reports with SHA-256
+  provenance, the configuration chart, and an Astra review that removed
+  unsupported numbers and preserved the honest disclosures.
+
+Still owed before the release can be called done:
+1. Tool-call evaluation runs: the EXL3 compact profile is running now; the
+   NVFP4 and EXL3 2x configurations still need theirs.
+2. NVFP4 1x best prefill: campaign was interrupted by a service restart and
+   has not been re-run, so that headline cell is still a dash.
+3. Release docker images: only WIP artifacts have been built. The release
+   build and publish has not been run.
+4. `release/v7` branch cut and merged to `main`.
+5. Pre-existing collection error in `python/tests/test_upstream_fp4_pack_math.py`
+   (unrelated to v7, last touched in 6ab9475) - worth resolving before the
+   release branch.
+
 ### v7 release deliverables (agreed scope)
 
 Three performance table sets, all measured with the v7 protocol:
