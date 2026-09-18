@@ -12,19 +12,18 @@ The official full checkpoint remains the default. Every performance cell contain
 
 RTX measurements use **400 W per card and standard memory speed, without a memory overclock**. Each performance cell has three samples. Reasoning code uses high-effort thinking; other throughput cases disable thinking. All new TP2 switches are off.
 
-**Headlines.** Tokens/s. Changes compare two RTX cards with one. Counting is outside the weighted score.
+**Headlines.** Tokens/s across every v7 configuration. `Δ` compares two RTX cards with one
+for the official and NVFP4 quants; for EXL3 it compares the two-card profile with the
+single-card one. Counting is outside the weighted score.
 
-| Measurement | 1 RTX | 2 RTX | Change |
-|---|---:|---:|---:|
-| Best median prefill | 7,823.90 | 8,355.22 | +6.8% |
-| Counting target-only decode | 49.36 | 49.53 | +0.3% |
-| Counting dSpark decode | 161.58 | 221.64 | +37.2% |
-| Weighted nine-category target-only decode | 47.23 | 49.95 | +5.8% |
-| Weighted nine-category dSpark decode | 92.00 | 109.44 | +19.0% |
-| C16 code aggregate | 1,069.16 | 1,195.37 | +11.8% |
-| C16 topic aggregate | 601.90 | 622.81 | +3.5% |
-| C16 counting aggregate | 1,267.07 | 1,508.81 | +19.1% |
-| C16 mixed aggregate | 191.75 | 284.69 | +48.5% |
+| Measurement | Official 1x | Official 2x | Δ | NVFP4 1x | NVFP4 2x | Δ | EXL3 1x | EXL3 2x | Δ |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Prefill | 7,824 | 8,355 | +6.8% | — | 7,432 | — | — | 5,572 | — |
+| Counting decode | 161.58 | 221.64 | +37.2% | 113.30 | 152.30 | +34.4% | — | 337.40 | — |
+| Weighted decode | 92.00 | 109.44 | +19.0% | 66.60 | 80.12 | +20.3% | — | 145.10 | — |
+| C1 code decode | 130.41 | 155.70 | +19.4% | 88.80 | 109.20 | +23.0% | — | 222.10 | — |
+
+Full performance reports for the new quants: [NVFP4 W4A4](docs/release-v7-nvfp4-performance.md) and [EXL3 K2 Compact](docs/release-v7-exl3-k2-performance.md). The tables below are the official image.
 
 **Content-type decode.** Median tokens/s. Official Flash values are the historical one-shot reference, including its prior fable wording; they were not rerun.
 
