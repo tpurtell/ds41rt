@@ -37,9 +37,11 @@ pub(crate) struct Nvfp4Weights<'a> {
     /// Per-expert FC1 and FC2 runtime alphas bound to slots 38/39.
     alphas: DeviceAllocation<'a>,
     down_alphas: DeviceAllocation<'a>,
-    /// `input_global_scale` (slot 37) and `global_scale` (slot 40) uploads.
-    input_scales: Vec<f32>,
-    down_input_scales: Vec<f32>,
+    /// Per-expert activation-scale vectors. Uploaded once per layer, then
+    /// bound to the kernel's `input_global_scale` (slot 37) and `global_scale`
+    /// (slot 40) pointers so no per-launch copy is needed.
+    input_scales: DeviceAllocation<'a>,
+    down_input_scales: DeviceAllocation<'a>,
     layer: ExpertLayer,
     experts: usize,
     budget: ExpertLoadBudget,
@@ -136,6 +138,8 @@ impl<'a> Nvfp4Weights<'a> {
             owned.try_into().ok().expect("four NVFP4 slabs");
         let alphas = DeviceAllocation::new(library, experts * 4)?;
         let down_alphas = DeviceAllocation::new(library, experts * 4)?;
+        let input_scales_device = DeviceAllocation::new(library, experts * 4)?;
+        let down_input_scales_device = DeviceAllocation::new(library, experts * 4)?;
         let device_staging = DeviceAllocation::new(library, budget.device_staging_bytes)?;
         let mut hosts = (0..EXPERT_READ_LANES)
             .map(|_| HostAllocation::new(library, budget.pinned_host_bytes / EXPERT_READ_LANES))
@@ -280,38 +284,36 @@ impl<'a> Nvfp4Weights<'a> {
         }
         // Per-expert vectors are tiny; upload once per layer on the load stream.
         {
-            let mut alpha_host = HostAllocation::new(library, experts * 4)?;
-            let mut down_alpha_host = HostAllocation::new(library, experts * 4)?;
-            for (index, value) in alpha_values.iter().enumerate() {
-                alpha_host.bytes_mut()[index * 4..index * 4 + 4]
-                    .copy_from_slice(&value.to_le_bytes());
-            }
-            for (index, value) in down_alpha_values.iter().enumerate() {
-                down_alpha_host.bytes_mut()[index * 4..index * 4 + 4]
-                    .copy_from_slice(&value.to_le_bytes());
-            }
-            unsafe {
-                library.copy_host_buffer_h2d_async(
-                    alphas.buffer,
-                    alpha_host.buffer,
-                    experts * 4,
-                    stream.raw,
-                )?;
-                library.copy_host_buffer_h2d_async(
-                    down_alphas.buffer,
-                    down_alpha_host.buffer,
-                    experts * 4,
-                    stream.raw,
-                )?;
-                library.cuda_stream_synchronize(stream.raw)?;
-            }
+            let mut host = HostAllocation::new(library, experts * 4)?;
+            let upload = |values: &[f32],
+                          destination: Ds41rtDeviceBuffer,
+                          host: &mut HostAllocation<'_>|
+             -> Result<()> {
+                for (index, value) in values.iter().enumerate() {
+                    host.bytes_mut()[index * 4..index * 4 + 4]
+                        .copy_from_slice(&value.to_le_bytes());
+                }
+                unsafe {
+                    library.copy_host_buffer_h2d_async(
+                        destination,
+                        host.buffer,
+                        experts * 4,
+                        stream.raw,
+                    )
+                }
+            };
+            upload(&alpha_values, alphas.buffer, &mut host)?;
+            upload(&down_alpha_values, down_alphas.buffer, &mut host)?;
+            upload(&input_scales, input_scales_device.buffer, &mut host)?;
+            upload(&down_input_scales, down_input_scales_device.buffer, &mut host)?;
+            unsafe { library.cuda_stream_synchronize(stream.raw)?; }
         }
         Ok(Self {
             buffers,
             alphas,
             down_alphas,
-            input_scales,
-            down_input_scales,
+            input_scales: input_scales_device,
+            down_input_scales: down_input_scales_device,
             layer,
             experts,
             budget,
@@ -331,15 +333,10 @@ impl<'a> Nvfp4Weights<'a> {
         self.layer
     }
 
-    /// Per-expert activation-scale vectors the wave must publish into the
-    /// kernel's `input_global_scale` (slot 37) and `global_scale` (slot 40)
-    /// scratch arrays after the kernel initializes them.
-    pub fn activation_scales(&self) -> (&[f32], &[f32]) {
-        (&self.input_scales, &self.down_input_scales)
-    }
-
-    /// Bind the resident planes and runtime alphas. Slots 37/40 belong to the
-    /// kernel scratch and are filled by [`Self::activation_scales`].
+    /// Bind the resident planes, runtime alphas and per-expert activation
+    /// scales. Slots 37/40 point at this layer's uploaded vectors instead of
+    /// the shared scratch arrays, so the kernel reads the right values with no
+    /// per-launch copy.
     pub fn bind(
         &self,
         kernel: &ds41rt_ffi::V41ExpertKernel<'_>,
@@ -349,19 +346,19 @@ impl<'a> Nvfp4Weights<'a> {
             kernel.info().experts as usize == self.experts,
             "NVFP4 weights do not match kernel expert count"
         );
-        ensure!(
-            !slots[37].is_null() && !slots[40].is_null(),
-            "bind initialized scratch before NVFP4 weights"
-        );
         // Engine slots: 22 b_w13, 23 sfb_w13 (the bridge aliases it for the
-        // gate view), 24 b_down, 25 sfb_down, 38 alpha, 39 down_alpha.
+        // gate view), 24 b_down, 25 sfb_down, 37/40 activation scales,
+        // 38/39 runtime alphas. The scratch bind still runs first so the
+        // kernel-owned slots are valid.
         for (slot, pointer) in [
             (22, self.buffers[0].buffer.ptr),
             (23, self.buffers[1].buffer.ptr),
             (24, self.buffers[2].buffer.ptr),
             (25, self.buffers[3].buffer.ptr),
+            (37, self.input_scales.buffer.ptr),
             (38, self.alphas.buffer.ptr),
             (39, self.down_alphas.buffer.ptr),
+            (40, self.down_input_scales.buffer.ptr),
         ] {
             slots[slot] = pointer;
         }
