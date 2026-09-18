@@ -80,23 +80,50 @@ TOOL_EVAL_DIRS = {
 
 
 def load_tool_eval(package: Path, quant: str, layout: str):
-    """Completed evaluation summaries for one configuration, or None.
+    """Completed evaluation runs for one configuration, or None.
 
-    Read from the harness's aggregated `summaries.json`; its per-run shape is
-    built by scripts/qualify-ds41-tool-eval.py (basic/hard/total points,
-    statuses, and an explicit failures list).
+    Each run carries its aggregate summary (points, status counts, output cap)
+    and every scenario that did not fully pass. The run's own `tool-eval.json`
+    is preferred for the detail because the aggregate's `failures` list holds
+    only `status == "fail"`, which would hide partially credited scenarios;
+    the aggregate list is the fallback.
     """
     name = TOOL_EVAL_DIRS.get((quant, layout))
     if not name:
         return None
-    path = package.parent / "tool-eval" / name / "summaries.json"
-    if not path.is_file():
+    root = package.parent / "tool-eval" / name
+    aggregate = root / "summaries.json"
+    if not aggregate.is_file():
         return None
     try:
-        summaries = json.loads(path.read_text())
+        summaries = json.loads(aggregate.read_text())
     except (json.JSONDecodeError, OSError):
         return None
-    return summaries if isinstance(summaries, list) and summaries else None
+    if not isinstance(summaries, list) or not summaries:
+        return None
+    runs = []
+    for index, summary in enumerate(summaries, start=1):
+        detail = None
+        candidate = root / f"run-{index:02d}" / "tool-eval.json"
+        if candidate.is_file():
+            try:
+                payload = json.loads(candidate.read_text())
+                detail = [result for result in
+                          (payload.get("scores") or {}).get("scenario_results") or []
+                          if result.get("status") != "pass"]
+            except (json.JSONDecodeError, OSError, AttributeError):
+                detail = None
+        reasons = {failure.get("scenario_id"): failure.get("summary")
+                   for failure in summary.get("failures") or []}
+        if detail is None:
+            detail = [dict(failure, status="fail") for failure in summary.get("failures") or []]
+        else:
+            # The per-run results carry status and points but not the reason;
+            # take it from the aggregate so a failure is never listed bare.
+            detail = [dict(result, summary=result.get("summary") or reasons.get(result.get("scenario_id")))
+                      for result in detail]
+        runs.append((summary, detail))
+    return runs
 
 
 def load_prefill(package: Path, stem: str):
@@ -284,22 +311,24 @@ def render(quant: str, package: Path) -> str:
     # every failed scenario is listed rather than folded into a pass rate.
     evaluated = []
     for layout, _stem, label, _detail in spec["layouts"]:
-        summaries = load_tool_eval(package, quant, layout)
-        if not summaries:
+        runs = load_tool_eval(package, quant, layout)
+        if not runs:
             continue
-        for index, summary in enumerate(summaries, start=1):
+        for index, (summary, detail) in enumerate(runs, start=1):
             evaluated.append(
                 f"- **{label}, run {index}**: {summary.get('total_points')}/{summary.get('total_max')}"
                 f" points (basic {summary.get('basic_points')}/{summary.get('basic_max')},"
                 f" hard {summary.get('hard_points')}/{summary.get('hard_max')});"
                 f" statuses {summary.get('statuses')}; output cap {summary.get('output_cap')}"
                 f" ({summary.get('output_cap_source')}).")
-            for failure in summary.get("failures") or []:
-                detail = (failure.get("summary") or "").strip().replace("\n", " ")[:180]
+            for result in detail:
+                note = (result.get("summary") or result.get("error") or "").strip()
+                note = " ".join(note.split())[:180]
                 evaluated.append(
-                    f"  - failed `{failure.get('scenario_id')}` ({failure.get('points')} points): {detail}")
+                    f"  - `{result.get('scenario_id')}` {result.get('status', 'non-passing')}"
+                    f" ({result.get('points')} points): {note}")
     if evaluated:
-        checks += ["", "**Tool-call evaluation.** Completed runs, with every failed scenario listed."] + evaluated
+        checks += ["", "**Tool-call evaluation.** Completed runs; every scenario that did not fully pass is listed."] + evaluated
     else:
         checks += ["", "Tool-call evaluation, adaptive draft acceptance and fixed-history quant agreement "
                    "have no completed results published here. Historical official or v5 EXL3 quality scores "
