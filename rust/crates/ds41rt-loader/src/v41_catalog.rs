@@ -26,6 +26,12 @@ pub enum V41TensorPlacement {
     /// Packed EXL3 projection; rotations and unequal aligned TP slices require
     /// the projection descriptor rather than the native FP4 slicing rule.
     BackboneExl3,
+    /// Per-tensor NVFP4 metadata replicated to every TP rank (global weight
+    /// scale and activation scale). Small enough to read whole.
+    BackboneExpertReplicated {
+        layer: usize,
+        expert: usize,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -41,6 +47,7 @@ pub struct OfficialV41Catalog {
     snapshot: PathBuf,
     tensors: Vec<V41Tensor>,
     exl3: Option<crate::V41Exl3Manifest>,
+    nvfp4: Option<crate::V41Nvfp4Contract>,
 }
 
 /// Bounded range reads for a validated, unsharded coordinator tensor.
@@ -75,6 +82,10 @@ impl V41CoordinatorTensorReader {
 impl OfficialV41Catalog {
     pub fn exl3(&self) -> Option<&crate::V41Exl3Manifest> {
         self.exl3.as_ref()
+    }
+    /// Validated ModelOpt NVFP4 expert contract, when the checkpoint has one.
+    pub fn nvfp4(&self) -> Option<&crate::V41Nvfp4Contract> {
+        self.nvfp4.as_ref()
     }
     /// True when the draft (MTP) routed experts load as native FP4 weights:
     /// either the checkpoint is not EXL3 at all, or it is a raw EXL3
@@ -138,6 +149,7 @@ impl OfficialV41Catalog {
                 );
                 Ok(tensor.metadata.byte_length / 4)
             }
+            V41TensorPlacement::BackboneExpertReplicated { .. } => Ok(tensor.metadata.byte_length),
         }
     }
 
@@ -153,6 +165,19 @@ impl OfficialV41Catalog {
         if matches!(self.tensor(name)?.placement, V41TensorPlacement::BackboneExl3) {
             return self.read_exl3_tensor_into(name, 4,
                 spark_rank.context("EXL3 backbone requires a Spark rank")?, dst, scratch);
+        }
+        if let V41TensorPlacement::BackboneExpertReplicated { .. } = self.tensor(name)?.placement {
+            let bytes = usize::try_from(self.tensor(name)?.metadata.byte_length)?;
+            ensure!(
+                dst.len() >= bytes,
+                "replicated expert scalar {name} needs {bytes} bytes"
+            );
+            use std::os::unix::fs::FileExt;
+            let tensor = self.tensor(name)?;
+            File::open(self.snapshot.join(&tensor.shard))?
+                .read_exact_at(&mut dst[..bytes], tensor.metadata.byte_offset)
+                .with_context(|| format!("staging replicated expert scalar {name}"))?;
+            return Ok(bytes);
         }
         let bytes = usize::try_from(self.device_tensor_bytes(name, spark_rank)?)?;
         let axis = match self.tensor(name)?.placement {
@@ -325,6 +350,13 @@ impl OfficialV41Catalog {
                             .context("EXL3 Spark rank budget overflow")?;
                     }
                 }
+                V41TensorPlacement::BackboneExpertReplicated { .. } => {
+                    for rank_bytes in &mut budget.spark_rank_bytes {
+                        *rank_bytes = rank_bytes
+                            .checked_add(bytes)
+                            .context("replicated expert scalar budget overflow")?;
+                    }
+                }
             }
         }
         budget.per_spark_bytes = *budget.spark_rank_bytes.iter().max().unwrap();
@@ -408,6 +440,19 @@ fn expected_tensors() -> Result<BTreeMap<String, ExpectedTensor>> {
     Ok(expected)
 }
 
+/// NVFP4 backbone experts shard like native FP4 weights, except the
+/// per-tensor FP32 global weight and activation scales, which replicate.
+fn nvfp4_placement(name: &str) -> V41TensorPlacement {
+    if name.ends_with(".weight_scale_2") || name.ends_with(".input_scale") {
+        let parts: Vec<_> = name.split('.').collect();
+        return V41TensorPlacement::BackboneExpertReplicated {
+            layer: parts[1].parse().expect("validated NVFP4 layer"),
+            expert: parts[4].parse().expect("validated NVFP4 expert"),
+        };
+    }
+    placement(name)
+}
+
 fn placement(name: &str) -> V41TensorPlacement {
     // Keep the complete draft model local, including its distinct routed
     // experts. Decide this before applying any backbone offload rules.
@@ -435,9 +480,13 @@ pub fn read_official_v41_catalog(model_id: &str, snapshot: &Path) -> Result<Offi
     let exl3 = if raw_config["quantization_config"]["quant_method"] == "exl3" {
         Some(crate::read_v41_exl3_manifest(snapshot)?)
     } else { None };
-    let config = match &exl3 {
-        Some(manifest) => manifest.config.clone(),
-        None => read_official_v41_config(model_id, snapshot)?,
+    let nvfp4 = if exl3.is_none() {
+        crate::read_v41_nvfp4_contract(snapshot)?
+    } else { None };
+    let config = match (&exl3, &nvfp4) {
+        (Some(manifest), _) => manifest.config.clone(),
+        (None, Some(contract)) => contract.config.clone(),
+        (None, None) => read_official_v41_config(model_id, snapshot)?,
     };
     #[derive(Deserialize)]
     struct Index {
@@ -475,6 +524,13 @@ pub fn read_official_v41_catalog(model_id: &str, snapshot: &Path) -> Result<Offi
         if let Some(ple) = &manifest.ple_quantization {
             apply_nvfp4_ple_contract(&mut expected, ple, config.text().engram_layer_ids.as_slice())?;
         }
+    }
+    if let Some(contract) = &nvfp4 {
+        // ModelOpt NVFP4 replaces the two native routed-expert tensors with a
+        // packed E2M1 payload, an E4M3 per-16 scale plane, a global weight
+        // scale and an activation scale for W4A4. Draft experts keep the
+        // native FP4 contract.
+        apply_nvfp4_expert_contract(&mut expected, contract, config.text())?;
     }
     ensure!(
         index.weight_map.len() == expected.len(),
@@ -528,6 +584,9 @@ pub fn read_official_v41_catalog(model_id: &str, snapshot: &Path) -> Result<Offi
             let target = if exl3.is_some() && tensor.name.starts_with("layers.")
                 && tensor.name.contains(".ffn.experts.") {
                 V41TensorPlacement::BackboneExl3
+            } else if nvfp4.is_some() && tensor.name.starts_with("layers.")
+                && tensor.name.contains(".ffn.experts.") {
+                nvfp4_placement(&tensor.name)
             } else { placement(&tensor.name) };
             if let V41TensorPlacement::BackboneExpertTp4 { axis, .. } = target {
                 ensure!(
@@ -573,6 +632,7 @@ pub fn read_official_v41_catalog(model_id: &str, snapshot: &Path) -> Result<Offi
         snapshot: snapshot.to_path_buf(),
         tensors,
         exl3,
+        nvfp4,
     })
 }
 
@@ -631,6 +691,69 @@ fn apply_nvfp4_ple_contract(expected: &mut BTreeMap<String, ExpectedTensor>,
             expected.insert(format!("{prefix}.{suffix}"), ExpectedTensor { dtype, shape, bytes });
         }
     }
+    Ok(())
+}
+
+/// Replace the official native routed-expert tensors with the ModelOpt NVFP4
+/// contract. Draft (`mtp.*`) experts keep the native FP4 layout.
+fn apply_nvfp4_expert_contract(
+    expected: &mut BTreeMap<String, ExpectedTensor>,
+    contract: &crate::V41Nvfp4Contract,
+    text: &crate::V41TextConfig,
+) -> Result<()> {
+    let group = contract.group_size;
+    ensure!(group == 16, "NVFP4 expert contract requires 16-wide groups");
+    for layer in 0..text.num_hidden_layers {
+        for expert in 0..text.n_routed_experts {
+            for (stem, down) in [("w1", false), ("w3", false), ("w2", true)] {
+                let prefix = format!("layers.{layer}.ffn.experts.{expert}.{stem}");
+                let (rows, columns) = if down {
+                    (text.hidden_size, text.moe_intermediate_size)
+                } else {
+                    (text.moe_intermediate_size, text.hidden_size)
+                };
+                ensure!(
+                    columns % 16 == 0,
+                    "NVFP4 expert column extent is not a multiple of 16"
+                );
+                expected.remove(&format!("{prefix}.weight"));
+                expected.remove(&format!("{prefix}.scale"));
+                for (suffix, dtype, shape, bytes) in [
+                    (
+                        "weight",
+                        DType::U8,
+                        vec![rows, columns / 2],
+                        (rows as u64) * (columns as u64) / 2,
+                    ),
+                    (
+                        "weight_scale",
+                        DType::F8E4M3,
+                        vec![rows, columns / group],
+                        (rows as u64) * (columns as u64) / group as u64,
+                    ),
+                    ("weight_scale_2", DType::F32, vec![], 4),
+                    ("input_scale", DType::F32, vec![], 4),
+                ] {
+                    expected.insert(
+                        format!("{prefix}.{suffix}"),
+                        ExpectedTensor {
+                            dtype: dtype.clone(),
+                            shape,
+                            bytes,
+                        },
+                    );
+                }
+            }
+        }
+    }
+    let backbone = expected
+        .keys()
+        .filter(|name| name.starts_with("layers.") && name.contains(".ffn.experts."))
+        .count();
+    ensure!(
+        backbone == text.num_hidden_layers * text.n_routed_experts * 3 * 4,
+        "NVFP4 routed-expert tensor count mismatch"
+    );
     Ok(())
 }
 
@@ -707,6 +830,7 @@ mod tests {
             )
             .unwrap(),
             exl3: None,
+            nvfp4: None,
             snapshot: dir.path().into(),
             tensors: vec![V41Tensor {
                 shard: "fixture".into(),
@@ -769,6 +893,47 @@ mod tests {
         catalog.tensors[0].placement = V41TensorPlacement::HostMappedEngram;
         assert!(catalog.device_tensor_bytes(name, None).is_err());
         assert!(catalog.read_coordinator_tp2_into(name, 0, 0, &mut [0; 16], &mut []).is_err());
+    }
+
+    #[test]
+    #[ignore = "requires DS41RT_NVFP4_SNAPSHOT pointing to a local ModelOpt NVFP4 publication"]
+    fn nvfp4_catalog_keeps_native_draft_experts() {
+        let path = std::env::var_os("DS41RT_NVFP4_SNAPSHOT").expect("DS41RT_NVFP4_SNAPSHOT");
+        let catalog =
+            read_official_v41_catalog("nvidia/DeepSeek-V4.1-Flash-NVFP4", Path::new(&path))
+                .unwrap();
+        let contract = catalog.nvfp4().expect("NVFP4 contract");
+        assert_eq!(contract.group_size, 16);
+        let mut tp4 = 0usize;
+        let mut replicated = 0usize;
+        let mut native_mtp = 0usize;
+        let mut nvfp4_scalars = 0usize;
+        for tensor in &catalog.tensors {
+            let name = &tensor.metadata.name;
+            if name.starts_with("layers.") && name.contains(".ffn.experts.") {
+                match &tensor.placement {
+                    V41TensorPlacement::BackboneExpertTp4 { .. } => tp4 += 1,
+                    V41TensorPlacement::BackboneExpertReplicated { .. } => {
+                        replicated += 1;
+                        if tensor.metadata.dtype == DType::F32 {
+                            nvfp4_scalars += 1;
+                        }
+                    }
+                    other => panic!("unexpected NVFP4 placement {other:?} for {name}"),
+                }
+            } else if name.starts_with("mtp.") && name.contains(".ffn.experts.") {
+                native_mtp += 1;
+            }
+        }
+        // 384 experts x 3 projections x (weight, weight_scale) per layer.
+        assert_eq!(tp4, 40 * 384 * 3 * 2);
+        assert_eq!(replicated, 40 * 384 * 3 * 2);
+        assert_eq!(nvfp4_scalars, 40 * 384 * 3 * 2);
+        assert_eq!(native_mtp, 3 * 128 * 6);
+        println!(
+            "NVFP4 catalog: {} tensors, {tp4} TP4 payload/scale, {replicated} replicated, {native_mtp} native draft",
+            catalog.tensors.len()
+        );
     }
 
     #[test]
@@ -857,6 +1022,7 @@ mod expert_staging_tests {
             )
             .unwrap(),
             exl3: None,
+            nvfp4: None,
             snapshot: dir.path().into(),
             tensors,
         };

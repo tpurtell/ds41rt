@@ -21,6 +21,10 @@ pub use v41_exl3_residency::{V41Exl3Layer, V41Exl3Load, V41Exl3Residency, V41Exl
 pub use v41_exl3_staging::V41Exl3TensorSlice;
 pub use v41_exl3::{read_v41_exl3_manifest, V41Exl3Manifest, V41Exl3Projection,
     V41Exl3ProjectionKind, V41Exl3Partition, V41_EXL3_SCHEMA};
+mod v41_nvfp4;
+pub use v41_nvfp4::{
+    is_v41_nvfp4_publication, read_v41_nvfp4_contract, V41Nvfp4Contract, V41Nvfp4ExpertLayout,
+};
 mod v41_image;
 pub use v41_image::{V41Image, V41ImageGrid, V41ImageSpan, V41VisionPrompt, V41ImageTokenType,
     V41_IMAGE_TOKEN_ID, V41_MAX_IMAGES};
