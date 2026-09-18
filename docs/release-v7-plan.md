@@ -429,12 +429,20 @@ line: `device_occupied_bytes=30,430,986,240` of `device_budget_bytes=34,359,738,
 compact budget, and no error or admission failure accompanies the stall, so
 the profile was not out of memory or refusing work.
 
-Decisive next step (not yet done): replay TC-26 against the compact profile on
-its own and see whether it hangs reproducibly, and whether the same scenario
-passes on the 2x zero-Spark profile where the KV pool is far larger. That
-separates "multi-turn handling is broken under a 2 GiB pool" from "the harness
-wedged on one request". Until then the compact profile's quality result is
-incomplete rather than failed.
+Resolution of the above: this is **not** the serving profile computing for a
+long time. Sampling the card while the harness was waiting on TC-26 showed
+`utilization.gpu = 0%` with the 31,264 MiB residency intact, and the second
+card idle. The server was not generating, had not errored, and had not
+refused work - it was simply idle while the client still waited.
+
+So the stall is on the request/response or client side, not in the model or
+the compact budget. That also retires the earlier 2 GiB-KV hypothesis for
+this symptom: a truncated multi-turn chain would still show the GPU working.
+The earlier "incomplete streaming response" seen on a prefill run was my own
+service restart; this one is a stream that the client never saw finish while
+the server stood idle, which is the shape worth investigating next - compare
+the streamed terminal events the server emits for a multi-turn request against
+what the harness consumes.
 
 Remaining sequence once the evaluation and the missing measurements are done,
 in the order that keeps the GPUs free when they are needed:
