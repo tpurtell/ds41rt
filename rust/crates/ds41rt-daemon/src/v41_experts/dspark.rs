@@ -169,7 +169,7 @@ impl<'library> DsparkWeights<'library> {
         let mut expert_resident_bytes = 0usize;
         let mut load_staging_bytes = 0usize;
         for stage in 0..3 {
-            let budget = if catalog.exl3().is_some() {
+            let budget = if !catalog.native_dspark_experts() {
                 Exl3Weights::plan(catalog, ExpertLayer::Dspark { stage })?
             } else { ExpertWeights::plan(library, catalog, ExpertLayer::Dspark { stage })? };
             expert_resident_bytes = expert_resident_bytes
@@ -179,7 +179,7 @@ impl<'library> DsparkWeights<'library> {
         }
         let auxiliary_resident_bytes =
             NativeRtxTensors::plan(catalog, &Self::auxiliary_names(catalog))?;
-        let execution_bytes_per_wave = (if catalog.exl3().is_some() {
+        let execution_bytes_per_wave = (if !catalog.native_dspark_experts() {
             CompressedDraftExperts::device_bytes(exl3_directory.context("dSpark EXL3 AOT directory missing")?, capacity)?
         } else { ExpertWeights::plan_execution(library, capacity)?.total()? })
             .checked_mul(3)
@@ -245,7 +245,7 @@ impl<'library> DsparkWeights<'library> {
     /// Both ranks are admitted before loading any checkpoint payload.
     pub fn load_tp2_with_width(library:&'library NativeLibrary,catalog:&OfficialV41Catalog,
         capacity:u32,waves:usize,budgets:[usize;2],pinned_staging_bytes:usize,width:usize)->Result<Self> {
-        ensure!(catalog.exl3().is_none(),"TP2 dSpark requires native expert weights");
+        ensure!(catalog.native_dspark_experts(),"TP2 dSpark requires native expert weights");
         ensure!(library.cuda_get_device()?==1,"TP2 dSpark transformer belongs on RTX1");
         let devices=[crate::v41_memory::device::Device {library,id:0},crate::v41_memory::device::Device {library,id:1}];
         let mut budget=Self::plan_with_width(library,catalog,capacity,width,None)?;
@@ -300,7 +300,7 @@ impl<'library> DsparkWeights<'library> {
         let experts = if let Some((weights,_))=tp2 {
             resident=weights[1].resident_bytes();
             ExpertStages::Tp2(weights)
-        } else if catalog.exl3().is_some() {
+        } else if !catalog.native_dspark_experts() {
             let mut weights = Vec::with_capacity(3);
             for stage in 0..3 {
                 let weight = Exl3Weights::load(library, catalog, ExpertLayer::Dspark { stage },

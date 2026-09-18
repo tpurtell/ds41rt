@@ -350,6 +350,7 @@ mod tests {
             decoder_tiers: crate::v41_exl3::decoder_family(&projections).unwrap(),
             projections,
             ple_quantization: None,
+            mtp_experts: crate::v41_exl3::V41Exl3MtpExperts::Exl3,
         }
     }
 

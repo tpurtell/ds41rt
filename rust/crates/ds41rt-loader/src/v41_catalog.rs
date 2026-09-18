@@ -76,6 +76,14 @@ impl OfficialV41Catalog {
     pub fn exl3(&self) -> Option<&crate::V41Exl3Manifest> {
         self.exl3.as_ref()
     }
+    /// True when the draft (MTP) routed experts load as native FP4 weights:
+    /// either the checkpoint is not EXL3 at all, or it is a raw EXL3
+    /// publication that kept its draft experts at source precision.
+    pub fn native_dspark_experts(&self) -> bool {
+        self.exl3
+            .as_ref()
+            .is_none_or(|manifest| manifest.mtp_experts_are_source())
+    }
     pub fn coordinator_tensor_reader(&self, name: &str) -> Result<V41CoordinatorTensorReader> {
         let tensor = self.tensor(name)?;
         ensure!(
@@ -446,7 +454,13 @@ pub fn read_official_v41_catalog(model_id: &str, snapshot: &Path) -> Result<Offi
     let index: Index = serde_json::from_slice(&bytes)?;
     let mut expected = expected_tensors()?;
     if let Some(manifest) = &exl3 {
-        expected.retain(|name, _| !name.contains(".ffn.experts."));
+        // Raw publications keep their MTP draft experts at the native FP4
+        // source precision, so only backbone expert tensors leave the
+        // official contract; staged snapshots quantize drafts too.
+        let keep_native_mtp = manifest.mtp_experts_are_source();
+        expected.retain(|name, _| {
+            !name.contains(".ffn.experts.") || (keep_native_mtp && name.starts_with("mtp."))
+        });
         for projection in manifest.projections.values() {
             for (suffix, dtype, shape, bytes) in [
                 ("trellis", DType::I16, projection.trellis_shape().to_vec(), projection.trellis_bytes()),
@@ -755,6 +769,36 @@ mod tests {
         catalog.tensors[0].placement = V41TensorPlacement::HostMappedEngram;
         assert!(catalog.device_tensor_bytes(name, None).is_err());
         assert!(catalog.read_coordinator_tp2_into(name, 0, 0, &mut [0; 16], &mut []).is_err());
+    }
+
+    #[test]
+    #[ignore = "requires DS41RT_EXL3_RAW_SNAPSHOT pointing to a raw local publication"]
+    fn raw_publication_catalog_keeps_native_draft_experts() {
+        let path = std::env::var_os("DS41RT_EXL3_RAW_SNAPSHOT").expect("DS41RT_EXL3_RAW_SNAPSHOT");
+        let catalog =
+            read_official_v41_catalog("diffbot/DeepSeek-V4.1-Flash-EXL3-2.0bpw-2x-RTX-PRO-6000", Path::new(&path))
+                .unwrap();
+        assert!(catalog.exl3().is_some());
+        assert!(catalog.native_dspark_experts());
+        let mut backbone_exl3 = 0usize;
+        let mut native_mtp = 0usize;
+        for tensor in &catalog.tensors {
+            match tensor.placement {
+                V41TensorPlacement::BackboneExl3 => backbone_exl3 += 1,
+                V41TensorPlacement::CoordinatorRtx
+                    if tensor.metadata.name.starts_with("mtp.") && tensor.metadata.name.contains(".ffn.experts.") =>
+                {
+                    native_mtp += 1
+                }
+                _ => {}
+            }
+        }
+        assert_eq!(backbone_exl3, 4 * 46_080);
+        assert_eq!(native_mtp, 6 * 3 * 128);
+        println!(
+            "raw catalog: {} tensors, {backbone_exl3} EXL3 backbone, {native_mtp} native draft",
+            catalog.tensors.len()
+        );
     }
 }
 

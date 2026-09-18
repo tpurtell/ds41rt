@@ -130,6 +130,16 @@ impl V41Exl3Projection {
     }
 }
 
+/// How the checkpoint stores its MTP (dSpark draft) routed experts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum V41Exl3MtpExperts {
+    /// DS41RT-staged snapshots quantize draft experts to EXL3 as well.
+    Exl3,
+    /// Raw publications keep draft experts at the official native FP4
+    /// (MXFP4) source precision; the draft path must load native weights.
+    Source,
+}
+
 #[derive(Debug)]
 pub struct V41Exl3Manifest {
     /// Validated original non-routed model geometry and quantization contract.
@@ -139,11 +149,17 @@ pub struct V41Exl3Manifest {
     pub(crate) decoder_tiers: Vec<usize>,
     /// Retained for validation by the PLE storage path; never silently discarded.
     pub ple_quantization: Option<Value>,
+    pub(crate) mtp_experts: V41Exl3MtpExperts,
 }
 
 impl V41Exl3Manifest {
     pub fn decoder_tiers(&self) -> &[usize] {
         &self.decoder_tiers
+    }
+
+    /// True when draft experts stayed at the native FP4 source precision.
+    pub fn mtp_experts_are_source(&self) -> bool {
+        self.mtp_experts == V41Exl3MtpExperts::Source
     }
 }
 
@@ -179,8 +195,145 @@ pub(crate) fn read_json(path: &Path, limit: u64) -> Result<Value> {
 
 pub fn read_v41_exl3_manifest(snapshot: &Path) -> Result<V41Exl3Manifest> {
     let config = read_json(&snapshot.join("config.json"), 1024 * 1024)?;
-    let manifest = read_json(&snapshot.join("quantize_config.json"), MAX_MANIFEST_BYTES)?;
-    parse_manifest(config, &manifest)
+    let manifest_path = snapshot.join("quantize_config.json");
+    if manifest_path.is_file() {
+        let manifest = read_json(&manifest_path, MAX_MANIFEST_BYTES)?;
+        parse_manifest(config, &manifest)
+    } else {
+        parse_raw_publication(config)
+    }
+}
+
+/// First-class support for raw exllamav3-style V4.1 Flash EXL3 publications
+/// that ship only a compact `config.json` quantization block (no
+/// quantize_config.json staging manifest). The accepted contract is strict:
+/// integer K2..K5 uniform routed experts with the MCG codebook, checkpoint-
+/// native tensor naming, source-precision MTP draft experts, and the
+/// official FP8 block for every non-routed tensor. Tensor payload layouts
+/// are verified against the safetensors headers by the catalog, so the
+/// config only needs to establish geometry-independent facts.
+fn parse_raw_publication(mut config: Value) -> Result<V41Exl3Manifest> {
+    let quant = config["quantization_config"]
+        .as_object()
+        .context("raw EXL3 publication requires a quantization_config object")?;
+    ensure!(
+        quant.get("quant_method").and_then(Value::as_str) == Some("exl3"),
+        "raw EXL3 publication requires quant_method=exl3"
+    );
+    let bits = quant["bits"]
+        .as_u64()
+        .filter(|b| (2..=5).contains(b))
+        .context("raw EXL3 publication requires integer bits in 2..=5")? as usize;
+    ensure!(
+        quant.get("codebook").and_then(Value::as_str) == Some("mcg"),
+        "raw EXL3 publication requires the MCG codebook"
+    );
+    ensure!(
+        quant.get("mtp_experts").and_then(Value::as_str) == Some("source"),
+        "raw EXL3 publication requires mtp_experts=source"
+    );
+    // Optional exllamav3 storage hints, when present, must match the only
+    // layout the engine consumes.
+    for (key, wanted) in [
+        ("out_scales", Value::from("never")),
+        ("group_size", Value::from(-1)),
+        ("desc_act", Value::from(false)),
+        ("pack_dtype", Value::from("int32")),
+    ] {
+        if let Some(found) = quant.get(key) {
+            ensure!(
+                found == &wanted,
+                "raw EXL3 publication has unsupported {key}={found}"
+            );
+        }
+    }
+    let native = quant
+        .get("non_routed_quantization")
+        .context("raw EXL3 publication requires non_routed_quantization")?;
+    ensure!(
+        native["quant_method"] == "deepseek_v4_fp8"
+            && native["fmt"] == "e4m3"
+            && native["activation_scheme"] == "dynamic"
+            && native["scale_fmt"] == "ue8m0"
+            && native["weight_block_size"] == serde_json::json!([32, 32])
+            && native["expert_dtype"] == "fp4",
+        "raw EXL3 publication has an unsupported non-routed FP8 contract"
+    );
+    // Every contract key must be understood; reject silent drift.
+    for key in quant.keys() {
+        ensure!(
+            matches!(
+                key.as_str(),
+                "quant_method"
+                    | "bits"
+                    | "codebook"
+                    | "mtp_experts"
+                    | "mtp_experts_start_layer"
+                    | "weight_block_size"
+                    | "non_routed_quantization"
+                    | "out_scales"
+                    | "group_size"
+                    | "desc_act"
+                    | "pack_dtype"
+            ),
+            "raw EXL3 publication has unexpected quantization_config key {key}"
+        );
+    }
+    let mtp_start_layer = quant
+        .get("mtp_experts_start_layer")
+        .and_then(Value::as_u64);
+    // Substitute the canonical official FP8 block so the strict official
+    // config validation covers every non-quantization field.
+    config["quantization_config"] = serde_json::json!({
+        "quant_method": "fp8",
+        "activation_scheme": "dynamic",
+        "weight_block_size": [32, 32],
+        "scale_fmt": "ue8m0",
+        "expert_dtype": "fp4",
+    });
+    let validated =
+        OfficialV41Config::from_json(OFFICIAL_V41_MODEL_ID, &serde_json::to_vec(&config)?)?;
+    let text = validated.text();
+    if let Some(start_layer) = mtp_start_layer {
+        ensure!(
+            start_layer == text.num_hidden_layers as u64,
+            "raw EXL3 mtp_experts_start_layer {start_layer} disagrees with the architecture"
+        );
+    }
+    let mut projections = BTreeMap::new();
+    for layer in 0..text.num_hidden_layers {
+        for expert in 0..text.n_routed_experts {
+            for (stem, kind) in [
+                ("w1", V41Exl3ProjectionKind::Gate),
+                ("w3", V41Exl3ProjectionKind::Up),
+                ("w2", V41Exl3ProjectionKind::Down),
+            ] {
+                let (input, output) = if kind == V41Exl3ProjectionKind::Down {
+                    (text.moe_intermediate_size, text.hidden_size)
+                } else {
+                    (text.hidden_size, text.moe_intermediate_size)
+                };
+                let name = format!("layers.{layer}.ffn.experts.{expert}.{stem}");
+                projections.insert(
+                    name.clone(),
+                    V41Exl3Projection {
+                        name,
+                        kind,
+                        bits,
+                        input_features: input,
+                        output_features: output,
+                    },
+                );
+            }
+        }
+    }
+    Ok(V41Exl3Manifest {
+        decoder_tiers: decoder_family(&projections)?,
+        config: validated,
+        projections,
+        ple_quantization: None,
+        mtp_experts: V41Exl3MtpExperts::Source,
+    })
 }
 
 fn parse_manifest(mut config: Value, manifest: &Value) -> Result<V41Exl3Manifest> {
@@ -275,6 +428,7 @@ fn parse_manifest(mut config: Value, manifest: &Value) -> Result<V41Exl3Manifest
         decoder_tiers: decoder_family(&projections)?,
         projections,
         ple_quantization,
+        mtp_experts: V41Exl3MtpExperts::Exl3,
     })
 }
 
@@ -333,6 +487,136 @@ fn parse_projection(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn raw_publication_config(bits: u64) -> Value {
+        let mut config: Value =
+            serde_json::from_str(include_str!("official-v41-config.json")).unwrap();
+        config["quantization_config"] = serde_json::json!({
+            "quant_method": "exl3",
+            "bits": bits,
+            "codebook": "mcg",
+            "mtp_experts": "source",
+            "mtp_experts_start_layer": 40,
+            "weight_block_size": [32, 32],
+            "non_routed_quantization": {
+                "quant_method": "deepseek_v4_fp8",
+                "fmt": "e4m3",
+                "activation_scheme": "dynamic",
+                "scale_fmt": "ue8m0",
+                "weight_block_size": [32, 32],
+                "expert_dtype": "fp4",
+            },
+        });
+        config
+    }
+
+    #[test]
+    fn raw_publication_manifest_is_uniform_backbone_only() {
+        let manifest = parse_raw_publication(raw_publication_config(2)).unwrap();
+        assert!(manifest.mtp_experts_are_source());
+        assert!(manifest.ple_quantization.is_none());
+        assert_eq!(manifest.decoder_tiers(), &[2, 3]);
+        assert_eq!(manifest.projections.len(), 40 * 384 * 3);
+        assert!(manifest
+            .projections
+            .keys()
+            .all(|name| name.starts_with("layers.")));
+        let projection = &manifest.projections["layers.39.ffn.experts.383.w1"];
+        assert_eq!(projection.bits, 2);
+        assert_eq!(projection.trellis_shape(), [320, 144, 32]);
+        let down = &manifest.projections["layers.0.ffn.experts.0.w2"];
+        assert_eq!(down.trellis_shape(), [144, 320, 32]);
+        assert!(manifest
+            .config
+            .quantization()
+            .quant_method
+            .eq_ignore_ascii_case("fp8"));
+    }
+
+    #[test]
+    fn raw_publication_rejects_contract_drift() {
+        for (pointer, value, expected) in [
+            ("/quantization_config/bits", serde_json::json!(3.25), "integer bits"),
+            (
+                "/quantization_config/codebook",
+                serde_json::json!("gptq"),
+                "MCG codebook",
+            ),
+            (
+                "/quantization_config/mtp_experts",
+                serde_json::json!("exl3"),
+                "mtp_experts=source",
+            ),
+            (
+                "/quantization_config/non_routed_quantization/fmt",
+                serde_json::json!("e5m2"),
+                "non-routed FP8",
+            ),
+        ] {
+            let mut config = raw_publication_config(2);
+            *config.pointer_mut(pointer).unwrap() = value;
+            let error = parse_raw_publication(config).unwrap_err().to_string();
+            assert!(error.contains(expected), "unexpected error: {error}");
+        }
+        let mut extra = raw_publication_config(2);
+        extra["quantization_config"]["surprise"] = serde_json::json!(true);
+        assert!(parse_raw_publication(extra)
+            .unwrap_err()
+            .to_string()
+            .contains("unexpected quantization_config key"));
+        let mut wrong_start = raw_publication_config(2);
+        wrong_start["quantization_config"]["mtp_experts_start_layer"] = serde_json::json!(39);
+        assert!(parse_raw_publication(wrong_start)
+            .unwrap_err()
+            .to_string()
+            .contains("mtp_experts_start_layer"));
+    }
+
+    #[test]
+    #[ignore = "requires DS41RT_EXL3_RAW_SNAPSHOT pointing to a raw local publication"]
+    fn raw_publication_checkpoint_manifest() {
+        let path = std::env::var_os("DS41RT_EXL3_RAW_SNAPSHOT").expect("DS41RT_EXL3_RAW_SNAPSHOT");
+        let manifest = read_v41_exl3_manifest(Path::new(&path)).unwrap();
+        assert!(manifest.mtp_experts_are_source());
+        assert_eq!(manifest.projections.len(), 46_080);
+        assert_eq!(manifest.decoder_tiers(), &[2, 3]);
+        assert!(manifest
+            .projections
+            .values()
+            .all(|projection| projection.bits == 2));
+        let index = read_json(
+            &Path::new(&path).join("model.safetensors.index.json"),
+            MAX_MANIFEST_BYTES,
+        )
+        .unwrap();
+        let shards: std::collections::BTreeSet<_> = index["weight_map"]
+            .as_object()
+            .unwrap()
+            .values()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        let mut seen = std::collections::BTreeSet::new();
+        for shard in shards {
+            for tensor in crate::read_safetensors_metadata(&Path::new(&path).join(shard)).unwrap() {
+                if !tensor.name.starts_with("layers.") || !tensor.name.contains(".ffn.experts.") {
+                    continue;
+                }
+                let (prefix, _) = tensor.name.rsplit_once('.').unwrap();
+                manifest
+                    .projections
+                    .get(prefix)
+                    .expect("unexpected routed tensor")
+                    .validate_tensor(&tensor)
+                    .unwrap();
+                assert!(seen.insert(tensor.name), "duplicate routed tensor");
+            }
+        }
+        assert_eq!(seen.len(), 4 * manifest.projections.len());
+        println!(
+            "validated {} raw K2 projections",
+            manifest.projections.len()
+        );
+    }
 
     #[test]
     #[ignore = "requires DS41RT_EXL3_SNAPSHOT pointing to a published local snapshot"]
