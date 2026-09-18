@@ -840,6 +840,12 @@ if(DS41RT_ENABLE_V41_TP2_EXPERT_AOT)
   add_dependencies(ds41rt_native ds41rt_v41_tp2_experts_export ds41rt_v41_dspark_tp2_experts_export)
   target_include_directories(ds41rt_native PRIVATE "${DS41RT_V41_TP2_EXPERT_DIR}" "${DS41RT_V41_DSPARK_TP2_EXPERT_DIR}")
 endif()
+if(DS41RT_ENABLE_V41_NVFP4_AOT)
+  foreach(nvfp4_role IN LISTS DS41RT_V41_NVFP4_ROLES)
+    add_dependencies(ds41rt_native ds41rt_v41_nvfp4_${nvfp4_role}_export)
+  endforeach()
+  target_include_directories(ds41rt_native PRIVATE ${DS41RT_V41_NVFP4_INCLUDE_DIRS})
+endif()
 target_include_directories(ds41rt_native PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include
 )

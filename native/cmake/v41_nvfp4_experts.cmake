@@ -12,6 +12,7 @@ else()
   message(FATAL_ERROR "NVFP4 expert AOT requires a single native SM120 or SM121 target")
 endif()
 set(DS41RT_V41_NVFP4_CAPACITIES "1;16;80;256;1024;4096" CACHE STRING "NVFP4 expert capacities to package")
+set(DS41RT_V41_NVFP4_INCLUDE_DIRS)
 list(JOIN DS41RT_V41_NVFP4_CAPACITIES "," DS41RT_V41_NVFP4_CAPACITY_ARG)
 foreach(role IN LISTS DS41RT_V41_NVFP4_ROLES)
   set(nvfp4_dir "${CMAKE_CURRENT_BINARY_DIR}/v41_nvfp4_${role}")
@@ -49,6 +50,7 @@ foreach(role IN LISTS DS41RT_V41_NVFP4_ROLES)
   else()
     message(FATAL_ERROR "NVFP4 role ${role} has no native translation unit")
   endif()
+  list(APPEND DS41RT_V41_NVFP4_INCLUDE_DIRS "${nvfp4_dir}")
   add_custom_target(ds41rt_v41_nvfp4_${role}_export DEPENDS
     "${nvfp4_dir}/v41_nvfp4_${role}_variants.h"
     "${nvfp4_dir}/v41_nvfp4_experts.json"

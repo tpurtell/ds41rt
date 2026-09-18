@@ -375,10 +375,14 @@ impl NativeLibrary {
     }
 
     fn expert_info_for(&self, capacity: u32, interface: u8) -> Result<V41ExpertInfo> {
+        // 5 and 6 select the W4A4 ModelOpt NVFP4 family (RTX TP2 and Spark TP4);
+        // 0..4 select the native W4A8 family; both may live in one library.
         let name: &[u8] = match interface {
             2 => b"ds41rt_v41_local_expert_info",
             3 => b"ds41rt_v41_tp2_expert_info",
             4 => b"ds41rt_v41_dspark_tp2_expert_info",
+            5 => b"ds41rt_v41_nvfp4_tp2_expert_info",
+            6 => b"ds41rt_v41_nvfp4_expert_info",
             _ => b"ds41rt_v41_expert_info",
         };
         let function = unsafe { self.lib.get::<InfoFn>(name) }
@@ -393,17 +397,27 @@ impl NativeLibrary {
             matches!(info.abi_version, 2 | 3) && info.hidden_size == 5120,
             "unsupported V4.1 native expert ABI"
         );
+        let nvfp4 = matches!(interface, 5 | 6);
         ensure!(
-            info.input_dtype == 1 || (matches!(info.role, 1 | 2 | 3 | 4) && info.input_dtype == 7),
+            if nvfp4 {
+                // W4A4 consumes BF16 hidden rows; the FP4 quantization happens
+                // inside the kernel.
+                info.input_dtype == 1
+            } else {
+                info.input_dtype == 1 || (matches!(info.role, 1 | 2 | 3 | 4) && info.input_dtype == 7)
+            },
             "unsupported native expert input representation"
         );
-        let expected = match info.role {
-            0 => (128, 2304, 2304, 3),
-            1 => (384, 576, 640, 6),
-            2 => (384, 2304, 2304, 6),
-            3 => (384, 1152, 1152, 6),
-            4 => (128, 1152, 1152, 3),
-            _ => anyhow::bail!("unknown V4.1 expert role {}", info.role),
+        let expected = match (nvfp4, info.role) {
+            // NVFP4 keeps the unpadded intermediate: 576 Spark, 1152 RTX TP2.
+            (true, 1) => (384, 576, 576, 6),
+            (true, 3) => (384, 1152, 1152, 6),
+            (false, 0) => (128, 2304, 2304, 3),
+            (false, 1) => (384, 576, 640, 6),
+            (false, 2) => (384, 2304, 2304, 6),
+            (false, 3) => (384, 1152, 1152, 6),
+            (false, 4) => (128, 1152, 1152, 3),
+            _ => anyhow::bail!("unknown V4.1 expert role {} for interface {interface}", info.role),
         };
         ensure!(
             (
@@ -418,8 +432,16 @@ impl NativeLibrary {
             info.capacity_rows == capacity && info.scratch_bytes > 0,
             "native expert capacity does not match requested variant"
         );
-        ensure!(if interface == 0 { info.role <= 1 } else { info.role == u32::from(interface) },
-            "expert entry has incompatible role");
+        let expected_role = match interface {
+            0 => None,
+            5 => Some(3),
+            6 => Some(1),
+            other => Some(u32::from(other)),
+        };
+        match expected_role {
+            None => ensure!(info.role <= 1, "expert entry has incompatible role"),
+            Some(role) => ensure!(info.role == role, "expert entry has incompatible role"),
+        }
         Ok(info)
     }
 
@@ -440,24 +462,37 @@ impl NativeLibrary {
         self.expert_kernel_for(capacity,4)
     }
 
+    /// W4A4 ModelOpt NVFP4 expert kernels. The family publishes BF16
+    /// token-major partials and is selected from the checkpoint format.
+    pub fn v41_nvfp4_tp2_expert_kernel(&self, capacity: u32) -> Result<V41ExpertKernel<'_>> {
+        self.expert_kernel_for(capacity, 5)
+    }
+
+    pub fn v41_nvfp4_expert_kernel(&self, capacity: u32) -> Result<V41ExpertKernel<'_>> {
+        self.expert_kernel_for(capacity, 6)
+    }
+
     fn expert_kernel_for(&self, capacity: u32, interface: u8) -> Result<V41ExpertKernel<'_>> {
         let info = self.expert_info_for(capacity, interface)?;
-        let symbol = |ordinary: &'static [u8], full: &'static [u8], tp2: &'static [u8], draft_tp2: &'static [u8]|
-            match interface { 2 => full, 3 => tp2, 4 => draft_tp2, _ => ordinary };
+        // One symbol prefix per family/role. The NVFP4 family exposes its own
+        // prefix so all expert formats coexist in one library.
+        let prefix: &str = match interface {
+            2 => "ds41rt_v41_local",
+            3 => "ds41rt_v41_tp2",
+            4 => "ds41rt_v41_dspark_tp2",
+            5 => "ds41rt_v41_nvfp4_tp2",
+            6 => "ds41rt_v41_nvfp4",
+            _ => "ds41rt_v41",
+        };
+        let symbol = |operation: &str| format!("{prefix}_expert_{operation}").into_bytes();
         let initialize = unsafe {
             self.lib
-                .get::<InitializeFn>(symbol(b"ds41rt_v41_expert_initialize", b"ds41rt_v41_local_expert_initialize", b"ds41rt_v41_tp2_expert_initialize", b"ds41rt_v41_dspark_tp2_expert_initialize"))?
+                .get::<InitializeFn>(&symbol("initialize"))?
         };
-        let launch = unsafe { *self.lib.get::<LaunchFn>(symbol(b"ds41rt_v41_expert_launch", b"ds41rt_v41_local_expert_launch", b"ds41rt_v41_tp2_expert_launch", b"ds41rt_v41_dspark_tp2_expert_launch"))? };
-        let bind_scratch = unsafe {
-            *self
-                .lib
-                .get::<BindScratchFn>(symbol(b"ds41rt_v41_expert_bind_scratch", b"ds41rt_v41_local_expert_bind_scratch", b"ds41rt_v41_tp2_expert_bind_scratch", b"ds41rt_v41_dspark_tp2_expert_bind_scratch"))?
-        };
+        let launch = unsafe { *self.lib.get::<LaunchFn>(&symbol("launch"))? };
+        let bind_scratch = unsafe { *self.lib.get::<BindScratchFn>(&symbol("bind_scratch"))? };
         let initialize_scratch = unsafe {
-            *self
-                .lib
-                .get::<InitScratchFn>(symbol(b"ds41rt_v41_expert_initialize_scratch_async", b"ds41rt_v41_local_expert_initialize_scratch_async", b"ds41rt_v41_tp2_expert_initialize_scratch_async", b"ds41rt_v41_dspark_tp2_expert_initialize_scratch_async"))?
+            *self.lib.get::<InitScratchFn>(&symbol("initialize_scratch_async"))?
         };
         let mut handle = std::ptr::null_mut();
         let status = unsafe { initialize(i32::try_from(capacity)?, &mut handle) };
@@ -465,16 +500,18 @@ impl NativeLibrary {
             status == 0,
             "V4.1 expert initialization failed with CUDA status {status}"
         );
+        // The W4A4 family always publishes BF16 token-major partials.
+        let nvfp4 = matches!(interface, 5 | 6);
         let token_accumulation = if info.abi_version == 3 {
             type OutputKindFn = unsafe extern "C" fn(i32, *mut u32) -> i32;
-            let query = unsafe { self.lib.get::<OutputKindFn>(symbol(b"ds41rt_v41_expert_output_kind", b"ds41rt_v41_local_expert_output_kind", b"ds41rt_v41_tp2_expert_output_kind", b"ds41rt_v41_dspark_tp2_expert_output_kind"))? };
+            let query = unsafe { self.lib.get::<OutputKindFn>(&symbol("output_kind"))? };
             let mut kind = u32::MAX;
             let status = unsafe { query(i32::try_from(capacity)?, &mut kind) };
             ensure!(status == 0 && kind == 1 && matches!(info.role, 1 | 2 | 3), "unsupported V4.1 ABI 3 output layout");
             // Reject incomplete libraries at plan time, before any graph or request.
             unsafe { self.lib.get::<CompactFn>(b"ds41rt_v41_compact_tokens_bf16_async")?; }
             true
-        } else { false };
+        } else { nvfp4 };
         Ok(V41ExpertKernel {
             _library: self,
             handle: NonNull::new(handle).context("native expert returned a null kernel handle")?,

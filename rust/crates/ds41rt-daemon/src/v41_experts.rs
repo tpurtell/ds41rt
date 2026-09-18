@@ -8,6 +8,7 @@ pub(crate) mod tp2_ffn;
 pub(crate) mod dspark;
 mod execution;
 pub(crate) mod exl3;
+pub(crate) mod nvfp4;
 pub(crate) mod service;
 pub(crate) use execution::{ExpertExecution, ExpertExecutionBudget, HostExpertExchange};
 

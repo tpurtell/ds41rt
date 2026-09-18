@@ -54,6 +54,10 @@ impl<'a> HostAllocation<'a> {
     pub(crate) fn bytes_mut(&mut self) -> &mut [u8] {
         unsafe { std::slice::from_raw_parts_mut(self.buffer.ptr.cast::<u8>(), self.buffer.bytes) }
     }
+    /// Read-only view of the same pinned bytes; readers must have joined.
+    pub(crate) fn bytes(&self) -> &[u8] {
+        unsafe { std::slice::from_raw_parts(self.buffer.ptr.cast::<u8>(), self.buffer.bytes) }
+    }
 }
 impl Drop for HostAllocation<'_> {
     fn drop(&mut self) {
