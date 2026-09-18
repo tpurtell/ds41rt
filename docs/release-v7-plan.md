@@ -413,6 +413,25 @@ Also: the single-card NVFP4 prefill campaign was cut short by a service
 restart during the run (my own regression check), not by a fault; it needs a
 re-run for the 1x best-prefill cell, which stays a dash until then.
 
+### GPU-time trade-off for the last prefill cell (decision point)
+
+The full 30-cell single-card NVFP4 prefill matrix is running. It is a
+multi-hour job, and the only reason it is running is that the report renderer
+gates a *headline* prefill on a completed, passing campaign, so the base-0 row
+alone (measured: best 4,131 tok/s at +32K) is disclosed in the matrix but not
+promoted to the headline. That gate is the right default - it stops a partial
+row being quoted as the headline figure - but it means one dash in the README
+currently costs hours of exclusive GPU time in a configuration the release
+owner has described as degenerate.
+
+If GPU time is scarce before the release, the better trade is to stop this
+matrix and spend the time on the tool-call evaluation runs, which the release
+owner named as the only quality evidence they want and which are currently the
+weakest part of the deliverable (one run wedged, two never started). The
+alternative, if the full matrix is not going to be run, is to relax the
+headline gate for a disclosed partial row rather than leaving a bare dash -
+but that is a deliberate documentation decision, not a silent one.
+
 ### Two operating rules learned the hard way this release
 
 1. **Verify the expert layer boundary explicitly, and smoke before measuring.**

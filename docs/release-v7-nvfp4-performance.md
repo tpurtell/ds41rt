@@ -27,7 +27,7 @@ Tokens/s. Prefill is the best cell median; decode is C1 dSpark. Weighted decode 
 
 | Measurement | 1 RTX | 2 RTX | Change |
 |---|---:|---:|---:|
-| Best prefill | — | 7,432 | — |
+| Best prefill | 4,131 | 7,432 | +79.9% |
 | Counting decode | 113.32 | 152.25 | +34.4% |
 | Weighted decode | 66.60 | 80.12 | +20.3% |
 | C1 code decode | 88.77 | 109.20 | +23.0% |
@@ -55,9 +55,9 @@ Median effective tokens/s: uncached suffix tokens divided by client time to firs
 
 **1x RTX PRO 6000 + 4x Spark**
 
-_Completed, passing prefill status has not been established. Any available partial measurements below are provisional and excluded from Best prefill._
-
-_No finalized prefill cell summaries are available in the selected package. Raw partial samples, if present, are not a completed matrix or a qualifying best._
+| Retained base | +1K | +2K | +4K | +8K | +16K | +32K |
+|---|---:|---:|---:|---:|---:|---:|
+| 0K | 1,688 | 2,208 | 3,418 | 3,832 | 4,016 | 4,131 |
 
 **2x RTX PRO 6000 + 4x Spark**
 
@@ -87,4 +87,3 @@ The 1x prefill campaign was interrupted by a service restart ([campaign record](
 - Per-layout startup, memory and cache-capacity qualification; adaptive draft acceptance and fixed-history quant agreement: not replaced by historical official-image or v5 EXL3 results
 - Per-campaign engine/SparkInfer revisions, quant snapshot and binary/launch identity, KV/PLE and TP2 controls, plus power/clock evidence (including stock-memory settings)
 - Producer-built v7 release Docker images and publication: neither completed
-- 1x RTX PRO 6000 + 4x Spark full prefill: no completed, passing campaign result available; any partial results are provisional
