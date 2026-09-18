@@ -247,9 +247,11 @@ def export(
             raise ValueError(f"NVFP4 scratch accounting overruns the arena for {label}")
         for slot in WEIGHT_BOUND_SLOTS:
             offsets[slot] = None
-        # Slots the kernel reads but the core plan does not provide must still
-        # carry a non-null pointer for the engine's bind validation.
-        for slot in list(range(3, 22)) + [34, 35, 36, 42, 43]:
+        # The engine's launch rejects any null slot, so every slot the core
+        # plan does not own (and the weight binder may not fill) still gets a
+        # valid aligned pointer into the arena. Slots 0..2 are overwritten per
+        # request and 22..25/38..39 by the weight binder.
+        for slot in range(44):
             if offsets[slot] is None:
                 offsets[slot] = 0
         includes.append(f'#include "{label}.h"')

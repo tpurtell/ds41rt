@@ -406,11 +406,28 @@ impl<'a> ExpertWeights<'a> {
         if let Some(side) = &self.nvfp4 {
             // W4A4: fused FC1 payload and scale plane, FC2 payload and scale
             // plane, then the resident per-expert alphas and activation scales.
+            let (w13, s13, w2, s2) = (
+                self.buffers[0].buffer.ptr,
+                self.buffers[1].buffer.ptr,
+                self.buffers[2].buffer.ptr,
+                self.buffers[3].buffer.ptr,
+            );
+            // 26..33 are W4A8-only planes the generated bridge never forwards,
+            // but the engine refuses to launch with a null slot, so each one
+            // aliases a live plane. 28/29 hold the residual planes.
             for (slot, pointer) in [
-                (22, self.buffers[0].buffer.ptr),
-                (23, self.buffers[1].buffer.ptr),
-                (24, self.buffers[2].buffer.ptr),
-                (25, self.buffers[3].buffer.ptr),
+                (22, w13),
+                (23, s13),
+                (24, w2),
+                (25, s2),
+                (26, s13),
+                (27, s2),
+                (28, w13),
+                (29, w2),
+                (30, w13),
+                (31, s13),
+                (32, w2),
+                (33, s2),
                 (37, side.input_scales.buffer.ptr),
                 (38, side.alphas.buffer.ptr),
                 (39, side.down_alphas.buffer.ptr),
