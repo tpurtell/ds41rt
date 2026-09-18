@@ -4,7 +4,11 @@
 #include <cstddef>
 #include <cstdio>
 #include <mutex>
-#ifdef DS41RT_V41_DSPARK_TP2_EXPERTS
+#ifdef DS41RT_V41_NVFP4_VARIANTS_HEADER
+/* W4A4 (ModelOpt NVFP4) variants carry their own bridge and consume BF16
+ * hidden rows, so the FP8 input quantizer is not part of this family. */
+#include DS41RT_V41_NVFP4_VARIANTS_HEADER
+#elif defined(DS41RT_V41_DSPARK_TP2_EXPERTS)
 #include "v41_dspark_tp2_expert_variants.h"
 #elif defined(DS41RT_V41_TP2_EXPERTS)
 #include "v41_tp2_expert_variants.h"
