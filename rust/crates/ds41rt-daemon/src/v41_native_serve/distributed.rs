@@ -66,8 +66,9 @@ pub(super) fn worker(mut args: crate::cli::NativeServeArgs, mut receive: mpsc::R
                 crate::v41_experts::ExpertFormat::Exl3 => {
                     crate::v41_experts::exl3::Exl3Weights::plan(&catalog, selection)?
                 }
+                // NVFP4 uses the same ExpertWeights plan (format-aware layout).
                 crate::v41_experts::ExpertFormat::Nvfp4 => {
-                    crate::v41_experts::nvfp4::Nvfp4Weights::plan(&lib, &catalog, selection)?
+                    ExpertWeights::plan(&lib, &catalog, selection)?
                 }
                 crate::v41_experts::ExpertFormat::Native => {
                     ExpertWeights::plan(&lib, &catalog, selection)?
@@ -336,19 +337,10 @@ pub(super) fn worker(mut args: crate::cli::NativeServeArgs, mut receive: mpsc::R
             RankWeights::load_exl3_pair(devices, &catalog, expert_layers, rank_budgets, &exl3_directory)?
                 .map(Rc::new)
         }
+        // The format-aware ExpertWeights loader covers NVFP4 as well.
         crate::v41_experts::ExpertFormat::Nvfp4 => [
-            Rc::new(RankWeights::load_nvfp4(
-                devices[0],
-                &catalog,
-                expert_layers,
-                rank_budgets[0],
-            )?),
-            Rc::new(RankWeights::load_nvfp4(
-                devices[1],
-                &catalog,
-                expert_layers,
-                rank_budgets[1],
-            )?),
+            Rc::new(RankWeights::load(devices[0], &catalog, expert_layers, rank_budgets[0])?),
+            Rc::new(RankWeights::load(devices[1], &catalog, expert_layers, rank_budgets[1])?),
         ],
         crate::v41_experts::ExpertFormat::Native => [
             Rc::new(RankWeights::load(devices[0], &catalog, expert_layers, rank_budgets[0])?),

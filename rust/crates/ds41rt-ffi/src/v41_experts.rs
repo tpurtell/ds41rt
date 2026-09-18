@@ -473,6 +473,11 @@ impl NativeLibrary {
         self.expert_info_for(capacity, 5)
     }
 
+    /// Spark TP4 metadata for the W4A4 family.
+    pub fn v41_nvfp4_expert_info(&self, capacity: u32) -> Result<V41ExpertInfo> {
+        self.expert_info_for(capacity, 6)
+    }
+
     pub fn v41_nvfp4_expert_kernel(&self, capacity: u32) -> Result<V41ExpertKernel<'_>> {
         self.expert_kernel_for(capacity, 6)
     }

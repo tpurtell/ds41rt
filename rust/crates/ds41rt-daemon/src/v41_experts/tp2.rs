@@ -3,7 +3,6 @@ use super::exl3::{
     execution::{Exl3Execution, Exl3InputFormat, Exl3Workspace},
     Exl3Weights,
 };
-use super::nvfp4::Nvfp4Weights;
 use super::{ExpertLayer, ExpertWeights};
 use crate::v41_memory::device::DeviceOwner;
 use crate::v41_memory::device::{Allocation, Device, Event, PeerTransfer, Stream};
@@ -56,8 +55,6 @@ enum RankStorage<'a> {
         weights: Rc<Vec<Exl3Weights<'a>>>,
         directory: PathBuf,
     },
-    /// W4A4 ModelOpt NVFP4 resident planes and runtime vectors.
-    Nvfp4(Vec<Nvfp4Weights<'a>>),
 }
 pub(crate) struct RankWeights<'a> {
     device: Device<'a>,
@@ -71,7 +68,6 @@ impl<'a> RankWeights<'a> {
         match &*self.weights {
             RankStorage::Full(weights) => weights.len(),
             RankStorage::Exl3 { weights, .. } => weights.len(),
-            RankStorage::Nvfp4(weights) => weights.len(),
         }
     }
     fn bytes_per_expert(&self, layer: usize) -> usize {
@@ -80,7 +76,6 @@ impl<'a> RankWeights<'a> {
             RankStorage::Exl3 { weights, .. } => {
                 weights[layer].budget.resident_bytes / weights[layer].layout.experts
             }
-            RankStorage::Nvfp4(weights) => weights[layer].budget().resident_bytes / 384,
         }
     }
     pub fn load_exl3(
@@ -202,42 +197,6 @@ impl<'a> RankWeights<'a> {
         })
     }
 
-    /// W4A4 ModelOpt NVFP4 planes for this rank's half of the intermediate.
-    pub fn load_nvfp4(
-        device: Device<'a>,
-        catalog: &ds41rt_loader::OfficialV41Catalog,
-        layers: usize,
-        budget: usize,
-    ) -> Result<Self> {
-        ensure!(
-            (1..=40).contains(&layers) && matches!(device.id, 0 | 1),
-            "invalid TP2 encoder placement"
-        );
-        let weights = device.run(|| {
-            let mut loaded = Vec::with_capacity(layers);
-            let mut remaining = budget;
-            for layer in 0..layers {
-                let weight = Nvfp4Weights::load(
-                    device.library,
-                    catalog,
-                    ExpertLayer::BackboneTp2 {
-                        layer,
-                        rank: device.id as usize,
-                    },
-                    remaining,
-                )?;
-                remaining = remaining
-                    .checked_sub(weight.budget().resident_bytes)
-                    .ok_or_else(|| anyhow::anyhow!("TP2 NVFP4 weights exceed budget"))?;
-                loaded.push(weight);
-            }
-            Ok(loaded)
-        })?;
-        Ok(Self {
-            device,
-            weights: ManuallyDrop::new(RankStorage::Nvfp4(weights)),
-        })
-    }
 }
 impl Drop for RankWeights<'_> {
     fn drop(&mut self) {
@@ -308,7 +267,6 @@ impl<'a> ExpertWave<'a> {
                     (&*weights[0].weights, &*weights[1].weights),
                     (RankStorage::Full(_), RankStorage::Full(_))
                         | (RankStorage::Exl3 { .. }, RankStorage::Exl3 { .. })
-                        | (RankStorage::Nvfp4(_), RankStorage::Nvfp4(_))
                 ),
             "TP2 rank pair mismatch"
         );
@@ -410,10 +368,6 @@ enum RankBackend<'a> {
         _scratch: Allocation<'a>,
     },
     Exl3(DeviceOwner<'a, Vec<Exl3Execution<'a>>>),
-    Nvfp4 {
-        states: Vec<RankState<'a>>,
-        _scratch: Allocation<'a>,
-    },
 }
 pub(crate) struct RankWave<'a> {
     pub stream: Stream<'a>,
@@ -500,55 +454,21 @@ impl<'a> RankWave<'a> {
                 capacity,
             });
         }
-        if matches!(&*weights.weights, RankStorage::Nvfp4(_)) {
-            let stream = Stream::new(device)?;
-            let capacities = Self::kernel_capacities(capacity)?;
-            let kernels = device.run(|| {
-                capacities
-                    .iter()
-                    .map(|&c| device.library.v41_nvfp4_tp2_expert_kernel(c))
-                    .collect::<Result<Vec<_>>>()
-            })?;
-            let bytes = kernels
-                .iter()
-                .map(|kernel| kernel.info().scratch_bytes as usize)
-                .max()
-                .unwrap();
-            let scratch = Allocation::new(device, bytes)?;
-            let mut states = Vec::with_capacity(kernels.len());
-            for kernel in kernels {
-                let mut slots = [std::ptr::null_mut(); 44];
-                let initialized = device.run(|| unsafe {
-                    kernel.bind_scratch(scratch.buffer.ptr, bytes as u64, &mut slots)?;
-                    kernel.initialize_scratch(scratch.buffer.ptr, bytes as u64, stream.raw)
-                });
-                let drained = stream.drain();
-                initialized.and(drained)?;
-                states.push(RankState { kernel, slots });
-            }
-            let timing = if std::env::var_os("DS41RT_TP2_TIMING").is_some() {
-                Some([Event::new(device)?, Event::new(device)?])
-            } else {
-                None
-            };
-            return Ok(Self {
-                stream,
-                ready: Event::new(device)?,
-                timing,
-                backend: RankBackend::Nvfp4 {
-                    states,
-                    _scratch: scratch,
-                },
-                weights,
-                output: Allocation::new(device, capacity as usize * 5120 * 2)?,
-                capacity,
-            });
-        }
+        let nvfp4 = match &*weights.weights {
+            RankStorage::Full(layers) => layers.first().is_some_and(|w| w.is_nvfp4()),
+            RankStorage::Exl3 { .. } => false,
+        };
         let capacities = Self::kernel_capacities(capacity)?;
         let kernels = device.run(|| {
             capacities
                 .iter()
-                .map(|&c| device.library.v41_tp2_expert_kernel(c))
+                .map(|&c| {
+                    if nvfp4 {
+                        device.library.v41_nvfp4_tp2_expert_kernel(c)
+                    } else {
+                        device.library.v41_tp2_expert_kernel(c)
+                    }
+                })
                 .collect::<Result<Vec<_>>>()
         })?;
         let bytes = kernels
@@ -583,7 +503,12 @@ impl<'a> RankWave<'a> {
                 _scratch: scratch,
             },
             weights,
-            output: Allocation::new(device, capacity as usize * 5120 * 6 * 4)?,
+            // W4A4 publishes BF16 token-major partials; the native family
+            // publishes six FP32 route planes per token.
+            output: Allocation::new(
+                device,
+                capacity as usize * 5120 * if nvfp4 { 2 } else { 6 * 4 },
+            )?,
             capacity,
         })
     }
@@ -667,54 +592,23 @@ impl<'a> RankWave<'a> {
                         stream: self.stream.raw,
                     };
                     state.kernel.launch(&args)?;
-                    let mut source = self.output.buffer;
-                    source.ptr = state.slots[41];
-                    source.bytes = rows as usize * 5120 * if token_sums { 4 } else { 24 };
-                    device.library.copy_d2d_async(
-                        self.output.buffer,
-                        source,
-                        source.bytes,
-                        self.stream.raw,
-                    )?;
-                    if token_sums {
+                    let layout = if weights[layer].is_nvfp4() {
+                        Tp2RoutedLayout::Bf16Tokens
+                    } else if token_sums {
                         Tp2RoutedLayout::Fp32Tokens
                     } else {
                         Tp2RoutedLayout::Fp32Routes
-                    }
-                }
-                (RankBackend::Nvfp4 { states, .. }, RankStorage::Nvfp4(weights)) => {
-                    let state = states
-                        .iter_mut()
-                        .find(|s| s.kernel.info().capacity_rows >= rows)
-                        .unwrap();
-                    weights[layer].bind(&state.kernel, &mut state.slots)?;
-                    state.slots[0] = wire.ptr;
-                    state.slots[1] = ids.ptr;
-                    state.slots[2] = routing.ptr;
-                    let info = state.kernel.info();
-                    let args = V41ExpertLaunchArgs {
-                        tensors: state.slots,
-                        num_tokens: rows as i32,
-                        max_rows: info.max_rows,
-                        scatter_rows: rows as i32 * 6,
-                        rows_padded: info.rows_padded,
-                        max_tasks: info.max_tasks,
-                        max_phys_tiles: info.max_phys_tiles,
-                        max_active_clusters: info.max_active_clusters,
-                        stream: self.stream.raw,
                     };
-                    state.kernel.launch(&args)?;
-                    // Slot 41 carries the token-major BF16 rank partial.
                     let mut source = self.output.buffer;
                     source.ptr = state.slots[41];
-                    source.bytes = rows as usize * 5120 * 2;
+                    source.bytes = rows as usize * 5120 * layout.element_bytes();
                     device.library.copy_d2d_async(
                         self.output.buffer,
                         source,
                         source.bytes,
                         self.stream.raw,
                     )?;
-                    Tp2RoutedLayout::Bf16Tokens
+                    layout
                 }
                 _ => anyhow::bail!("TP2 execution/weight format mismatch"),
             };

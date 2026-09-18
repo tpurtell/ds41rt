@@ -69,6 +69,24 @@ impl ExpertLayer {
             library.v41_dspark_tp2_expert_kernel(capacity)
         } else { library.v41_expert_kernel(capacity) }
     }
+
+    /// W4A4 NVFP4 family selection. Only backbone experts are quantized; the
+    /// MTP draft path stays on the native family.
+    fn nvfp4_kernel(self, library: &NativeLibrary, capacity: u32) -> Result<V41ExpertKernel<'_>> {
+        match self {
+            Self::Backbone { .. } => library.v41_nvfp4_expert_kernel(capacity),
+            Self::BackboneTp2 { .. } => library.v41_nvfp4_tp2_expert_kernel(capacity),
+            _ => anyhow::bail!("NVFP4 covers backbone routed experts only"),
+        }
+    }
+
+    fn nvfp4_info(self, library: &NativeLibrary, capacity: u32) -> Result<ds41rt_ffi::V41ExpertInfo> {
+        match self {
+            Self::Backbone { .. } => library.v41_nvfp4_expert_info(capacity),
+            Self::BackboneTp2 { .. } => library.v41_nvfp4_tp2_expert_info(capacity),
+            _ => anyhow::bail!("NVFP4 covers backbone routed experts only"),
+        }
+    }
 }
 
 /// Expert checkpoint format selected from the validated catalog. All three
@@ -123,6 +141,9 @@ pub(crate) struct ExpertWeights<'a> {
     layer: ExpertLayer,
     experts: usize,
     budget: ExpertLoadBudget,
+    /// W4A4 resident storage. `None` for the native and EXL3 families.
+    nvfp4: Option<nvfp4::Nvfp4Side<'a>>,
+    format: ExpertFormat,
 }
 impl<'a> ExpertWeights<'a> {
     fn layout(
@@ -130,8 +151,12 @@ impl<'a> ExpertWeights<'a> {
         catalog: &OfficialV41Catalog,
         layer: ExpertLayer,
     ) -> Result<(ExpertLoadBudget, [usize; 4], u32, usize)> {
+        if catalog.nvfp4().is_some() {
+            return Self::nvfp4_layout(library, catalog, layer);
+        }
         let first = catalog.expert_staging(layer.expert(0))?;
-        let info = layer.info(library, 16)?;
+        // The NVFP4 family reports its own geometry (unpadded intermediate).
+        let info = layer.nvfp4_info(library, 16)?;
         ensure!(
             info.role == layer.role(),
             "native expert role does not match layer placement"
@@ -174,18 +199,49 @@ impl<'a> ExpertWeights<'a> {
     ) -> Result<ExpertLoadBudget> {
         Ok(Self::layout(library, catalog, layer)?.0)
     }
+
+    /// W4A4 layout: the four per-expert planes replace the packed W4A8 slabs.
+    fn nvfp4_layout(
+        library: &NativeLibrary,
+        catalog: &OfficialV41Catalog,
+        layer: ExpertLayer,
+    ) -> Result<(ExpertLoadBudget, [usize; 4], u32, usize)> {
+        let (intermediate, experts) =
+            nvfp4::Nvfp4Side::rank_planes(layer, catalog)?;
+        let budget = nvfp4::Nvfp4Side::plan(library, catalog, layer)?;
+        let sizes = nvfp4::plane_sizes(intermediate);
+        Ok((budget, sizes, intermediate as u32, experts))
+    }
+
+    /// True when this layer's experts are W4A4 ModelOpt NVFP4.
+    pub(crate) fn is_nvfp4(&self) -> bool {
+        self.nvfp4.is_some()
+    }
+
+    pub(crate) fn format(&self) -> ExpertFormat {
+        self.format
+    }
     pub fn load(
         library: &'a NativeLibrary,
         catalog: &OfficialV41Catalog,
         layer: ExpertLayer,
         available_device_bytes: usize,
     ) -> Result<Self> {
+        if catalog.nvfp4().is_some() {
+            return Self::load_nvfp4(library, catalog, layer, available_device_bytes);
+        }
         let (budget, sizes, intermediate, experts) = Self::layout(library, catalog, layer)?;
         let packer = library.v41_expert_packer(intermediate)?;
         ensure!(budget.peak_device_bytes()? <= available_device_bytes,
             "expert layer needs {} device bytes including staging, budget is {available_device_bytes}", budget.peak_device_bytes()?);
         // Fail role/device checks and allocation admission before opening payloads.
-        let _kernel = layer.kernel(library, 16)?;
+        // The NVFP4 family loads its own variants; both report the same roles.
+        let format = ExpertFormat::of(catalog);
+        let _kernel = if format.is_nvfp4() {
+            layer.nvfp4_kernel(library, 16)?
+        } else {
+            layer.kernel(library, 16)?
+        };
         let mut owned = Vec::with_capacity(4);
         for size in sizes {
             owned.push(DeviceAllocation::new(library, size)?);
@@ -268,6 +324,28 @@ impl<'a> ExpertWeights<'a> {
             layer,
             experts,
             budget,
+            nvfp4: None,
+            format: ExpertFormat::of(catalog),
+        })
+    }
+
+    /// Load the W4A4 planes for one layer and adopt its buffers.
+    fn load_nvfp4(
+        library: &'a NativeLibrary,
+        catalog: &OfficialV41Catalog,
+        layer: ExpertLayer,
+        available_device_bytes: usize,
+    ) -> Result<Self> {
+        let (buffers, side) = nvfp4::Nvfp4Side::load(library, catalog, layer, available_device_bytes)?;
+        let budget = nvfp4::Nvfp4Side::plan(library, catalog, layer)?;
+        let (_, experts) = nvfp4::Nvfp4Side::rank_planes(layer, catalog)?;
+        Ok(Self {
+            buffers,
+            layer,
+            experts,
+            budget,
+            nvfp4: Some(side),
+            format: ExpertFormat::Nvfp4,
         })
     }
     pub fn budget(&self) -> ExpertLoadBudget {
@@ -290,6 +368,23 @@ impl<'a> ExpertWeights<'a> {
             !slots[34].is_null() && !slots[37].is_null(),
             "bind initialized scratch before weights"
         );
+        if let Some(side) = &self.nvfp4 {
+            // W4A4: fused FC1 payload and scale plane, FC2 payload and scale
+            // plane, then the resident per-expert alphas and activation scales.
+            for (slot, pointer) in [
+                (22, self.buffers[0].buffer.ptr),
+                (23, self.buffers[1].buffer.ptr),
+                (24, self.buffers[2].buffer.ptr),
+                (25, self.buffers[3].buffer.ptr),
+                (37, side.input_scales.buffer.ptr),
+                (38, side.alphas.buffer.ptr),
+                (39, side.down_alphas.buffer.ptr),
+                (40, side.down_input_scales.buffer.ptr),
+            ] {
+                slots[slot] = pointer;
+            }
+            return Ok(());
+        }
         let [w13, s13, w2, s2] = std::array::from_fn(|i| self.buffers[i].buffer.ptr);
         for (slot, pointer) in [
             (22, w13),

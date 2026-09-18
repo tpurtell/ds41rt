@@ -30,22 +30,18 @@ const SLOT_W3_INPUT_SCALE: usize = 10;
 const SLOT_W2_INPUT_SCALE: usize = 11;
 const HIDDEN: usize = 5120;
 
-/// Resident NVFP4 routed expert weights for one layer on one rank.
-pub(crate) struct Nvfp4Weights<'a> {
-    /// b_w13, sfb_w13, b_down, sfb_down (experts concatenated).
-    buffers: [DeviceAllocation<'a>; 4],
+/// Resident NVFP4 storage for one layer on one rank, embedded in
+/// [`super::ExpertWeights`] so every existing wave, execution and service
+/// path serves W4A4 without a second weights type.
+pub(crate) struct Nvfp4Side<'a> {
     /// Per-expert FC1 and FC2 runtime alphas bound to slots 38/39.
-    alphas: DeviceAllocation<'a>,
-    down_alphas: DeviceAllocation<'a>,
+    pub(crate) alphas: DeviceAllocation<'a>,
+    pub(crate) down_alphas: DeviceAllocation<'a>,
     /// Per-expert activation-scale vectors. Uploaded once per layer, then
     /// bound to the kernel's `input_global_scale` (slot 37) and `global_scale`
     /// (slot 40) pointers so no per-launch copy is needed.
-    input_scales: DeviceAllocation<'a>,
-    down_input_scales: DeviceAllocation<'a>,
-    layer: ExpertLayer,
-    experts: usize,
-    budget: ExpertLoadBudget,
-    intermediate: usize,
+    pub(crate) input_scales: DeviceAllocation<'a>,
+    pub(crate) down_input_scales: DeviceAllocation<'a>,
 }
 
 fn align_up(value: usize, alignment: usize) -> usize {
@@ -54,7 +50,7 @@ fn align_up(value: usize, alignment: usize) -> usize {
 
 /// Per-expert fused FC1 payload, FC1 scale plane, FC2 payload and FC2 scale
 /// plane extents for one rank's intermediate width.
-fn plane_sizes(intermediate: usize) -> [usize; 4] {
+pub(crate) fn plane_sizes(intermediate: usize) -> [usize; 4] {
     let hidden = HIDDEN;
     let fc1_rows = 2 * intermediate;
     let fc1_cols = hidden / 16;
@@ -67,8 +63,9 @@ fn plane_sizes(intermediate: usize) -> [usize; 4] {
     ]
 }
 
-impl<'a> Nvfp4Weights<'a> {
-    fn rank_planes(layer: ExpertLayer, catalog: &OfficialV41Catalog) -> Result<(usize, usize)> {
+impl<'a> Nvfp4Side<'a> {
+    /// Per-rank intermediate width and routed-expert count for a layer.
+    pub(crate) fn rank_planes(layer: ExpertLayer, catalog: &OfficialV41Catalog) -> Result<(usize, usize)> {
         let text = catalog.config().text();
         let intermediate = match layer {
             ExpertLayer::Backbone { .. } => text.moe_intermediate_size / 4,
@@ -83,7 +80,7 @@ impl<'a> Nvfp4Weights<'a> {
         Ok((intermediate, text.n_routed_experts))
     }
 
-    pub fn plan(
+    pub(crate) fn plan(
         library: &NativeLibrary,
         catalog: &OfficialV41Catalog,
         layer: ExpertLayer,
@@ -113,12 +110,12 @@ impl<'a> Nvfp4Weights<'a> {
         })
     }
 
-    pub fn load(
+    pub(crate) fn load(
         library: &'a NativeLibrary,
         catalog: &OfficialV41Catalog,
         layer: ExpertLayer,
         available_device_bytes: usize,
-    ) -> Result<Self> {
+    ) -> Result<([DeviceAllocation<'a>; 4], Self)> {
         let (intermediate, experts) = Self::rank_planes(layer, catalog)?;
         let budget = Self::plan(library, catalog, layer)?;
         ensure!(
@@ -308,60 +305,15 @@ impl<'a> Nvfp4Weights<'a> {
             upload(&down_input_scales, down_input_scales_device.buffer, &mut host)?;
             unsafe { library.cuda_stream_synchronize(stream.raw)?; }
         }
-        Ok(Self {
+        Ok((
             buffers,
-            alphas,
-            down_alphas,
-            input_scales: input_scales_device,
-            down_input_scales: down_input_scales_device,
-            layer,
-            experts,
-            budget,
-            intermediate,
-        })
+            Self {
+                alphas,
+                down_alphas,
+                input_scales: input_scales_device,
+                down_input_scales: down_input_scales_device,
+            },
+        ))
     }
 
-    pub fn budget(&self) -> ExpertLoadBudget {
-        self.budget
-    }
-
-    pub fn intermediate_size(&self) -> usize {
-        self.intermediate
-    }
-
-    pub fn layer(&self) -> ExpertLayer {
-        self.layer
-    }
-
-    /// Bind the resident planes, runtime alphas and per-expert activation
-    /// scales. Slots 37/40 point at this layer's uploaded vectors instead of
-    /// the shared scratch arrays, so the kernel reads the right values with no
-    /// per-launch copy.
-    pub fn bind(
-        &self,
-        kernel: &ds41rt_ffi::V41ExpertKernel<'_>,
-        slots: &mut [*mut std::ffi::c_void; ds41rt_ffi::V41_EXPERT_POINTER_COUNT],
-    ) -> Result<()> {
-        ensure!(
-            kernel.info().experts as usize == self.experts,
-            "NVFP4 weights do not match kernel expert count"
-        );
-        // Engine slots: 22 b_w13, 23 sfb_w13 (the bridge aliases it for the
-        // gate view), 24 b_down, 25 sfb_down, 37/40 activation scales,
-        // 38/39 runtime alphas. The scratch bind still runs first so the
-        // kernel-owned slots are valid.
-        for (slot, pointer) in [
-            (22, self.buffers[0].buffer.ptr),
-            (23, self.buffers[1].buffer.ptr),
-            (24, self.buffers[2].buffer.ptr),
-            (25, self.buffers[3].buffer.ptr),
-            (37, self.input_scales.buffer.ptr),
-            (38, self.alphas.buffer.ptr),
-            (39, self.down_alphas.buffer.ptr),
-            (40, self.down_input_scales.buffer.ptr),
-        ] {
-            slots[slot] = pointer;
-        }
-        Ok(())
-    }
 }
