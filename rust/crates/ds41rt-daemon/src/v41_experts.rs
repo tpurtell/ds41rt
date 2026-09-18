@@ -405,7 +405,12 @@ impl<'a> ExpertWeights<'a> {
         );
         ensure!(
             self.is_nvfp4() == (kernel.output_kind() == ds41rt_ffi::V41ExpertOutputKind::Bf16Routes),
-            "expert weights and kernel quantization families differ"
+            "expert weights and kernel quantization families differ: layer={:?} weights_nvfp4={} \
+             kernel_role={} kernel_output_kind={:?}",
+            self.layer,
+            self.is_nvfp4(),
+            kernel.info().role,
+            kernel.output_kind()
         );
         ensure!(
             !slots[34].is_null() && !slots[37].is_null(),
