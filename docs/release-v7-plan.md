@@ -739,6 +739,37 @@ malformed module docstring that raised SyntaxError on import, hiding 51
 reference tests from every suite run. Repaired; combined suites are now 648
 passed, 3 skipped.
 
+### The fixed-K2 kernel question, answered with evidence
+
+The release owner asked whether a uniform K=2 checkpoint would be better served
+by a fixed-size kernel than by the mixed projection kernel, and flagged the
+premise as unverified. Checked:
+
+* The premise holds. The checkpoint's `config.json` reports
+  `quant_method: exl3, bits: 2, codebook: mcg` - a single scalar, so the
+  decoder is uniform K=2.
+* We nevertheless serve it through the **two-tier** family. `run.sh` derives
+  the family tag from the bits value (`k${base}${base+1}`), which yields
+  `k23`, so the deployed kernel is the mixed `[2,3]` projection kernel with the
+  K3 tier unused for every weight in this model.
+* A homogeneous alternative exists in SparkInfer:
+  `b12x/moe/_shared/kernels/w4a16/mixed_trellis.py` documents "the single
+  cooperative FC1/activation/FC2 grid used by homogeneous trellis", and
+  `.../w4a16/kernel.py` refers to "the single-tier fused kernel" whose phase
+  assembly is shared with the hybrid path.
+* Our exporter cannot emit it today: `export_b12x_v41_exl3_aot.py` rejects
+  fewer than two tiers and requires them distinct
+  (`len(set(bits)) != len(bits)`), so a `[2]` family is a build-system change,
+  not an export flag.
+
+Conclusion: this is an untested and plausible optimisation. A uniform-K2
+deployment is paying for a two-tier kernel whose second tier never runs, and
+SparkInfer already has the single-tier kernel to replace it. The A/B - export
+a homogeneous K2 family, serve the same checkpoint, compare decode and
+prefill - has not been run, so no shipped number should be read as evidence
+either way. It is the highest-value remaining engineering item, because it
+could move a published figure rather than merely annotate one.
+
 ### v7 status at round 25
 
 Landed and verified:
