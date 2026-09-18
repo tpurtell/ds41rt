@@ -206,6 +206,30 @@ Confirmed by read-only analysis of the export and daemon paths:
 - Sliced plan: 0 staging (done) - 1 daemon load - 2 device pack (reuse GLM
   packers) - 3 AOT export + FFI/ABI - 4 three-state format branch - 5 W4A4.
 
+### W4A4 pivot (user direction)
+
+W4A16 is NOT a target: the base DeepSeek checkpoint is already W4A8, so the
+NVFP4 deliverable must serve 4-bit activations. The integration targets
+`quant_mode="nvfp4", source_format="modelopt_nvfp4"` (the b12x W4A4 MoE
+kernel: FP4 weights x FP4 activations with per-16 E4M3 scales and
+per-expert FP32 runtime alphas). The 44-slot ABI gap remains: `nvfp4`
+selects `_DynamicMoELaunch` (37 pointers), not the engine's 44-slot
+`_DynamicMoEW4A8Launch`, so a new ABI variant is required.
+
+Probe findings on this SM120 host (V4.1 geometry):
+
+- `plan_b12x_fp4_moe_weights(quant_modes="nvfp4",
+  source_format="modelopt_nvfp4", activation="silu", ...)` is accepted.
+  `activation="silu_v41"` is MXFP4-only and must not be used.
+- `moe._get_dynamic_kernel(...)` compiles V4.1 W4A4 and returns
+  `(CompiledCuTeProgram, grid_x)`.
+- `export_to_c` fails with an MLIR `custom op 'None'` error for default
+  optional arguments. Passing explicit `swiglu_limit=10.0` and/or
+  `deterministic_output=True` exports successfully; `direct_routing=True`
+  also avoids it. `nvfp4_materialize_intermediate=True` is rejected for
+  this specialization (needs the repacked W4A8 MX non-streaming path).
+- Full role/row matrix validation is in flight.
+
 ### Slice 0 committed
 
 `rust/crates/ds41rt-loader/src/v41_nvfp4_staging.rs`: twelve staged regions
