@@ -482,6 +482,22 @@ Order that keeps the GPUs exclusive:
 Reference for how the previous release did this: `docs/release-v6-plan.md` and
 the v6 sections of `scripts/build-release-artifacts.sh`.
 
+### The quant reports cannot yet publish eval results
+
+`scripts/render-ds41-v7-quant-reports.py` has no code path that reads tool
+evaluation output. Its quality section is fixed text, and the pending lists
+name the evaluations, so a completed run would change nothing in either
+report - the same integration gap as the prefill filename, found before it
+could silently drop the evidence.
+
+The harness writes `<output-dir>/summaries.json` (one entry per run, plus a
+`tool-eval.json` per run directory) via `scripts/qualify-ds41-tool-eval.py`.
+Wiring it needs the exact summary shape, which cannot be inspected until a run
+completes, so it is deliberately left as a to-do rather than guessed at. When
+the shape is known, the renderer should emit the points and pass counts for
+each configuration that has a completed run, and must keep disclosing failed
+samples explicitly instead of reporting only a pass rate.
+
 ### Reproducing the compact multi-turn issue
 
 The harness shells out to an external `tool-eval-bench` CLI, which accepts a
