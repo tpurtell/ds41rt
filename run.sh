@@ -134,6 +134,8 @@ fi
 minimum_expert_layers=1
 [[ "$RTX_EXPERT_LAYERS" == auto || "$RTX_EXPERT_LAYERS" == 0 ]] || minimum_expert_layers="$RTX_EXPERT_LAYERS"
 expert_format=native
+model_is_nvfp4="$(jq -r '.quantization_config.moe_quant_algo // empty' "$hf_home/$snapshot_rel/config.json" 2>/dev/null || true)"
+[[ "$model_is_nvfp4" == "NVFP4" ]] && expert_format=nvfp4
 if [[ "$model_is_exl3" == true ]]; then
   case "$exl3_family_tag" in
     k23) expert_format=exl3-k23 ;;

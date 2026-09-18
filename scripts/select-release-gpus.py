@@ -39,6 +39,10 @@ DUAL_FIXED_EX_EXPERTS = (
 # independent, so the fixed base is shared.
 DUAL_LAYER_BYTES_BY_FORMAT = {
     "native": DUAL_ROUTED_LAYER_BYTES,
+    # ModelOpt NVFP4 W4A4: 9,953,280 bytes per rank per expert (E2M1 payload
+    # plus E4M3 K16 scales) x 384 experts, as measured in the startup plan.
+    # Placing with the native constant instead over-fills the card.
+    "nvfp4": 3_822_059_520,
     "exl3-k23": 1_760_000_000,
     "exl3-k34": 2_800_000_000,
 }
