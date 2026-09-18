@@ -267,6 +267,7 @@ fn worker(
         TcpTransportConfig { timeout: Duration::from_secs(120), max_frame_bytes: 64 * 1024 * 1024 })?;
     let mut prefill_transport = NativeTp4Wave::new(&lib, prefill_roce, NativeTp4Wave::device_bytes(capacity)?)?;
     if let Some(profile) = &paired_profile { prefill_transport.install_paired(profile.clone())?; }
+    let exl3_tiers: &[usize] = catalog.exl3().map(|m| m.decoder_tiers()).unwrap_or(&[]);
     let draft_weights = if args.dspark {
         Some(crate::v41_experts::dspark::DsparkWeights::load_serving_with_width(
             &lib,
@@ -276,7 +277,7 @@ fn worker(
             32 * 1024 * 1024 * 1024,
             16 * 1024 * 1024,
             if args.dspark_draft_limit > 5 { 7 } else { 5 },
-            Some(&args.native_lib.parent().context("native library directory missing")?.join("exl3/dspark")),
+            Some(&crate::v41_experts::exl3::aot_layout_directory(&args.native_lib, exl3_tiers, "dspark")),
         )?)
     } else {
         None
@@ -319,7 +320,7 @@ fn worker(
         use crate::v41_experts::{ExpertLayer, ExpertWeights, local::LocalExpertWave};
         let local_started = Instant::now();
         use crate::v41_experts::exl3::Exl3Weights;
-        let exl3_directory = args.native_lib.parent().context("native library directory missing")?.join("exl3/rtx-tp1");
+        let exl3_directory = crate::v41_experts::exl3::aot_layout_directory(&args.native_lib, exl3_tiers, "rtx-tp1");
         let compressed = catalog.exl3().is_some();
         let per_lane = if compressed { LocalExpertWave::exl3_device_bytes(&exl3_directory, capacity)? }
             else { LocalExpertWave::device_bytes(&lib, capacity)? };

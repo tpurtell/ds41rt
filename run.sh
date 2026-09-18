@@ -99,6 +99,18 @@ release_resolve_local_model_revision "$hf_home"
 release_resolve_coordinator_gpu_identity
 snapshot_rel="hub/models--${RELEASE_MODEL_ID//\//--}/snapshots/$RELEASE_MODEL_REVISION"
 model_is_exl3="$(jq -r '.quantization_config.quant_method == "exl3"' "$hf_home/$snapshot_rel/config.json")"
+# Multi-family EXL3 images ship exl3-kXX packages per decoder-tier family.
+# The deployed checkpoint's resident tiers are [floor(bits), floor(bits)+1]
+# for both raw integer-bit publications and staged fractional-bit snapshots.
+exl3_family_tag=""
+if [[ "$model_is_exl3" == true ]]; then
+  exl3_bits="$(jq -er '.bits' "$hf_home/$snapshot_rel/quantize_config.json" 2>/dev/null || jq -er '.quantization_config.bits' "$hf_home/$snapshot_rel/config.json")" ||
+    release_die "EXL3 checkpoint has no readable quantization bits"
+  [[ "$exl3_bits" =~ ^[0-9]+(\.[0-9]+)?$ ]] ||
+    release_die "EXL3 checkpoint quantization bits '$exl3_bits' is not numeric"
+  exl3_family_base="${exl3_bits%%.*}"
+  exl3_family_tag="k${exl3_family_base}$((exl3_family_base + 1))"
+fi
 coordinator="$RELEASE_COORDINATOR_CONTAINER_NAME"
 [[ "$TP2_DSPARK_EXPERTS" != on || "$DSPARK" == on ]] || release_die "TP2_DSPARK_EXPERTS requires dSpark"
 [[ "$TP2_DSPARK_EXPERTS" != on || "$model_is_exl3" != true ]] || release_die "TP2_DSPARK_EXPERTS requires native expert weights"
@@ -149,7 +161,7 @@ hosts=("$SPARK_0_HOST" "$SPARK_1_HOST" "$SPARK_2_HOST" "$SPARK_3_HOST")
 lanes=("$SPARK_0_LANE_A" "$SPARK_1_LANE_A" "$SPARK_2_LANE_A" "$SPARK_3_LANE_A")
 spark_exl3_identity=""
 for host in "${hosts[@]}"; do
-  spark_manifest="$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" bash -s -- "$SPARK_EXPERT_DOCKER_INFERENCE" "$engine_commit" "$sparkinfer_commit" "$snapshot_rel" "$model_is_exl3" <<'REMOTE'
+  spark_manifest="$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" bash -s -- "$SPARK_EXPERT_DOCKER_INFERENCE" "$engine_commit" "$sparkinfer_commit" "$snapshot_rel" "$model_is_exl3" "$exl3_family_tag" <<'REMOTE'
 set -euo pipefail
 image="$1"; engine="$2"; sparkinfer="$3"; snapshot_rel="$4"
 docker info >/dev/null
@@ -159,7 +171,8 @@ hf_home="${HF_HOME:-$HOME/.cache/huggingface}"
 test -d "$hf_home/$snapshot_rel"
 ! find "$hf_home/$snapshot_rel" -xtype l -print -quit | grep -q .
 if [[ "$5" == true ]]; then
-  docker run --rm --network none --entrypoint /bin/cat "$image" /opt/ds41rt/lib/exl3/manifest.json
+  docker run --rm --network none --entrypoint /bin/sh "$image" -c \
+    'if [ -f "/opt/ds41rt/lib/exl3/exl3-'"$6"'/manifest.json" ]; then cat "/opt/ds41rt/lib/exl3/exl3-'"$6"'/manifest.json"; else cat /opt/ds41rt/lib/exl3/manifest.json; fi'
 fi
 REMOTE
 )"

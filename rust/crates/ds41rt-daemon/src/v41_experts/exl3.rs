@@ -11,6 +11,33 @@ const BANKS: usize = 2;
 pub(crate) mod execution;
 pub(crate) mod worker;
 
+/// Resolve one EXL3 AOT layout directory for the running checkpoint.
+///
+/// v7 images ship decoder-tier families side by side under
+/// `<libdir>/exl3/exl3-k<tiers>/<layout>`; older images keep a single
+/// family at the legacy `<libdir>/exl3/<layout>`. The checkpoint's decoder
+/// tiers select the matching family first; otherwise the legacy location
+/// is returned and the downstream module-info bits check reports any
+/// mismatch with the checkpoint.
+pub(crate) fn aot_layout_directory(
+    native_lib: &std::path::Path,
+    tiers: &[usize],
+    layout: &str,
+) -> std::path::PathBuf {
+    let root = native_lib
+        .parent()
+        .unwrap_or(std::path::Path::new("."))
+        .join("exl3");
+    if !tiers.is_empty() {
+        let tag: String = tiers.iter().map(usize::to_string).collect();
+        let family = root.join(format!("exl3-k{tag}")).join(layout);
+        if family.is_dir() {
+            return family;
+        }
+    }
+    root.join(layout)
+}
+
 pub(crate) struct Exl3Weights<'a> {
     buffers: Vec<WeightBuffer>,
     _arena: DeviceAllocation<'a>,

@@ -34,11 +34,16 @@ case "$role" in
 esac
 exl3_paired_tp4=OFF
 exl3_residency=""
+# v7 ships both EXL3 decoder families by default: the uniform K=2 raw
+# publication family (2,3) and the staged K3.25 family (3,4). Paired TP4
+# builds remain single-family and stay on the v5 (3,4) family.
+exl3_bit_families="${DS41RT_RELEASE_EXL3_BIT_FAMILIES:-2,3;3,4}"
 case "${DS41RT_RELEASE_EXL3_PAIRED_TP4:-off}" in
   on)
     [[ "$role" == expert ]] || { echo "Paired EXL3 package requires expert role" >&2; exit 2; }
     exl3_paired_tp4=ON
     exl3_residency=80=2
+    exl3_bit_families="${DS41RT_RELEASE_EXL3_BIT_FAMILIES:-3,4}"
     ;;
   off) ;;
   *) echo "DS41RT_RELEASE_EXL3_PAIRED_TP4 must be on or off" >&2; exit 2 ;;
@@ -120,7 +125,7 @@ cmake \
   -DDS41RT_ENABLE_CUDA=ON \
   -DDS41RT_ENABLE_V41_EXPERT_AOT=ON \
   -DDS41RT_ENABLE_V41_EXL3_AOT=ON \
-  -DDS41RT_V41_EXL3_BITS="${DS41RT_RELEASE_EXL3_BITS:-2;3}" \
+  -DDS41RT_V41_EXL3_BIT_FAMILIES="$exl3_bit_families" \
   -DDS41RT_V41_EXL3_PAIRED_TP4="$exl3_paired_tp4" \
   -DDS41RT_V41_EXL3_RESIDENCY="$exl3_residency" \
   -DDS41RT_ENABLE_V41_LOCAL_EXPERT_AOT="$coordinator_aot" \
@@ -147,9 +152,20 @@ cmake --build "$build_root/native"
 install -d "$output_dir"
 install -m 0755 "$build_root/source/rust/target/release/ds41rt" "$output_dir/ds41rt"
 install -m 0755 "$build_root/native/libds41rt_native.so" "$output_dir/libds41rt_native.so"
-python3 "$build_root/source/python/tools/package_v41_exl3_aot.py" install \
-  --package "$build_root/native/exl3" --output "$output_dir/exl3"
-python3 "$build_root/source/python/tools/package_v41_exl3_aot.py" verify --package "$output_dir/exl3" --role "$role"
+exl3_family_tags=()
+IFS=';' read -ra exl3_family_list <<<"$exl3_bit_families"
+for exl3_family in "${exl3_family_list[@]}"; do
+  exl3_family_tags+=("k${exl3_family//,/}")
+done
+# Families nest under exl3/ so images keep one well-known EXL3 root; the
+# daemon resolves exl3/exl3-kXX by checkpoint tiers and treats a direct
+# layout child of exl3/ as the legacy single-family package.
+for exl3_tag in "${exl3_family_tags[@]}"; do
+  python3 "$build_root/source/python/tools/package_v41_exl3_aot.py" install \
+    --package "$build_root/native/exl3-$exl3_tag" --output "$output_dir/exl3/exl3-$exl3_tag"
+  python3 "$build_root/source/python/tools/package_v41_exl3_aot.py" verify \
+    --package "$output_dir/exl3/exl3-$exl3_tag" --role "$role"
+done
 install -m 0644 "$build_root/native/v41_experts/v41_experts.json" "$output_dir/V41_EXPERT_AOT.json"
 if [[ "$coordinator_aot" == ON ]]; then
   # Automatic RTX placement requires the full local-expert ABI in release images.

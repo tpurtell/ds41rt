@@ -106,9 +106,11 @@ COPY scripts/real-full-tcp-serve.sh /opt/ds41rt/scripts/real-full-tcp-serve.sh
 COPY scripts/kernel-cache-identity.py /opt/ds41rt/scripts/kernel-cache-identity.py
 COPY docker/release-entrypoint.sh /usr/local/bin/ds41rt-release-entrypoint
 
-RUN python3 /opt/ds41rt/python/tools/package_v41_exl3_aot.py verify \
-      --package /opt/ds41rt/lib/exl3 --sparkinfer-revision "$DS41RT_SPARKINFER_COMMIT" \
-      --role "$DS41RT_ROLE" --runtime "$(python3 -m cutlass.cute.export.aot_config --libdir)/libcute_dsl_runtime.so" && \
+RUN for exl3_family in /opt/ds41rt/lib/exl3/exl3-k*/; do \
+      python3 /opt/ds41rt/python/tools/package_v41_exl3_aot.py verify \
+        --package "$exl3_family" --sparkinfer-revision "$DS41RT_SPARKINFER_COMMIT" \
+        --role "$DS41RT_ROLE" --runtime "$(python3 -m cutlass.cute.export.aot_config --libdir)/libcute_dsl_runtime.so"; \
+    done && \
     cmp -s \
       /opt/ds41rt/third_party/sparkinfer/LICENSE \
       /opt/ds41rt/share/SPARKINFER_LICENSE && \

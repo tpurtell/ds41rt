@@ -103,8 +103,16 @@ fn load_weights<'a>(
 }
 
 impl NativeExpertServiceConfig {
-    fn exl3_directory(&self) -> PathBuf {
-        self.exl3_aot_dir.clone().unwrap_or_else(|| self.library.parent().unwrap_or(std::path::Path::new("."))
-            .join("exl3").join(format!("tp4-rank{}", self.rank)))
+    /// Resolve this rank's EXL3 AOT package for the running checkpoint's
+    /// decoder tiers (multi-family images) with the legacy single-family
+    /// location as fallback. An explicit --exl3-aot-dir is used verbatim.
+    fn exl3_directory_for(&self, tiers: &[usize]) -> PathBuf {
+        self.exl3_aot_dir.clone().unwrap_or_else(|| {
+            crate::v41_experts::exl3::aot_layout_directory(
+                &self.library,
+                tiers,
+                &format!("tp4-rank{}", self.rank),
+            )
+        })
     }
 }

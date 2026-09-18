@@ -71,6 +71,8 @@ cmake \
   -DDS41RT_ENABLE_V41_EXPERT_AOT=ON \
   -DDS41RT_ENABLE_V41_EXL3_AOT=ON \
   -DDS41RT_V41_EXL3_BITS="${DS41RT_WIP_EXL3_BITS:-2;3}" \
+  -DDS41RT_ENABLE_V41_LOCAL_EXPERT_AOT="$coordinator_aot" \
+  -DDS41RT_ENABLE_V41_TP2_EXPERT_AOT="$coordinator_aot" \
   -DDS41RT_ENABLE_V41_FP8_AOT="$coordinator_aot" \
   -DDS41RT_ENABLE_V41_ATTENTION_AOT="$coordinator_aot" \
   -DDS41RT_ENABLE_V41_HC_LAGGED_AOT="$coordinator_aot" \
@@ -78,7 +80,7 @@ cmake \
   -DDS41RT_ENABLE_RDMA=ON \
   -DDS41RT_ENABLE_SPARKINFER_AOT="$sparkinfer_aot" \
   -DDS41RT_ENABLE_SPARKINFER_COORDINATOR_AOT="$coordinator_aot" \
-  -DDS41RT_ENABLE_DS4_FLASH_AOT=ON \
+  -DDS41RT_ENABLE_DS4_FLASH_AOT=OFF \
   -DDS41RT_ENABLE_W8A16_AOT="$w8a16_aot" \
   -DDS41RT_SPARKINFER_SOURCE_DIR="$source_dir/third_party/sparkinfer" \
   -DDS41RT_SPARKINFER_LOCK_FILE="$source_dir/third_party/sparkinfer.lock.json" \
@@ -92,10 +94,13 @@ cmake --build "$build_dir/native"
 
 install -m 0755 "$CARGO_TARGET_DIR/release/ds41rt" "$output_dir/ds41rt"
 install -m 0755 "$build_dir/native/libds41rt_native.so" "$output_dir/libds41rt_native.so"
+wip_exl3_bits="${DS41RT_WIP_EXL3_BITS:-2;3}"
+wip_exl3_tag="k${wip_exl3_bits//[;]/}"
+wip_exl3_tag="${wip_exl3_tag//,/}"
 python3 "$source_dir/python/tools/package_v41_exl3_aot.py" install \
-  --package "$build_dir/native/exl3" --output "$output_dir/exl3"
+  --package "$build_dir/native/exl3-$wip_exl3_tag" --output "$output_dir/exl3/exl3-$wip_exl3_tag"
 python3 "$source_dir/python/tools/package_v41_exl3_aot.py" verify \
-  --package "$output_dir/exl3" --role "$role"
+  --package "$output_dir/exl3/exl3-$wip_exl3_tag" --role "$role"
 install -m 0644 "$build_dir/native/v41_experts/v41_experts.json" "$output_dir/V41_EXPERT_AOT.json"
 if [[ "$coordinator_aot" == ON ]]; then
   install -m 0644 "$build_dir/native/v41_fp8/v41_fp8.json" "$output_dir/V41_FP8_AOT.json"

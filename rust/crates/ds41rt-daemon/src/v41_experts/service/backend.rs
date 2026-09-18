@@ -34,7 +34,12 @@ impl<'a> Weights<'a> {
             Self::Exl3(weights) => Execution::Exl3(Exl3Worker::new(
                 library,
                 weights.clone(),
-                &config.exl3_directory(),
+                &config.exl3_directory_for(
+                    weights
+                        .first()
+                        .map(|weight| weight.layout.tiers.as_slice())
+                        .unwrap_or(&[]),
+                ),
                 config.capacity,
                 remaining,
             )?),
@@ -113,8 +118,13 @@ pub(super) fn load_exl3<'a>(
     catalog: &OfficialV41Catalog,
     config: &NativeExpertServiceConfig,
 ) -> Result<(Weights<'a>, usize)> {
-    let partition = Exl3Worker::partition(&config.exl3_directory(), config.capacity, config.rank)?;
-    let workspace = Exl3Worker::plan(&config.exl3_directory(), config.capacity)
+    let exl3_tiers: &[usize] = catalog
+        .exl3()
+        .map(|manifest| manifest.decoder_tiers())
+        .unwrap_or(&[]);
+    let exl3_directory = config.exl3_directory_for(exl3_tiers);
+    let partition = Exl3Worker::partition(&exl3_directory, config.capacity, config.rank)?;
+    let workspace = Exl3Worker::plan(&exl3_directory, config.capacity)
         .context("EXL3 checkpoint requires matching native AOT artifacts; set --exl3-aot-dir for a custom export")?;
     let plans = (config.first_layer..40)
         .map(|layer| {

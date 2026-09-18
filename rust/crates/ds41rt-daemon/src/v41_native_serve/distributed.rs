@@ -48,7 +48,8 @@ pub(super) fn worker(mut args: crate::cli::NativeServeArgs, mut receive: mpsc::R
     let started = Instant::now();
     // Sum resident storage plus the largest transient loading excess.
     let compressed = catalog.exl3().is_some();
-    let exl3_directory = args.native_lib.parent().context("native library directory missing")?.join("exl3/rtx-tp2");
+    let exl3_tiers: &[usize] = catalog.exl3().map(|m| m.decoder_tiers()).unwrap_or(&[]);
+    let exl3_directory = crate::v41_experts::exl3::aot_layout_directory(&args.native_lib, exl3_tiers, "rtx-tp2");
     if compressed {
         let per_lane = crate::v41_experts::tp2::ExpertWave::exl3_device_bytes(&exl3_directory, capacity)?;
         tracing::info!(per_gpu_per_lane_bytes=per_lane, capacity, "EXL3 TP2 expert workspace plan");
@@ -259,7 +260,7 @@ pub(super) fn worker(mut args: crate::cli::NativeServeArgs, mut receive: mpsc::R
                 capacity,args.concurrency,budgets,16<<20,width))?
         } else {devices[1].own(|| crate::v41_experts::dspark::DsparkWeights::load_serving_with_width(&lib, &catalog,
             capacity, args.concurrency, 32 << 30, 16 << 20, width,
-            Some(&args.native_lib.parent().context("native library directory missing")?.join("exl3/dspark"))))?})
+            Some(&crate::v41_experts::exl3::aot_layout_directory(&args.native_lib, exl3_tiers, "dspark"))))?})
     } else { None };
     memory_checkpoint("draft weights")?;
     let mut draft = draft_weights.as_ref().map(|weights| DraftRuntime::with_distributed_requests(
