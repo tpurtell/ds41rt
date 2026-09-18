@@ -436,6 +436,30 @@ report's prefill table with its partial-coverage disclosure, but it is not
 promoted to a headline. If the matrix is later completed, the headline gate
 opens by itself and no document needs editing.
 
+### Expert image needs the expert AOT built in the release runtime
+
+The coordinator image builds and verifies (`ghcr.io/tpurtell/ds41rt-coordinator:v7`,
+35.7 GB). The expert image fails its own packaging check:
+
+    ValueError: EXL3 CuTe runtime mismatch
+
+`python/tools/package_v41_exl3_aot.py` verify compares the digest of the
+image's installed `libcute_dsl_runtime.so` against `manifest['runtime']`
+recorded when the EXL3 package was exported. The expert artifacts were built
+inside ostrich's WIP container, whose CuTe runtime is not the one the release
+image ships, so every EXL3 family in that set is rejected - correctly, because
+a kernel built against a different CuTe runtime is not the artifact the image
+claims to contain.
+
+The fix is to build the expert role inside the release runtime rather than the
+WIP container: run `scripts/build-release-artifacts.sh` on the SM121 host from
+a container based on the release base image (the same
+`nvcr.io/nvidia/pytorch:26.05-py3` and cutlass-dsl that `Dockerfile.release`
+ships), with the source synced by the same guarded recipe. Do not work around
+this by relaxing the check: the mismatch is the check doing its job - a CuTe
+runtime difference can change generated code, so an artifact built against a
+different one should not ship under this image's provenance.
+
 ### Publishing the images (next step, recipe derived from the Dockerfile)
 
 `docker/Dockerfile.release` is role-parameterised (`ARG DS41RT_ROLE`,
