@@ -413,6 +413,31 @@ Also: the single-card NVFP4 prefill campaign was cut short by a service
 restart during the run (my own regression check), not by a fault; it needs a
 re-run for the 1x best-prefill cell, which stays a dash until then.
 
+### Exact release build sequence (for the next round)
+
+`scripts/build-release-artifacts.sh SOURCE_DIR ROLE CUDA_ARCH OUTPUT_DIR` where
+ROLE is `coordinator` or `expert`, CUDA_ARCH is `120` for the RTX role and
+`121` for the Spark role, and the source tree must be a clean checkout of the
+release commit. Both roles must be built, and the Spark role builds on the
+SM121 host (ostrich), not here.
+
+Order that keeps the GPUs exclusive:
+1. Let the single-card NVFP4 prefill finish (it is running now) and re-render
+   the reports with `scripts/render-ds41-v7-quant-reports.py` and the headline
+   with `scripts/render-ds41-v7-headline.py`.
+2. `runs/v7q-a1/serve-diffbot.sh stop` and
+   `COORD_CONTAINER=ds41rt-coordinator-wip-dual runs/v7q-a1/serve-diffbot.sh stop`,
+   then confirm `nvidia-smi` shows both cards idle. The AOT exports OOM if any
+   serving process still holds device memory.
+3. Build the coordinator role for SM120; build the expert role for SM121 on
+   ostrich. `docker/Dockerfile.release` already verifies the packaged EXL3
+   families, including the new `exl3-k*` trees and the Spark TP2 shards.
+4. Publish the images, cut `release/v7` from the release commit, and merge to
+   `main`.
+
+Reference for how the previous release did this: `docs/release-v6-plan.md` and
+the v6 sections of `scripts/build-release-artifacts.sh`.
+
 ### Tool-call evaluation notes (round 27)
 
 The EXL3 compact qualification run stalled on scenario TC-26 ("State
