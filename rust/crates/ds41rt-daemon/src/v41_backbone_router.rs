@@ -418,8 +418,11 @@ impl BackboneRouterWave<'_, '_> {
                 384,
                 self.stream.raw,
             )?;
-            self.input_quantizer
-                .launch(self.b(0), self.b(5), rows, self.stream.raw)?;
+            // NVFP4 consumes BF16 directly; its FP8 buffer has no consumer.
+            if !self.weights.nvfp4 {
+                self.input_quantizer
+                    .launch(self.b(0), self.b(5), rows, self.stream.raw)?;
+            }
             let hidden_row_bytes = request_hidden_format(self.weights.nvfp4).1;
             let bytes = rows as usize * if self.full_request { hidden_row_bytes + 48 } else { 24 };
             if !self.full_request {
