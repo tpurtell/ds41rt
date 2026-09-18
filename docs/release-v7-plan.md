@@ -363,6 +363,53 @@ fresh requests returned `42`, `BLUE`, and `READY`, including 1,838-token
 prefill. Full root cause, artifact identities, commands, exact API responses,
 and qualification limits: [NVFP4 inference fix](release-v7-nvfp4-inference-fix.md).
 
+### 5090 (and any same-capability GPU) coordinator support
+
+Finding: the coordinator AOT artifacts are **not** SM-count specific. Asking
+b12x to compile the same NVFP4 TP2 kernel with `max_active_clusters` 188, 170
+or 128 on this 188-SM host returns the identical compile-time cluster count
+(188) and an identical scratch plan (25 tensors), so the .o is the same
+artifact. The cluster cap is a launch-time scalar, not a property of the
+cubin, and the RTX 5090 and RTX PRO 6000 are both SM120.
+
+What actually blocks a 5090 today is the engine's device pin:
+`reject_expert_device` rejects a device whose compute capability *or SM count*
+differs from the export host, and the recorded launch scalar is the export
+host's count (188), which a 170-SM part cannot accommodate as a cooperative
+grid.
+
+So the change is runtime, not packaging:
+1. Accept a device with the same compute capability but a different SM count.
+2. Clamp the launch `max_active_clusters` to the current device's SM count
+   (min(recorded, device SMs)) at initialize/launch.
+3. One numeric test still owed: run the public b12x path with a reduced cap on
+   this 188-SM card and confirm the output is unchanged, which proves the cap
+   is a ceiling rather than a hard requirement.
+
+This means the release image needs no second AOT set and no rebuild for a 5090
+owner - which is the outcome the plan wanted. A per-SM-count export could not
+even be generated correctly here without the hardware.
+
+### v7 release deliverables (agreed scope)
+
+Three performance table sets, all measured with the v7 protocol:
+- Main README: the official (MXFP4) image, and only its headline table is
+  re-rendered (the rest of that README's metrics stay as measured for v6
+  because the official image is not being re-campaigned).
+- `docs/release-v7-exl3-k2-performance.md`: EXL3 2 bpw, 1x (RTX 5090 profile,
+  2 Sparks) and 2x (both RTX cards).
+- `docs/release-v7-nvfp4-performance.md`: NVIDIA NVFP4 W4A4, 1x and 2x.
+
+The headline table carries all six configurations: official 1x/2x, NVFP4
+1x/2x, EXL3 1x/2x, with 1->2 change rates for the official and NVFP4 pairs
+and a separate change row for EXL3 (its two configurations are not a 1x/2x
+pair of the same topology). Titles shortened, C1 code included. The two
+per-quant report links sit directly below the headline table.
+
+Final state to deliver: a `release/v7` branch, everything merged to `main`,
+and updated docker images. Before finishing, have Astra review the README and
+the performance reports against the conventions of the previous releases.
+
 ### NVFP4 single-card placement: progress and the next blocker
 
 The single-card W4A4 placement is wired: the full-width RTX backbone role is
