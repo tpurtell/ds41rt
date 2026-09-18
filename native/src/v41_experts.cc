@@ -37,6 +37,10 @@ struct Variant {
   uint64_t scratch_offsets[DS41RT_V41_EXPERT_POINTERS];
   cudaLibrary_t library = nullptr;
   int device = -1;
+  // The export host's SM count is a ceiling on the cooperative grid, not a
+  // property of the cubin: the same artifact serves any SM120 part. Remember
+  // the live device's count so the launch can clamp to it.
+  int device_sms = 0;
   ~Variant() { if (library) cudaLibraryUnload(library); }
 };
 Variant variants[] = {DS41RT_V41_VARIANTS};
@@ -147,14 +151,20 @@ extern "C" int32_t ds41rt_v41_expert_initialize(int32_t capacity, void** out) {
   if (status != cudaSuccess) return status;
   status = cudaDeviceGetAttribute(&sms, cudaDevAttrMultiProcessorCount, device);
   if (status != cudaSuccess) return status;
-  if (major != 12 || minor != DS41RT_V41_CC_MINOR || sms != DS41RT_V41_SMS)
+  if (major != 12 || minor != DS41RT_V41_CC_MINOR)
     return reject_expert_device("v41 expert", device, major, minor, sms);
+  if (sms != DS41RT_V41_SMS)
+    std::fprintf(stderr,
+                 "ds41rt: v41 expert AOT was exported on a %d-SM part but device %d has %d SMs; "
+                 "using the same kernels with the launch cluster cap clamped to %d\n",
+                 int(DS41RT_V41_SMS), device, sms, sms);
   std::lock_guard<std::mutex> lock(initialization_mutex);
   if (variant->device >= 0) {
     if (variant->device != device) return cudaErrorInvalidDevice;
     *out = variant;
     return cudaSuccess;
   }
+  variant->device_sms = sms;
   auto* module_owner = variant;
 #ifdef DS41RT_V41_TP2_EXPERTS
   // Generated launch symbols are shared process-wide. Keep one library per
@@ -204,8 +214,15 @@ extern "C" int32_t ds41rt_v41_expert_launch(void* kernel, const ds41rt_v41_exper
   if (device != variant->device) return cudaErrorInvalidDevice;
   void* pointers[44];
   std::copy(args->tensors, args->tensors + 44, pointers);
+  // The cooperative grid cannot exceed the live device's SM count. The export
+  // host may have had more, which is the only respect in which the artifact is
+  // host-specific.
+  int32_t max_active_clusters = args->max_active_clusters;
+  if (max_active_clusters > 0 && variant->device_sms > 0 &&
+      max_active_clusters > variant->device_sms)
+    max_active_clusters = variant->device_sms;
   int32_t scalars[] = {args->num_tokens, args->max_rows, args->scatter_rows,
-    args->rows_padded, args->max_tasks, args->max_phys_tiles, args->max_active_clusters};
+    args->rows_padded, args->max_tasks, args->max_phys_tiles, max_active_clusters};
   void* stream = args->stream;
   int32_t result = 0;
   void* parameters[53];
@@ -224,6 +241,10 @@ namespace {
 struct InputQuantModule {
   cudaLibrary_t library = nullptr;
   int device = -1;
+  // The export host's SM count is a ceiling on the cooperative grid, not a
+  // property of the cubin: the same artifact serves any SM120 part. Remember
+  // the live device's count so the launch can clamp to it.
+  int device_sms = 0;
   ~InputQuantModule() { if (library) cudaLibraryUnload(library); }
 } input_quant, peer_input_quant;
 }
