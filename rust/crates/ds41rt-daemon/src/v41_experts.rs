@@ -76,6 +76,7 @@ impl ExpertLayer {
         match self {
             Self::Backbone { .. } => library.v41_nvfp4_expert_kernel(capacity),
             Self::BackboneTp2 { .. } => library.v41_nvfp4_tp2_expert_kernel(capacity),
+            Self::BackboneFull { .. } => library.v41_nvfp4_local_expert_kernel(capacity),
             // Raw publications keep draft experts at source MXFP4 precision.
             other => other.kernel(library, capacity),
         }
@@ -85,6 +86,7 @@ impl ExpertLayer {
         match self {
             Self::Backbone { .. } => library.v41_nvfp4_expert_info(capacity),
             Self::BackboneTp2 { .. } => library.v41_nvfp4_tp2_expert_info(capacity),
+            Self::BackboneFull { .. } => library.v41_nvfp4_local_expert_info(capacity),
             other => other.info(library, capacity),
         }
     }
@@ -120,7 +122,10 @@ impl ExpertLayer {
     /// True when this layer's routed experts use the W4A4 NVFP4 family.
     fn is_quantized_nvfp4(self, catalog: &OfficialV41Catalog) -> bool {
         catalog.nvfp4().is_some()
-            && matches!(self, Self::Backbone { .. } | Self::BackboneTp2 { .. })
+            && matches!(
+                self,
+                Self::Backbone { .. } | Self::BackboneTp2 { .. } | Self::BackboneFull { .. }
+            )
     }
 }
 

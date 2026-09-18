@@ -424,6 +424,7 @@ impl NativeLibrary {
             4 => b"ds41rt_v41_dspark_tp2_expert_info",
             5 => b"ds41rt_v41_nvfp4_tp2_expert_info",
             6 => b"ds41rt_v41_nvfp4_expert_info",
+            7 => b"ds41rt_v41_nvfp4_local_expert_info",
             _ => b"ds41rt_v41_expert_info",
         };
         let function = unsafe { self.lib.get::<InfoFn>(name) }
@@ -438,7 +439,7 @@ impl NativeLibrary {
             matches!(info.abi_version, 2 | 3) && info.hidden_size == 5120,
             "unsupported V4.1 native expert ABI"
         );
-        let nvfp4 = matches!(interface, 5 | 6);
+        let nvfp4 = matches!(interface, 5 | 6 | 7);
         ensure!(
             if nvfp4 {
                 // W4A4 consumes BF16 hidden rows; the FP4 quantization happens
@@ -452,6 +453,7 @@ impl NativeLibrary {
         let expected = match (nvfp4, info.role) {
             // NVFP4 keeps the unpadded intermediate: 576 Spark, 1152 RTX TP2.
             (true, 1) => (384, 576, 576, 6),
+            (true, 2) => (384, 2304, 2304, 6),
             (true, 3) => (384, 1152, 1152, 6),
             (false, 0) => (128, 2304, 2304, 3),
             (false, 1) => (384, 576, 640, 6),
@@ -477,6 +479,7 @@ impl NativeLibrary {
             0 => None,
             5 => Some(3),
             6 => Some(1),
+            7 => Some(2),
             other => Some(u32::from(other)),
         };
         match expected_role {
@@ -519,6 +522,15 @@ impl NativeLibrary {
         self.expert_info_for(capacity, 6)
     }
 
+    /// Full-width RTX backbone kernels for the single-card W4A4 placement.
+    pub fn v41_nvfp4_local_expert_kernel(&self, capacity: u32) -> Result<V41ExpertKernel<'_>> {
+        self.expert_kernel_for(capacity, 7)
+    }
+
+    pub fn v41_nvfp4_local_expert_info(&self, capacity: u32) -> Result<V41ExpertInfo> {
+        self.expert_info_for(capacity, 7)
+    }
+
     pub fn v41_nvfp4_expert_kernel(&self, capacity: u32) -> Result<V41ExpertKernel<'_>> {
         self.expert_kernel_for(capacity, 6)
     }
@@ -533,6 +545,7 @@ impl NativeLibrary {
             4 => "ds41rt_v41_dspark_tp2",
             5 => "ds41rt_v41_nvfp4_tp2",
             6 => "ds41rt_v41_nvfp4",
+            7 => "ds41rt_v41_nvfp4_local",
             _ => "ds41rt_v41",
         };
         let symbol = |operation: &str| format!("{prefix}_expert_{operation}").into_bytes();
@@ -551,7 +564,7 @@ impl NativeLibrary {
             status == 0,
             "V4.1 expert initialization failed with CUDA status {status}"
         );
-        let nvfp4 = matches!(interface, 5 | 6);
+        let nvfp4 = matches!(interface, 5 | 6 | 7);
         let output_kind = if info.abi_version == 3 || nvfp4 {
             type OutputKindFn = unsafe extern "C" fn(i32, *mut u32) -> i32;
             let query = unsafe { self.lib.get::<OutputKindFn>(&symbol("output_kind"))? };
