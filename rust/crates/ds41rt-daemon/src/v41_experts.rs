@@ -76,7 +76,8 @@ impl ExpertLayer {
         match self {
             Self::Backbone { .. } => library.v41_nvfp4_expert_kernel(capacity),
             Self::BackboneTp2 { .. } => library.v41_nvfp4_tp2_expert_kernel(capacity),
-            _ => anyhow::bail!("NVFP4 covers backbone routed experts only"),
+            // Raw publications keep draft experts at source MXFP4 precision.
+            other => other.kernel(library, capacity),
         }
     }
 
@@ -84,8 +85,14 @@ impl ExpertLayer {
         match self {
             Self::Backbone { .. } => library.v41_nvfp4_expert_info(capacity),
             Self::BackboneTp2 { .. } => library.v41_nvfp4_tp2_expert_info(capacity),
-            _ => anyhow::bail!("NVFP4 covers backbone routed experts only"),
+            other => other.info(library, capacity),
         }
+    }
+
+    /// True when this layer's routed experts use the W4A4 NVFP4 family.
+    fn is_quantized_nvfp4(self, catalog: &OfficialV41Catalog) -> bool {
+        catalog.nvfp4().is_some()
+            && matches!(self, Self::Backbone { .. } | Self::BackboneTp2 { .. })
     }
 }
 
@@ -151,7 +158,7 @@ impl<'a> ExpertWeights<'a> {
         catalog: &OfficialV41Catalog,
         layer: ExpertLayer,
     ) -> Result<(ExpertLoadBudget, [usize; 4], u32, usize)> {
-        if catalog.nvfp4().is_some() {
+        if layer.is_quantized_nvfp4(catalog) {
             return Self::nvfp4_layout(library, catalog, layer);
         }
         let first = catalog.expert_staging(layer.expert(0))?;
@@ -227,7 +234,7 @@ impl<'a> ExpertWeights<'a> {
         layer: ExpertLayer,
         available_device_bytes: usize,
     ) -> Result<Self> {
-        if catalog.nvfp4().is_some() {
+        if layer.is_quantized_nvfp4(catalog) {
             return Self::load_nvfp4(library, catalog, layer, available_device_bytes);
         }
         let (budget, sizes, intermediate, experts) = Self::layout(library, catalog, layer)?;
