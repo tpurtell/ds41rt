@@ -13,7 +13,9 @@ Numbers live in CONFIGS. Sources:
     in scripts/select-release-gpus.py).
   * MXFP4 at 1x: full-width layers on one card, so a layer is twice the TP2
     layer; ~10 layers fill the same card budget.
-  * Spark per-layer share: measured, ~0.97 GB per layer per Spark.
+  * Spark per-layer share: measured, ~0.97 GB per layer per Spark. Sparks hold
+    routed-expert shards only - attention and the KV cache live on the RTX
+    cards - so their bands carry no KV/attention segment.
   * NVFP4 and EXL3 expert bands, and every non-expert band: the runtime's own
     startup accounting (rank_peak_bytes, transport_bytes, reserved cache,
     headroom).
@@ -23,64 +25,54 @@ Numbers live in CONFIGS. Sources:
 import argparse
 from pathlib import Path
 
+# Only two bands, because only two numbers are actually measured: the routed
+# expert residency the loader reports, and everything else the device occupies
+# (attention, KV, workspace, runtime) as the remainder of logged occupancy.
+# Earlier revisions split that remainder into guessed sub-bands; that produced
+# a KV band on Sparks, which hold no attention and no KV cache.
 BANDS = [
     ("Routed experts", "#4f8ef7"),
-    ("KV + attention state", "#74e4c4"),
-    ("Workspace + transport", "#b298ea"),
-    ("Runtime + headroom", "#f2b45c"),
+    ("Other resident", "#74e4c4"),
 ]
 FREE = "#1b2b42"
 CAPTION = [
-    "Full height is device memory; colour-coded bands are measured use and the space above them is free.",
-    "A dash is a configuration whose campaign has not run yet or whose profile is not implemented.",
+    "Full height is device memory; bands come from the runtime's startup logs and the space above them is free.",
+    "A dash is a measurement not yet taken; a blank bar is a device whose accounting is not logged yet.",
 ]
 
 # devices: (label, capacity_gb, {band: gb}); speeds: (label, code_tps, prefill_tps)
 CONFIGS = [
     dict(
-        title=["MXFP4 original", "1x RTX 6000 + 4x Spark"],
-        subtitle="full-width layers on the card",
-        devices=[
-            ("RTX0", 96, {"Routed experts": 72.2, "KV + attention state": 16.0,
-                          "Workspace + transport": 2.5, "Runtime + headroom": 2.4}),
-            ("Spark x4", 128, {"Routed experts": 7.3, "KV + attention state": 2.0,
-                               "Workspace + transport": 3.0, "Runtime + headroom": 1.0}),
-        ],
+        title=["Original / NVIDIA", "1x RTX 6000 + 4x Spark"],
+        subtitle="not yet measured",
+        devices=[("RTX0", 103, "96 GiB", {}), ("Spark x4", 128, "128 GB", {})],
         speeds=[("MXFP4", 130.4, 7824), ("NVFP4 W4A4", None, None)],
     ),
     dict(
-        title=["MXFP4 original", "2x RTX 6000 + 4x Spark"],
-        subtitle="20 TP2 layers on the cards",
+        title=["Original / NVIDIA", "2x RTX 6000 + 4x Spark"],
+        subtitle="NVFP4 startup logs",
         devices=[
-            ("RTX0", 96, {"Routed experts": 72.2, "KV + attention state": 17.5,
-                          "Workspace + transport": 2.0, "Runtime + headroom": 1.4}),
-            ("RTX1", 96, {"Routed experts": 72.2, "KV + attention state": 17.5,
-                          "Workspace + transport": 2.0, "Runtime + headroom": 1.4}),
-            ("Spark x4", 128, {"Routed experts": 19.4, "KV + attention state": 2.0,
-                               "Workspace + transport": 3.0, "Runtime + headroom": 1.0}),
+            # Logged for the W4A4 run: rank_peak_bytes 76.45 GB per card plus
+            # 19.6 GB of remaining occupancy; the Spark holds expert shards.
+            ("RTX0", 103, "96 GiB", {"Routed experts": 76.5, "Other resident": 19.6}),
+            ("RTX1", 103, "96 GiB", {"Routed experts": 76.5, "Other resident": 19.6}),
+            ("Spark x4", 128, "128 GB", {}),
         ],
         speeds=[("MXFP4", 155.7, 8355), ("NVFP4 W4A4", 109.2, 7432)],
     ),
     dict(
         title=["EXL3 2 bpw", "2x RTX 6000, no Spark"],
-        subtitle="all 40 layers resident",
+        subtitle="EXL3 startup logs",
         devices=[
-            ("RTX0", 96, {"Routed experts": 69.1, "KV + attention state": 17.0,
-                          "Workspace + transport": 3.0, "Runtime + headroom": 1.5}),
-            ("RTX1", 96, {"Routed experts": 69.1, "KV + attention state": 17.0,
-                          "Workspace + transport": 3.0, "Runtime + headroom": 1.5}),
+            ("RTX0", 103, "96 GiB", {"Routed experts": 69.1, "Other resident": 21.1}),
+            ("RTX1", 103, "96 GiB", {"Routed experts": 69.1, "Other resident": 21.1}),
         ],
         speeds=[("EXL3 2 bpw", 216.9, 5572)],
     ),
     dict(
         title=["EXL3 2 bpw", "1x RTX 5090 + 2x Spark"],
-        subtitle="32 GiB budget, degenerate",
-        devices=[
-            ("RTX0", 32, {"Routed experts": 12.0, "KV + attention state": 6.0,
-                          "Workspace + transport": 4.0, "Runtime + headroom": 3.0}),
-            ("Spark x2", 128, {"Routed experts": 52.0, "KV + attention state": 6.0,
-                               "Workspace + transport": 8.0, "Runtime + headroom": 4.0}),
-        ],
+        subtitle="profile not implemented",
+        devices=[("RTX0", 34, "32 GiB", {}), ("Spark x2", 128, "128 GB", {})],
         speeds=[("EXL3 2 bpw", None, None)],
     ),
 ]
@@ -91,7 +83,7 @@ CARD_TOP, CARD_BOTTOM = 168, 872
 BAR_TOP, BAR_AREA = 262, 452
 BAR_W, BAR_GAP = 62, 24
 MAX_DEVICE_GB = 128.0             # the tallest device fills BAR_AREA exactly
-LEGEND_X, LEGEND_STEP = 60, 318   # one full-width row: four items, nothing clips
+LEGEND_X, LEGEND_STEP = 60, 250   # one full-width row: two items
 
 
 def gb_to_px(gb):
@@ -168,12 +160,12 @@ def render():
         count = len(config["devices"])
         group = count * BAR_W + (count - 1) * BAR_GAP
         x = left + (panel_w - group) / 2
-        for label, total, bands in config["devices"]:
+        for label, total, capacity_text, bands in config["devices"]:
             lines.append(bar(x, total, bands))
             lines.append(f'<text x="{x + BAR_W / 2:.0f}" y="{BAR_TOP + BAR_AREA + 24}" '
                          f'class="device" text-anchor="middle">{label}</text>')
             lines.append(f'<text x="{x + BAR_W / 2:.0f}" y="{BAR_TOP + BAR_AREA + 41}" '
-                         f'class="sub" text-anchor="middle">{total} GB</text>')
+                         f'class="sub" text-anchor="middle">{capacity_text}</text>')
             x += BAR_W + BAR_GAP
         head = BAR_TOP + BAR_AREA + 74
         lines.append(f'<text x="{left + 16:.0f}" y="{head}" class="colhead">quant</text>')
@@ -210,7 +202,7 @@ def self_check(svg):
     stat_bottom = BAR_TOP + BAR_AREA + 74 + 24 + 23 * (rows - 1) + 8
     assert stat_bottom <= CARD_BOTTOM, f"stat block escapes its card ({stat_bottom} > {CARD_BOTTOM})"
     for config in CONFIGS:
-        for label, total, bands in config["devices"]:
+        for label, total, _text, bands in config["devices"]:
             used = sum(bands.get(name, 0.0) for name, _ in BANDS)
             assert used <= total + 0.01, f"{config['title'][0]}/{label} uses {used} > {total} GB"
     assert abs(gb_to_px(MAX_DEVICE_GB) - BAR_AREA) < 0.001, "tallest device must fill the bar area"
