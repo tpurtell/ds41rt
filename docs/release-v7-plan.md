@@ -482,6 +482,25 @@ Order that keeps the GPUs exclusive:
 Reference for how the previous release did this: `docs/release-v6-plan.md` and
 the v6 sections of `scripts/build-release-artifacts.sh`.
 
+### Reproducing the compact multi-turn issue
+
+The harness shells out to an external `tool-eval-bench` CLI, which accepts a
+scenario selector, so the failing case can be replayed on its own without a
+full 88-scenario run:
+
+  tool-eval-bench --model deepseek-ai/DeepSeek-V4.1-Flash --backend vllm \
+    --base-url http://127.0.0.1:8000 --api-key local --format openai \
+    --temperature 0 --hardmode --parallel 16 --timeout 900 --max-turns 12 \
+    --reference-date 2026-09-19 --no-live --no-probe-engine \
+    --scenarios TC-26 --label v7-exl3-compact-tc26 \
+    --json-file /tmp/tc26.json --output-dir /tmp/tc26-report
+
+Run it against the EXL3 compact profile to confirm the hang, then against the
+2x zero-Spark profile, which has a far larger KV pool. If compact hangs and 2x
+does not, the difference is the 2 GiB pool or the two-Spark TP2 path rather
+than the harness; if both hang, it is the scenario plus this model. Either
+result is actionable, and both are cheap compared with another full run.
+
 ### The TC-26 wedge is profile-specific, not a harness defect (correction)
 
 Earlier in this cycle I concluded the tool-evaluation wedge on TC-26 was
