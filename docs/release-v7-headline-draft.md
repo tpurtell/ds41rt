@@ -8,8 +8,8 @@ Tokens/s. `Δ` compares the two RTX cards with one for the official and NVFP4 qu
 | Measurement | Official 1x | Official 2x | Δ | NVFP4 1x | NVFP4 2x | Δ | EXL3 1x | EXL3 2x | Δ |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | Prefill | 7,824 | 8,355 | +6.8% | — | 7,432 | — | — | 5,572 | — |
-| Counting decode | 161.58 | 221.64 | +37.2% | 113.30 | 152.30 | +34.4% | — | 337.36 | — |
-| Weighted decode | 92.00 | 109.44 | +19.0% | 66.60 | 80.12 | +20.3% | — | 150.64 | — |
-| C1 code decode | 130.41 | 155.70 | +19.4% | 88.80 | 109.20 | +23.0% | — | 216.90 | — |
+| Counting decode | 161.58 | 221.64 | +37.2% | 113.30 | 152.30 | +34.4% | — | 337.40 | — |
+| Weighted decode | 92.00 | 109.44 | +19.0% | 66.60 | 80.12 | +20.3% | — | 145.10 | — |
+| C1 code decode | 130.41 | 155.70 | +19.4% | 88.80 | 109.20 | +23.0% | — | 222.10 | — |
 
 _EXL3 single-card cells and the NVFP4 single-card prefill are still open; they are marked — rather than estimated._
