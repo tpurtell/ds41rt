@@ -8,7 +8,7 @@ The historical official-image v6 campaign used an enforced **400 W power limit**
 
 ## Performance
 
-The official full checkpoint remains the default. Its measurements are the historical [v6 campaign](docs/release-v6-performance.md), **not re-campaigned for v7**. The new NVFP4 and EXL3 measurements use the v7 raw-result package; their reports below distinguish recorded controls from outstanding provenance and qualification.
+The official full checkpoint remains the default. Its measurements are the historical [v6 campaign](docs/release-v6-performance.md), **not re-campaigned for v7**, apart from a [v7 regression check](docs/release-v7-official-regression.md) that confirms the default path is unchanged: the published v7 images reproduce the v6 deployment geometry exactly and measure 1x C1 code decode at **134.38** against the recorded 130.41. The new NVFP4 and EXL3 measurements use the v7 raw-result package; their reports below distinguish recorded controls from outstanding provenance and qualification.
 
 The release protocol uses **400 W per RTX card and standard memory speed, without a memory overclock**. Reported throughput cells use three samples. Reasoning code uses high-effort thinking and counts reasoning plus final-answer tokens; other throughput cases disable thinking. The official v6 campaign kept the experimental TP2 switches off.
 
@@ -32,16 +32,21 @@ capacity, not its performance, and the change column is not isolated second-GPU
 scaling. Both EXL3 prefill campaigns completed all 30 cells. Decode completion
 checks passed **29/30 for EXL3 1x** and **28/30 for EXL3 2x**: the failed
 high-effort reasoning samples exhausted 4,096 output tokens with no final code;
-throughput includes them. See [compact setup and residency](docs/release-v7-exl3-compact.md)
+throughput includes them. Three completed high-effort tool-call evaluations of
+EXL3 1x scored **155/176, 160/176 and 157/176**; every scenario that did not
+fully pass is named in the [performance report](docs/release-v7-exl3-k2-performance.md),
+and no tool-call evaluation has completed for the other configurations.
+See [compact setup and residency](docs/release-v7-exl3-compact.md)
 and the [configuration accounting chart](docs/release-v7-configurations.svg).
 No physical RTX 5090 has been tested; the same-capability grid checks used RTX PRO 6000.
-V7 release Docker images have not been built or published; runtime evidence is WIP.
+V7 release images are published as `ghcr.io/tpurtell/ds41rt-coordinator:v7` and
+`ghcr.io/tpurtell/ds41rt-spark-expert:v7` ([digests](docs/release-v7-notes.md)).
 NVFP4 1x best prefill remains unmeasured after an interrupted campaign and is not estimated.
 
 **Official image only below.** Every remaining performance table in this section is
 preserved from v6, not re-measured for v7. Older official-reference, acceptance and
-tool-evaluation results retain their separately named historical campaigns; none
-qualifies either new quant.
+tool-evaluation results retain their separately named historical campaigns; apart
+from the EXL3 1x runs above, none qualifies either new quant.
 
 **Content-type decode.** Median tokens/s. Official Flash values are the historical one-shot reference, including its prior fable wording; they were not rerun.
 

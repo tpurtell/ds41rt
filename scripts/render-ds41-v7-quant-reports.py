@@ -55,7 +55,7 @@ QUANTS = {
 }
 
 PENDING_NVFP4 = ["1x and 2x completed tool-call evaluation runs"]
-PENDING_EXL3 = ["1x and 2x completed tool-call evaluation runs (an attempted compact run is not a published result)",
+PENDING_EXL3 = ["2x completed tool-call evaluation runs (1x compact carries three completed runs)",
                 "Reasoning-code completion qualification: failed samples remain disclosed, not counted as quality passes",
                 "RTX 5090 hardware performance (only same-capability grid checks on RTX PRO 6000, not physical RTX 5090 tests)"]
 PENDING_COMMON = [
