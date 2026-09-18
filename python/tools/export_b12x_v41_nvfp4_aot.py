@@ -90,7 +90,13 @@ STATUS_SLOT = STREAM_SLOT + 1
 LAUNCH_ARGUMENT_COUNT = len(BRIDGE_SLOTS) + SCALAR_SLOT_COUNT + 2
 
 
-def export(output: Path, role: str, rows: list[int], tile_m: int) -> None:
+def export(
+    output: Path,
+    role: str,
+    rows: list[int],
+    tile_m: int,
+    max_active_clusters: int | None = None,
+) -> None:
     import torch
     from b12x.moe.fused_moe import _impl as moe
     from b12x.moe.fused_moe._tuning import MoeDecodeConfig
@@ -281,7 +287,11 @@ def export(output: Path, role: str, rows: list[int], tile_m: int) -> None:
             packed.shape[1],
             core.dynamic_task_capacity,
             core.dynamic_physical_tiles,
-            clusters,
+            # The b12x runtime passes -1 when the decode policy leaves
+            # max_active_clusters unset (the kernel derives its cluster grid
+            # itself). Recording the compile-time cluster count here instead
+            # makes the engine's launch fail with cudaErrorInvalidValue.
+            -1 if max_active_clusters is None else max_active_clusters,
             1,  # input_dtype: BF16 hidden rows
         ]
         prefix = "_mlir_" + symbol
@@ -309,7 +319,8 @@ def export(output: Path, role: str, rows: list[int], tile_m: int) -> None:
                 "rows_padded": packed.shape[1],
                 "task_capacity": core.dynamic_task_capacity,
                 "physical_tiles": core.dynamic_physical_tiles,
-                "max_active_clusters": clusters,
+                "max_active_clusters": -1 if max_active_clusters is None else max_active_clusters,
+                "compile_time_clusters": clusters,
                 "core_scratch_nbytes": scratch_bytes,
                 "scratch": scratch,
                 "scratch_pointer_offsets": offsets,
@@ -343,9 +354,15 @@ def main() -> None:
     parser.add_argument("--role", choices=tuple(ROLES), required=True)
     parser.add_argument("--rows", default=",".join(str(row) for row in DEFAULT_ROWS))
     parser.add_argument("--tile-m", type=int, default=16)
+    parser.add_argument(
+        "--max-active-clusters",
+        type=int,
+        default=None,
+        help="launch policy cluster cap; unset matches the runtime default (-1)",
+    )
     args = parser.parse_args()
     rows = [int(value) for value in args.rows.split(",") if value]
-    export(args.output_dir, args.role, rows, args.tile_m)
+    export(args.output_dir, args.role, rows, args.tile_m, args.max_active_clusters)
 
 
 if __name__ == "__main__":
