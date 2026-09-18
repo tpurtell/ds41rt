@@ -415,14 +415,26 @@ re-run for the 1x best-prefill cell, which stays a dash until then.
 
 ### Tool-call evaluation notes (round 27)
 
-The EXL3 compact qualification run is in progress. Observable behaviour worth
-recording: scenario TC-26 ("State Consistency (Multi-Turn)") produced no log
-output for over thirteen minutes while the service kept answering ordinary
-requests, so the harness's 900 s per-request timeout is what will close it.
-TC-26 is the first multi-turn scenario in the set, so if it recurs across runs
-it is worth checking whether the compact profile's shorter KV pool (2 GiB) is
-truncating a long multi-turn chain rather than the harness stalling. Scenarios
-1-25 completed with recorded passes.
+The EXL3 compact qualification run stalled on scenario TC-26 ("State
+Consistency (Multi-Turn)") and did not advance for thirteen minutes: only ten
+`scenario_result` events are in the run log and its last write was at 03:55:32
+while the process stayed alive and the endpoint kept answering `/v1/models`.
+The harness's 900 s per-request timeout is what will close it, so the run will
+eventually continue; it is not deadlocked at the process level.
+
+Server side at that moment, from the coordinator's own startup and residency
+line: `device_occupied_bytes=30,430,986,240` of `device_budget_bytes=34,359,738,368`
+(28.3 of 32 GiB) with `runtime_headroom_bytes=2,147,483,648`, `rtx_layers=1`,
+`remote_dispatch_layers=39`, `spark_world=2`. That is exactly the designed
+compact budget, and no error or admission failure accompanies the stall, so
+the profile was not out of memory or refusing work.
+
+Decisive next step (not yet done): replay TC-26 against the compact profile on
+its own and see whether it hangs reproducibly, and whether the same scenario
+passes on the 2x zero-Spark profile where the KV pool is far larger. That
+separates "multi-turn handling is broken under a 2 GiB pool" from "the harness
+wedged on one request". Until then the compact profile's quality result is
+incomplete rather than failed.
 
 Remaining sequence once the evaluation and the missing measurements are done,
 in the order that keeps the GPUs free when they are needed:
