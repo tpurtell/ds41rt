@@ -1319,6 +1319,14 @@ type CudaB12xQuantizeBf16Nvfp4RowPayloadAsyncFn = unsafe extern "C" fn(
     hidden_dim: usize,
     cuda_stream: *mut c_void,
 ) -> Ds41rtStatus;
+
+type CudaNvfp4SwizzleScaleAsyncFn = unsafe extern "C" fn(
+    Ds41rtDeviceBuffer,
+    Ds41rtDeviceBuffer,
+    usize,
+    usize,
+    *mut c_void,
+) -> Ds41rtStatus;
 type CudaB12xW4a16PackWeightAsyncFn = unsafe extern "C" fn(
     source: Ds41rtDeviceBuffer,
     destination: Ds41rtDeviceBuffer,
@@ -7076,6 +7084,22 @@ impl NativeLibrary {
             "ds41rt_cuda_b12x_quantize_bf16_nvfp4_row_payload_async",
             status,
         )
+    }
+
+    /// Re-swizzle one plain [rows, cols] E4M3 NVFP4 block-scale plane into the
+    /// 128x4 scale-factor atom layout the block-scaled MoE kernels consume.
+    pub unsafe fn cuda_nvfp4_swizzle_scale_async(
+        &self,
+        source: Ds41rtDeviceBuffer,
+        destination: Ds41rtDeviceBuffer,
+        rows: usize,
+        cols: usize,
+        cuda_stream: *mut c_void,
+    ) -> Result<()> {
+        let kernel_fn: Symbol<CudaNvfp4SwizzleScaleAsyncFn> =
+            unsafe { self.lib.get(b"ds41rt_cuda_nvfp4_swizzle_scale_async")? };
+        let status = unsafe { kernel_fn(source, destination, rows, cols, cuda_stream) };
+        self.status_to_result("ds41rt_cuda_nvfp4_swizzle_scale_async", status)
     }
 
     pub unsafe fn cuda_b12x_w4a16_pack_weight_async(

@@ -847,6 +847,11 @@ ds41rt_status_t ds41rt_cuda_b12x_w4a16_pack_weight_strided_async(
     ds41rt_device_buffer_t source, ds41rt_device_buffer_t destination, size_t size_k,
     size_t source_size_k, size_t source_start_k, size_t size_n,
     size_t row_rotation, void* cuda_stream);
+/* Re-swizzle a plain [rows, cols] E4M3 block-scale plane into the NVFP4
+   128x4 scale-factor atom layout the block-scaled MoE kernels consume. */
+ds41rt_status_t ds41rt_cuda_nvfp4_swizzle_scale_async(
+    ds41rt_device_buffer_t source, ds41rt_device_buffer_t destination, size_t rows,
+    size_t cols, void* cuda_stream);
 ds41rt_status_t ds41rt_cuda_b12x_w4a16_pack_scale_async(
     ds41rt_device_buffer_t source, ds41rt_device_buffer_t destination, size_t size_k,
     size_t size_n, size_t row_rotation, float scale_factor, void* cuda_stream);

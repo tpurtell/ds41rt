@@ -1,7 +1,8 @@
 //! Bounded ModelOpt NVFP4 routed-expert reads in the device packer's order.
 //!
-//! The pack step consumes `[w1;w3]` weights and scales as two contiguous
-//! matrices, so W1/W3 and their scale planes are staged adjacently. The six
+//! The pack step consumes the fused FC1 payload and scale plane as the
+//! contiguous `[up(w3); gate(w1)]` pair, so W3/W1 and their scale planes are
+//! staged adjacently in that order. The six
 //! per-tensor FP32 scalars (global weight scale and activation scale for each
 //! projection) are replicated to every TP rank and staged after the planes.
 use crate::OfficialV41Catalog;
@@ -77,13 +78,17 @@ impl OfficialV41Catalog {
             _ => anyhow::bail!("NVFP4 staging covers backbone experts only"),
         };
         let hidden = config.hidden_size;
-        // Order: W1, W3, W2, S1, S3, S2, then the six scalars.
+        // Order: W3(up), W1(gate), W2, S3, S1, S2, then the six scalars.
+        // The b12x nvfp4 kernel consumes the fused FC1 payload as
+        // [up(w3); gate(w1)] and swizzles the concatenated scale plane, so
+        // staging the pairs adjacently lets each H2D land a whole expert
+        // plane without a repack.
         let names = [
-            format!("{prefix}.w1.weight"),
             format!("{prefix}.w3.weight"),
+            format!("{prefix}.w1.weight"),
             format!("{prefix}.w2.weight"),
-            format!("{prefix}.w1.weight_scale"),
             format!("{prefix}.w3.weight_scale"),
+            format!("{prefix}.w1.weight_scale"),
             format!("{prefix}.w2.weight_scale"),
             format!("{prefix}.w1.weight_scale_2"),
             format!("{prefix}.w3.weight_scale_2"),
@@ -178,8 +183,8 @@ impl V41Nvfp4Staging<'_> {
     pub fn tensor_names(&self) -> &[String; V41_NVFP4_STAGING_SLOTS] {
         &self.names
     }
-    /// True when staging W1 and W3 are adjacent, so the pack can consume the
-    /// pair as one `[2*intermediate, hidden/2]` source matrix.
+    /// True when staging W3(up) and W1(gate) are adjacent, so the pair is
+    /// one contiguous `[2*intermediate, ...]` kernel-native FC1 plane.
     pub fn w13_contiguous(&self) -> bool {
         self.w13_contiguous
     }
@@ -283,10 +288,10 @@ mod tests {
             V41ExpertSelection::BackboneTp2 { layer: 20, expert: 100, rank: 1 },
         ] {
             let staging = catalog.nvfp4_expert_staging(selection).unwrap();
-            assert!(staging.w13_contiguous(), "W1/W3 must be adjacent");
+            assert!(staging.w13_contiguous(), "W3/W1 must be adjacent");
             assert!(
                 staging.weight_scale13_contiguous(),
-                "W1/W3 scales must be adjacent"
+                "W3/W1 scales must be adjacent"
             );
             let mut bytes = vec![0u8; staging.staging_bytes()];
             let mut scratch = vec![0u8; staging.minimum_read_scratch_bytes()];
