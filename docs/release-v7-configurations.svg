@@ -95,21 +95,29 @@ text{font-family:Arial,Helvetica,sans-serif;fill:#e4ecf8}
 <rect x="711" y="168" width="314" height="704" rx="11" fill="#0e1c2f" stroke="#35506c" stroke-width="1.4"/>
 <text x="727" y="198" class="panel">EXL3 2 bpw</text>
 <text x="727" y="219" class="panel">2x RTX 6000, no Spark</text>
-<text x="727" y="242" class="sub">EXL3 logs: no finer split</text>
+<text x="727" y="242" class="sub">all 40 layers resident</text>
 <rect x="793.8" y="343.9" width="62" height="354.1" rx="5" fill="#1b2b42" stroke="#35506c" stroke-width="1.6"/>
 <rect x="793.8" y="460.5" width="62" height="237.5" fill="#4f8ef7"/>
 <text x="825" y="584" class="band" text-anchor="middle">69.1</text>
-<rect x="793.8" y="387.9" width="62" height="72.5" fill="#f2b45c"/>
-<text x="825" y="429" class="band" text-anchor="middle">21.1</text>
+<rect x="793.8" y="433.4" width="62" height="27.1" fill="#74e4c4"/>
+<text x="825" y="452" class="band" text-anchor="middle">7.9</text>
+<rect x="793.8" y="424.4" width="62" height="9.0" fill="#b298ea"/>
+<rect x="793.8" y="389.3" width="62" height="35.1" fill="#f2b45c"/>
+<text x="825" y="412" class="band" text-anchor="middle">10.2</text>
 <text x="825" y="722" class="device" text-anchor="middle">RTX0</text>
 <text x="825" y="739" class="sub" text-anchor="middle">96 GiB</text>
+<text x="825" y="753" class="detail" text-anchor="middle">KV 7.88</text>
 <rect x="879.8" y="343.9" width="62" height="354.1" rx="5" fill="#1b2b42" stroke="#35506c" stroke-width="1.6"/>
 <rect x="879.8" y="460.5" width="62" height="237.5" fill="#4f8ef7"/>
 <text x="911" y="584" class="band" text-anchor="middle">69.1</text>
-<rect x="879.8" y="387.9" width="62" height="72.5" fill="#f2b45c"/>
-<text x="911" y="429" class="band" text-anchor="middle">21.1</text>
+<rect x="879.8" y="442.4" width="62" height="18.1" fill="#74e4c4"/>
+<text x="911" y="456" class="band" text-anchor="middle">5.3</text>
+<rect x="879.8" y="432.5" width="62" height="9.9" fill="#b298ea"/>
+<rect x="879.8" y="378.2" width="62" height="54.3" fill="#f2b45c"/>
+<text x="911" y="410" class="band" text-anchor="middle">15.8</text>
 <text x="911" y="722" class="device" text-anchor="middle">RTX1</text>
 <text x="911" y="739" class="sub" text-anchor="middle">96 GiB</text>
+<text x="911" y="753" class="detail" text-anchor="middle">KV 5.26</text>
 <text x="727" y="780" class="colhead">quant</text>
 <text x="908" y="780" class="colhead" text-anchor="end">code</text>
 <text x="1004" y="780" class="colhead" text-anchor="end">prefill</text>

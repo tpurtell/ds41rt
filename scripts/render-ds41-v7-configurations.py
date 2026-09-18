@@ -75,10 +75,16 @@ CONFIGS = [
     ),
     dict(
         title=["EXL3 2 bpw", "2x RTX 6000, no Spark"],
-        subtitle="EXL3 logs: no finer split",
+        subtitle="all 40 layers resident",
         devices=[
-            ("RTX0", 103, "96 GiB", {"Routed experts": 69.1, "Attention, shared, runtime": 21.1}),
-            ("RTX1", 103, "96 GiB", {"Routed experts": 69.1, "Attention, shared, runtime": 21.1}),
+            # Logged per card: rank peak 69.1 GB, cache 7.88/5.26 GB, transport
+            # 2.62/2.87 GB, occupancy 89.75/93.02 GB.
+            ("RTX0", 103, "96 GiB", {"Routed experts": 69.1, "KV cache": 7.88,
+                                     "Transport + workspace": 2.62,
+                                     "Attention, shared, runtime": 10.2}),
+            ("RTX1", 103, "96 GiB", {"Routed experts": 69.1, "KV cache": 5.26,
+                                     "Transport + workspace": 2.87,
+                                     "Attention, shared, runtime": 15.8}),
         ],
         speeds=[("EXL3 2 bpw", 216.9, 5572)],
     ),
