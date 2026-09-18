@@ -96,7 +96,19 @@ one headline table per checkpoint linking to full per-checkpoint reports.
   routing; uniform runs as two-tier with an empty adjacent tier.
   **Verdict: keep the mixed projection kernel with tiers (2,3); the empty
   tier is near-free and bitwise-qualified. A homogeneous fixed-K2 export
-  needs a new FFI bridge; treat as optional unmeasured follow-up.**
+  needs a new FFI bridge; evaluate with a kernel-level A/B benchmark at DS4
+  shapes before deciding (user asked to check the single-bit trellis kernel;
+  it exists in sparkinfer but may no longer be superior after all the mixed
+  kernel optimization).**
+- **Two-family shipping (user requirement):** K3.25 (3;4) support must not
+  break even though the staged model is no longer downloaded (no runtime
+  verification possible - compile-time cleanliness only). v7 builds ship
+  BOTH families as sibling package dirs `exl3-k23/` and `exl3-k34/`; a
+  daemon resolver picks the family whose manifest bits equal the checkpoint
+  decoder tiers, falling back to the legacy single `exl3/` dir (v5/v6
+  images keep working). run.sh package identity covers both manifests.
+- **Dev loop:** manual `serve-native`/`expertd-native` (RoCE) launches from
+  WIP containers; the legacy pure-TCP real-full path is not used.
 - AOT packaging: `package_v41_exl3_aot.py` + `native/cmake/v41_exl3.cmake`;
   capacities 1/16/80/256/1024/4096; spark tp4-rank0..3 (width 640/640/512/512,
   BF16), coordinator rtx-tp1 (2304, FP32), rtx-tp2 (1152, FP32), dspark

@@ -13,7 +13,9 @@ else()
   message(FATAL_ERROR "EXL3 AOT requires a single native SM120 or SM121 target")
 endif()
 set(DS41RT_V41_EXL3_CAPACITIES "1;16;80;256;1024;4096" CACHE STRING "EXL3 batch capacities to package")
-set(DS41RT_V41_EXL3_BITS "3;4" CACHE STRING "EXL3 decoder tiers for the packaged checkpoint family")
+# V7 targets the uniform K=2 raw publication family (resident tiers [2,3]).
+# The staged K3.25 family needs -DDS41RT_V41_EXL3_BITS="3;4".
+set(DS41RT_V41_EXL3_BITS "2;3" CACHE STRING "EXL3 decoder tiers for the packaged checkpoint family")
 option(DS41RT_V41_EXL3_PAIRED_TP4 "Build paired H128 ownership modules for Spark TP4" OFF)
 set(DS41RT_V41_EXL3_RESIDENCY "" CACHE STRING "Explicit paired EXL3 capacity=blocks/SM overrides (for example 80=2)")
 set(DS41RT_EXL3_LAYOUT_ARGS)
