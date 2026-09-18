@@ -445,11 +445,20 @@ The coordinator image builds and verifies (`ghcr.io/tpurtell/ds41rt-coordinator:
 
 `python/tools/package_v41_exl3_aot.py` verify compares the digest of the
 image's installed `libcute_dsl_runtime.so` against `manifest['runtime']`
-recorded when the EXL3 package was exported. The expert artifacts were built
-inside ostrich's WIP container, whose CuTe runtime is not the one the release
-image ships, so every EXL3 family in that set is rejected - correctly, because
-a kernel built against a different CuTe runtime is not the artifact the image
-claims to contain.
+recorded when the EXL3 package was exported.
+
+The cause is **architecture, not version**: both containers carry
+nvidia-cutlass-dsl 4.6.2, but the runtime library differs by target -
+
+  release image (x86_64) 035a7e4cb4901cbf22aeba0af9682b23da4d30a46ba564f9affbb01a448d2b50
+  ostrich (aarch64)      95e2fc4718588ef646f0fa3cb645ec9b42fdbff6d7c362ddce8c44e7ea465479  = the digest the expert packages recorded
+
+I built the expert image on this x86_64 host from an x86_64 base, so its
+runtime cannot match AArch64-built kernels. The expert image is for the
+Sparks and must be **built on the AArch64 host** (ostrich) from an AArch64
+base image, which is also what the release normally does. Every EXL3 family in
+the cross-built set is rejected correctly: a kernel built against a different
+target runtime is not the artifact the image claims to contain.
 
 The fix is to build the expert role inside the release runtime rather than the
 WIP container: run `scripts/build-release-artifacts.sh` on the SM121 host from
