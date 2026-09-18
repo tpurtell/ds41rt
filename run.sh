@@ -104,12 +104,13 @@ model_is_exl3="$(jq -r '.quantization_config.quant_method == "exl3"' "$hf_home/$
 # for both raw integer-bit publications and staged fractional-bit snapshots.
 exl3_family_tag=""
 if [[ "$model_is_exl3" == true ]]; then
-  exl3_bits="$(jq -er '.bits' "$hf_home/$snapshot_rel/quantize_config.json" 2>/dev/null || jq -er '.quantization_config.bits' "$hf_home/$snapshot_rel/config.json")" ||
-    release_die "EXL3 checkpoint has no readable quantization bits"
-  [[ "$exl3_bits" =~ ^[0-9]+(\.[0-9]+)?$ ]] ||
-    release_die "EXL3 checkpoint quantization bits '$exl3_bits' is not numeric"
-  exl3_family_base="${exl3_bits%%.*}"
-  exl3_family_tag="k${exl3_family_base}$((exl3_family_base + 1))"
+  # Family resolution is best-effort: without readable bits the remote
+  # manifest read falls back to the legacy single-package location.
+  exl3_bits="$(jq -er '.bits' "$hf_home/$snapshot_rel/quantize_config.json" 2>/dev/null || jq -er '.quantization_config.bits' "$hf_home/$snapshot_rel/config.json" 2>/dev/null || true)"
+  if [[ "$exl3_bits" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+    exl3_family_base="${exl3_bits%%.*}"
+    exl3_family_tag="k${exl3_family_base}$((exl3_family_base + 1))"
+  fi
 fi
 coordinator="$RELEASE_COORDINATOR_CONTAINER_NAME"
 [[ "$TP2_DSPARK_EXPERTS" != on || "$DSPARK" == on ]] || release_die "TP2_DSPARK_EXPERTS requires dSpark"
@@ -123,6 +124,16 @@ if ((restart)) && docker container inspect "$coordinator" >/dev/null 2>&1; then
 fi
 minimum_expert_layers=1
 [[ "$RTX_EXPERT_LAYERS" == auto || "$RTX_EXPERT_LAYERS" == 0 ]] || minimum_expert_layers="$RTX_EXPERT_LAYERS"
+expert_format=native
+if [[ "$model_is_exl3" == true ]]; then
+  case "$exl3_family_tag" in
+    k23) expert_format=exl3-k23 ;;
+    k34) expert_format=exl3-k34 ;;
+    # Unresolvable families keep the conservative native constants; the
+    # dual fit model is only exercised for two-RTX launches.
+    *) expert_format=native ;;
+  esac
+fi
 gpu_selection="$(python3 "$repo_root/scripts/select-release-gpus.py" \
   --mode "$RTX_GPUS" \
   --minimum-expert-layers "$minimum_expert_layers" \
@@ -132,6 +143,7 @@ gpu_selection="$(python3 "$repo_root/scripts/select-release-gpus.py" \
   --retained-turns "$PREFIX_CACHE_ENTRIES" \
   --kv-pool-size "$KV_POOL_SIZE" \
   --memory-reservation "$MEMORY_RESERVATION" \
+  --expert-format "$expert_format" \
   "${reclaim_args[@]}")"
 RELEASE_RTX_GPUS="$(jq -r '.count' <<<"$gpu_selection")"
 if release_tp2_enabled; then
@@ -157,8 +169,12 @@ image_sparkinfer="$(docker image inspect -f '{{index .Config.Labels "io.ds41rt.s
 [[ -n "$engine_commit" && "$engine_commit" != '<no value>' ]] || release_die "coordinator image has no engine revision"
 [[ "$image_sparkinfer" == "$sparkinfer_commit" ]] || release_die "coordinator image uses another SparkInfer revision (run ./build.sh)"
 
-hosts=("$SPARK_0_HOST" "$SPARK_1_HOST" "$SPARK_2_HOST" "$SPARK_3_HOST")
-lanes=("$SPARK_0_LANE_A" "$SPARK_1_LANE_A" "$SPARK_2_LANE_A" "$SPARK_3_LANE_A")
+hosts=()
+lanes=()
+if ((SPARK_COUNT > 0)); then
+  hosts=("$SPARK_0_HOST" "$SPARK_1_HOST" "$SPARK_2_HOST" "$SPARK_3_HOST")
+  lanes=("$SPARK_0_LANE_A" "$SPARK_1_LANE_A" "$SPARK_2_LANE_A" "$SPARK_3_LANE_A")
+fi
 spark_exl3_identity=""
 for host in "${hosts[@]}"; do
   spark_manifest="$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" bash -s -- "$SPARK_EXPERT_DOCKER_INFERENCE" "$engine_commit" "$sparkinfer_commit" "$snapshot_rel" "$model_is_exl3" "$exl3_family_tag" <<'REMOTE'
@@ -189,7 +205,13 @@ if ((PREFILL_BATCH_TOKENS <= 80)); then expert_capacity=80
 elif ((PREFILL_BATCH_TOKENS <= 256)); then expert_capacity=256
 elif ((PREFILL_BATCH_TOKENS <= 1024)); then expert_capacity=1024
 fi
-peers="${lanes[0]}:$EXPERT_PORT,${lanes[1]}:$EXPERT_PORT,${lanes[2]}:$EXPERT_PORT,${lanes[3]}:$EXPERT_PORT"
+# Zero-Spark deployments hold every routed layer on the RTX pair; the daemon
+# still requires four peer addresses but never connects to them.
+if ((SPARK_COUNT == 0)); then
+  peers="127.0.0.1:1,127.0.0.1:2,127.0.0.1:3,127.0.0.1:4"
+else
+  peers="${lanes[0]}:$EXPERT_PORT,${lanes[1]}:$EXPERT_PORT,${lanes[2]}:$EXPERT_PORT,${lanes[3]}:$EXPERT_PORT"
+fi
 fingerprint="$(printf '%s\n' "$engine_commit" "$RELEASE_MODEL_ID" "$RELEASE_MODEL_REVISION" "$ADDR" "$RELEASE_RTX_GPUS" "$gpu_uuid_csv" "$gpu_pci_csv" "$CONCURRENCY" "${HTTP_QUEUE_DEPTH:-$CONCURRENCY}" "$HTTP_QUEUE_WAIT_MS" "$HOST_CACHE_BYTES" "$RTX_EXPERT_LAYERS" "$KV_POOL_SIZE" "$MEMORY_RESERVATION" "$PREFIX_CACHE_ENTRIES" "$MAX_CONTEXT_TOKENS" "$MAX_OUTPUT_TOKENS" "$PREFILL_BATCH_TOKENS" "$DSPARK" "$TP2_ATTENTION" "$TP2_QUERY_PROJECTION" "$TP2_OUTPUT_PROJECTION" "$TP2_DSPARK_EXPERTS" "$SPARK_DEVICE_BUDGET_BYTES" "$spark_first_layer" "$peers" "$spark_exl3_identity" | sha256sum | awk '{print $1}')"
 spark_prefix="$RELEASE_SPARK_CONTAINER_PREFIX"
 
@@ -206,7 +228,7 @@ if ((restart)); then
   release_stop_services "$coordinator" "$spark_prefix"
 else
   docker inspect "$coordinator" >/dev/null 2>&1 && release_die "$coordinator already exists; use --restart"
-  for i in 0 1 2 3; do
+  for i in "${!hosts[@]}"; do
     remote="${spark_prefix}-${hosts[$i]}-${EXPERT_PORT}"
     ssh -o BatchMode=yes "${hosts[$i]}" "! docker inspect '$remote' >/dev/null 2>&1" || release_die "$remote already exists; use --restart"
   done
@@ -214,7 +236,7 @@ fi
 
 ss -ltn "sport = :${ADDR##*:}" 2>/dev/null | tail -n +2 | grep -q . &&
   release_die "API port ${ADDR##*:} is already in use"
-for i in 0 1 2 3; do
+for i in "${!hosts[@]}"; do
   ssh -o BatchMode=yes "${hosts[$i]}" \
     "! ss -ltn 'sport = :$EXPERT_PORT' 2>/dev/null | tail -n +2 | grep -q ." ||
     release_die "${hosts[$i]}:$EXPERT_PORT is already in use; stop the development worker first"
@@ -222,7 +244,7 @@ done
 
 cleanup() {
   docker rm -f "$coordinator" >/dev/null 2>&1 || true
-  for i in 0 1 2 3; do ssh -o BatchMode=yes "${hosts[$i]}" "docker rm -f '${spark_prefix}-${hosts[$i]}-${EXPERT_PORT}' >/dev/null 2>&1 || true" || true; done
+  for i in "${!hosts[@]}"; do ssh -o BatchMode=yes "${hosts[$i]}" "docker rm -f '${spark_prefix}-${hosts[$i]}-${EXPERT_PORT}' >/dev/null 2>&1 || true" || true; done
 }
 trap cleanup EXIT
 
@@ -268,7 +290,7 @@ fi
 
 echo "== starting native Spark experts =="
 pids=()
-for i in 0 1 2 3; do
+for i in "${!hosts[@]}"; do
   host="${hosts[$i]}"; remote="${spark_prefix}-${host}-${EXPERT_PORT}"
   ssh -o BatchMode=yes "$host" bash -s -- "$SPARK_EXPERT_DOCKER_INFERENCE" "$remote" "$i" "$expert_capacity" "$SPARK_DEVICE_BUDGET_BYTES" "$EXPERT_PORT" "$snapshot_rel" "$fingerprint" "$spark_first_layer" <<'REMOTE' &
 set -euo pipefail
@@ -280,7 +302,7 @@ REMOTE
 done
 for pid in "${pids[@]}"; do wait "$pid"; done
 
-for i in 0 1 2 3; do
+for i in "${!hosts[@]}"; do
   host="${hosts[$i]}"; remote="${spark_prefix}-${host}-${EXPERT_PORT}"
   until ssh -o BatchMode=yes "$host" "test \"\$(docker inspect -f '{{.State.Status}}' '$remote' 2>/dev/null)\" = running && timeout 1 bash -c '</dev/tcp/127.0.0.1/$EXPERT_PORT'" 2>/dev/null; do
     ((SECONDS < deadline)) || { ssh "$host" "docker logs --tail 100 '$remote'" >&2 || true; release_die "$host native expert did not become ready"; }

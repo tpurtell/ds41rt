@@ -33,11 +33,19 @@ if tool == 'docker':
                   else os.environ['MOCK_REVISION'])
         sys.exit(0)
     if args[:1] == ['run'] and '--entrypoint' in args:
-        assert args[args.index('--entrypoint') + 1] == '/bin/cat'
+        entry = args[args.index('--entrypoint') + 1]
         assert '--gpus' not in args and '--network' in args
-        assert args[-1] == '/opt/ds41rt/lib/exl3/manifest.json'
+        if entry == '/bin/cat':
+            # Legacy single-family image: read the package manifest directly.
+            assert args[-1] == '/opt/ds41rt/lib/exl3/manifest.json'
+        else:
+            # Multi-family image: a shell probes the tier family first and
+            # falls back to the legacy package manifest.
+            assert entry == '/bin/sh'
+            script = args[args.index('-c') + 1]
+            assert 'exl3' in script and 'manifest.json' in script and 'cat' in script
         paired = os.environ['MOCK_LAYOUT'] == 'paired'
-        if os.environ.get('MOCK_MISMATCH') == os.environ.get('MOCK_HOST'): paired = not paired
+        if os.environ.get('MOCK_MISMATCH') == os.environ['MOCK_HOST']: paired = not paired
         print(json.dumps(dict(schema='ds41rt.exl3-package.v1', role='spark',
                               sparkinfer_revision=os.environ['MOCK_REVISION'], paired_tp4=paired)))
         sys.exit(0)

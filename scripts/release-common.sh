@@ -85,7 +85,7 @@ release_trim() {
 release_known_key() {
   case "$1" in
     EXL3_PAIRED_TP4|TP2_ATTENTION|TP2_QUERY_PROJECTION|TP2_OUTPUT_PROJECTION|TP2_DSPARK_EXPERTS) return 0 ;;
-    HTTP_QUEUE_DEPTH|HTTP_QUEUE_WAIT_MS|MODEL_ID|MODEL_VARIANT|MODEL_REVISION|EXPERT_FORMAT|DSPARK|DSPARK_DRAFT_POLICY|RTX_GPUS|RTX_EXPERT_LAYERS|COORDINATOR_GPU|COORDINATOR_GPU_UUID|COORDINATOR_GPU_PCI_BUS_ID|COORDINATOR_GPU_HEADROOM_GIB|KV_POOL_TOKENS|KV_POOL_SIZE|HOST_CACHE_BYTES|MEMORY_RESERVATION|MAX_CONTEXT_TOKENS|MAX_OUTPUT_TOKENS|CONCURRENCY|PREFIX_CACHE_ENTRIES|PREFILL_BATCH_TOKENS|SPARK_DEVICE_BUDGET_BYTES|SPARK_REDUCTION_MIN_ROWS|SPARKINFER_EXL3|ADDR|EXPERT_PORT|SPARK_[0-3]_HOST|SPARK_[0-3]_LANE_A|SPARK_[0-3]_LANE_B|COORDINATOR_DOCKER_DEV|COORDINATOR_DOCKER_INFERENCE|SPARK_EXPERT_DOCKER_DEV|SPARK_EXPERT_DOCKER_INFERENCE)
+    HTTP_QUEUE_DEPTH|HTTP_QUEUE_WAIT_MS|MODEL_ID|MODEL_VARIANT|MODEL_REVISION|EXPERT_FORMAT|DSPARK|DSPARK_DRAFT_POLICY|RTX_GPUS|RTX_EXPERT_LAYERS|COORDINATOR_GPU|COORDINATOR_GPU_UUID|COORDINATOR_GPU_PCI_BUS_ID|COORDINATOR_GPU_HEADROOM_GIB|KV_POOL_TOKENS|KV_POOL_SIZE|HOST_CACHE_BYTES|MEMORY_RESERVATION|MAX_CONTEXT_TOKENS|MAX_OUTPUT_TOKENS|CONCURRENCY|PREFIX_CACHE_ENTRIES|PREFILL_BATCH_TOKENS|SPARK_DEVICE_BUDGET_BYTES|SPARK_REDUCTION_MIN_ROWS|SPARKINFER_EXL3|SPARK_COUNT|ADDR|EXPERT_PORT|SPARK_[0-3]_HOST|SPARK_[0-3]_LANE_A|SPARK_[0-3]_LANE_B|COORDINATOR_DOCKER_DEV|COORDINATOR_DOCKER_INFERENCE|SPARK_EXPERT_DOCKER_DEV|SPARK_EXPERT_DOCKER_INFERENCE)
       return 0
       ;;
     *)
@@ -130,6 +130,7 @@ release_load_config() {
   SPARK_REDUCTION_MIN_ROWS=16
   SPARKINFER_EXL3=disable
   EXL3_PAIRED_TP4=off
+  SPARK_COUNT=4
   ADDR=0.0.0.0:8000
   EXPERT_PORT=19441
   COORDINATOR_DOCKER_DEV=ds41rt-coordinator-dev
@@ -235,13 +236,25 @@ release_load_config() {
 
   release_validate_tp2_options
 
-  local missing_b=0 present_b=0
+  case "$SPARK_COUNT" in
+    0)
+      [[ "$RTX_EXPERT_LAYERS" == 40 ]] || release_die "SPARK_COUNT=0 requires RTX_EXPERT_LAYERS=40 (every routed layer must fit the RTX layout)"
+      [[ "$RTX_GPUS" != 1 ]] || release_die "SPARK_COUNT=0 requires two RTX GPUs"
+      ;;
+    4) ;;
+    *) release_die "SPARK_COUNT must be 0 or 4 (2-Spark TP2 support is not implemented)" ;;
+  esac
+
+  local missing_b=0 present_b=0 spark_required=4
+  ((SPARK_COUNT == 0)) && spark_required=0
   for release_i in 0 1 2 3; do
     local host_name="SPARK_${release_i}_HOST"
     local lane_a_name="SPARK_${release_i}_LANE_A"
     local lane_b_name="SPARK_${release_i}_LANE_B"
-    [[ -n "${!host_name}" ]] || release_die "$host_name must not be empty"
-    [[ "${!lane_a_name}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || release_die "$lane_a_name must be an IPv4 address"
+    if ((release_i < spark_required)); then
+      [[ -n "${!host_name}" ]] || release_die "$host_name must not be empty"
+      [[ "${!lane_a_name}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || release_die "$lane_a_name must be an IPv4 address"
+    fi
     if [[ -n "${!lane_b_name}" ]]; then
       ((present_b += 1))
     else
@@ -404,6 +417,7 @@ release_stop_services() {
   local -a stop_hosts=()
   local -a stop_pids=()
   for host in "$SPARK_0_HOST" "$SPARK_1_HOST" "$SPARK_2_HOST" "$SPARK_3_HOST"; do
+    [[ -n "$host" ]] || continue
     release_container="${spark_container_prefix}-${host}-${EXPERT_PORT}"
     legacy_container="ds41rt-phase0-tcp-expertd-${host}-${EXPERT_PORT}"
     release_stop_remote_containers \
@@ -463,6 +477,7 @@ release_stop_wip_containers() {
   local host
   local -a hosts=() pids=()
   for host in "$SPARK_0_HOST" "$SPARK_1_HOST" "$SPARK_2_HOST" "$SPARK_3_HOST"; do
+    [[ -n "$host" ]] || continue
     release_stop_persistent_remote_container "$host" "$spark_container" &
     hosts+=("$host")
     pids+=("$!")
@@ -530,6 +545,7 @@ release_stop_wip_services() {
   local host
   local -a hosts=() pids=()
   for host in "$SPARK_0_HOST" "$SPARK_1_HOST" "$SPARK_2_HOST" "$SPARK_3_HOST"; do
+    [[ -n "$host" ]] || continue
     (
       if ! ssh -o BatchMode=yes "$host" \
         "test \"\$(docker inspect -f '{{.State.Running}}' '$spark_container' 2>/dev/null || true)\" = true"; then
