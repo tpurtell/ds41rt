@@ -214,9 +214,9 @@ MODEL_REVISION=3431dde3247c13b5957f682b1e3c6fcae2566079
 To use the published images, pull the coordinator image locally and the Spark image on each worker:
 
 ```bash
-docker pull ghcr.io/tpurtell/ds41rt-coordinator:v6
+docker pull ghcr.io/tpurtell/ds41rt-coordinator:v7
 for host in ostrich dodo emu kiwi; do
-  ssh "$host" docker pull ghcr.io/tpurtell/ds41rt-spark-expert:v6
+  ssh "$host" docker pull ghcr.io/tpurtell/ds41rt-spark-expert:v7
 done
 ./run.sh --dry-run
 ./run.sh

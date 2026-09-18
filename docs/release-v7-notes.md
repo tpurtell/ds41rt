@@ -28,6 +28,16 @@ unchanged from v6.
 - EXL3 routed-expert support, added in v5 and disabled by default, is enabled
   and qualified for this checkpoint.
 
+Container images:
+
+- `ghcr.io/tpurtell/ds41rt-coordinator:v7` (`linux/amd64`), digest
+  `sha256:53af6703391f15e6789d93410261efe53c7b1207ecce885a02d8c643bb491050`
+- `ghcr.io/tpurtell/ds41rt-spark-expert:v7` (`linux/arm64`), digest
+  `sha256:81918fe41e2c3dc9eb99386516af9ba919ff15e3eaf6cd6e471e6634f4b1389b`
+
+Both also carry `latest`, and each image re-verifies the packaged EXL3 families
+against the pinned SparkInfer revision at build time.
+
 All reported RTX measurements use a **400 W power limit per card, standard
 memory speed, and three samples per cell**. See the
 [NVFP4 report](release-v7-nvfp4-performance.md) and the
