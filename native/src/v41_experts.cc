@@ -16,8 +16,10 @@
 #include "v41_local_expert_variants.h"
 #else
 #include "v41_expert_variants.h"
-#include "v41_input_quant_dispatch.h"
 #endif
+// The FP8 row quantizer is part of the shared launch surface; the W4A4
+// family never calls it (BF16 rows) but still needs the symbols declared.
+#include "v41_input_quant_dispatch.h"
 #ifndef DS41RT_V41_OUTPUT_KIND
 #define DS41RT_V41_OUTPUT_KIND(capacity) 0
 #endif
