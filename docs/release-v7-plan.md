@@ -112,12 +112,10 @@ one headline table per checkpoint linking to full per-checkpoint reports.
   kernel (`w4a16/mixed_trellis.py`). DS41RT's native path uses ONLY the
   mixed family (`export_b12x_v41_exl3_aot.py:118-161`), always packed
   routing; uniform runs as two-tier with an empty adjacent tier.
-  **Verdict: keep the mixed projection kernel with tiers (2,3); the empty
-  tier is near-free and bitwise-qualified. A homogeneous fixed-K2 export
-  needs a new FFI bridge; evaluate with a kernel-level A/B benchmark at DS4
-  shapes before deciding (user asked to check the single-bit trellis kernel;
-  it exists in sparkinfer but may no longer be superior after all the mixed
-  kernel optimization).**
+  **Historical proposal, not a measured verdict:** retain mixed tiers (2,3)
+  pending an A/B. The claim that the empty tier is near-free was unverified.
+  A homogeneous fixed-K2 export needs a separate bridge; see the homogeneous
+  K2 A/B record below for the actual native qualification and serving results.
 - **Two-family shipping (user requirement):** K3.25 (3;4) support must not
   break even though the staged model is no longer downloaded (no runtime
   verification possible - compile-time cleanliness only). v7 builds ship
@@ -762,13 +760,50 @@ premise as unverified. Checked:
   (`len(set(bits)) != len(bits)`), so a `[2]` family is a build-system change,
   not an export flag.
 
-Conclusion: this is an untested and plausible optimisation. A uniform-K2
-deployment is paying for a two-tier kernel whose second tier never runs, and
-SparkInfer already has the single-tier kernel to replace it. The A/B - export
-a homogeneous K2 family, serve the same checkpoint, compare decode and
-prefill - has not been run, so no shipped number should be read as evidence
-either way. It is the highest-value remaining engineering item, because it
-could move a published figure rather than merely annotate one.
+Historical conclusion: this was an untested and plausible optimisation; none
+of the shipped numbers established the cost of the dead tier. The isolated
+homogeneous K2 A/B below supersedes that open item. Release defaults and
+published headline figures are not changed by the experiment.
+
+### Homogeneous K2 A/B: measured, do not ship
+
+The [full homogeneous K2 experiment record](release-v7-exl3-k2-homogeneous.md)
+settles the open optimisation item for the tested dual-RTX zero-Spark profile.
+A separate low-level `compile_w4a16_fused_moe` exporter and bridge can emit true
+`bits:[2]` without touching k23/k34. Six TP2 capacity variants compiled;
+57 actual-checkpoint checks were bitwise equal: 33 cross-native homogeneous/
+mixed comparisons and 24 same-arm graph/eager comparisons, covering replay
+and live tails. No vendor kernel change was needed. The generic
+mixed exporter cannot express this merely by accepting one tier: homogeneous
+has one weight tuple, different scratch aliases and two Int64 length arguments.
+
+Three-sample homogeneous results (weighted/code/counting/best base0 prefill):
+**149.95 / 204.75 / 336.73 / 5,336.26 tok/s**. Against the supplied shipped
+145.10 / 222.06 / 337.35 / 5,702 figures, changes are **+3.34% / −7.80% /
+−0.18% / −6.41%**. Historical weighted improvement is not kernel evidence:
+the nonce seed and completion history differ.
+
+A same-seed79001 mixed control, same binary/native library/topology, produced
+identical outputs on all 30 requests and measured **155.00 / 206.80 / 323.65 /
+5,489.99 tok/s**. Homogeneous therefore changed **−3.26% weighted, −1.00%
+code, +4.04% counting, −2.80% best prefill**; every corresponding weighted
+repeat and every prefill suffix lost. All decode completion checks and base0
+prefill requests passed in both arms. This is sequential end-to-end evidence,
+not proof that every homogeneous schedule is slower; counting alone improved.
+It does not justify replacing the mixed family.
+
+**Disposition: keep the release unchanged.** No image build/push/tag or
+release launcher/build-default edit occurred. All 566 protected release-stage
+files and 96 original WIP artifact files remained byte-identical. Experimental
+code/patch, candidate slot, source/binary identities, native qualification,
+telemetry and reproduction scripts are archived under
+`~/.cache/ds41rt-v7-package/k2homog/`; raw requested files are
+`performance/dual-exl3-k2homog.json` and
+`performance/dual-exl3-k2homog-prefill-base0.json`, alongside the new
+`dual-exl3-k23-control*.json` control. Only documentation is committed.
+No compact profile was attempted. Reconsidering this would require owner
+approval plus a new adapter/build/launcher integration and fresh evidence,
+not silently selecting the archived candidate.
 
 ### v7 status at round 25
 
