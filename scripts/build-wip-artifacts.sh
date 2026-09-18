@@ -56,6 +56,21 @@ export PYO3_PYTHON=python3
 export PYTHONPATH="$source_dir/third_party/sparkinfer:$source_dir/python/reference/ds41rt_reference:$source_dir/python/reference${PYTHONPATH:+:$PYTHONPATH}"
 export CARGO_TARGET_DIR="$build_dir/cargo-target"
 
+# The WIP sync chain (rsync -a + docker cp) can leave source mtimes older
+# than the previous build's fingerprints; cargo/ninja then silently reuse
+# stale objects and the slot ships binaries that do not match the frozen
+# source. Content-fingerprint the build-relevant tree and, only on change,
+# refresh mtimes so the dependency trackers see the new content.
+wip_source_fingerprint="$(
+  find "$source_dir/rust" "$source_dir/native" "$source_dir/python" \
+    -type f \( -name '*.rs' -o -name '*.toml' -o -name '*.lock' -o -name '*.cu' -o -name '*.cc' -o -name '*.h' -o -name '*.cmake' -o -name 'CMakeLists.txt' -o -name '*.py' \) \
+    -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}'
+)"
+wip_fingerprint_marker="$build_dir/.source-content-fingerprint"
+if [[ ! -f "$wip_fingerprint_marker" ]] || [[ "$(cat "$wip_fingerprint_marker")" != "$wip_source_fingerprint" ]]; then
+  find "$source_dir/rust" "$source_dir/native" "$source_dir/python" -type f -exec touch {} +
+fi
+
 cargo build \
   --quiet \
   --manifest-path "$source_dir/rust/Cargo.toml" \
@@ -91,6 +106,7 @@ cmake \
   -DPython3_EXECUTABLE="$(command -v python3)" \
   -DDS41RT_CUDA_ARCHITECTURES="$cuda_arch"
 cmake --build "$build_dir/native"
+printf '%s' "$wip_source_fingerprint" >"$wip_fingerprint_marker"
 
 install -m 0755 "$CARGO_TARGET_DIR/release/ds41rt" "$output_dir/ds41rt"
 install -m 0755 "$build_dir/native/libds41rt_native.so" "$output_dir/libds41rt_native.so"
