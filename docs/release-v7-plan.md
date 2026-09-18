@@ -297,6 +297,29 @@ weights) and trails on prefill (trellis decode compute). One
 code-reasoning repeat produced an empty final response because all tokens
 went to reasoning; the campaign should confirm the budget is sufficient.
 
+### NVFP4 build integration verified
+
+The real SM120 WIP build now produces and links the complete W4A4 family:
+six capacities (m1/m16/m80/m256/m1024/m4096) with their CuTe kernels plus
+the engine symbols `ds41rt_v41_nvfp4_tp2_expert_{info,initialize,
+output_kind,bind_scratch,initialize_scratch_async,launch}`. That validates
+the exporter bridge, the cmake module, the two native TUs and the FFI
+interface names end to end.
+
+Also resolved: the kernel publishes a **token-major BF16 [rows,5120]**
+result through `scatter_ptr` (engine slot 41), and TP rank partials sum
+linearly, so the existing `ds41rt_v41_reduce_compact_bf16_async` reducer
+covers multi-rank reductions - no new reducer is needed. And the
+checkpoint's MTP drafts stay MXFP4, so dSpark reuses the existing path and
+**no NVFP4 draft role is required** (only `rtx_tp2` for a zero-Spark
+serve, plus `spark` for the 4-Spark topologies).
+
+Remaining before a first W4A4 serve: the TP2 wave integration - a
+`RankStorage::Nvfp4` / `RankBackend::Nvfp4` arm, a three-state routed
+output layout (FP32 routes / FP32 tokens / BF16 tokens) in `enqueue`, a
+BF16 output allocation, and the compact-BF16 reduction branch in
+`PeerReduction`.
+
 ### NVFP4 open integration questions (next)
 
 1. **Expert output semantics.** The nvfp4 core workspace exposes a bf16
