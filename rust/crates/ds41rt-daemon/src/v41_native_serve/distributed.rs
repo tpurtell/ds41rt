@@ -47,19 +47,32 @@ pub(super) fn worker(mut args: crate::cli::NativeServeArgs, mut receive: mpsc::R
     let map = CachePlacement::encoder_decoder();
     let started = Instant::now();
     // Sum resident storage plus the largest transient loading excess.
-    let compressed = catalog.exl3().is_some();
+    let format = crate::v41_experts::ExpertFormat::of(&catalog);
+    let compressed = format.is_exl3();
     let exl3_tiers: &[usize] = catalog.exl3().map(|m| m.decoder_tiers()).unwrap_or(&[]);
     let exl3_directory = crate::v41_experts::exl3::aot_layout_directory(&args.native_lib, exl3_tiers, "rtx-tp2");
     if compressed {
         let per_lane = crate::v41_experts::tp2::ExpertWave::exl3_device_bytes(&exl3_directory, capacity)?;
         tracing::info!(per_gpu_per_lane_bytes=per_lane, capacity, "EXL3 TP2 expert workspace plan");
+    } else if format.is_nvfp4() {
+        let per_lane = crate::v41_experts::tp2::ExpertWave::nvfp4_device_bytes(&lib, capacity)?;
+        tracing::info!(per_gpu_per_lane_bytes=per_lane, capacity, "NVFP4 W4A4 TP2 expert workspace plan");
     }
     let rank_prefix_peaks = [0usize, 1].map(|rank| -> Result<Vec<usize>> {
         let (mut resident, mut transient) = (0usize, 0usize);
         (0..40).map(|layer| {
             let selection = ExpertLayer::BackboneTp2 { layer, rank };
-            let budget = if compressed { crate::v41_experts::exl3::Exl3Weights::plan(&catalog, selection)? }
-                else { ExpertWeights::plan(&lib, &catalog, selection)? };
+            let budget = match format {
+                crate::v41_experts::ExpertFormat::Exl3 => {
+                    crate::v41_experts::exl3::Exl3Weights::plan(&catalog, selection)?
+                }
+                crate::v41_experts::ExpertFormat::Nvfp4 => {
+                    crate::v41_experts::nvfp4::Nvfp4Weights::plan(&lib, &catalog, selection)?
+                }
+                crate::v41_experts::ExpertFormat::Native => {
+                    ExpertWeights::plan(&lib, &catalog, selection)?
+                }
+            };
             resident = resident.checked_add(budget.resident_bytes).context("TP2 resident budget overflow")?;
             transient = transient.max(budget.peak_device_bytes()? - budget.resident_bytes);
             resident.checked_add(transient).context("TP2 load budget overflow")
@@ -285,8 +298,15 @@ pub(super) fn worker(mut args: crate::cli::NativeServeArgs, mut receive: mpsc::R
     memory_checkpoint("snapshot arenas")?;
     // Every other persistent owner is now live. Reserve both transport lanes,
     // minimum routed weights, KV and setup headroom before filling extra layers.
-    let per_lane = if compressed { tp2_ffn::Wave::exl3_device_bytes(&exl3_directory, &lib, capacity)? }
-        else { tp2_ffn::Wave::device_bytes(&lib, capacity)? };
+    let per_lane = match format {
+        crate::v41_experts::ExpertFormat::Exl3 => {
+            tp2_ffn::Wave::exl3_device_bytes(&exl3_directory, &lib, capacity)?
+        }
+        crate::v41_experts::ExpertFormat::Nvfp4 => {
+            tp2_ffn::Wave::nvfp4_device_bytes(&lib, capacity)?
+        }
+        crate::v41_experts::ExpertFormat::Native => tp2_ffn::Wave::device_bytes(&lib, capacity)?,
+    };
     let transport_bytes = [2 * per_lane, 2 * per_lane + 2 * NativeTp4Wave::device_bytes(capacity)?];
     let before_experts = [devices[0].run(|| lib.cuda_memory_info())?, devices[1].run(|| lib.cuda_memory_info())?];
     let mut reserved_memory = before_experts;
@@ -311,12 +331,29 @@ pub(super) fn worker(mut args: crate::cli::NativeServeArgs, mut receive: mpsc::R
     let placement_handoff=args.placement_directory.as_deref().map(|directory|
         super::placement::StartupPlacement::publish(directory,expert_layers)).transpose()?;
     eprintln!("loading bottom {expert_layers} expert layers as TP2");
-    let routed = if compressed {
-        RankWeights::load_exl3_pair(devices, &catalog, expert_layers, rank_budgets, &exl3_directory)?
-            .map(Rc::new)
-    } else {
-        [Rc::new(RankWeights::load(devices[0], &catalog, expert_layers, rank_budgets[0])?),
-         Rc::new(RankWeights::load(devices[1], &catalog, expert_layers, rank_budgets[1])?)]
+    let routed = match format {
+        crate::v41_experts::ExpertFormat::Exl3 => {
+            RankWeights::load_exl3_pair(devices, &catalog, expert_layers, rank_budgets, &exl3_directory)?
+                .map(Rc::new)
+        }
+        crate::v41_experts::ExpertFormat::Nvfp4 => [
+            Rc::new(RankWeights::load_nvfp4(
+                devices[0],
+                &catalog,
+                expert_layers,
+                rank_budgets[0],
+            )?),
+            Rc::new(RankWeights::load_nvfp4(
+                devices[1],
+                &catalog,
+                expert_layers,
+                rank_budgets[1],
+            )?),
+        ],
+        crate::v41_experts::ExpertFormat::Native => [
+            Rc::new(RankWeights::load(devices[0], &catalog, expert_layers, rank_budgets[0])?),
+            Rc::new(RankWeights::load(devices[1], &catalog, expert_layers, rank_budgets[1])?),
+        ],
     };
     if let Some(handoff)=placement_handoff {
         handoff.wait_ready(Duration::from_secs(900))?;

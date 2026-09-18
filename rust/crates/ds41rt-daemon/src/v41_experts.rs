@@ -71,6 +71,36 @@ impl ExpertLayer {
     }
 }
 
+/// Expert checkpoint format selected from the validated catalog. All three
+/// families can coexist in one library; the daemon picks one per deployment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ExpertFormat {
+    /// Official checkpoint: MXFP4 routed experts with E8M0 K32 scales.
+    Native,
+    /// Staged or raw EXL3 trellis publications.
+    Exl3,
+    /// ModelOpt NVFP4 (W4A4) publications.
+    Nvfp4,
+}
+
+impl ExpertFormat {
+    pub(crate) fn of(catalog: &OfficialV41Catalog) -> Self {
+        if catalog.exl3().is_some() {
+            Self::Exl3
+        } else if catalog.nvfp4().is_some() {
+            Self::Nvfp4
+        } else {
+            Self::Native
+        }
+    }
+    pub(crate) fn is_exl3(self) -> bool {
+        matches!(self, Self::Exl3)
+    }
+    pub(crate) fn is_nvfp4(self) -> bool {
+        matches!(self, Self::Nvfp4)
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ExpertLoadBudget {
     pub resident_bytes: usize,

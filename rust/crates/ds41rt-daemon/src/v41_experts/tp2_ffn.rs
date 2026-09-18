@@ -51,6 +51,15 @@ impl<'a> Wave<'a> {
             .and_then(|bytes| bytes.checked_add(capacity as usize * (10240 + 5280 + 24 + 24 + 10240)))
             .ok_or_else(|| anyhow::anyhow!("TP2 EXL3 FFN workspace overflow"))
     }
+    /// Per GPU, per lane for the W4A4 NVFP4 family.
+    pub fn nvfp4_device_bytes(library: &ds41rt_ffi::NativeLibrary, capacity: u32) -> Result<usize> {
+        ExpertWave::nvfp4_device_bytes(library, capacity)?
+            .checked_add(SharedWave::device_bytes(library, capacity)?)
+            .and_then(|bytes| {
+                bytes.checked_add(capacity as usize * (10240 + 5280 + 24 + 24 + 10240))
+            })
+            .ok_or_else(|| anyhow::anyhow!("TP2 NVFP4 FFN workspace overflow"))
+    }
     /// Per GPU, per lane. Includes both expert workspaces, peer inputs, and
     /// final output; weights, CUDA modules/streams, and headroom are separate.
     pub fn device_bytes(library: &ds41rt_ffi::NativeLibrary, capacity: u32) -> Result<usize> {

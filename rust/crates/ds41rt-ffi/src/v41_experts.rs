@@ -468,6 +468,11 @@ impl NativeLibrary {
         self.expert_kernel_for(capacity, 5)
     }
 
+    /// Metadata for planning NVFP4 workspace before loading kernels.
+    pub fn v41_nvfp4_tp2_expert_info(&self, capacity: u32) -> Result<V41ExpertInfo> {
+        self.expert_info_for(capacity, 5)
+    }
+
     pub fn v41_nvfp4_expert_kernel(&self, capacity: u32) -> Result<V41ExpertKernel<'_>> {
         self.expert_kernel_for(capacity, 6)
     }

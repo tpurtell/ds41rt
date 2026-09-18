@@ -43,6 +43,10 @@ fn load_weights<'a>(
     let catalog = read_official_v41_catalog(OFFICIAL_V41_MODEL_ID, &config.snapshot)?;
     ensure!(config.first_layer < 40, "native first layer must be 0..39");
     if catalog.exl3().is_some() { return backend::load_exl3(library, &catalog, config); }
+    ensure!(
+        catalog.nvfp4().is_none(),
+        "NVFP4 W4A4 Spark experts are not enabled yet; use the dual-RTX all-resident profile"
+    );
     let mut resident = 0usize;
     let mut staging = 0usize;
     for layer in config.first_layer..40 {

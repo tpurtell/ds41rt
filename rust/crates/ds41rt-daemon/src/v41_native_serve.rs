@@ -321,6 +321,11 @@ fn worker(
         let local_started = Instant::now();
         use crate::v41_experts::exl3::Exl3Weights;
         let exl3_directory = crate::v41_experts::exl3::aot_layout_directory(&args.native_lib, exl3_tiers, "rtx-tp1");
+        ensure!(
+            catalog.nvfp4().is_none(),
+            "NVFP4 W4A4 is wired for the dual-RTX all-resident profile first; \
+             single-RTX local NVFP4 experts are not enabled yet"
+        );
         let compressed = catalog.exl3().is_some();
         let per_lane = if compressed { LocalExpertWave::exl3_device_bytes(&exl3_directory, capacity)? }
             else { LocalExpertWave::device_bytes(&lib, capacity)? };
