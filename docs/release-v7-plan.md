@@ -508,11 +508,22 @@ coordinator set aside first, since both use the same paths):
     -t ghcr.io/tpurtell/ds41rt-coordinator:v7 .
 
 then swap in the expert set, build with DS41RT_ROLE=expert CUDA_ARCH=121 and
-tag `ghcr.io/tpurtell/ds41rt-spark:v7`, and restore the coordinator set.
+tag `ghcr.io/tpurtell/ds41rt-spark-expert:v7` (not `ds41rt-spark`, which is not
+a name this project publishes), and restore the coordinator set.
 
 The image build itself re-verifies each `exl3-k*` family against the pinned
 SparkInfer revision, so a staged family that does not match fails the build
 rather than shipping.
+
+**Both roles must be built from one staged tree.** The v7 pair shipped with
+`org.opencontainers.image.revision` `25b670e8…` on the coordinator and
+`37db31f…` on the expert, because each role was built from whatever commit its
+host happened to hold. `run.sh:205` requires those labels to be equal on every
+Spark, so the shipped launcher rejected the shipped pair even though the images
+served correctly when launched by hand. Both roles were rebuilt from a single
+staged tree at `0107d01` — confirmed by equal
+`verify-sparkinfer-source.py` tree hashes on both hosts — and republished.
+Check the labels, not just the digests, before calling an image pair released.
 
 ### The release build needs the PyO3 ABI flag (or the container environment)
 

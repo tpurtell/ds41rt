@@ -31,12 +31,17 @@ unchanged from v6.
 Container images:
 
 - `ghcr.io/tpurtell/ds41rt-coordinator:v7` (`linux/amd64`), digest
-  `sha256:53af6703391f15e6789d93410261efe53c7b1207ecce885a02d8c643bb491050`
+  `sha256:d85608bbe14ce655a3bae4fd61655a0020099f056d357a40b8a3ac5115275c5e`
 - `ghcr.io/tpurtell/ds41rt-spark-expert:v7` (`linux/arm64`), digest
-  `sha256:81918fe41e2c3dc9eb99386516af9ba919ff15e3eaf6cd6e471e6634f4b1389b`
+  `sha256:aa477ff1c74fe4e815734c1e57d3fad325c5126ddbb324c92fd58f6d02fe856b`
 
 Both also carry `latest`, and each image re-verifies the packaged EXL3 families
-against the pinned SparkInfer revision at build time.
+against the pinned SparkInfer revision at build time. Both roles are built from
+one staged tree at `0107d01`, so they carry the same
+`org.opencontainers.image.revision` (`0107d01e3d35d22b1dbc5de70c4e1a32d32d165f`)
+and the same `io.ds41rt.sparkinfer.revision`
+(`2bcbe122bf34d77fecbaf288df2f395b9c09e79e`); `run.sh` requires that equality
+across every Spark before it will deploy.
 
 All reported RTX measurements use a **400 W power limit per card, standard
 memory speed, and three samples per cell**. See the
