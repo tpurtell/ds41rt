@@ -65,7 +65,12 @@ PENDING_COMMON = [
     "fixed-history quant agreement: not replaced by historical official-image or v5 EXL3 results",
     "Per-campaign engine/SparkInfer revisions, quant snapshot and binary/launch identity, "
     "KV/PLE and TP2 controls, plus power/clock evidence (including stock-memory settings)",
-    "Producer-built v7 release Docker images and publication: neither completed",
+    # Superseded: the images were built for both roles and published after the
+    # review that added this line, so the report must not still claim otherwise.
+    "v7 release images are built and published "
+    "(ghcr.io/tpurtell/ds41rt-coordinator:v7 sha256:53af6703, "
+    "ghcr.io/tpurtell/ds41rt-spark:v7 sha256:81918fe4); "
+    "physical RTX 5090 validation remains owed",
 ]
 
 
