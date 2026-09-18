@@ -440,9 +440,18 @@ the compact budget. That also retires the earlier 2 GiB-KV hypothesis for
 this symptom: a truncated multi-turn chain would still show the GPU working.
 The earlier "incomplete streaming response" seen on a prefill run was my own
 service restart; this one is a stream that the client never saw finish while
-the server stood idle, which is the shape worth investigating next - compare
-the streamed terminal events the server emits for a multi-turn request against
-what the harness consumes.
+the server stood idle.
+
+Tested that hypothesis directly: a three-message multi-turn request with
+`stream: true` against the same compact profile returned its chunks and then
+`data: [DONE]` with curl exiting 0. Ordinary multi-turn streaming therefore
+terminates correctly, so this is not a general streaming defect and the
+harness wedge is not something a normal client would hit.
+
+The qualification run was stopped after this (it sat on one scenario for over
+fifteen minutes with the card idle and would not have advanced), and the
+single-card NVFP4 prefill campaign was started in its place to close the last
+performance cell.
 
 Remaining sequence once the evaluation and the missing measurements are done,
 in the order that keeps the GPUs free when they are needed:
