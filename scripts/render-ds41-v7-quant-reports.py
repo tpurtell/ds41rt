@@ -69,6 +69,36 @@ PENDING_COMMON = [
 ]
 
 
+# Where the tool evaluation writes its per-configuration runs, relative to the
+# performance package. Names match the --output-dir used for each campaign.
+TOOL_EVAL_DIRS = {
+    ("nvfp4", "1x"): "nvfp4-single",
+    ("nvfp4", "2x"): "nvfp4-dual",
+    ("exl3", "1x"): "exl3-compact",
+    ("exl3", "2x"): "exl3-dual",
+}
+
+
+def load_tool_eval(package: Path, quant: str, layout: str):
+    """Completed evaluation summaries for one configuration, or None.
+
+    Read from the harness's aggregated `summaries.json`; its per-run shape is
+    built by scripts/qualify-ds41-tool-eval.py (basic/hard/total points,
+    statuses, and an explicit failures list).
+    """
+    name = TOOL_EVAL_DIRS.get((quant, layout))
+    if not name:
+        return None
+    path = package.parent / "tool-eval" / name / "summaries.json"
+    if not path.is_file():
+        return None
+    try:
+        summaries = json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return None
+    return summaries if isinstance(summaries, list) and summaries else None
+
+
 def load_prefill(package: Path, stem: str):
     """The full matrix if it has cells, else the base-0 row, else whatever
     partial file exists. The best-prefill cell comes from the base-0 row in
@@ -250,9 +280,30 @@ def render(quant: str, package: Path) -> str:
                           f"Output tokens: {sample.get('usage', {}).get('completion_tokens', 'unreported')}; "
                           f"request cap: {sample.get('request', {}).get('max_tokens', 'unreported')}. "
                           "Throughput above includes this sample; it is not a successful quality result.")
-    checks += ["", "Tool-call evaluation, adaptive draft acceptance and fixed-history quant agreement "
-               "have no completed results published here. Historical official or v5 EXL3 quality scores "
-               "are not evidence for these new quants."]
+    # Tool-call evaluation: a published result requires a completed run, and
+    # every failed scenario is listed rather than folded into a pass rate.
+    evaluated = []
+    for layout, _stem, label, _detail in spec["layouts"]:
+        summaries = load_tool_eval(package, quant, layout)
+        if not summaries:
+            continue
+        for index, summary in enumerate(summaries, start=1):
+            evaluated.append(
+                f"- **{label}, run {index}**: {summary.get('total_points')}/{summary.get('total_max')}"
+                f" points (basic {summary.get('basic_points')}/{summary.get('basic_max')},"
+                f" hard {summary.get('hard_points')}/{summary.get('hard_max')});"
+                f" statuses {summary.get('statuses')}; output cap {summary.get('output_cap')}"
+                f" ({summary.get('output_cap_source')}).")
+            for failure in summary.get("failures") or []:
+                detail = (failure.get("summary") or "").strip().replace("\n", " ")[:180]
+                evaluated.append(
+                    f"  - failed `{failure.get('scenario_id')}` ({failure.get('points')} points): {detail}")
+    if evaluated:
+        checks += ["", "**Tool-call evaluation.** Completed runs, with every failed scenario listed."] + evaluated
+    else:
+        checks += ["", "Tool-call evaluation, adaptive draft acceptance and fixed-history quant agreement "
+                   "have no completed results published here. Historical official or v5 EXL3 quality scores "
+                   "are not evidence for these new quants."]
     lines += ["", "## Content-type decode", "", "Median C1 dSpark tokens/s; three samples per case. "
               "Schema JSON is grammar-constrained. See Quality and evaluation below for failed completion checks.", ""]
     header = ["Case", "1 RTX dSpark", "2 RTX dSpark"]

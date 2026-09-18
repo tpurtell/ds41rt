@@ -12,7 +12,7 @@ Decode cells are medians of `observed_decode_tokens_per_second` by case; weighte
 Each report table is generated from the raw bench output in the v7 package by `scripts/render-ds41-v7-quant-reports.py`; an em dash means no usable qualifying result is available in the selected package, not necessarily that a measurement was never attempted. Best prefill requires a completed, passing campaign; incomplete matrices are provisional.
 
 - `single-nvfp4-dspark.json` — SHA-256 `75268bb542ccf2434a057d02d87bba1b535606fdc73f203f74a6b2028c0c22d5`
-- `single-nvfp4-prefill.json` — SHA-256 `c5a7f121d595651821badb39ebd03f5842480e48219fc174cf7d61427c9efbe9`
+- `single-nvfp4-prefill.json` — SHA-256 `0991246754392b6178b8b8693ba99093998f9b3bbdeedf69cfdc126f503b5983`
 - `dual-nvfp4-dspark.json` — SHA-256 `061f6c5a6a6370b37e92f17f426c09c3139714b0480b0aa1cd76ec762208a222`
 - `dual-nvfp4-prefill.json` — SHA-256 `b12117c59be026db1c320fcd12c5461cda2e99626d29533bd0cdb476afbc51bd`
 
