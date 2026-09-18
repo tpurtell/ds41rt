@@ -436,6 +436,27 @@ report's prefill table with its partial-coverage disclosure, but it is not
 promoted to a headline. If the matrix is later completed, the headline gate
 opens by itself and no document needs editing.
 
+### The release build needs the PyO3 ABI flag (or the container environment)
+
+`scripts/build-release-artifacts.sh` run from the host shell fails in
+`ds41rt-py` (or its dependents) with PyO3's forward-compatibility check:
+
+  please check if an updated version of PyO3 is available
+  set PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 to suppress this check
+
+The host Python is 3.14, ahead of what pinned PyO3 0.22.6 accepts, and nothing
+in the repository sets that variable - so the release build does not work
+out of the box on a current host, only inside the WIP containers where the
+interpreter matches. Prefix the build with
+`PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1`, or run it in the container
+environment that sets it implicitly.
+
+Related, and the second time this release: stopping the serving process for a
+build needs an explicit kill by PID inside the container. `pkill -f` from
+outside silently left `ds41rt serve-native` running and holding 92 GB, and the
+AOT export would then fail with an out-of-memory status while `nvidia-smi`
+still looked busy rather than broken.
+
 ### Two operating rules learned the hard way this release
 
 1. **Verify the expert layer boundary explicitly, and smoke before measuring.**
