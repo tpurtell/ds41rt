@@ -67,7 +67,18 @@ fn load_weights<'a>(
             <= config.device_budget,
         "native TP weights and staging exceed device budget"
     );
-    let workspace = ExpertWeights::plan_execution(library, config.capacity)?.total()?;
+    // The Spark plans its own role: TP4 shard for NVFP4, TP4 padded for native.
+    let nvfp4 = catalog.nvfp4().is_some();
+    let workspace = ExpertWeights::plan_execution(
+        ExpertLayer::Backbone {
+            layer: 0,
+            rank: config.rank,
+        },
+        library,
+        config.capacity,
+        nvfp4,
+    )?
+    .total()?;
     ensure!(
         resident
             .checked_add(workspace)

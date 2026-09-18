@@ -8,6 +8,7 @@ use ds41rt_ffi::{
 use std::ffi::c_void;
 mod timing;
 use timing::ExpertTiming;
+use super::ExpertLayer;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ExpertExecutionBudget {
@@ -71,13 +72,15 @@ pub(crate) struct ExpertExecution<'weights, 'library> {
 impl<'library> ExpertWeights<'library> {
     pub fn execution_budget(&self, capacity: u32) -> Result<ExpertExecutionBudget> {
         let library = self.buffers[0].library;
-        Self::plan_execution(library, capacity)
+        Self::plan_execution(self.layer, library, capacity, self.is_nvfp4())
     }
     pub(super) fn plan_execution(
+        layer: ExpertLayer,
         library: &NativeLibrary,
         capacity: u32,
+        nvfp4: bool,
     ) -> Result<ExpertExecutionBudget> {
-        let info = library.v41_expert_info(capacity)?;
+        let info = layer.select_info(library, capacity, nvfp4)?;
         let hidden = (capacity as usize)
             .checked_mul(info.input_row_bytes()?)
             .context("hidden buffer overflow")?;
@@ -114,7 +117,7 @@ impl<'library> ExpertWeights<'library> {
             budget.total()? <= available_device_bytes,
             "expert execution buffers exceed device budget"
         );
-        let kernel = library.v41_expert_kernel(capacity)?;
+        let kernel = self.layer.select_kernel(library, capacity, self.is_nvfp4())?;
         let reducer = library.v41_route_reducer()?;
         let timing = if kernel.info().role == 1
             && tracing::enabled!(target: "ds41rt::expert_timing", tracing::Level::DEBUG)
@@ -172,7 +175,8 @@ impl<'library> ExpertWeights<'library> {
         }
         let prepare_small = |planned_capacity, scratch_bytes| -> Result<Option<DecodeExecution<'library>>> {
             if scratch_bytes == 0 { return Ok(None); }
-            let decode_kernel = library.v41_expert_kernel(planned_capacity)?;
+            let decode_kernel =
+                self.layer.select_kernel(library, planned_capacity, self.is_nvfp4())?;
             ensure!(
                 decode_kernel.info().input_dtype == kernel.info().input_dtype,
                 "decode and grouped expert input formats differ"

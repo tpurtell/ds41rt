@@ -89,6 +89,34 @@ impl ExpertLayer {
         }
     }
 
+    /// Kernel for this layer under the checkpoint's expert format. Draft
+    /// layers always resolve through the native family.
+    pub(crate) fn select_kernel(
+        self,
+        library: &NativeLibrary,
+        capacity: u32,
+        nvfp4: bool,
+    ) -> Result<V41ExpertKernel<'_>> {
+        if nvfp4 {
+            self.nvfp4_kernel(library, capacity)
+        } else {
+            self.kernel(library, capacity)
+        }
+    }
+
+    pub(crate) fn select_info(
+        self,
+        library: &NativeLibrary,
+        capacity: u32,
+        nvfp4: bool,
+    ) -> Result<ds41rt_ffi::V41ExpertInfo> {
+        if nvfp4 {
+            self.nvfp4_info(library, capacity)
+        } else {
+            self.info(library, capacity)
+        }
+    }
+
     /// True when this layer's routed experts use the W4A4 NVFP4 family.
     fn is_quantized_nvfp4(self, catalog: &OfficialV41Catalog) -> bool {
         catalog.nvfp4().is_some()

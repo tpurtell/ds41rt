@@ -181,7 +181,7 @@ impl<'library> DsparkWeights<'library> {
             NativeRtxTensors::plan(catalog, &Self::auxiliary_names(catalog))?;
         let execution_bytes_per_wave = (if !catalog.native_dspark_experts() {
             CompressedDraftExperts::device_bytes(exl3_directory.context("dSpark EXL3 AOT directory missing")?, capacity)?
-        } else { ExpertWeights::plan_execution(library, capacity)?.total()? })
+        } else { ExpertWeights::plan_execution(ExpertLayer::Dspark { stage: 0 }, library, capacity, false)?.total()? })
             .checked_mul(3)
             .context("dSpark stage workspace overflow")?;
         Ok(DsparkBudget {
