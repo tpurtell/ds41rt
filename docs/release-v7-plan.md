@@ -413,6 +413,27 @@ Also: the single-card NVFP4 prefill campaign was cut short by a service
 restart during the run (my own regression check), not by a fault; it needs a
 re-run for the 1x best-prefill cell, which stays a dash until then.
 
+### Two operating rules learned the hard way this release
+
+1. **Verify the expert layer boundary explicitly, and smoke before measuring.**
+   The coordinator logs both the resident count and the remote count
+   (`local RTX experts ready layers=N` and a remote-dispatch figure). Taking
+   the wrong one starts the Sparks at the wrong first layer, which leaves a
+   hole in the middle of the model: the service still reports ready and
+   `nvidia-smi` still looks normal, but requests hang. A 40-minute campaign
+   was launched against exactly that state. Always start the Sparks from the
+   *resident* count and confirm a one-line request answers before starting any
+   campaign; the launcher script now encodes that gate.
+
+2. **A wedged CUDA context looks like an empty card.** Killing a serving
+   process can leave its context behind: `nvidia-smi` reports a few MiB used
+   and `--query-compute-apps` lists nothing, while every allocation inside the
+   container fails with `cudaMalloc out of memory` (CUDA status 4). The
+   coordinator dies at startup and the AOT exporters will fail the same way.
+   Restart the coordinator container and confirm a fresh allocation succeeds
+   before starting a build. This bit both a release-adjacent build and the
+   prefill run during this cycle.
+
 ### Exact release build sequence (for the next round)
 
 `scripts/build-release-artifacts.sh SOURCE_DIR ROLE CUDA_ARCH OUTPUT_DIR` where
