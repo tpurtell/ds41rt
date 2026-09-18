@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900" viewBox="0 0 1400 900" role="img" aria-labelledby="title desc">
+<title id="title">DS41RT v7 serving configurations</title>
+<desc id="desc">Four v7 serving configurations drawn as device memory bars: the NVFP4 W4A4 quant on one or two RTX cards with four Spark workers, and the EXL3 2 bpw quant on two RTX cards or one simulated 32 GiB RTX 5090 with two Spark workers. Coloured bands show each device's memory use, with measured code-decode and best observed prefill throughput beneath.</desc>
+<defs><style>
+text{font-family:Arial,Helvetica,sans-serif;fill:#e4ecf8}
+.title{font-size:28px;font-weight:700}
+.panel{font-size:19px;font-weight:700}
+.sub{font-size:14px;fill:#8fa3bd}
+.device{font-size:15px;fill:#c7d6ea}
+.band{font-size:13px;fill:#08111f;font-weight:700}
+.speed{font-size:16px}
+.speedbig{font-size:21px;font-weight:700;fill:#74e4c4}
+.legend{font-size:15px}
+.pending{font-size:15px;fill:#f2b45c}
+</style></defs>
+<rect width="1400" height="900" rx="18" fill="#091423"/>
+<text x="40" y="50" class="title">V7 · four configurations</text>
+<text x="40" y="74" class="sub">Bar height is device memory; bands are measured use, the remainder is free.</text>
+<text x="40" y="96" class="sub">Bands are measured memory in use; the unfilled remainder to each bar's top is free. Dashed bars are configurations whose campaign has not run yet.</text>
+<rect x="40" y="124" width="312" height="710" rx="12" fill="#0e1c2f" stroke="#35506c" stroke-width="1.5"/>
+<text x="58" y="146" class="panel">NVFP4 W4A4 · 1× RTX + 4× Spark</text>
+<text x="58" y="168" class="sub">same quant, one card</text>
+<rect x="62.0" y="589.2" width="58" height="154.8" rx="6" fill="#1b2b42" stroke="#5a6b83" stroke-width="2" stroke-dasharray="6 5"/>
+<text x="91" y="768" class="device" text-anchor="middle">RTX0</text>
+<text x="91" y="786" class="sub" text-anchor="middle">96 GB</text>
+<rect x="146.0" y="537.5" width="58" height="206.5" rx="6" fill="#1b2b42" stroke="#5a6b83" stroke-width="2" stroke-dasharray="6 5"/>
+<text x="175" y="768" class="device" text-anchor="middle">Spark</text>
+<text x="175" y="786" class="sub" text-anchor="middle">128 GB</text>
+<text x="58" y="828" class="speed">code decode <tspan class="speedbig">—</tspan> tok/s</text>
+<text x="58" y="854" class="speed">best prefill <tspan class="speedbig">—</tspan> tok/s</text>
+<text x="58" y="878" class="pending">campaign pending</text>
+<rect x="376" y="124" width="312" height="710" rx="12" fill="#0e1c2f" stroke="#35506c" stroke-width="1.5"/>
+<text x="394" y="146" class="panel">NVFP4 W4A4 · 2× RTX + 4× Spark</text>
+<text x="394" y="168" class="sub">20 + 20 layers</text>
+<rect x="398.0" y="589.2" width="58" height="154.8" rx="6" fill="#1b2b42" stroke="#35506c" stroke-width="2"/>
+<rect x="398.0" y="620.6" width="58" height="123.4" fill="#4f8ef7"/>
+<text x="427" y="687" class="band" text-anchor="middle">76.5</text>
+<rect x="398.0" y="593.4" width="58" height="27.3" fill="#74e4c4"/>
+<text x="427" y="612" class="band" text-anchor="middle">16.9</text>
+<rect x="398.0" y="590.8" width="58" height="2.6" fill="#b298ea"/>
+<rect x="398.0" y="589.2" width="58" height="1.6" fill="#f2b45c"/>
+<text x="427" y="768" class="device" text-anchor="middle">RTX0</text>
+<text x="427" y="786" class="sub" text-anchor="middle">96 GB</text>
+<rect x="482.0" y="589.2" width="58" height="154.8" rx="6" fill="#1b2b42" stroke="#35506c" stroke-width="2"/>
+<rect x="482.0" y="620.6" width="58" height="123.4" fill="#4f8ef7"/>
+<text x="511" y="687" class="band" text-anchor="middle">76.5</text>
+<rect x="482.0" y="593.4" width="58" height="27.3" fill="#74e4c4"/>
+<text x="511" y="612" class="band" text-anchor="middle">16.9</text>
+<rect x="482.0" y="590.5" width="58" height="2.9" fill="#b298ea"/>
+<rect x="482.0" y="590.3" width="58" height="0.2" fill="#f2b45c"/>
+<text x="511" y="768" class="device" text-anchor="middle">RTX1</text>
+<text x="511" y="786" class="sub" text-anchor="middle">96 GB</text>
+<rect x="566.0" y="537.5" width="58" height="206.5" rx="6" fill="#1b2b42" stroke="#35506c" stroke-width="2"/>
+<rect x="566.0" y="712.7" width="58" height="31.3" fill="#4f8ef7"/>
+<text x="595" y="733" class="band" text-anchor="middle">19.4</text>
+<rect x="566.0" y="709.5" width="58" height="3.2" fill="#74e4c4"/>
+<rect x="566.0" y="704.6" width="58" height="4.8" fill="#b298ea"/>
+<rect x="566.0" y="703.0" width="58" height="1.6" fill="#f2b45c"/>
+<text x="595" y="768" class="device" text-anchor="middle">Spark</text>
+<text x="595" y="786" class="sub" text-anchor="middle">128 GB</text>
+<text x="394" y="828" class="speed">code decode <tspan class="speedbig">109</tspan> tok/s</text>
+<text x="394" y="854" class="speed">best prefill <tspan class="speedbig">—</tspan> tok/s</text>
+<text x="394" y="878" class="sub">prefill pending</text>
+<rect x="712" y="124" width="312" height="710" rx="12" fill="#0e1c2f" stroke="#35506c" stroke-width="1.5"/>
+<text x="730" y="146" class="panel">EXL3 2 bpw · 2× RTX</text>
+<text x="730" y="168" class="sub">all 40 layers, no Spark</text>
+<rect x="734.0" y="589.2" width="58" height="154.8" rx="6" fill="#1b2b42" stroke="#35506c" stroke-width="2"/>
+<rect x="734.0" y="632.5" width="58" height="111.5" fill="#4f8ef7"/>
+<text x="763" y="693" class="band" text-anchor="middle">69.1</text>
+<rect x="734.0" y="605.1" width="58" height="27.4" fill="#74e4c4"/>
+<text x="763" y="624" class="band" text-anchor="middle">17.0</text>
+<rect x="734.0" y="600.3" width="58" height="4.8" fill="#b298ea"/>
+<rect x="734.0" y="597.9" width="58" height="2.4" fill="#f2b45c"/>
+<text x="763" y="768" class="device" text-anchor="middle">RTX0</text>
+<text x="763" y="786" class="sub" text-anchor="middle">96 GB</text>
+<rect x="818.0" y="589.2" width="58" height="154.8" rx="6" fill="#1b2b42" stroke="#35506c" stroke-width="2"/>
+<rect x="818.0" y="632.5" width="58" height="111.5" fill="#4f8ef7"/>
+<text x="847" y="693" class="band" text-anchor="middle">69.1</text>
+<rect x="818.0" y="605.1" width="58" height="27.4" fill="#74e4c4"/>
+<text x="847" y="624" class="band" text-anchor="middle">17.0</text>
+<rect x="818.0" y="600.3" width="58" height="4.8" fill="#b298ea"/>
+<rect x="818.0" y="597.9" width="58" height="2.4" fill="#f2b45c"/>
+<text x="847" y="768" class="device" text-anchor="middle">RTX1</text>
+<text x="847" y="786" class="sub" text-anchor="middle">96 GB</text>
+<text x="730" y="828" class="speed">code decode <tspan class="speedbig">217</tspan> tok/s</text>
+<text x="730" y="854" class="speed">best prefill <tspan class="speedbig">5,572</tspan> tok/s</text>
+<text x="730" y="878" class="sub">quick campaign</text>
+<rect x="1048" y="124" width="312" height="710" rx="12" fill="#0e1c2f" stroke="#35506c" stroke-width="1.5"/>
+<text x="1066" y="146" class="panel">EXL3 2 bpw · 1× RTX 5090 + 2× Spark</text>
+<text x="1066" y="168" class="sub">32 GiB budget, degenerate</text>
+<rect x="1070.0" y="692.4" width="58" height="51.6" rx="6" fill="#1b2b42" stroke="#5a6b83" stroke-width="2" stroke-dasharray="6 5"/>
+<text x="1099" y="768" class="device" text-anchor="middle">RTX0</text>
+<text x="1099" y="786" class="sub" text-anchor="middle">32 GB</text>
+<rect x="1154.0" y="537.5" width="58" height="206.5" rx="6" fill="#1b2b42" stroke="#5a6b83" stroke-width="2" stroke-dasharray="6 5"/>
+<text x="1183" y="768" class="device" text-anchor="middle">Spark</text>
+<text x="1183" y="786" class="sub" text-anchor="middle">128 GB</text>
+<text x="1066" y="828" class="speed">code decode <tspan class="speedbig">—</tspan> tok/s</text>
+<text x="1066" y="854" class="speed">best prefill <tspan class="speedbig">—</tspan> tok/s</text>
+<text x="1066" y="878" class="pending">profile pending</text>
+<rect x="1136" y="86" width="234" height="122" rx="10" fill="#0e1c2f" stroke="#35506c" stroke-width="1.5"/>
+<rect x="1150" y="96" width="16" height="16" rx="3" fill="#4f8ef7"/>
+<text x="1174" y="108" class="legend">Routed experts</text>
+<rect x="1150" y="122" width="16" height="16" rx="3" fill="#74e4c4"/>
+<text x="1174" y="134" class="legend">KV + attention state</text>
+<rect x="1150" y="148" width="16" height="16" rx="3" fill="#b298ea"/>
+<text x="1174" y="160" class="legend">Workspace + transport</text>
+<rect x="1150" y="174" width="16" height="16" rx="3" fill="#f2b45c"/>
+<text x="1174" y="186" class="legend">Runtime + headroom</text>
+</svg>
