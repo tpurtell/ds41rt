@@ -25,8 +25,8 @@ identity; use the release launcher to deploy matching checkpoints/artifacts.
 
 ## Release configuration
 
-**Release image publication is still pending:** this change has been built and
-exercised in WIP, not published as new release images. The release producer must
+**V7 release Docker images have not been built or published:** this change has
+been built and exercised only in WIP. WIP builds are not release image builds. The release producer must
 package the updated library, EXL3 bridges, and Spark TP2 artifacts before the
 release commands below are usable. After publication, select the published
 diffbot checkpoint and:
@@ -50,10 +50,10 @@ launcher and does not implement this topology.
 
 Two-peer `serve-native` also defaults to an absolute 32 GiB ceiling and a
 2 GiB global KV pool. Compact prefill batches are capped at 256 tokens with an
-explicit startup notice when reducing a larger requested value. The inherited
-2048-token setting rounds workspace capacity up to 4096 and was measured above
-42 GiB before KV/local experts, so it cannot fit this profile. A larger or
-percentage memory ceiling is rejected. A GPU exposing
+explicit startup notice when reducing a larger requested value. The compact
+qualification below covers capacity 256 only; it does not establish that the
+ordinary 2048-token setting fits a 32 GiB budget. A larger or percentage memory
+ceiling is rejected. A GPU exposing
 less than 32 GiB to CUDA receives the smaller physical ceiling, never a larger
 budget. KV accounting includes its additional cache/window allocations, not
 just the global source-pool bytes. Mandatory weights, both execution lanes,
@@ -126,8 +126,9 @@ quality campaign. No nonce, token limit, or failed sample was silently changed.
 The full prefill campaign **passed all 30 cells** (three measured repeats plus
 one warmup per cell, 120 samples total), covering retained contexts through
 256K and suffixes through 32K. Best median prefill is **2015.45 tok/s**.
-Across 1,241 two-second whole-device telemetry samples spanning decode and
-prefill, peak RTX occupancy was **29,568 MiB**. Even adding the full reserved
+Across 1,241 whole-device telemetry samples taken at approximately two-second
+intervals spanning decode and prefill, the highest **sampled** RTX occupancy
+was **29,568 MiB**. Sampling does not exclude shorter between-sample peaks. Even adding the full reserved
 2,048 MiB runtime headroom gives **31,616 MiB < 32,768 MiB**. No budget was
 relaxed.
 
@@ -148,7 +149,9 @@ Thus ready occupancy plus headroom is **32,578,469,888 bytes = 30.34 GiB**,
 below the 32 GiB limit. The split is layer 0 local, layers 1–39 on both Sparks
 as TP2. Each Spark holds **67,394,076,672 bytes** of expert weights plus
 **56,007,284 bytes** of execution workspace at capacity 256 (62.82 GiB combined,
-excluding transport/CUDA context). The initial capacity-4096 worker smoke used
+excluding transport/CUDA context). These Spark figures are **logged allocation
+accounting, not measured total or peak Spark VRAM**; remaining capacity must not
+be labelled measured free memory. The initial capacity-4096 worker smoke used
 799,442,308 bytes of workspace; the final compact launcher matches its workers
 to capacity 256.
 
@@ -163,5 +166,34 @@ See the generated [EXL3 performance report](release-v7-exl3-k2-performance.md)
 for measured cells; missing measurements must not be inferred. The committed
 [qualification evidence](release-v7-exl3-compact-evidence.json) binds the topology,
 raw campaign SHA-256 hashes, exact tested binary/package hashes, residency logs,
-and all 18 reduced-grid test identities. Full raw campaign JSONs remain in
-`~/.cache/ds41rt-v7-package/performance/`.
+and all 18 reduced-grid test identities. `checkpoint_revision` identifies the
+checkpoint, not the engine commit; the engine revision was not separately
+recorded, so tested WIP binaries are identified by their recorded hashes.
+The `/wip/slots/...` AOT locations are historical paths inside the WIP container,
+not host paths or a promise that those binaries remain available.
+Full raw campaign JSONs remain in `~/.cache/ds41rt-v7-package/performance/`.
+
+### Evidence paths and accounting boundaries
+
+The JSON embeds ANSI-stripped copies of `runs/v7q-a1/compact-final-residency.log`,
+`compact-final-ostrich.log`, `compact-final-dodo.log`, and `dual-regression.log`
+(all under `runs/v7q-a1/`). Its `evidence_sources` lists and hashes the original
+telemetry, smoke, reduced-grid, and reducer records. Those raw local files are
+not embedded and must be retained or archived alongside the package.
+
+The startup table above comes from `compact-final-residency.log` lines 4–7;
+the Spark allocations and capacity come from each worker log lines 1 and 41.
+The table mixes component accounting and whole-device observations: do not sum
+the ready occupancy row with the allocation rows. The coordinator's ready
+occupancy is observed; headroom is a policy reserve, not allocated VRAM.
+The telemetry record covers GPU index 0 from 19:08:38 to 19:51:10 UTC on
+2026-09-18; it does not measure total Spark occupancy.
+
+The [configuration chart](release-v7-configurations.svg) deliberately displays
+only sourced partial accounting, without inferred attention/runtime residuals
+or a claim that the dark remainder is free. Its dual EXL3 startup source is
+the later rebuilt regression log, **not** the dual throughput campaign.
+That log reports 89,748,930,560 / 93,018,390,528 occupied bytes **before KV**
+and 97,646,804,992 / 98,282,242,048 after KV allocation; these are not campaign
+peak-VRAM measurements. Historical v6 MXFP4 rates in the chart are distinct
+from its NVFP4 memory accounting.

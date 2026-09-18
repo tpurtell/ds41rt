@@ -2,19 +2,20 @@
 
 DS41RT serves the official [DeepSeek V4.1 Flash](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) checkpoint across one or two RTX PRO 6000 Blackwell coordinator GPUs and four DGX Spark expert workers. It combines native target execution, local dSpark speculative decoding, token-level prefix reuse, tools, constrained output, and vision in one OpenAI-compatible service.
 
-All reported RTX measurements use an enforced **400 W power limit** and **standard 14,001 MHz maximum memory speed with no memory overclock**. The loaded memory clock reached 13,365 MHz; the RTX driver was 595.91.07. The four GB10 workers used driver 580.159.03.
+The historical official-image v6 campaign used an enforced **400 W power limit** and **standard 14,001 MHz maximum memory speed with no memory overclock**. Its loaded memory clock reached 13,365 MHz; the RTX driver was 595.91.07. The four GB10 workers used driver 580.159.03. V7 quant measurements and their outstanding provenance are identified separately below.
 
 [![DS41RT native execution across RTX coordinators and four expert workers](docs/native-path-execution.svg)](docs/native-path-execution.svg)
 
 ## Performance
 
-The official full checkpoint remains the default. Every performance cell contains three samples. Counting is a low-entropy reference; weighted content, reasoning code, topic, mixed traffic, and retained-context decode are the primary serving measurements. See the [v6 performance report](docs/release-v6-performance.md) for the protocol and provenance.
+The official full checkpoint remains the default. Its measurements are the historical [v6 campaign](docs/release-v6-performance.md), **not re-campaigned for v7**. The new NVFP4 and EXL3 measurements use the v7 raw-result package; their reports below distinguish recorded controls from outstanding provenance and qualification.
 
-RTX measurements use **400 W per card and standard memory speed, without a memory overclock**. Each performance cell has three samples. Reasoning code uses high-effort thinking; other throughput cases disable thinking. All new TP2 switches are off.
+The release protocol uses **400 W per RTX card and standard memory speed, without a memory overclock**. Reported throughput cells use three samples. Reasoning code uses high-effort thinking and counts reasoning plus final-answer tokens; other throughput cases disable thinking. The official v6 campaign kept the experimental TP2 switches off.
 
-**Headlines.** Tokens/s across every v7 configuration. `Δ` compares two RTX cards with one
-for the official and NVFP4 quants; for EXL3 it compares the two-card profile with the
-single-card one. Counting is outside the weighted score.
+**Headlines.** Tokens/s across all six configurations. Prefill is the best cell median
+from a completed, passing matrix; decode is C1 dSpark, with a weighted nine-category
+score excluding counting. `Δ` compares two RTX cards with one for the official and
+NVFP4 pairs; EXL3 compares different deployment profiles, not isolated second-GPU scaling.
 
 | Measurement | Official 1x | Official 2x | Δ | NVFP4 1x | NVFP4 2x | Δ | EXL3 1x | EXL3 2x | Δ |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -23,18 +24,24 @@ single-card one. Counting is outside the weighted score.
 | Weighted decode | 92.00 | 109.44 | +19.0% | 66.60 | 80.12 | +20.3% | 88.10 | 145.10 | +64.7% |
 | C1 code decode | 130.41 | 155.70 | +19.4% | 88.77 | 109.20 | +23.0% | 123.54 | 222.06 | +79.7% |
 
+New-quant reports: [NVFP4 W4A4](docs/release-v7-nvfp4-performance.md) · [EXL3 K2 (including 1x compact)](docs/release-v7-exl3-k2-performance.md).
+
 EXL3 1x uses one RTX PRO 6000 with a **32 GiB total budget including headroom**
 and **two TP2 Sparks**; EXL3 2x uses no Sparks. This simulates RTX 5090 memory
 capacity, not its performance, and the change column is not isolated second-GPU
 scaling. Both EXL3 prefill campaigns completed all 30 cells. Decode completion
 checks passed **29/30 for EXL3 1x** and **28/30 for EXL3 2x**: the failed
-high-effort reasoning samples reached their output limit with no final code;
-throughput includes them. See [compact setup and residency](docs/release-v7-exl3-compact.md).
-Producer-built compact release images remain to be published; WIP runtime is verified.
-Official numbers are historical v6; v7 numbers are rendered from raw campaigns
-without fallback. NVFP4 1x prefill remains incomplete and is not estimated.
+high-effort reasoning samples exhausted 4,096 output tokens with no final code;
+throughput includes them. See [compact setup and residency](docs/release-v7-exl3-compact.md)
+and the [configuration accounting chart](docs/release-v7-configurations.svg).
+No physical RTX 5090 has been tested; the same-capability grid checks used RTX PRO 6000.
+V7 release Docker images have not been built or published; runtime evidence is WIP.
+NVFP4 1x best prefill remains unmeasured after an interrupted campaign and is not estimated.
 
-Full performance reports for the new quants: [NVFP4 W4A4](docs/release-v7-nvfp4-performance.md) and [EXL3 K2 Compact](docs/release-v7-exl3-k2-performance.md). The tables below are the official image.
+**Official image only below.** Every remaining performance table in this section is
+preserved from v6, not re-measured for v7. Older official-reference, acceptance and
+tool-evaluation results retain their separately named historical campaigns; none
+qualifies either new quant.
 
 **Content-type decode.** Median tokens/s. Official Flash values are the historical one-shot reference, including its prior fable wording; they were not rerun.
 
@@ -124,7 +131,7 @@ Full performance reports for the new quants: [NVFP4 W4A4](docs/release-v7-nvfp4-
 | 2 RTX | 0 | 95,132.00 | 2,119.00 | 800.00 |
 | 2 RTX | 1 | 95,738.00 | 1,510.00 | 800.00 |
 
-**Historical native draft acceptance.** V5 measurements, not rerun for v6: C1, three requests per content type. Accepted/verified percentage and mean emitted tokens per nonterminal cycle in parentheses. Schema JSON is grammar-constrained; reasoning code includes reasoning and final output. Adaptive selection omits unverified drafts, so these are serving rates, not fixed-history agreement.
+**Historical native draft acceptance.** V5 measurements, not rerun for v6 or v7: C1, three requests per content type. Accepted/verified percentage and mean emitted tokens per nonterminal cycle in parentheses. Schema JSON is grammar-constrained; reasoning code includes reasoning and final output. Adaptive selection omits unverified drafts, so these are serving rates, not fixed-history agreement.
 
 | Content | Historical 1 RTX | Historical 2 RTX |
 |---|---:|---:|
@@ -138,7 +145,7 @@ Full performance reports for the new quants: [NVFP4 W4A4](docs/release-v7-nvfp4-
 | Schema JSON | 75.40% (4.65) | 54.76% (4.29) |
 | Multilingual | 57.33% (2.22) | 50.37% (2.38) |
 
-**Historical native tool calling.** The three v4 full-checkpoint campaigns retained in v5; not rerun for v6. High-effort thinking was enabled, and failures remain in the scores.
+**Historical native tool calling.** The three v4 full-checkpoint campaigns retained in v5; not rerun for v6 or v7. High-effort thinking was enabled, and failures remain in the scores.
 
 | Run | Basic | Hard | Total |
 |---|---:|---:|---:|

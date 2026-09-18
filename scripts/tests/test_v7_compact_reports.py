@@ -45,6 +45,28 @@ class CompactReports(unittest.TestCase):
             self.assertIn('final response empty', failed)
             self.assertIn('not a successful quality result', failed)
 
+    def test_report_preserves_missing_columns_and_provenance(self):
+        report = load('render-ds41-v7-quant-reports')
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            text = report.render('nvfp4', root)
+            self.assertIn('| Case | 1 RTX dSpark | 2 RTX dSpark |', text)
+            self.assertIn('| Code | — | — |', text)
+            self.assertIn('not proof of the quant snapshot', text)
+            self.assertIn('have not been built or published', text)
+            self.assertIn('SHA-256 `unavailable`', text)
+            self.assertLess(text.index('## Prefill'), text.index('## Quality and evaluation'))
+            self.assertIn('target-only decode', text)
+            sample = {'case': 'code-reasoning', 'repeat': 3, 'passed': False,
+                      'finish_reason': 'length', 'content': '',
+                      'usage': {'completion_tokens': 4096}, 'request': {'max_tokens': 4096},
+                      'observed_decode_tokens_per_second': 42}
+            (root / 'single-exl3-dspark.json').write_text(json.dumps({'samples': [sample]}))
+            text = report.render('exl3', root)
+            self.assertIn('Output tokens: 4096; request cap: 4096', text)
+            self.assertIn('0/1 sample checks explicitly passed', text)
+            self.assertIn('not a successful quality result', text)
+
     def test_headline_missing_note_follows_cells(self):
         report = load('render-ds41-v7-headline')
         self.assertIn('EXL3 1x weighted decode', report.render())

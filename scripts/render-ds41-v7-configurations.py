@@ -1,246 +1,181 @@
 #!/usr/bin/env python3
-"""Render the v7 configuration graphic.
+"""Render v7 configurations from raw throughput and explicitly sourced accounting.
 
-Four serving configurations in the order the release reads them: the MXFP4
-original on one and two RTX cards with four Spark workers, then the EXL3
-2 bpw compact pair (two cards, and the degenerate single simulated 5090 plus
-two Sparks). Each configuration is a group of full-height device bars; the
-coloured bands are that device's memory use and the space above them is free
-capacity. One legend serves the chart.
-
-Numbers live in CONFIGS. Sources:
-  * Routed experts, MXFP4 at 2x: 20 layers x 3.61 GB (DUAL_ROUTED_LAYER_BYTES
-    in scripts/select-release-gpus.py).
-  * MXFP4 at 1x: full-width layers on one card, so a layer is twice the TP2
-    layer; ~10 layers fill the same card budget.
-  * Spark per-layer share: measured, ~0.97 GB per layer per Spark. Sparks hold
-    routed-expert shards only - attention and the KV cache live on the RTX
-    cards - so their bands carry no KV/attention segment.
-  * NVFP4 and EXL3 expert bands, and every non-expert band: the runtime's own
-    startup accounting (rank_peak_bytes, transport_bytes, reserved cache,
-    headroom).
-  * Speeds: the v6 release campaign for MXFP4, the v7 campaigns for NVFP4 and
-    EXL3. A missing throughput renders as a dash, never as an estimate.
+Bands are nonoverlapping logged allocations/plans, NOT a complete VRAM census.
+Never infer an attention/runtime residual or mark the unaccounted area as free.
+The dual EXL3 log is a rebuilt regression startup, not campaign-peak telemetry.
 """
 import argparse
+from html import escape
+import json
 from pathlib import Path
+import runpy
 
-# Only two bands, because only two numbers are actually measured: the routed
-# expert residency the loader reports, and everything else the device occupies
-# (attention, KV, workspace, runtime) as the remainder of logged occupancy.
-# Earlier revisions split that remainder into guessed sub-bands; that produced
-# a KV band on Sparks, which hold no attention and no KV cache.
-BANDS = [
-    ("Routed experts", "#4f8ef7"),
-    ("KV cache", "#74e4c4"),
-    ("dSpark draft", "#9fd85a"),
-    ("Transport + workspace", "#b298ea"),
-    ("Attention, shared, runtime", "#f2b45c"),
-]
-FREE = "#1b2b42"
-CAPTION = [
-    "Full height is device memory; bands come from the runtime's startup logs and the space above them is free.",
-    "A dash is a measurement not yet taken; a blank bar is a device whose accounting is not logged yet.",
-]
-
-# devices: (label, capacity_gb, {band: gb}); speeds: (label, code_tps, prefill_tps)
+ROOT = Path(__file__).resolve().parents[1]
+GIB = 1 << 30
+BANDS = [("Expert weights / plan", "#4f8ef7"), ("KV allocation", "#74e4c4"),
+         ("Execution / transport", "#b298ea")]
+W, H = 1440, 970
+BAR_TOP, BASELINE, BAR_AREA = 280, 680, 400
+MAX_GIB = 128_000_000_000 / GIB
+# Raw byte values; plans remain labelled plans rather than measured occupancy.
+# Each source is a named captured log, not a guessed per-layer multiplication.
+# distributed.rs:49-82 builds rank_peak_bytes from weight residency + loading
+# transient, separately from transport_bytes at :302-331 and reserved KV.
+# It is a loading plan, not a claim of simultaneous resident/peak device VRAM.
 CONFIGS = [
-    dict(
-        title=["Original / NVIDIA", "1x RTX 6000 + 4x Spark"],
-        subtitle="NVFP4: 4 full-width layers",
-        devices=[
-            # Logged: 4 resident layers, resident_bytes 30.58 GB, workspace 0.34 GB.
-            ("RTX0", 103, "96 GiB", {"Routed experts": 30.6, "Transport + workspace": 0.34}),
-            ("Spark x4", 128, "128 GB", {}),
-        ],
-        speeds=[("MXFP4", 130.4, 7824), ("NVFP4 W4A4", 88.8, None)],
-    ),
-    dict(
-        title=["Original / NVIDIA", "2x RTX 6000 + 4x Spark"],
-        subtitle="NVFP4 startup logs",
-        devices=[
-            # Logged for the W4A4 run: rank_peak_bytes 76.45 GB per card plus
-            # 19.6 GB of remaining occupancy; the Spark holds expert shards.
-            # Logged per card and asymmetric: cache_bytes 2.70/1.81 GB,
-            # transport 1.59/1.84 GB, dSpark lanes 19.2/418.3 MB per lane.
-            ("RTX0", 103, "96 GiB", {"Routed experts": 76.5, "KV cache": 2.70,
-                                     "dSpark draft": 0.04, "Transport + workspace": 1.59,
-                                     "Attention, shared, runtime": 15.3}),
-            ("RTX1", 103, "96 GiB", {"Routed experts": 76.5, "KV cache": 1.81,
-                                     "dSpark draft": 0.84, "Transport + workspace": 1.84,
-                                     "Attention, shared, runtime": 18.3}),
-            ("Spark x4", 128, "128 GB", {}),
-        ],
-        speeds=[("MXFP4", 155.7, 8355), ("NVFP4 W4A4", 109.2, 7432)],
-    ),
-    dict(
-        title=["EXL3 2 bpw", "2x RTX 6000, no Spark"],
-        subtitle="all 40 layers resident",
-        devices=[
-            # Logged per card: rank peak 69.1 GB, cache 7.88/5.26 GB, transport
-            # 2.62/2.87 GB, occupancy 89.75/93.02 GB.
-            ("RTX0", 103, "96 GiB", {"Routed experts": 69.1, "KV cache": 7.88,
-                                     "Transport + workspace": 2.62,
-                                     "Attention, shared, runtime": 10.2}),
-            ("RTX1", 103, "96 GiB", {"Routed experts": 69.1, "KV cache": 5.26,
-                                     "Transport + workspace": 2.87,
-                                     "Attention, shared, runtime": 15.8}),
-        ],
-        speeds=[("EXL3 2 bpw", 216.9, 5572)],
-    ),
-    dict(
-        title=["EXL3 2 bpw", "1x RTX 5090 + 2x Spark"],
-        subtitle="profile not implemented",
-        devices=[("RTX0", 34, "32 GiB", {}), ("Spark x2", 128, "128 GB", {})],
-        speeds=[("EXL3 2 bpw", None, None)],
-    ),
+    dict(title=["Official / NVIDIA", "1x RTX PRO 6000 + 4x Spark"],
+         subtitle="Bands: NVFP4 startup only",
+         devices=[("RTX0", 96, [30576500736, 16745176576, 766661816]),
+                  ("Spark each (x4)", MAX_GIB, [None, None, None])],
+         notes=["Full ready occupancy: not logged", "Spark accounting: not recorded here"],
+         sources=[dict(path="runs/v7q-a1/single-nvfp4-coordinator.log", lines="4-5",
+                       fields=["resident_bytes", "cache_bytes", "workspace_bytes"],
+                       scope="NVFP4 startup; not historical MXFP4 memory")],
+         speed_columns=[("MXFP4 (v6)", "Official 1x"), ("NVFP4", "NVFP4 1x")]),
+    dict(title=["Official / NVIDIA", "2x RTX PRO 6000 + 4x Spark"],
+         subtitle="VRAM accounting not established here",
+         devices=[("RTX0", 96, [None, None, None]), ("RTX1", 96, [None, None, None]),
+                  ("Spark each (x4)", MAX_GIB, [None, None, None])],
+         notes=["No sourced complete startup log", "No inferred VRAM bands"],
+         sources=[],
+         speed_columns=[("MXFP4 (v6)", "Official 2x"), ("NVFP4", "NVFP4 2x")]),
+    dict(title=["EXL3 2.0 bpw", "2x RTX PRO 6000, no Spark"],
+         subtitle="All 40 layers local; regression startup",
+         devices=[("RTX0", 96, [69122129920, 7877077888, 2620852264]),
+                  ("RTX1", 96, [69122129920, 5258201728, 2872510504])],
+         notes=["After KV: 90.94 / 91.53 GiB occupied", "Expert band is rank_peak_bytes plan"],
+         sources=[dict(path="docs/release-v7-exl3-compact-evidence.json#/logs/dual-regression.log",
+                       original_path="runs/v7q-a1/dual-regression.log", lines="23,26-27",
+                       fields=["rank_peak_bytes", "cache_bytes", "transport_bytes", "occupied_bytes"],
+                       scope="rebuilt regression startup, not campaign peak")],
+         speed_columns=[("EXL3", "EXL3 2x")]),
+    dict(title=["EXL3 2.0 bpw compact", "1x RTX PRO 6000 + 2x Spark"],
+         subtitle="32 GiB budget; NOT RTX 5090 hardware",
+         devices=[("RTX0 budget", 32, [3433037824, 2191668736, 177724136]),
+                  ("Spark each (x2)", MAX_GIB, [67394076672, None, 56007284])],
+         notes=["RTX ready: 28.34 GiB; reserve: 2 GiB", "Sampled RTX peak: 28.88 GiB"],
+         sources=[dict(path="docs/release-v7-exl3-compact-evidence.json#/logs/compact-final-residency.log",
+                       original_path="runs/v7q-a1/compact-final-residency.log", lines="4-7",
+                       fields=["resident_bytes", "cache_bytes", "workspace_bytes", "device_occupied_bytes"],
+                       scope="startup; 32 GiB is a budget, not physical PRO 6000 capacity"),
+                  dict(path="docs/release-v7-exl3-compact-evidence.json#/logs/compact-final-ostrich.log",
+                       original_path="runs/v7q-a1/compact-final-ostrich.log", lines="1,41",
+                       fields=["resident_bytes", "workspace_bytes"],
+                       corroboration="runs/v7q-a1/compact-final-dodo.log:1,41",
+                       scope="each Spark; excludes transport/context, no Spark KV")],
+         speed_columns=[("EXL3", "EXL3 1x")]),
 ]
 
-W, H = 1400, 900
-TITLE_Y, CAPTION_Y, LEGEND_Y = 44, 70, 128
-CARD_TOP, CARD_BOTTOM = 168, 872
-BAR_TOP, BAR_AREA = 258, 440
-BAR_W, BAR_GAP = 62, 24
-MAX_DEVICE_GB = 128.0             # the tallest device fills BAR_AREA exactly
-LEGEND_X, LEGEND_STEP = 60, 256   # one full-width row: five items
+
+def load_measurements(package):
+    # Share the headline's raw-result selection and completed-prefill gate.
+    module = runpy.run_path(str(ROOT / "scripts/render-ds41-v7-headline.py"))
+    rows, documents = module["load_measurements"](package)
+    return {column: values for column, _q, _l, _p, values in rows}, documents
 
 
-def gb_to_px(gb):
-    return gb * BAR_AREA / MAX_DEVICE_GB
+def render(package=None):
+    package = Path.home() / ".cache/ds41rt-v7-package/performance" if package is None else Path(package)
+    values, documents = load_measurements(package)
+    provenance = dict(memory=[c["sources"] for c in CONFIGS],
+                      throughput=dict(v7_package=str(package),
+                                      v6="docs/release-v6-performance.json",
+                                      selector="scripts/render-ds41-v7-headline.py:load_measurements",
+                                      metric="median code decode; best completed passing cell median prefill"))
+    out = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" role="img" aria-labelledby="title desc">',
+           '<title id="title">DS41RT v7 serving configurations</title>',
+           '<desc id="desc">Logged partial allocation bands in GiB, not total VRAM or free space. '
+           'Official throughput is historical v6; NVFP4 and EXL3 throughput is v7 WIP. '
+           'Compact measurements use an RTX PRO 6000 with a 32 GiB ceiling, not a physical RTX 5090. '
+           'Release Docker image publication remains pending.</desc>',
+           '<metadata>' + escape(json.dumps(provenance)) + '</metadata>',
+           '<style>text{font-family:Arial,Helvetica,sans-serif;fill:#e4ecf8} '
+           '.title{font-size:26px;font-weight:bold}.panel{font-size:16px;font-weight:bold} '
+           '.small{font-size:12px;fill:#aebdd3}.note{font-size:13px;fill:#aebdd3} '
+           '.band{font-size:12px;fill:#08111f;font-weight:bold} '
+           '.value{font-size:15px;font-weight:bold;fill:#74e4c4}</style>',
+           f'<rect width="{W}" height="{H}" rx="18" fill="#091423"/>']
 
+    def text(x, y, value, cls="note", anchor="start"):
+        out.append(f'<text x="{x}" y="{y}" class="{cls}" text-anchor="{anchor}">{escape(str(value))}</text>')
 
-def bar(x, total_gb, bands):
-    """One device: capacity outline, bands stacked from the baseline up."""
-    height = gb_to_px(total_gb)
-    y0 = BAR_TOP + BAR_AREA - height
-    out = [f'<rect x="{x:.1f}" y="{y0:.1f}" width="{BAR_W}" height="{height:.1f}" rx="5" '
-           f'fill="{FREE}" stroke="#35506c" stroke-width="1.6"/>']
-    cursor = BAR_TOP + BAR_AREA
-    for name, colour in BANDS:
-        value = bands.get(name, 0.0)
-        if value <= 0:
-            continue
-        segment = gb_to_px(value)
-        cursor -= segment
-        out.append(f'<rect x="{x:.1f}" y="{cursor:.1f}" width="{BAR_W}" height="{segment:.1f}" '
-                   f'fill="{colour}"/>')
-        if segment >= 16:
-            out.append(f'<text x="{x + BAR_W / 2:.0f}" y="{cursor + segment / 2 + 5:.0f}" '
-                       f'class="band" text-anchor="middle">{value:.1f}</text>')
-    return "\n".join(out)
-
-
-def render():
-    panel_w = (W - 80 - 3 * 22) / 4
-    lines = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" '
-        'role="img" aria-labelledby="title desc">',
-        '<title id="title">DS41RT v7 serving configurations</title>',
-        '<desc id="desc">Four serving configurations drawn as device memory bars: the MXFP4 '
-        'original on one and two RTX cards with four Spark workers, and the EXL3 2 bpw quant on '
-        'two RTX cards or one simulated 32 GiB RTX 5090 with two Spark workers. Colour-coded bands '
-        'show memory use, with measured code-decode and best observed prefill throughput beneath '
-        'each configuration.</desc>',
-        '<defs><style>',
-        'text{font-family:Arial,Helvetica,sans-serif;fill:#e4ecf8}',
-        '.title{font-size:27px;font-weight:700}',
-        '.panel{font-size:17px;font-weight:700}',
-        '.sub{font-size:13px;fill:#8fa3bd}',
-        '.device{font-size:14px;fill:#c7d6ea}',
-        '.band{font-size:12px;fill:#08111f;font-weight:700}',
-        '.legend{font-size:14px}',
-        '.colhead{font-size:12px;fill:#8fa3bd}',
-        '.speed{font-size:15px}',
-        '.tps{font-size:16px;font-weight:700;fill:#74e4c4}',
-        '.pending{font-size:15px;fill:#f2b45c}',
-        '.detail{font-size:11px;fill:#9fd85a}',
-        '</style></defs>',
-        f'<rect width="{W}" height="{H}" rx="18" fill="#091423"/>',
-        f'<text x="40" y="{TITLE_Y}" class="title">V7 · four configurations</text>',
-    ]
-    for row, text in enumerate(CAPTION):
-        lines.append(f'<text x="40" y="{CAPTION_Y + row * 20}" class="sub">{text}</text>')
-
-    legend_w = LEGEND_STEP * len(BANDS) + 40
-    lines.append(f'<rect x="40" y="{LEGEND_Y - 24}" width="{legend_w}" height="38" rx="9" '
-                 f'fill="#0e1c2f" stroke="#35506c" stroke-width="1.4"/>')
-    for column, (name, colour) in enumerate(BANDS):
-        lx = LEGEND_X + column * LEGEND_STEP
-        lines.append(f'<rect x="{lx}" y="{LEGEND_Y - 11}" width="15" height="15" rx="3" fill="{colour}"/>')
-        lines.append(f'<text x="{lx + 22}" y="{LEGEND_Y}" class="legend">{name}</text>')
-
+    text(30, 40, "V7 · serving configurations", "title")
+    text(30, 66, "Bands: directly logged allocations/plans (GiB). Dark area is unaccounted, NOT measured free memory.")
+    text(30, 87, "Outlines: nominal capacity, except compact RTX = 32 GiB budget. Spark bars represent one worker each (128 GB nominal).")
+    text(30, 108, "Memory logs and throughput campaigns are separate observations; startup allocation is not peak VRAM.")
+    for i, (name, color) in enumerate(BANDS):
+        x = 30 + 350 * i
+        out.append(f'<rect x="{x}" y="126" width="16" height="16" fill="{color}"/>')
+        text(x + 24, 140, name)
+    text(30, 164, "WIP builds only: v7 release Docker images not built or published. RTX 5090 not hardware-qualified.")
     for index, config in enumerate(CONFIGS):
-        left = 40 + index * (panel_w + 22)
-        lines.append(f'<rect x="{left:.0f}" y="{CARD_TOP}" width="{panel_w:.0f}" '
-                     f'height="{CARD_BOTTOM - CARD_TOP}" rx="11" fill="#0e1c2f" '
-                     f'stroke="#35506c" stroke-width="1.4"/>')
-        for row, text in enumerate(config["title"]):
-            lines.append(f'<text x="{left + 16:.0f}" y="{CARD_TOP + 30 + row * 21}" class="panel">{text}</text>')
-        lines.append(f'<text x="{left + 16:.0f}" y="{CARD_TOP + 74}" class="sub">{config["subtitle"]}</text>')
+        left = 20 + 355 * index
+        out.append(f'<rect x="{left}" y="188" width="335" height="687" rx="10" fill="#0e1c2f" stroke="#35506c"/>')
+        for row, title in enumerate(config["title"]):
+            text(left + 12, 216 + row * 22, title, "panel")
+        text(left + 12, 262, config["subtitle"], "small")
         count = len(config["devices"])
-        group = count * BAR_W + (count - 1) * BAR_GAP
-        x = left + (panel_w - group) / 2
-        for label, total, capacity_text, bands in config["devices"]:
-            lines.append(bar(x, total, bands))
-            lines.append(f'<text x="{x + BAR_W / 2:.0f}" y="{BAR_TOP + BAR_AREA + 24}" '
-                         f'class="device" text-anchor="middle">{label}</text>')
-            lines.append(f'<text x="{x + BAR_W / 2:.0f}" y="{BAR_TOP + BAR_AREA + 41}" '
-                         f'class="sub" text-anchor="middle">{capacity_text}</text>')
-            # KV and the draft arena are small next to a card's full height, so
-            # print their numbers rather than relying on a sliver of colour.
-            for row, (name, short) in enumerate((("KV cache", "KV"), ("dSpark draft", "dS"))):
-                if name in bands and bands[name] < 10:
-                    lines.append(f'<text x="{x + BAR_W / 2:.0f}" '
-                                 f'y="{BAR_TOP + BAR_AREA + 55 + row * 12}" '
-                                 f'class="detail" text-anchor="middle">{short} {bands[name]:.2f}</text>')
-            x += BAR_W + BAR_GAP
-        head = BAR_TOP + BAR_AREA + 82
-        lines.append(f'<text x="{left + 16:.0f}" y="{head}" class="colhead">quant</text>')
-        lines.append(f'<text x="{left + panel_w - 116:.0f}" y="{head}" class="colhead" '
-                     f'text-anchor="end">code</text>')
-        lines.append(f'<text x="{left + panel_w - 20:.0f}" y="{head}" class="colhead" '
-                     f'text-anchor="end">prefill</text>')
-        for row, (label, code, prefill) in enumerate(config["speeds"]):
-            y = head + 24 + row * 23
-            lines.append(f'<text x="{left + 16:.0f}" y="{y}" class="speed">{label}</text>')
-            for dx, value in ((panel_w - 116, code), (panel_w - 20, prefill)):
-                if value is None:
-                    lines.append(f'<text x="{left + dx:.0f}" y="{y}" class="pending" '
-                                 f'text-anchor="end">—</text>')
-                else:
-                    lines.append(f'<text x="{left + dx:.0f}" y="{y}" class="tps" '
-                                 f'text-anchor="end">{value:,.0f}</text>')
-    return "\n".join(lines) + "\n</svg>\n"
+        step = 100 if count == 3 else 128
+        start = left + (335 - (count - 1) * step) / 2
+        for j, (label, capacity, bands) in enumerate(config["devices"]):
+            x = start + j * step
+            height = capacity / MAX_GIB * BAR_AREA
+            out.append(f'<rect x="{x-26}" y="{BASELINE-height:.2f}" width="52" height="{height:.2f}" fill="#1b2b42" stroke="#536a83"/>')
+            cursor = BASELINE
+            for raw, (name, color) in zip(bands, BANDS):
+                if raw is None:
+                    continue
+                size = raw / GIB / MAX_GIB * BAR_AREA
+                cursor -= size
+                out.append(f'<rect x="{x-26}" y="{cursor:.2f}" width="52" height="{size:.2f}" fill="{color}"><title>{escape(name)}: {raw:,} bytes</title></rect>')
+                if size > 20:
+                    text(x, cursor + size / 2 + 4, f"{raw/GIB:.2f}", "band", "middle")
+            text(x, 701, label, "small", "middle")
+            text(x, 718, f"{capacity:.2f} GiB", "small", "middle")
+        for row, note in enumerate(config["notes"]):
+            text(left + 12, 742 + row * 17, note, "small")
+        text(left + 12, 784, "tok/s", "small")
+        text(left + 228, 784, "code", "small", "end")
+        text(left + 322, 784, "prefill", "small", "end")
+        for row, (label, column) in enumerate(config["speed_columns"]):
+            y = 808 + row * 24
+            text(left + 12, y, label)
+            for x, metric in [(left + 228, "C1 code decode"), (left + 322, "Prefill")]:
+                value = values[column].get(metric)
+                text(x, y, "—" if value is None else f"{value:,.0f}", "value", "end")
+        failures = []
+        for _label, column in config["speed_columns"]:
+            samples = (documents.get(column, ({}, {}))[0] or {}).get("samples", [])
+            if samples and any(s.get("passed") is not True for s in samples):
+                failures.append(f"{sum(s.get('passed') is True for s in samples)}/{len(samples)} decode checks; failed samples included")
+        if failures:
+            text(left + 12, 857, "; ".join(failures), "small")
+    text(30, 904, "— = no usable qualifying result, not proof a measurement was never attempted. NVFP4 1x prefill was interrupted.")
+    text(30, 926, "EXL3 reasoning-limit failures mean decode campaigns are not fully passing. See the per-quant reports and compact qualification evidence.")
+    text(30, 948, "Exact source paths/fields are embedded in SVG metadata; no attention, draft-weight or runtime residuals are inferred.")
+    return "\n".join(out) + "\n</svg>\n"
 
 
 def self_check(svg):
-    """Fail loudly rather than shipping an overlapping or clipped chart."""
     import re
-    rects = [(float(a), float(b), float(c), float(d)) for a, b, c, d in re.findall(
-        r'<rect x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)"', svg)]
-    texts = [(float(x), float(y)) for x, y in re.findall(
-        r'<text x="([-\d.]+)" y="([-\d.]+)"', svg)]
-    for x, y, w, h in rects:
-        assert x >= 0 and y >= 0 and x + w <= W + 0.5 and y + h <= H + 0.5, f"rect off canvas {(x, y, w, h)}"
-    for x, y in texts:
-        assert 0 <= x <= W and 0 <= y <= H, f"text off canvas {(x, y)}"
-    assert LEGEND_Y + 14 < CARD_TOP, "legend overlaps the card band"
-    rows = max(len(c["speeds"]) for c in CONFIGS)
-    stat_bottom = BAR_TOP + BAR_AREA + 82 + 24 + 23 * (rows - 1) + 8
-    assert stat_bottom <= CARD_BOTTOM, f"stat block escapes its card ({stat_bottom} > {CARD_BOTTOM})"
+    import xml.etree.ElementTree as ET
+    ET.fromstring(svg)
+    for x, y, width, height in re.findall(r'<rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)"', svg):
+        x, y, width, height = map(float, (x, y, width, height))
+        assert x >= 0 and y >= 0 and x + width <= W and y + height <= H
     for config in CONFIGS:
-        for label, total, _text, bands in config["devices"]:
-            used = sum(bands.get(name, 0.0) for name, _ in BANDS)
-            assert used <= total + 0.01, f"{config['title'][0]}/{label} uses {used} > {total} GB"
-    assert abs(gb_to_px(MAX_DEVICE_GB) - BAR_AREA) < 0.001, "tallest device must fill the bar area"
-    assert 40 + LEGEND_STEP * len(BANDS) + 40 <= W - 40, "legend row runs past the canvas"
+        for _label, capacity, bands in config["devices"]:
+            assert sum(v or 0 for v in bands) / GIB <= capacity
+    assert "NOT measured free" in svg and "NOT RTX 5090 hardware" in svg
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--package", type=Path, default=Path.home() / ".cache/ds41rt-v7-package/performance")
     args = parser.parse_args()
-    svg = render()
+    svg = render(args.package)
     self_check(svg)
     args.output.write_text(svg)
 
