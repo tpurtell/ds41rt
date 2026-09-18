@@ -32,7 +32,10 @@ from pathlib import Path
 # a KV band on Sparks, which hold no attention and no KV cache.
 BANDS = [
     ("Routed experts", "#4f8ef7"),
-    ("Other resident", "#74e4c4"),
+    ("KV cache", "#74e4c4"),
+    ("dSpark draft", "#9fd85a"),
+    ("Transport + workspace", "#b298ea"),
+    ("Attention, shared, runtime", "#f2b45c"),
 ]
 FREE = "#1b2b42"
 CAPTION = [
@@ -54,18 +57,24 @@ CONFIGS = [
         devices=[
             # Logged for the W4A4 run: rank_peak_bytes 76.45 GB per card plus
             # 19.6 GB of remaining occupancy; the Spark holds expert shards.
-            ("RTX0", 103, "96 GiB", {"Routed experts": 76.5, "Other resident": 19.6}),
-            ("RTX1", 103, "96 GiB", {"Routed experts": 76.5, "Other resident": 19.6}),
+            # Logged per card and asymmetric: cache_bytes 2.70/1.81 GB,
+            # transport 1.59/1.84 GB, dSpark lanes 19.2/418.3 MB per lane.
+            ("RTX0", 103, "96 GiB", {"Routed experts": 76.5, "KV cache": 2.70,
+                                     "dSpark draft": 0.04, "Transport + workspace": 1.59,
+                                     "Attention, shared, runtime": 15.3}),
+            ("RTX1", 103, "96 GiB", {"Routed experts": 76.5, "KV cache": 1.81,
+                                     "dSpark draft": 0.84, "Transport + workspace": 1.84,
+                                     "Attention, shared, runtime": 18.3}),
             ("Spark x4", 128, "128 GB", {}),
         ],
         speeds=[("MXFP4", 155.7, 8355), ("NVFP4 W4A4", 109.2, 7432)],
     ),
     dict(
         title=["EXL3 2 bpw", "2x RTX 6000, no Spark"],
-        subtitle="EXL3 startup logs",
+        subtitle="EXL3 logs: no finer split",
         devices=[
-            ("RTX0", 103, "96 GiB", {"Routed experts": 69.1, "Other resident": 21.1}),
-            ("RTX1", 103, "96 GiB", {"Routed experts": 69.1, "Other resident": 21.1}),
+            ("RTX0", 103, "96 GiB", {"Routed experts": 69.1, "Attention, shared, runtime": 21.1}),
+            ("RTX1", 103, "96 GiB", {"Routed experts": 69.1, "Attention, shared, runtime": 21.1}),
         ],
         speeds=[("EXL3 2 bpw", 216.9, 5572)],
     ),
@@ -80,10 +89,10 @@ CONFIGS = [
 W, H = 1400, 900
 TITLE_Y, CAPTION_Y, LEGEND_Y = 44, 70, 128
 CARD_TOP, CARD_BOTTOM = 168, 872
-BAR_TOP, BAR_AREA = 262, 452
+BAR_TOP, BAR_AREA = 258, 440
 BAR_W, BAR_GAP = 62, 24
 MAX_DEVICE_GB = 128.0             # the tallest device fills BAR_AREA exactly
-LEGEND_X, LEGEND_STEP = 60, 250   # one full-width row: two items
+LEGEND_X, LEGEND_STEP = 60, 256   # one full-width row: five items
 
 
 def gb_to_px(gb):
@@ -134,6 +143,7 @@ def render():
         '.speed{font-size:15px}',
         '.tps{font-size:16px;font-weight:700;fill:#74e4c4}',
         '.pending{font-size:15px;fill:#f2b45c}',
+        '.detail{font-size:11px;fill:#9fd85a}',
         '</style></defs>',
         f'<rect width="{W}" height="{H}" rx="18" fill="#091423"/>',
         f'<text x="40" y="{TITLE_Y}" class="title">V7 · four configurations</text>',
@@ -166,8 +176,15 @@ def render():
                          f'class="device" text-anchor="middle">{label}</text>')
             lines.append(f'<text x="{x + BAR_W / 2:.0f}" y="{BAR_TOP + BAR_AREA + 41}" '
                          f'class="sub" text-anchor="middle">{capacity_text}</text>')
+            # KV and the draft arena are small next to a card's full height, so
+            # print their numbers rather than relying on a sliver of colour.
+            for row, (name, short) in enumerate((("KV cache", "KV"), ("dSpark draft", "dS"))):
+                if name in bands and bands[name] < 10:
+                    lines.append(f'<text x="{x + BAR_W / 2:.0f}" '
+                                 f'y="{BAR_TOP + BAR_AREA + 55 + row * 12}" '
+                                 f'class="detail" text-anchor="middle">{short} {bands[name]:.2f}</text>')
             x += BAR_W + BAR_GAP
-        head = BAR_TOP + BAR_AREA + 74
+        head = BAR_TOP + BAR_AREA + 82
         lines.append(f'<text x="{left + 16:.0f}" y="{head}" class="colhead">quant</text>')
         lines.append(f'<text x="{left + panel_w - 116:.0f}" y="{head}" class="colhead" '
                      f'text-anchor="end">code</text>')
@@ -199,7 +216,7 @@ def self_check(svg):
         assert 0 <= x <= W and 0 <= y <= H, f"text off canvas {(x, y)}"
     assert LEGEND_Y + 14 < CARD_TOP, "legend overlaps the card band"
     rows = max(len(c["speeds"]) for c in CONFIGS)
-    stat_bottom = BAR_TOP + BAR_AREA + 74 + 24 + 23 * (rows - 1) + 8
+    stat_bottom = BAR_TOP + BAR_AREA + 82 + 24 + 23 * (rows - 1) + 8
     assert stat_bottom <= CARD_BOTTOM, f"stat block escapes its card ({stat_bottom} > {CARD_BOTTOM})"
     for config in CONFIGS:
         for label, total, _text, bands in config["devices"]:

@@ -13,103 +13,120 @@ text{font-family:Arial,Helvetica,sans-serif;fill:#e4ecf8}
 .speed{font-size:15px}
 .tps{font-size:16px;font-weight:700;fill:#74e4c4}
 .pending{font-size:15px;fill:#f2b45c}
+.detail{font-size:11px;fill:#9fd85a}
 </style></defs>
 <rect width="1400" height="900" rx="18" fill="#091423"/>
 <text x="40" y="44" class="title">V7 · four configurations</text>
 <text x="40" y="70" class="sub">Full height is device memory; bands come from the runtime's startup logs and the space above them is free.</text>
 <text x="40" y="90" class="sub">A dash is a measurement not yet taken; a blank bar is a device whose accounting is not logged yet.</text>
-<rect x="40" y="104" width="540" height="38" rx="9" fill="#0e1c2f" stroke="#35506c" stroke-width="1.4"/>
+<rect x="40" y="104" width="1320" height="38" rx="9" fill="#0e1c2f" stroke="#35506c" stroke-width="1.4"/>
 <rect x="60" y="117" width="15" height="15" rx="3" fill="#4f8ef7"/>
 <text x="82" y="128" class="legend">Routed experts</text>
-<rect x="310" y="117" width="15" height="15" rx="3" fill="#74e4c4"/>
-<text x="332" y="128" class="legend">Other resident</text>
+<rect x="316" y="117" width="15" height="15" rx="3" fill="#74e4c4"/>
+<text x="338" y="128" class="legend">KV cache</text>
+<rect x="572" y="117" width="15" height="15" rx="3" fill="#9fd85a"/>
+<text x="594" y="128" class="legend">dSpark draft</text>
+<rect x="828" y="117" width="15" height="15" rx="3" fill="#b298ea"/>
+<text x="850" y="128" class="legend">Transport + workspace</text>
+<rect x="1084" y="117" width="15" height="15" rx="3" fill="#f2b45c"/>
+<text x="1106" y="128" class="legend">Attention, shared, runtime</text>
 <rect x="40" y="168" width="314" height="704" rx="11" fill="#0e1c2f" stroke="#35506c" stroke-width="1.4"/>
 <text x="56" y="198" class="panel">Original / NVIDIA</text>
 <text x="56" y="219" class="panel">1x RTX 6000 + 4x Spark</text>
 <text x="56" y="242" class="sub">not yet measured</text>
-<rect x="122.8" y="350.3" width="62" height="363.7" rx="5" fill="#1b2b42" stroke="#35506c" stroke-width="1.6"/>
-<text x="154" y="738" class="device" text-anchor="middle">RTX0</text>
-<text x="154" y="755" class="sub" text-anchor="middle">96 GiB</text>
-<rect x="208.8" y="262.0" width="62" height="452.0" rx="5" fill="#1b2b42" stroke="#35506c" stroke-width="1.6"/>
-<text x="240" y="738" class="device" text-anchor="middle">Spark x4</text>
-<text x="240" y="755" class="sub" text-anchor="middle">128 GB</text>
-<text x="56" y="788" class="colhead">quant</text>
-<text x="238" y="788" class="colhead" text-anchor="end">code</text>
-<text x="334" y="788" class="colhead" text-anchor="end">prefill</text>
-<text x="56" y="812" class="speed">MXFP4</text>
-<text x="238" y="812" class="tps" text-anchor="end">130</text>
-<text x="334" y="812" class="tps" text-anchor="end">7,824</text>
-<text x="56" y="835" class="speed">NVFP4 W4A4</text>
-<text x="238" y="835" class="pending" text-anchor="end">—</text>
-<text x="334" y="835" class="pending" text-anchor="end">—</text>
+<rect x="122.8" y="343.9" width="62" height="354.1" rx="5" fill="#1b2b42" stroke="#35506c" stroke-width="1.6"/>
+<text x="154" y="722" class="device" text-anchor="middle">RTX0</text>
+<text x="154" y="739" class="sub" text-anchor="middle">96 GiB</text>
+<rect x="208.8" y="258.0" width="62" height="440.0" rx="5" fill="#1b2b42" stroke="#35506c" stroke-width="1.6"/>
+<text x="240" y="722" class="device" text-anchor="middle">Spark x4</text>
+<text x="240" y="739" class="sub" text-anchor="middle">128 GB</text>
+<text x="56" y="780" class="colhead">quant</text>
+<text x="238" y="780" class="colhead" text-anchor="end">code</text>
+<text x="334" y="780" class="colhead" text-anchor="end">prefill</text>
+<text x="56" y="804" class="speed">MXFP4</text>
+<text x="238" y="804" class="tps" text-anchor="end">130</text>
+<text x="334" y="804" class="tps" text-anchor="end">7,824</text>
+<text x="56" y="827" class="speed">NVFP4 W4A4</text>
+<text x="238" y="827" class="pending" text-anchor="end">—</text>
+<text x="334" y="827" class="pending" text-anchor="end">—</text>
 <rect x="376" y="168" width="314" height="704" rx="11" fill="#0e1c2f" stroke="#35506c" stroke-width="1.4"/>
 <text x="392" y="198" class="panel">Original / NVIDIA</text>
 <text x="392" y="219" class="panel">2x RTX 6000 + 4x Spark</text>
 <text x="392" y="242" class="sub">NVFP4 startup logs</text>
-<rect x="415.2" y="350.3" width="62" height="363.7" rx="5" fill="#1b2b42" stroke="#35506c" stroke-width="1.6"/>
-<rect x="415.2" y="443.9" width="62" height="270.1" fill="#4f8ef7"/>
-<text x="446" y="584" class="band" text-anchor="middle">76.5</text>
-<rect x="415.2" y="374.6" width="62" height="69.2" fill="#74e4c4"/>
-<text x="446" y="414" class="band" text-anchor="middle">19.6</text>
-<text x="446" y="738" class="device" text-anchor="middle">RTX0</text>
-<text x="446" y="755" class="sub" text-anchor="middle">96 GiB</text>
-<rect x="501.2" y="350.3" width="62" height="363.7" rx="5" fill="#1b2b42" stroke="#35506c" stroke-width="1.6"/>
-<rect x="501.2" y="443.9" width="62" height="270.1" fill="#4f8ef7"/>
-<text x="532" y="584" class="band" text-anchor="middle">76.5</text>
-<rect x="501.2" y="374.6" width="62" height="69.2" fill="#74e4c4"/>
-<text x="532" y="414" class="band" text-anchor="middle">19.6</text>
-<text x="532" y="738" class="device" text-anchor="middle">RTX1</text>
-<text x="532" y="755" class="sub" text-anchor="middle">96 GiB</text>
-<rect x="587.2" y="262.0" width="62" height="452.0" rx="5" fill="#1b2b42" stroke="#35506c" stroke-width="1.6"/>
-<text x="618" y="738" class="device" text-anchor="middle">Spark x4</text>
-<text x="618" y="755" class="sub" text-anchor="middle">128 GB</text>
-<text x="392" y="788" class="colhead">quant</text>
-<text x="573" y="788" class="colhead" text-anchor="end">code</text>
-<text x="669" y="788" class="colhead" text-anchor="end">prefill</text>
-<text x="392" y="812" class="speed">MXFP4</text>
-<text x="573" y="812" class="tps" text-anchor="end">156</text>
-<text x="669" y="812" class="tps" text-anchor="end">8,355</text>
-<text x="392" y="835" class="speed">NVFP4 W4A4</text>
-<text x="573" y="835" class="tps" text-anchor="end">109</text>
-<text x="669" y="835" class="tps" text-anchor="end">7,432</text>
+<rect x="415.2" y="343.9" width="62" height="354.1" rx="5" fill="#1b2b42" stroke="#35506c" stroke-width="1.6"/>
+<rect x="415.2" y="435.0" width="62" height="263.0" fill="#4f8ef7"/>
+<text x="446" y="572" class="band" text-anchor="middle">76.5</text>
+<rect x="415.2" y="425.8" width="62" height="9.3" fill="#74e4c4"/>
+<rect x="415.2" y="425.6" width="62" height="0.1" fill="#9fd85a"/>
+<rect x="415.2" y="420.1" width="62" height="5.5" fill="#b298ea"/>
+<rect x="415.2" y="367.6" width="62" height="52.6" fill="#f2b45c"/>
+<text x="446" y="399" class="band" text-anchor="middle">15.3</text>
+<text x="446" y="722" class="device" text-anchor="middle">RTX0</text>
+<text x="446" y="739" class="sub" text-anchor="middle">96 GiB</text>
+<text x="446" y="753" class="detail" text-anchor="middle">KV 2.70</text>
+<text x="446" y="765" class="detail" text-anchor="middle">dS 0.04</text>
+<rect x="501.2" y="343.9" width="62" height="354.1" rx="5" fill="#1b2b42" stroke="#35506c" stroke-width="1.6"/>
+<rect x="501.2" y="435.0" width="62" height="263.0" fill="#4f8ef7"/>
+<text x="532" y="572" class="band" text-anchor="middle">76.5</text>
+<rect x="501.2" y="428.8" width="62" height="6.2" fill="#74e4c4"/>
+<rect x="501.2" y="425.9" width="62" height="2.9" fill="#9fd85a"/>
+<rect x="501.2" y="419.6" width="62" height="6.3" fill="#b298ea"/>
+<rect x="501.2" y="356.7" width="62" height="62.9" fill="#f2b45c"/>
+<text x="532" y="393" class="band" text-anchor="middle">18.3</text>
+<text x="532" y="722" class="device" text-anchor="middle">RTX1</text>
+<text x="532" y="739" class="sub" text-anchor="middle">96 GiB</text>
+<text x="532" y="753" class="detail" text-anchor="middle">KV 1.81</text>
+<text x="532" y="765" class="detail" text-anchor="middle">dS 0.84</text>
+<rect x="587.2" y="258.0" width="62" height="440.0" rx="5" fill="#1b2b42" stroke="#35506c" stroke-width="1.6"/>
+<text x="618" y="722" class="device" text-anchor="middle">Spark x4</text>
+<text x="618" y="739" class="sub" text-anchor="middle">128 GB</text>
+<text x="392" y="780" class="colhead">quant</text>
+<text x="573" y="780" class="colhead" text-anchor="end">code</text>
+<text x="669" y="780" class="colhead" text-anchor="end">prefill</text>
+<text x="392" y="804" class="speed">MXFP4</text>
+<text x="573" y="804" class="tps" text-anchor="end">156</text>
+<text x="669" y="804" class="tps" text-anchor="end">8,355</text>
+<text x="392" y="827" class="speed">NVFP4 W4A4</text>
+<text x="573" y="827" class="tps" text-anchor="end">109</text>
+<text x="669" y="827" class="tps" text-anchor="end">7,432</text>
 <rect x="711" y="168" width="314" height="704" rx="11" fill="#0e1c2f" stroke="#35506c" stroke-width="1.4"/>
 <text x="727" y="198" class="panel">EXL3 2 bpw</text>
 <text x="727" y="219" class="panel">2x RTX 6000, no Spark</text>
-<text x="727" y="242" class="sub">EXL3 startup logs</text>
-<rect x="793.8" y="350.3" width="62" height="363.7" rx="5" fill="#1b2b42" stroke="#35506c" stroke-width="1.6"/>
-<rect x="793.8" y="470.0" width="62" height="244.0" fill="#4f8ef7"/>
-<text x="825" y="597" class="band" text-anchor="middle">69.1</text>
-<rect x="793.8" y="395.5" width="62" height="74.5" fill="#74e4c4"/>
-<text x="825" y="438" class="band" text-anchor="middle">21.1</text>
-<text x="825" y="738" class="device" text-anchor="middle">RTX0</text>
-<text x="825" y="755" class="sub" text-anchor="middle">96 GiB</text>
-<rect x="879.8" y="350.3" width="62" height="363.7" rx="5" fill="#1b2b42" stroke="#35506c" stroke-width="1.6"/>
-<rect x="879.8" y="470.0" width="62" height="244.0" fill="#4f8ef7"/>
-<text x="911" y="597" class="band" text-anchor="middle">69.1</text>
-<rect x="879.8" y="395.5" width="62" height="74.5" fill="#74e4c4"/>
-<text x="911" y="438" class="band" text-anchor="middle">21.1</text>
-<text x="911" y="738" class="device" text-anchor="middle">RTX1</text>
-<text x="911" y="755" class="sub" text-anchor="middle">96 GiB</text>
-<text x="727" y="788" class="colhead">quant</text>
-<text x="908" y="788" class="colhead" text-anchor="end">code</text>
-<text x="1004" y="788" class="colhead" text-anchor="end">prefill</text>
-<text x="727" y="812" class="speed">EXL3 2 bpw</text>
-<text x="908" y="812" class="tps" text-anchor="end">217</text>
-<text x="1004" y="812" class="tps" text-anchor="end">5,572</text>
+<text x="727" y="242" class="sub">EXL3 logs: no finer split</text>
+<rect x="793.8" y="343.9" width="62" height="354.1" rx="5" fill="#1b2b42" stroke="#35506c" stroke-width="1.6"/>
+<rect x="793.8" y="460.5" width="62" height="237.5" fill="#4f8ef7"/>
+<text x="825" y="584" class="band" text-anchor="middle">69.1</text>
+<rect x="793.8" y="387.9" width="62" height="72.5" fill="#f2b45c"/>
+<text x="825" y="429" class="band" text-anchor="middle">21.1</text>
+<text x="825" y="722" class="device" text-anchor="middle">RTX0</text>
+<text x="825" y="739" class="sub" text-anchor="middle">96 GiB</text>
+<rect x="879.8" y="343.9" width="62" height="354.1" rx="5" fill="#1b2b42" stroke="#35506c" stroke-width="1.6"/>
+<rect x="879.8" y="460.5" width="62" height="237.5" fill="#4f8ef7"/>
+<text x="911" y="584" class="band" text-anchor="middle">69.1</text>
+<rect x="879.8" y="387.9" width="62" height="72.5" fill="#f2b45c"/>
+<text x="911" y="429" class="band" text-anchor="middle">21.1</text>
+<text x="911" y="722" class="device" text-anchor="middle">RTX1</text>
+<text x="911" y="739" class="sub" text-anchor="middle">96 GiB</text>
+<text x="727" y="780" class="colhead">quant</text>
+<text x="908" y="780" class="colhead" text-anchor="end">code</text>
+<text x="1004" y="780" class="colhead" text-anchor="end">prefill</text>
+<text x="727" y="804" class="speed">EXL3 2 bpw</text>
+<text x="908" y="804" class="tps" text-anchor="end">217</text>
+<text x="1004" y="804" class="tps" text-anchor="end">5,572</text>
 <rect x="1046" y="168" width="314" height="704" rx="11" fill="#0e1c2f" stroke="#35506c" stroke-width="1.4"/>
 <text x="1062" y="198" class="panel">EXL3 2 bpw</text>
 <text x="1062" y="219" class="panel">1x RTX 5090 + 2x Spark</text>
 <text x="1062" y="242" class="sub">profile not implemented</text>
-<rect x="1129.2" y="593.9" width="62" height="120.1" rx="5" fill="#1b2b42" stroke="#35506c" stroke-width="1.6"/>
-<text x="1160" y="738" class="device" text-anchor="middle">RTX0</text>
-<text x="1160" y="755" class="sub" text-anchor="middle">32 GiB</text>
-<rect x="1215.2" y="262.0" width="62" height="452.0" rx="5" fill="#1b2b42" stroke="#35506c" stroke-width="1.6"/>
-<text x="1246" y="738" class="device" text-anchor="middle">Spark x2</text>
-<text x="1246" y="755" class="sub" text-anchor="middle">128 GB</text>
-<text x="1062" y="788" class="colhead">quant</text>
-<text x="1244" y="788" class="colhead" text-anchor="end">code</text>
-<text x="1340" y="788" class="colhead" text-anchor="end">prefill</text>
-<text x="1062" y="812" class="speed">EXL3 2 bpw</text>
-<text x="1244" y="812" class="pending" text-anchor="end">—</text>
-<text x="1340" y="812" class="pending" text-anchor="end">—</text>
+<rect x="1129.2" y="581.1" width="62" height="116.9" rx="5" fill="#1b2b42" stroke="#35506c" stroke-width="1.6"/>
+<text x="1160" y="722" class="device" text-anchor="middle">RTX0</text>
+<text x="1160" y="739" class="sub" text-anchor="middle">32 GiB</text>
+<rect x="1215.2" y="258.0" width="62" height="440.0" rx="5" fill="#1b2b42" stroke="#35506c" stroke-width="1.6"/>
+<text x="1246" y="722" class="device" text-anchor="middle">Spark x2</text>
+<text x="1246" y="739" class="sub" text-anchor="middle">128 GB</text>
+<text x="1062" y="780" class="colhead">quant</text>
+<text x="1244" y="780" class="colhead" text-anchor="end">code</text>
+<text x="1340" y="780" class="colhead" text-anchor="end">prefill</text>
+<text x="1062" y="804" class="speed">EXL3 2 bpw</text>
+<text x="1244" y="804" class="pending" text-anchor="end">—</text>
+<text x="1340" y="804" class="pending" text-anchor="end">—</text>
 </svg>
