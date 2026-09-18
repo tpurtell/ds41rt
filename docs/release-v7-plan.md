@@ -436,6 +436,34 @@ report's prefill table with its partial-coverage disclosure, but it is not
 promoted to a headline. If the matrix is later completed, the headline gate
 opens by itself and no document needs editing.
 
+### Publishing the images (next step, recipe derived from the Dockerfile)
+
+`docker/Dockerfile.release` is role-parameterised (`ARG DS41RT_ROLE`,
+`ARG CUDA_ARCH`) and always copies from the build context's
+`.ds41rt-release-image/` directory, so each image is built from the artifact
+set for its role. Both sets now exist:
+
+  .ds41rt-release-image/    coordinator: ds41rt, libds41rt_native.so, exl3/
+  .ds41rt-release-expert/   expert: ds41rt, libds41rt_native.so, exl3/
+
+Build the coordinator image straight from the coordinator set, then stage the
+expert set into the context directory for the expert image (keeping the
+coordinator set aside first, since both use the same paths):
+
+  docker build -f docker/Dockerfile.release \
+    --build-arg DS41RT_ROLE=coordinator --build-arg CUDA_ARCH=120 \
+    --build-arg DS41RT_ENGINE_COMMIT=$(git rev-parse HEAD) \
+    --build-arg DS41RT_SPARKINFER_COMMIT=63e2140e4a32a977faa777c172b86679344fdc6a \
+    --build-arg DS41RT_RELEASE_VERSION=v7 \
+    -t ghcr.io/tpurtell/ds41rt-coordinator:v7 .
+
+then swap in the expert set, build with DS41RT_ROLE=expert CUDA_ARCH=121 and
+tag `ghcr.io/tpurtell/ds41rt-spark:v7`, and restore the coordinator set.
+
+The image build itself re-verifies each `exl3-k*` family against the pinned
+SparkInfer revision, so a staged family that does not match fails the build
+rather than shipping.
+
 ### The release build needs the PyO3 ABI flag (or the container environment)
 
 `scripts/build-release-artifacts.sh` run from the host shell fails in
