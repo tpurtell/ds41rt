@@ -363,6 +363,46 @@ fresh requests returned `42`, `BLUE`, and `READY`, including 1,838-token
 prefill. Full root cause, artifact identities, commands, exact API responses,
 and qualification limits: [NVFP4 inference fix](release-v7-nvfp4-inference-fix.md).
 
+### NVFP4 W4A4 serving RESOLVED
+
+Astra fixed and verified end-to-end inference; see
+`docs/release-v7-nvfp4-inference-fix.md` for the full analysis and evidence.
+Independently re-verified here: the dual-RTX + 4-Spark NVFP4 stack answers
+`6*7` with `42`, and a Fibonacci request produced 803 characters of correct
+reasoning plus working code, so the pipeline is numerically sound rather
+than merely returning tokens. `cargo test -p ds41rt-loader` is 82 passed /
+8 ignored and `scripts/tests` is 209 passed / 1 skipped.
+
+Root cause and the correction to my earlier reading: `-1` is the *Python
+policy sentinel* for `policy_max_active_clusters`, not the value the
+compiled entry receives. The engine calls the compiled entry directly, so
+it needs the resolved positive grid count (188 on RTX). My round-10 change
+to record -1 was therefore wrong, and it masked the round-11 null-slot
+fix. Both are now correct: every slot is bindable, and the grid scalar is
+the positive count.
+
+Beyond the launch, Astra fixed the deeper semantics I had flagged as open
+but had not implemented:
+
+* Deterministic NVFP4 output is **BF16 routes `[rows,6,5120]`**, not token
+  sums. TP2 now retains all six routes and reduces them with dedicated
+  FP32-accumulating BF16-route compaction and a two-rank reduction; the
+  previous code also handed the existing four-plane reducer two null
+  planes, which it correctly rejected.
+* Input representation: TP2 supplies already-broadcast normalized BF16
+  values instead of the native FP8 wire, and remote Sparks download BF16
+  and use the BF16 protocol tag. Native and EXL3 keep their FP8 paths.
+* Binding/lifetime: scratch binding preserves external request and weight
+  slots while supplying placeholders only for the unused W4A8-only slots
+  26..33; Spark small/decode arenas and native weight sizing query the
+  selected family; each asynchronous scalar upload has its own immutable
+  pinned source range until stream completion; cross-format rebinding is
+  rejected.
+
+New regression harnesses: `native/tests/v41_nvfp4_launch_selftest.py`,
+`native/tests/v41_nvfp4_numerics_selftest.py`,
+`python/tests/test_v41_expert_launch_contract.py`.
+
 ### NVFP4 launch probe (scaffold, not yet faithful)
 
 `runs/v7q-a1/nvfp4_bridge_probe.py` drives an exported variant through the
