@@ -283,29 +283,36 @@ impl<'a> Nvfp4Side<'a> {
         }
         // Per-expert vectors are tiny; upload once per layer on the load stream.
         {
-            let mut host = HostAllocation::new(library, experts * 4)?;
-            let upload = |values: &[f32],
-                          destination: Ds41rtDeviceBuffer,
-                          host: &mut HostAllocation<'_>|
-             -> Result<()> {
+            // Each async copy owns a distinct pinned source range until the
+            // stream drains; rewriting one shared source races the copy engine.
+            let vector_bytes = experts * 4;
+            let mut host = HostAllocation::new(library, vector_bytes * 4)?;
+            let vectors = [
+                (&alpha_values, alphas.buffer),
+                (&down_alpha_values, down_alphas.buffer),
+                (&input_scales, input_scales_device.buffer),
+                (&down_input_scales, down_input_scales_device.buffer),
+            ];
+            for (vector, (values, _)) in vectors.iter().enumerate() {
                 for (index, value) in values.iter().enumerate() {
-                    host.bytes_mut()[index * 4..index * 4 + 4]
-                        .copy_from_slice(&value.to_le_bytes());
+                    let start = vector * vector_bytes + index * 4;
+                    host.bytes_mut()[start..start + 4].copy_from_slice(&value.to_le_bytes());
                 }
-                unsafe {
-                    library.copy_host_buffer_h2d_async(
-                        destination,
-                        host.buffer,
-                        experts * 4,
-                        stream.raw,
-                    )
+            }
+            let uploaded = (|| -> Result<()> {
+                for (vector, (_, destination)) in vectors.iter().enumerate() {
+                    let mut source = host.buffer;
+                    source.ptr = unsafe { source.ptr.cast::<u8>().add(vector * vector_bytes).cast() };
+                    source.bytes = vector_bytes;
+                    unsafe {
+                        library.copy_host_buffer_h2d_async(*destination, source, vector_bytes, stream.raw)?;
+                    }
                 }
-            };
-            upload(&alpha_values, alphas.buffer, &mut host)?;
-            upload(&down_alpha_values, down_alphas.buffer, &mut host)?;
-            upload(&input_scales, input_scales_device.buffer, &mut host)?;
-            upload(&down_input_scales, down_input_scales_device.buffer, &mut host)?;
-            unsafe { library.cuda_stream_synchronize(stream.raw)?; }
+                Ok(())
+            })();
+            // Drain even on partial enqueue failure before releasing pinned sources.
+            let drained = unsafe { library.cuda_stream_synchronize(stream.raw) };
+            uploaded.and(drained)?;
         }
         Ok((
             buffers,

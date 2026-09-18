@@ -82,7 +82,8 @@ int32_t ds41rt_v41_reduce_routes_async(const float* const planes[4],
     const uint16_t* shared, uint16_t* output, uint32_t rows,
     uint32_t ranks, uint32_t topk, void* stream);
 /* ABI 3 variants expose FP32 token accumulations instead of per-route planes.
- * Kind 0: [rows,6,5120] FP32 routes; kind 1: [rows,5120] FP32 token sums. */
+ * Kind 0: [rows,topk,5120] FP32 routes; kind 1: [rows,5120] FP32 token sums;
+ * kind 2: [rows,topk,5120] BF16 deterministic routes (NVFP4 ABI 2). */
 int32_t ds41rt_v41_expert_output_kind(int32_t capacity, uint32_t* out);
 /* Round FP32 [rows,5120] token sums to BF16 without allocation or synchronization.
  * Nonoverlapping storage must remain alive through stream completion. */
@@ -108,6 +109,15 @@ int32_t ds41rt_v41_reduce_compact_bf16_async(const uint16_t* const planes[4],
 int32_t ds41rt_v41_finish_local_experts_async(const float* routed,
     const uint16_t* shared, uint16_t* output, uint32_t rows,
     uint32_t token_sums, void* stream);
+
+/* NVFP4 deterministic route reduction. Inputs are BF16 [rows,6,5120];
+ * accumulate six routes (and corresponding TP2 rank pairs) in FP32, with
+ * a single final BF16 rounding. 1 <= rows <= 4096; disjoint input/output
+ * storage on the current device must remain live through stream completion. */
+int32_t ds41rt_v41_compact_bf16_routes_async(const uint16_t* routes,
+    uint16_t* output, uint32_t rows, void* stream);
+int32_t ds41rt_v41_reduce_tp2_bf16_routes_async(const uint16_t* rank0,
+    const uint16_t* rank1, uint16_t* output, uint32_t rows, void* stream);
 
 // Both FP32 rank contributions must be resident on the current device and ready
 // on this stream. Sum without intermediate rank rounding; emit BF16 once.

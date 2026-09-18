@@ -1,5 +1,5 @@
 // NVFP4 (W4A4) TP2 modules. This family is independent of the W4A8 and EXL3
-// variants: it consumes BF16 hidden rows, publishes BF16 token-major partials
+// variants: it consumes BF16 hidden rows, publishes BF16 token-major route planes
 // and keeps its own generated bridge, so it exports distinct symbols.
 #define DS41RT_V41_LOCAL_EXPERTS 1
 #define DS41RT_V41_TP2_EXPERTS 1

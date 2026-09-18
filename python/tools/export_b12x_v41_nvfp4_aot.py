@@ -7,10 +7,10 @@ superset of that signature, so each variant is wrapped by a small generated
 bridge that reorders the engine's slots into the kernel's parameter order:
 
   slot  0..21 -> kernel  0..21   (input, routing scratch, task queue)
-  slot    22 -> kernel 22/24     (fused FC1 payload, FC2 payload)
-  slot    23 -> kernel 23/24     (FC1 and FC2 scale planes; the gate view
-                                  aliases the fused plane, matching
+  slot    22 -> kernel 22        (fused FC1 payload)
+  slot    23 -> kernel 23/24     (FC1 scales and aliased gate view;
                                   separate_w13_halves=false at every n)
+  slot 24/25 -> kernel 25/26     (FC2 payload/scales)
   slot 34..43 -> kernel 27..36   (row counts, write rows, alpha vectors,
                                   token map/weights)
   args 44..51 -> kernel scalars and stream
@@ -202,7 +202,10 @@ def export(
             planned_tile_m=tile_m,
             deterministic_output=True,
             swiglu_limit=10,
+            mac_override=max_active_clusters,
         )
+        if not 0 < clusters <= 2 * properties.multi_processor_count:
+            raise ValueError(f"invalid NVFP4 cooperative launch grid: {clusters}")
         label = f"v41_nvfp4_{role}_m{requested_rows}"
         symbol = "ds41rt_" + label
         compiled.export_to_c(str(output), label, symbol)
@@ -247,13 +250,11 @@ def export(
             raise ValueError(f"NVFP4 scratch accounting overruns the arena for {label}")
         for slot in WEIGHT_BOUND_SLOTS:
             offsets[slot] = None
-        # The engine's launch rejects any null slot, so every slot the core
-        # plan does not own (and the weight binder may not fill) still gets a
-        # valid aligned pointer into the arena. Slots 0..2 are overwritten per
-        # request and 22..25/38..39 by the weight binder.
-        for slot in range(44):
-            if offsets[slot] is None:
-                offsets[slot] = 0
+        # Unused W4A8-only slots still need non-null placeholders for the
+        # shared engine guard. Preserve request/weight-bound slots: callers
+        # may bind a smaller scratch arena after installing their I/O.
+        for slot in range(26, 34):
+            offsets[slot] = 0
         includes.append(f'#include "{label}.h"')
         mapped = ",".join(
             f"args[{slot}]" if slot is not None else "nullptr" for slot in BRIDGE_SLOTS
@@ -275,6 +276,12 @@ def export(
         packed = next(
             tensor for tensor in core.tensor_specs if tensor.name == "packed_input"
         )
+        route_output = next(
+            tensor for tensor in core.tensor_specs if tensor.name == "route_output"
+        )
+        if (route_output.dtype != torch.bfloat16 or
+                tuple(route_output.shape) != (capacity * topk, 5120)):
+            raise ValueError(f"unexpected deterministic NVFP4 route output for {label}")
         info = [
             2,  # abi_version: bridge layout only, no compact variant
             {"spark": 1, "rtx_backbone": 2, "rtx_tp2": 3, "dspark_tp2": 4}[role],
@@ -289,11 +296,11 @@ def export(
             packed.shape[1],
             core.dynamic_task_capacity,
             core.dynamic_physical_tiles,
-            # The b12x runtime passes -1 when the decode policy leaves
-            # max_active_clusters unset (the kernel derives its cluster grid
-            # itself). Recording the compile-time cluster count here instead
-            # makes the engine's launch fail with cudaErrorInvalidValue.
-            -1 if max_active_clusters is None else max_active_clusters,
+            # This is the compiled kernel's positive cooperative grid size,
+            # NOT policy_max_active_clusters (-1 means unset only in the
+            # Python policy wrapper). _launch_dynamic_impl resolves that
+            # policy before passing the mac returned by _get_dynamic_kernel.
+            clusters,
             1,  # input_dtype: BF16 hidden rows
         ]
         prefix = "_mlir_" + symbol
@@ -315,13 +322,15 @@ def export(
                 "name": label,
                 "native_entry": entry[0],
                 "route_mode": route_mode,
+                "output_kind": 2,
+                "output_format": "bf16_routes",
                 "requested_rows": requested_rows,
                 "capacity_rows": capacity,
                 "max_rows": plan.max_rows,
                 "rows_padded": packed.shape[1],
                 "task_capacity": core.dynamic_task_capacity,
                 "physical_tiles": core.dynamic_physical_tiles,
-                "max_active_clusters": -1 if max_active_clusters is None else max_active_clusters,
+                "max_active_clusters": clusters,
                 "compile_time_clusters": clusters,
                 "core_scratch_nbytes": scratch_bytes,
                 "scratch": scratch,
@@ -335,6 +344,8 @@ def export(
                 *includes,
                 f"#define DS41RT_V41_CC_MINOR {properties.minor}",
                 f"#define DS41RT_V41_SMS {properties.multi_processor_count}",
+                "// Deterministic dynamic NVFP4 publishes BF16 per-route rows.",
+                "#define DS41RT_V41_OUTPUT_KIND(capacity) 2",
                 "#define DS41RT_V41_VARIANTS " + ",".join(entries),
                 "",
             ]
@@ -360,7 +371,7 @@ def main() -> None:
         "--max-active-clusters",
         type=int,
         default=None,
-        help="launch policy cluster cap; unset matches the runtime default (-1)",
+        help="positive cooperative grid override; unset uses measured kernel occupancy",
     )
     args = parser.parse_args()
     rows = [int(value) for value in args.rows.split(",") if value]

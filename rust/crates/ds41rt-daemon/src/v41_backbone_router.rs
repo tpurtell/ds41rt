@@ -12,6 +12,15 @@ pub(crate) struct BackboneRouterWeights<'a> {
     library: &'a NativeLibrary,
     layer: usize,
     tensors: NativeRtxTensors<'a>,
+    nvfp4: bool,
+}
+
+fn request_hidden_format(nvfp4: bool) -> (ds41rt_transport::ExpertV2Dtype, usize) {
+    if nvfp4 {
+        (ds41rt_transport::ExpertV2Dtype::Bf16, 10240)
+    } else {
+        (ds41rt_transport::ExpertV2Dtype::Fp8E4m3Ue8m0K32, 5280)
+    }
 }
 impl<'a> BackboneRouterWeights<'a> {
     fn names(layer: usize) -> Result<Vec<String>> {
@@ -42,6 +51,7 @@ impl<'a> BackboneRouterWeights<'a> {
         Ok(Self {
             library,
             layer,
+            nvfp4: catalog.nvfp4().is_some(),
             tensors: NativeRtxTensors::load(
                 library,
                 catalog,
@@ -70,7 +80,8 @@ impl<'a> BackboneRouterWeights<'a> {
                 .collect::<Result<Vec<_>>>()?,
             // Decode/verification benefits from batching small DMA transfers.
             // Large prefill retains direct downloads to avoid another host copy.
-            request_staging: HostAllocation::new(self.library, capacity as usize * 5328)?,
+            request_staging: HostAllocation::new(self.library,
+                capacity as usize * (request_hidden_format(self.nvfp4).1 + 48))?,
             weights: self,
             tokens: Vec::new(),
             layer: self.layer,
@@ -88,6 +99,7 @@ pub(crate) struct RouterOutput<'a> {
     pub rows: u32,
     pub input: Ds41rtDeviceBuffer,
     pub expert_input: Ds41rtDeviceBuffer,
+    request_nvfp4: bool,
     pub mask: Ds41rtDeviceBuffer,
     pub scores: Ds41rtDeviceBuffer,
     pub ids: Ds41rtDeviceBuffer,
@@ -108,7 +120,9 @@ impl RouterOutput<'_> {
         // Arrays have contiguous u32 layout; every bit pattern is valid. The
         // vector is exclusively borrowed and fully initialized before copying.
         let bytes = unsafe { std::slice::from_raw_parts_mut(output.as_mut_ptr().cast::<u8>(), self.ids.bytes) };
-        let offset = if self.full_request { self.rows as usize * 5280 } else { 0 };
+        let offset = if self.full_request {
+            self.rows as usize * request_hidden_format(self.request_nvfp4).1
+        } else { 0 };
         ensure!(offset + bytes.len() <= self.request_staging.bytes, "route capture staging extent differs");
         // This execution already drained the graph's route-ID download.
         unsafe { std::ptr::copy_nonoverlapping(self.request_staging.ptr.cast::<u8>().add(offset), bytes.as_mut_ptr(), bytes.len()); }
@@ -125,6 +139,24 @@ impl RouterOutput<'_> {
 mod reuse_tests {
     use super::*;
     use ds41rt_loader::{read_official_v41_catalog, OFFICIAL_V41_MODEL_ID};
+
+    #[test]
+    fn expert_request_wire_format_tracks_nvfp4_checkpoint() {
+        use ds41rt_transport::ExpertV2Dtype;
+        assert_eq!(request_hidden_format(false), (ExpertV2Dtype::Fp8E4m3Ue8m0K32, 5280));
+        assert_eq!(request_hidden_format(true), (ExpertV2Dtype::Bf16, 10240));
+        for nvfp4 in [false, true] {
+            for rows in [1usize, 16, 80, 4096] {
+                let (_, width) = request_hidden_format(nvfp4);
+                let hidden = rows * width;
+                let ids = rows * 24;
+                let arena = vec![0xa5u8; rows * (width + 48)];
+                let (h, routes) = arena.split_at(hidden);
+                let (i, w) = routes.split_at(ids);
+                assert_eq!((h.len(), i.len(), w.len()), (rows * width, rows * 24, rows * 24));
+            }
+        }
+    }
     fn bytes(library: &NativeLibrary, buffer: Ds41rtDeviceBuffer) -> Result<Vec<u8>> {
         let mut result = vec![0; buffer.bytes];
         library.copy_d2h(&mut result, buffer)?;
@@ -262,7 +294,8 @@ mod reuse_tests {
                         assert_eq!(bytes(&library, a)?, bytes(&library, b)?);
                     }
                     let (hidden, ids, routing) = unsafe { actual.download_request(&library)? };
-                    assert_eq!(hidden, bytes(&library, reference.expert_input)?);
+                    assert_eq!(hidden, bytes(&library,
+                        if reference.request_nvfp4 { reference.input } else { reference.expert_input })?);
                     assert_eq!(ids, bytes(&library, reference.ids)?);
                     assert_eq!(routing, bytes(&library, reference.routing)?);
                     for buffer in [actual.scores, actual.routing] {
@@ -317,6 +350,8 @@ impl<'w, 'a> BackboneRouterWave<'w, 'a> {
             std::ptr::eq(self.stream.library, weights.library),
             "router rebound library differs"
         );
+        ensure!(self.weights.nvfp4 == weights.nvfp4,
+            "router cannot rebind across expert wire formats");
         for name in BackboneRouterWeights::names(weights.layer)? {
             ensure!(
                 weights.tensors.get(&name)?.device_id == self.b(0).device_id,
@@ -385,7 +420,8 @@ impl BackboneRouterWave<'_, '_> {
             )?;
             self.input_quantizer
                 .launch(self.b(0), self.b(5), rows, self.stream.raw)?;
-            let bytes = rows as usize * if self.full_request { 5328 } else { 24 };
+            let hidden_row_bytes = request_hidden_format(self.weights.nvfp4).1;
+            let bytes = rows as usize * if self.full_request { hidden_row_bytes + 48 } else { 24 };
             if !self.full_request {
                 ensure!(bytes <= self.request_staging.buffer.bytes, "local route staging too small");
                 let ids = std::slice::from_raw_parts_mut(self.request_staging.buffer.ptr.cast::<u8>(), bytes);
@@ -395,10 +431,11 @@ impl BackboneRouterWave<'_, '_> {
                     self.request_staging.buffer.ptr.cast::<u8>(),
                     bytes,
                 );
-                let (hidden, routes) = staging.split_at_mut(rows as usize * 5280);
+                let (hidden, routes) = staging.split_at_mut(rows as usize * hidden_row_bytes);
                 let (ids, weights) = routes.split_at_mut(rows as usize * 24);
                 let library = self.stream.library;
-                library.copy_d2h_async(hidden, self.b(5), self.stream.raw)?;
+                library.copy_d2h_async(hidden,
+                    self.b(if self.weights.nvfp4 { 0 } else { 5 }), self.stream.raw)?;
                 library.copy_d2h_async(ids, self.b(3), self.stream.raw)?;
                 library.copy_d2h_async(weights, self.b(4), self.stream.raw)?;
             }
@@ -612,6 +649,7 @@ impl BackboneRouterWave<'_, '_> {
             rows,
             input: b(0, 10240),
             expert_input: b(5, 5280),
+            request_nvfp4: self.weights.nvfp4,
             mask: b(1, 1),
             scores: b(2, 1536),
             ids: b(3, 24),
@@ -656,7 +694,7 @@ pub(crate) struct ExpertRow {
     pub position: u64,
     pub kind: ds41rt_transport::ExpertV2SourceKind,
 }
-/// An immutable host request owns its FP8 input and router result after D2H.
+/// An immutable host request owns its format-selected input and router result after D2H.
 /// The private binding survives asynchronous transport and router-wave reuse.
 pub(crate) struct BoundExpertRequest {
     request: ds41rt_transport::ExpertProtocolV2Request,
@@ -697,12 +735,14 @@ impl RouterOutput<'_> {
         library: &NativeLibrary,
     ) -> Result<(Vec<u8>, Vec<u8>, Vec<u8>)> {
         ensure!(self.full_request, "local router output has no remote request payload");
-        let bytes = self.rows as usize * 5328;
+        let hidden_row_bytes = request_hidden_format(self.request_nvfp4).1;
+        let bytes = self.rows as usize * (hidden_row_bytes + 48);
         if bytes > self.request_staging.bytes {
-            let mut hidden = vec![0; self.rows as usize * 5280];
+            let mut hidden = vec![0; self.rows as usize * hidden_row_bytes];
             let mut ids = vec![0; self.rows as usize * 24];
             let mut weights = vec![0; self.rows as usize * 24];
-            library.copy_d2h(&mut hidden, self.expert_input)?;
+            library.copy_d2h(&mut hidden,
+                if self.request_nvfp4 { self.input } else { self.expert_input })?;
             library.copy_d2h(&mut ids, self.ids)?;
             library.copy_d2h(&mut weights, self.routing)?;
             return Ok((hidden, ids, weights));
@@ -711,7 +751,7 @@ impl RouterOutput<'_> {
         // borrow prevents another execution from reusing the pinned arena.
         let staging =
             unsafe { std::slice::from_raw_parts(self.request_staging.ptr.cast::<u8>(), bytes) };
-        let (hidden, routes) = staging.split_at(self.rows as usize * 5280);
+        let (hidden, routes) = staging.split_at(self.rows as usize * hidden_row_bytes);
         let (ids, weights) = routes.split_at(self.rows as usize * 24);
         Ok((hidden.to_vec(), ids.to_vec(), weights.to_vec()))
     }
@@ -728,7 +768,6 @@ impl RouterOutput<'_> {
     ) -> Result<BoundExpertRequest> {
         use ds41rt_transport::{
             ExpertProtocolV2Request, ExpertProtocolV2RouteEntry, ExpertProtocolV2RowDescriptor,
-            ExpertV2Dtype,
         };
         use std::sync::atomic::{AtomicU64, Ordering};
         static NEXT: AtomicU64 = AtomicU64::new(1);
@@ -765,7 +804,7 @@ impl RouterOutput<'_> {
             placement,
             self.layer as u32,
             5120,
-            ExpertV2Dtype::Fp8E4m3Ue8m0K32,
+            request_hidden_format(self.request_nvfp4).0,
             descriptors,
             routes,
             hidden,

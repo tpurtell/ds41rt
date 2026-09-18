@@ -287,6 +287,9 @@ impl<'a> Wave<'a> {
         })?;
         let mut ranks = [inputs; 2];
         ranks[remote] = peer;
+        // NVFP4 consumes the BF16 values already broadcast for shared experts,
+        // not the native family's FP8 wire payload.
+        let routed_input = if self.routed.uses_bf16_input() { 0 } else { 1 };
         // Each backend records its own producer event after the queued copies;
         // local compute can begin before peer input transfers finish.
         let (routed, shared) = tokio::try_join!(
@@ -296,7 +299,7 @@ impl<'a> Wave<'a> {
                     rows,
                     local,
                     std::array::from_fn(|rank| RankInputs {
-                        wire: ranks[rank][1],
+                        wire: ranks[rank][routed_input],
                         ids: ranks[rank][2],
                         routing: ranks[rank][3],
                         producer: &self.streams[rank],

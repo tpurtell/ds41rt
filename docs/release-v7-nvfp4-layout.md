@@ -316,7 +316,14 @@ Exact commands (all from `/home/tj/Developer/ds41rt`):
    (atomic bf16 scatter or deterministic per-route reduce at the policy's
    choice). The weight layout is identical for both; output ordering
    differences are absorbed in the reported tolerances (run-to-run
-   envelope ≪ the reported residuals).
+   envelope ≪ the reported residuals). **AOT integration contract:** the
+   NVFP4 exporter forces `deterministic_output=True`, so the compiled
+   dynamic entry publishes BF16 **`[tokens, topk, hidden]` per-route rows**
+   through slot 41, not token sums. The public b12x `run` wrapper performs
+   a separate `_launch_dynamic_topk_sum` after that entry (see `_impl.py`,
+   deterministic branch following `_launch_dynamic`); exporting only the
+   dynamic kernel does not export that reduction. The engine must reduce
+   those BF16 routes explicitly and must reserve all `tokens*topk` rows.
 5. **`input_scales_static=True`** was used (the serving contract);
    mutable-scale refresh writes the same `a1/a2` values into scratch —
    no layout impact.

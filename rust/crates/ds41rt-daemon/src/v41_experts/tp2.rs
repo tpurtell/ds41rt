@@ -7,7 +7,7 @@ use super::{ExpertLayer, ExpertWeights};
 use crate::v41_memory::device::DeviceOwner;
 use crate::v41_memory::device::{Allocation, Device, Event, PeerTransfer, Stream};
 use anyhow::{ensure, Result};
-use ds41rt_ffi::{Ds41rtDeviceBuffer, V41CompactReducer, V41Tp2ExpertReducer};
+use ds41rt_ffi::{Ds41rtDeviceBuffer, V41Tp2ExpertReducer};
 use ds41rt_ffi::{V41ExpertKernel, V41ExpertLaunchArgs};
 use std::{
     ffi::c_void,
@@ -23,9 +23,8 @@ pub(crate) enum Tp2RoutedLayout {
     Fp32Routes,
     /// FP32 token sums (`[rows, 5120]`).
     Fp32Tokens,
-    /// BF16 token sums (`[rows, 5120]`); the W4A4 ModelOpt NVFP4 family
-    /// reduces top-k internally and publishes a token-major BF16 partial.
-    Bf16Tokens,
+    /// Deterministic NVFP4 BF16 routes (`[rows, 6, 5120]`).
+    Bf16Routes,
 }
 
 impl Tp2RoutedLayout {
@@ -33,11 +32,11 @@ impl Tp2RoutedLayout {
         match self {
             Self::Fp32Routes => 6 * 4,
             Self::Fp32Tokens => 4,
-            Self::Bf16Tokens => 2,
+            Self::Bf16Routes => 6 * 2,
         }
     }
     fn token_sums(self) -> bool {
-        !matches!(self, Self::Fp32Routes)
+        matches!(self, Self::Fp32Tokens)
     }
 }
 
@@ -226,6 +225,15 @@ pub(crate) struct ExpertWave<'a> {
     ranks: [RankWave<'a>; 2],
 }
 impl<'a> ExpertWave<'a> {
+    /// Routed BF16 inputs use the already broadcast shared-expert values;
+    /// native W4A8 and EXL3 consume the separate FP8 wire representation.
+    pub fn uses_bf16_input(&self) -> bool {
+        match &self.ranks[0].backend {
+            RankBackend::Full { states, .. } => states[0].kernel.info().input_dtype == 1,
+            RankBackend::Exl3(_) => false,
+        }
+    }
+
     /// Per GPU, per lane; immutable expert weights and CUDA state are separate.
     pub fn device_bytes(library: &ds41rt_ffi::NativeLibrary, capacity: u32) -> Result<usize> {
         RankWave::device_bytes(library, capacity)?
@@ -248,8 +256,8 @@ impl<'a> ExpertWave<'a> {
             .unwrap();
         let reduction = PeerReduction::device_bytes(capacity)?;
         scratch
-            // Rank output: BF16 token-major partials.
-            .checked_add(capacity as usize * 5120 * 2)
+            // Rank output: six BF16 routes per token.
+            .checked_add(capacity as usize * 5120 * 6 * 2)
             .and_then(|bytes| bytes.checked_add(reduction))
             .ok_or_else(|| anyhow::anyhow!("TP2 NVFP4 workspace overflow"))
     }
@@ -506,11 +514,11 @@ impl<'a> RankWave<'a> {
                 _scratch: scratch,
             },
             weights,
-            // W4A4 publishes BF16 token-major partials; the native family
-            // publishes six FP32 route planes per token.
+            // W4A4 publishes six BF16 routes per token; the native family
+            // publishes FP32 route planes or token sums.
             output: Allocation::new(
                 device,
-                capacity as usize * 5120 * if nvfp4 { 2 } else { 6 * 4 },
+                capacity as usize * 5120 * if nvfp4 { 6 * 2 } else { 6 * 4 },
             )?,
             capacity,
         })
@@ -533,7 +541,11 @@ impl<'a> RankWave<'a> {
             "TP2 layer/rows not resident"
         );
         let device = self.weights.device;
-        for (buffer, width) in [(wire, 5280), (ids, 24), (routing, 24)] {
+        let input_row_bytes = match &self.backend {
+            RankBackend::Full { states, .. } => states[0].kernel.info().input_row_bytes()?,
+            RankBackend::Exl3(_) => 5280,
+        };
+        for (buffer, width) in [(wire, input_row_bytes), (ids, 24), (routing, 24)] {
             ensure!(
                 buffer.device_id == device.id && buffer.bytes >= rows as usize * width,
                 "TP2 rank input device or extent differs"
@@ -581,7 +593,6 @@ impl<'a> RankWave<'a> {
                     state.slots[0] = wire.ptr;
                     state.slots[1] = ids.ptr;
                     state.slots[2] = routing.ptr;
-                    let token_sums = state.kernel.accumulates_tokens();
                     let info = state.kernel.info();
                     let args = V41ExpertLaunchArgs {
                         tensors: state.slots,
@@ -595,12 +606,10 @@ impl<'a> RankWave<'a> {
                         stream: self.stream.raw,
                     };
                     state.kernel.launch(&args)?;
-                    let layout = if weights[layer].is_nvfp4() {
-                        Tp2RoutedLayout::Bf16Tokens
-                    } else if token_sums {
-                        Tp2RoutedLayout::Fp32Tokens
-                    } else {
-                        Tp2RoutedLayout::Fp32Routes
+                    let layout = match state.kernel.output_kind() {
+                        ds41rt_ffi::V41ExpertOutputKind::Bf16Routes => Tp2RoutedLayout::Bf16Routes,
+                        ds41rt_ffi::V41ExpertOutputKind::Fp32Tokens => Tp2RoutedLayout::Fp32Tokens,
+                        ds41rt_ffi::V41ExpertOutputKind::Fp32Routes => Tp2RoutedLayout::Fp32Routes,
                     };
                     let mut source = self.output.buffer;
                     source.ptr = state.slots[41];
@@ -634,8 +643,6 @@ pub(crate) struct PeerReduction<'a> {
     staging: Allocation<'a>,
     output: Allocation<'a>,
     reducer: V41Tp2ExpertReducer<'a>,
-    /// Two-plane BF16 reducer for the W4A4 family's token-major partials.
-    compact_bf16: V41CompactReducer<'a>,
     capacity: u32,
 }
 impl<'a> PeerReduction<'a> {
@@ -658,7 +665,6 @@ impl<'a> PeerReduction<'a> {
             staging: Allocation::new(local, capacity as usize * 5120 * 6 * 4)?,
             output: Allocation::new(local, capacity as usize * 5120 * 2)?,
             reducer: local.library.v41_tp2_expert_reducer()?,
-            compact_bf16: local.library.v41_compact_reducer()?,
             capacity,
         })
     }
@@ -714,21 +720,8 @@ impl<'a> PeerReduction<'a> {
                         } else {
                             (peer, local.buffer)
                         };
-                        if layout == Tp2RoutedLayout::Bf16Tokens {
-                            // Sum two BF16 rank partials in FP32 with no shared
-                            // expert: the routed reduction is shared-free.
-                            self.compact_bf16.reduce(
-                                [
-                                    rank0.ptr.cast::<u16>(),
-                                    rank1.ptr.cast::<u16>(),
-                                    std::ptr::null(),
-                                    std::ptr::null(),
-                                ],
-                                std::ptr::null(),
-                                output.buffer.ptr.cast::<u16>(),
-                                rows,
-                                stream,
-                            )
+                        if layout == Tp2RoutedLayout::Bf16Routes {
+                            reducer.reduce_bf16_routes(rank0, rank1, output.buffer, rows, stream)
                         } else {
                             reducer.reduce(rank0, rank1, output.buffer, rows, token_sums, stream)
                         }
@@ -752,6 +745,18 @@ impl<'a> PeerReduction<'a> {
 mod tests {
     use super::*;
     use ds41rt_ffi::NativeLibrary;
+
+    #[test]
+    fn routed_layout_sizes_keep_nvfp4_topk_axis() {
+        assert_eq!(Tp2RoutedLayout::Fp32Routes.element_bytes(), 24);
+        assert_eq!(Tp2RoutedLayout::Fp32Tokens.element_bytes(), 4);
+        assert_eq!(Tp2RoutedLayout::Bf16Routes.element_bytes(), 12);
+        assert!(!Tp2RoutedLayout::Bf16Routes.token_sums());
+        for rows in [1, 16, 80, 4096] {
+            assert!(PeerReduction::device_bytes(rows).unwrap() >=
+                rows as usize * 5120 * (Tp2RoutedLayout::Bf16Routes.element_bytes() + 2));
+        }
+    }
     #[test]
     #[ignore = "requires EXL3 snapshot, TP2 package and CUDA"]
     fn exl3_single_rank_capacity_launch_probe() -> Result<()> {

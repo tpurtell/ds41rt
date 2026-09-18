@@ -38,7 +38,7 @@ pub use v41_exl3::{V41Exl3Info, V41Exl3Kernel, V41Exl3Layout, V41Exl3Routes};
 mod v41_exl3_wire;
 pub use v41_exl3_wire::V41Exl3Wire;
 pub use v41_experts::{
-    V41ExpertInfo, V41ExpertInputQuantizer, V41ExpertKernel, V41ExpertLaunchArgs, V41ExpertPacker, V41ExpertPointer,
+    V41ExpertInfo, V41ExpertInputQuantizer, V41ExpertKernel, V41ExpertLaunchArgs, V41ExpertPacker, V41ExpertPointer, V41ExpertOutputKind,
     V41CompactReducer, V41LocalExpertReducer, V41Tp2ExpertReducer, V41RouteReducer, V41_EXPERT_POINTER_COUNT,
 };
 mod cuda_runtime;

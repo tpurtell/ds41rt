@@ -90,12 +90,12 @@ impl<'library> ExpertWeights<'library> {
         Ok(ExpertExecutionBudget {
             scratch_bytes: usize::try_from(info.scratch_bytes)?,
             decode_scratch_bytes: if info.role == 1 && capacity > 1 {
-                usize::try_from(library.v41_expert_info(1)?.scratch_bytes)?
+                usize::try_from(layer.select_info(library, 1, nvfp4)?.scratch_bytes)?
             } else {
                 0
             },
             small_scratch_bytes: if info.role == 1 && capacity > 80 {
-                usize::try_from(library.v41_expert_info(80)?.scratch_bytes)?
+                usize::try_from(layer.select_info(library, 80, nvfp4)?.scratch_bytes)?
             } else {
                 0
             },
@@ -244,6 +244,8 @@ impl<'weights, 'library> ExpertExecution<'weights, 'library> {
             std::ptr::eq(self.library, weights.buffers[0].library),
             "expert layer belongs to a different native library"
         );
+        ensure!(self._weights.is_nvfp4() == weights.is_nvfp4(),
+            "cannot rebind expert workspace across quantization families");
         self.synchronize()?;
         let mut slots = self.slots;
         weights.bind(&self.kernel, &mut slots)?;
@@ -283,7 +285,8 @@ impl<'weights, 'library> ExpertExecution<'weights, 'library> {
             "invalid expert output row count"
         );
         let (kernel, slots, scratch) = self.execution_state(rows);
-        ensure!(!kernel.accumulates_tokens(), "expert output is token accumulation, not route planes");
+        ensure!(kernel.output_kind() == ds41rt_ffi::V41ExpertOutputKind::Fp32Routes,
+            "expert output is not FP32 route planes");
         Ok(Ds41rtDeviceBuffer {
             ptr: slots[41],
             bytes: rows as usize * kernel.info().topk as usize * 5120 * 4,
@@ -678,11 +681,14 @@ impl ExpertExecution<'_, '_> {
         unsafe {
             let reducer = self.compact_reducer.as_ref().context("missing compact reducer")?;
             let (kernel, slots, _) = self.execution_state(request.rows());
-            if kernel.accumulates_tokens() {
-                reducer.compact_tokens(slots[41].cast(), output.ptr.cast(), request.rows(), self.stream.raw)?;
-            } else {
-                reducer.compact(self.route_partials(request.rows())?.ptr.cast(),
-                    output.ptr.cast(), request.rows(), self.stream.raw)?;
+            match kernel.output_kind() {
+                ds41rt_ffi::V41ExpertOutputKind::Fp32Tokens =>
+                    reducer.compact_tokens(slots[41].cast(), output.ptr.cast(), request.rows(), self.stream.raw)?,
+                ds41rt_ffi::V41ExpertOutputKind::Bf16Routes =>
+                    reducer.compact_bf16_routes(slots[41].cast(), output.ptr.cast(), request.rows(), self.stream.raw)?,
+                ds41rt_ffi::V41ExpertOutputKind::Fp32Routes =>
+                    reducer.compact(self.route_partials(request.rows())?.ptr.cast(),
+                        output.ptr.cast(), request.rows(), self.stream.raw)?,
             }
         }
         if let Some(timing) = &self.timing {

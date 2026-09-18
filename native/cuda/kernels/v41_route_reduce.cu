@@ -40,6 +40,36 @@ bool overlaps(const void* a, uint64_t a_bytes, const void* b, uint64_t b_bytes) 
   return av <= bv ? bv - av < a_bytes : av - bv < b_bytes;
 }
 
+// Deterministic NVFP4 emits BF16 token-major routes, not token sums.
+// Preserve the per-route BF16 boundary, accumulate in FP32, and round once.
+template<int Ranks>
+__global__ void reduce_bf16_routes(const __nv_bfloat16* rank0,
+    const __nv_bfloat16* rank1, __nv_bfloat16* output, uint64_t count) {
+  for (uint64_t i = uint64_t(blockIdx.x) * blockDim.x + threadIdx.x;
+       i < count; i += uint64_t(gridDim.x) * blockDim.x) {
+    const uint64_t base = (i / hidden) * 6 * hidden + i % hidden;
+    float value = 0.0f;
+#pragma unroll
+    for (int route = 0; route < 6; ++route) {
+      const uint64_t index = base + uint64_t(route) * hidden;
+      float partial = __bfloat162float(rank0[index]);
+      if constexpr (Ranks == 2)
+        partial = __fadd_rn(partial, __bfloat162float(rank1[index]));
+      value = __fadd_rn(value, partial);
+    }
+    output[i] = __float2bfloat16_rn(value);
+  }
+}
+
+bool valid_bf16_routes(const uint16_t* input, const uint16_t* output,
+    uint64_t count) {
+  return input && output && reinterpret_cast<uintptr_t>(input) % 2 == 0 &&
+      reinterpret_cast<uintptr_t>(output) % 2 == 0 &&
+      reinterpret_cast<uintptr_t>(input) <= UINTPTR_MAX - count * 6 * 2 &&
+      reinterpret_cast<uintptr_t>(output) <= UINTPTR_MAX - count * 2 &&
+      !overlaps(input, count * 6 * 2, output, count * 2);
+}
+
 template<int Routes>
 __global__ void compact_routes(const float* routes, __nv_bfloat16* output,
     uint64_t count) {
@@ -68,6 +98,31 @@ __global__ void reduce_compact(const __nv_bfloat16* p0,
     output[offset] = __float2bfloat16_rn(value);
   }
 }
+}
+
+extern "C" int32_t ds41rt_v41_compact_bf16_routes_async(const uint16_t* routes,
+    uint16_t* output, uint32_t rows, void* stream) {
+  const uint64_t count = uint64_t(rows) * hidden;
+  if (!rows || rows > 4096 || !valid_bf16_routes(routes, output, count))
+    return cudaErrorInvalidValue;
+  const unsigned blocks = static_cast<unsigned>(count / 256 < 4096 ? count / 256 : 4096);
+  reduce_bf16_routes<1><<<blocks, 256, 0, static_cast<cudaStream_t>(stream)>>>(
+      reinterpret_cast<const __nv_bfloat16*>(routes), nullptr,
+      reinterpret_cast<__nv_bfloat16*>(output), count);
+  return cudaGetLastError();
+}
+
+extern "C" int32_t ds41rt_v41_reduce_tp2_bf16_routes_async(const uint16_t* rank0,
+    const uint16_t* rank1, uint16_t* output, uint32_t rows, void* stream) {
+  const uint64_t count = uint64_t(rows) * hidden;
+  if (!rows || rows > 4096 || !valid_bf16_routes(rank0, output, count) ||
+      !valid_bf16_routes(rank1, output, count)) return cudaErrorInvalidValue;
+  const unsigned blocks = static_cast<unsigned>(count / 256 < 4096 ? count / 256 : 4096);
+  reduce_bf16_routes<2><<<blocks, 256, 0, static_cast<cudaStream_t>(stream)>>>(
+      reinterpret_cast<const __nv_bfloat16*>(rank0),
+      reinterpret_cast<const __nv_bfloat16*>(rank1),
+      reinterpret_cast<__nv_bfloat16*>(output), count);
+  return cudaGetLastError();
 }
 
 extern "C" int32_t ds41rt_v41_compact_routes_bf16_async(const float* routes,

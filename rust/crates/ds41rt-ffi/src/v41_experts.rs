@@ -6,6 +6,31 @@ use std::ptr::NonNull;
 
 pub const V41_EXPERT_POINTER_COUNT: usize = 44;
 
+/// Native slot 41 representation; dtype and route axis are independent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum V41ExpertOutputKind {
+    Fp32Routes,
+    Fp32Tokens,
+    Bf16Routes,
+}
+impl V41ExpertOutputKind {
+    fn from_native(kind: u32) -> Result<Self> {
+        match kind {
+            0 => Ok(Self::Fp32Routes),
+            1 => Ok(Self::Fp32Tokens),
+            2 => Ok(Self::Bf16Routes),
+            _ => anyhow::bail!("unsupported V4.1 expert output kind {kind}"),
+        }
+    }
+    pub fn row_bytes(self, topk: u32) -> usize {
+        5120 * match self {
+            Self::Fp32Routes => topk as usize * 4,
+            Self::Fp32Tokens => 4,
+            Self::Bf16Routes => topk as usize * 2,
+        }
+    }
+}
+
 /// Pointer order is checked against generated C headers by the AOT exporter.
 #[repr(usize)]
 #[derive(Debug, Clone, Copy)]
@@ -203,6 +228,8 @@ pub struct V41RouteReducer<'a> {
 }
 
 type CompactFn = unsafe extern "C" fn(*const f32, *mut u16, u32, *mut c_void) -> i32;
+type CompactBf16RoutesFn = unsafe extern "C" fn(*const u16, *mut u16, u32, *mut c_void) -> i32;
+type ReduceTp2Bf16RoutesFn = unsafe extern "C" fn(*const u16, *const u16, *mut u16, u32, *mut c_void) -> i32;
 type ReduceCompactFn =
     unsafe extern "C" fn(*const *const u16, *const u16, *mut u16, u32, *mut c_void) -> i32;
 
@@ -211,6 +238,7 @@ pub struct V41CompactReducer<'a> {
     _library: &'a NativeLibrary,
     compact: CompactFn,
     compact_tokens: Option<CompactFn>,
+    compact_bf16_routes: Option<CompactBf16RoutesFn>,
     reduce: ReduceCompactFn,
 }
 impl V41CompactReducer<'_> {
@@ -231,6 +259,18 @@ impl V41CompactReducer<'_> {
             status == 0,
             "V4.1 route compaction failed with CUDA status {status}"
         );
+        Ok(())
+    }
+
+    /// Sum six deterministic BF16 routes in FP32, then round once to BF16.
+    /// # Safety
+    /// Input is BF16 [rows,6,5120], output BF16 [rows,5120], disjoint and
+    /// live on the current device through stream completion.
+    pub unsafe fn compact_bf16_routes(&self, routes: *const u16, output: *mut u16,
+        rows: u32, stream: *mut c_void) -> Result<()> {
+        let function = self.compact_bf16_routes.context("native BF16 route compaction unavailable")?;
+        let status = unsafe { function(routes, output, rows, stream) };
+        ensure!(status == 0, "V4.1 BF16 route compaction failed with CUDA status {status}");
         Ok(())
     }
 
@@ -305,7 +345,7 @@ pub struct V41ExpertKernel<'a> {
     bind_scratch: BindScratchFn,
     initialize_scratch: InitScratchFn,
     info: V41ExpertInfo,
-    token_accumulation: bool,
+    output_kind: V41ExpertOutputKind,
 }
 
 impl NativeLibrary {
@@ -318,6 +358,7 @@ impl NativeLibrary {
                     .get::<CompactFn>(b"ds41rt_v41_compact_routes_bf16_async")?
             },
             compact_tokens: unsafe { self.lib.get::<CompactFn>(b"ds41rt_v41_compact_tokens_bf16_async").ok().map(|f| *f) },
+            compact_bf16_routes: unsafe { self.lib.get::<CompactBf16RoutesFn>(b"ds41rt_v41_compact_bf16_routes_async").ok().map(|f| *f) },
             reduce: unsafe {
                 *self
                     .lib
@@ -463,7 +504,7 @@ impl NativeLibrary {
     }
 
     /// W4A4 ModelOpt NVFP4 expert kernels. The family publishes BF16
-    /// token-major partials and is selected from the checkpoint format.
+    /// token-major route planes and is selected from the checkpoint format.
     pub fn v41_nvfp4_tp2_expert_kernel(&self, capacity: u32) -> Result<V41ExpertKernel<'_>> {
         self.expert_kernel_for(capacity, 5)
     }
@@ -510,18 +551,28 @@ impl NativeLibrary {
             status == 0,
             "V4.1 expert initialization failed with CUDA status {status}"
         );
-        // The W4A4 family always publishes BF16 token-major partials.
         let nvfp4 = matches!(interface, 5 | 6);
-        let token_accumulation = if info.abi_version == 3 {
+        let output_kind = if info.abi_version == 3 || nvfp4 {
             type OutputKindFn = unsafe extern "C" fn(i32, *mut u32) -> i32;
             let query = unsafe { self.lib.get::<OutputKindFn>(&symbol("output_kind"))? };
             let mut kind = u32::MAX;
             let status = unsafe { query(i32::try_from(capacity)?, &mut kind) };
-            ensure!(status == 0 && kind == 1 && matches!(info.role, 1 | 2 | 3), "unsupported V4.1 ABI 3 output layout");
-            // Reject incomplete libraries at plan time, before any graph or request.
-            unsafe { self.lib.get::<CompactFn>(b"ds41rt_v41_compact_tokens_bf16_async")?; }
-            true
-        } else { nvfp4 };
+            ensure!(status == 0, "V4.1 output layout query failed: {status}");
+            let kind = V41ExpertOutputKind::from_native(kind)?;
+            if nvfp4 {
+                ensure!(kind == V41ExpertOutputKind::Bf16Routes && info.abi_version == 2,
+                    "NVFP4 requires deterministic BF16 route output");
+                unsafe {
+                    self.lib.get::<CompactBf16RoutesFn>(b"ds41rt_v41_compact_bf16_routes_async")?;
+                    self.lib.get::<ReduceTp2Bf16RoutesFn>(b"ds41rt_v41_reduce_tp2_bf16_routes_async")?;
+                }
+            } else {
+                ensure!(kind == V41ExpertOutputKind::Fp32Tokens && matches!(info.role, 1 | 2 | 3),
+                    "unsupported V4.1 ABI 3 output layout");
+                unsafe { self.lib.get::<CompactFn>(b"ds41rt_v41_compact_tokens_bf16_async")?; }
+            }
+            kind
+        } else { V41ExpertOutputKind::Fp32Routes };
         Ok(V41ExpertKernel {
             _library: self,
             handle: NonNull::new(handle).context("native expert returned a null kernel handle")?,
@@ -529,13 +580,15 @@ impl NativeLibrary {
             bind_scratch,
             initialize_scratch,
             info,
-            token_accumulation,
+            output_kind,
         })
     }
 }
 
 impl V41ExpertKernel<'_> {
-    pub fn accumulates_tokens(&self) -> bool { self.token_accumulation }
+    pub fn accumulates_tokens(&self) -> bool { self.output_kind == V41ExpertOutputKind::Fp32Tokens }
+
+    pub fn output_kind(&self) -> V41ExpertOutputKind { self.output_kind }
 
     pub fn info(&self) -> &V41ExpertInfo {
         &self.info
@@ -600,6 +653,79 @@ impl V41ExpertKernel<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn output_kind_preserves_route_axis_and_dtype() {
+        for (raw, kind, bytes) in [
+            (0, V41ExpertOutputKind::Fp32Routes, 6 * 5120 * 4),
+            (1, V41ExpertOutputKind::Fp32Tokens, 5120 * 4),
+            (2, V41ExpertOutputKind::Bf16Routes, 6 * 5120 * 2),
+        ] {
+            assert_eq!(V41ExpertOutputKind::from_native(raw).unwrap(), kind);
+            assert_eq!(kind.row_bytes(6), bytes);
+        }
+        assert!(V41ExpertOutputKind::from_native(3).is_err());
+    }
+
+    #[test]
+    #[ignore = "requires DS41RT_NATIVE_LIB and CUDA; nonzero deterministic BF16 route oracle"]
+    fn bf16_route_reducers_match_exact_nonzero_oracle() -> Result<()> {
+        let library = unsafe { NativeLibrary::load(std::env::var("DS41RT_NATIVE_LIB")?)? };
+        library.cuda_set_device(0)?;
+        let compact = library.v41_compact_reducer()?;
+        let tp2 = library.v41_tp2_expert_reducer()?;
+        // Nonuniform rows, columns, routes and ranks catch prefix-only copies,
+        // dtype reinterpretation, wrong strides and omitted top-k reduction.
+        let capacity = 80usize;
+        let mut rank0 = library.alloc_device_buffer(capacity * 6 * 5120 * 2)?;
+        let mut rank1 = library.alloc_device_buffer(capacity * 6 * 5120 * 2)?;
+        let mut output = library.alloc_device_buffer(capacity * 5120 * 2)?;
+        let result = (|| -> Result<()> {
+            for rows in [1usize, 16, 80, 3, 1] {
+                let mut sources = [Vec::new(), Vec::new()];
+                for (rank, source) in sources.iter_mut().enumerate() {
+                    for row in 0..rows {
+                        for route in 0..6 {
+                            for col in 0..5120 {
+                                let value = if rank == 0 {
+                                    (row % 7 + route + col % 3 + 1) as f32
+                                } else {
+                                    (route as i32 - 2) as f32
+                                };
+                                source.extend_from_slice(&((value.to_bits() >> 16) as u16).to_ne_bytes());
+                            }
+                        }
+                    }
+                }
+                library.copy_h2d(rank0, &sources[0])?;
+                library.copy_h2d(rank1, &sources[1])?;
+                for ranks in [1usize, 2] {
+                    unsafe {
+                        if ranks == 1 {
+                            compact.compact_bf16_routes(rank0.ptr.cast(), output.ptr.cast(), rows as u32, std::ptr::null_mut())?;
+                        } else {
+                            tp2.reduce_bf16_routes(rank0, rank1, output, rows as u32, std::ptr::null_mut())?;
+                        }
+                        library.cuda_stream_synchronize(std::ptr::null_mut())?;
+                    }
+                    let mut actual = vec![0u8; rows * 5120 * 2];
+                    library.copy_d2h(&mut actual, output)?;
+                    for (i, bytes) in actual.chunks_exact(2).enumerate() {
+                        let row = i / 5120;
+                        let col = i % 5120;
+                        let expected = (6 * (row % 7 + col % 3 + 1) + 15 + if ranks == 2 { 3 } else { 0 }) as f32;
+                        assert_eq!(u16::from_ne_bytes([bytes[0], bytes[1]]), (expected.to_bits() >> 16) as u16);
+                    }
+                }
+            }
+            Ok(())
+        })();
+        library.free_device_buffer(&mut rank0)?;
+        library.free_device_buffer(&mut rank1)?;
+        library.free_device_buffer(&mut output)?;
+        result
+    }
+
     #[test]
     fn expert_input_storage_tracks_encoded_representation() {
         let mut info = V41ExpertInfo {
@@ -722,14 +848,33 @@ type ReduceTp2Fn = unsafe extern "C" fn(*const f32, *const f32, *mut u16, u32, u
 pub struct V41Tp2ExpertReducer<'a> {
     _library: &'a NativeLibrary,
     reduce: ReduceTp2Fn,
+    reduce_bf16_routes: Option<ReduceTp2Bf16RoutesFn>,
 }
 impl NativeLibrary {
     pub fn v41_tp2_expert_reducer(&self) -> Result<V41Tp2ExpertReducer<'_>> {
         Ok(V41Tp2ExpertReducer { _library: self,
-            reduce: unsafe { *self.lib.get::<ReduceTp2Fn>(b"ds41rt_v41_reduce_tp2_experts_async")? } })
+            reduce: unsafe { *self.lib.get::<ReduceTp2Fn>(b"ds41rt_v41_reduce_tp2_experts_async")? },
+            reduce_bf16_routes: unsafe { self.lib.get::<ReduceTp2Bf16RoutesFn>(b"ds41rt_v41_reduce_tp2_bf16_routes_async").ok().map(|f| *f) } })
     }
 }
 impl V41Tp2ExpertReducer<'_> {
+    /// Sum corresponding BF16 route pairs in FP32, then routes, rounding once.
+    /// # Safety
+    /// Inputs are BF16 [rows,6,5120]; output is BF16 [rows,5120]. All buffers
+    /// are disjoint, ordered on this stream and live through completion.
+    pub unsafe fn reduce_bf16_routes(&self, rank0: Ds41rtDeviceBuffer, rank1: Ds41rtDeviceBuffer,
+        output: Ds41rtDeviceBuffer, rows: u32, stream: *mut c_void) -> Result<()> {
+        ensure!((1..=4096).contains(&rows), "invalid TP2 reduction rows");
+        let count = rows as usize * 5120;
+        ensure!(rank0.device_id == output.device_id && rank1.device_id == output.device_id
+            && rank0.bytes >= count * 12 && rank1.bytes >= count * 12 && output.bytes >= count * 2,
+            "TP2 BF16 route buffers have incompatible device or extent");
+        let function = self.reduce_bf16_routes.context("native TP2 BF16 route reduction unavailable")?;
+        let status = unsafe { function(rank0.ptr.cast(), rank1.ptr.cast(), output.ptr.cast(), rows, stream) };
+        ensure!(status == 0, "TP2 BF16 route reduction failed with CUDA status {status}");
+        Ok(())
+    }
+
     /// # Safety
     /// Both FP32 rank buffers and the BF16 destination must remain live on the
     /// current device through stream completion. Producers (including peer copy)

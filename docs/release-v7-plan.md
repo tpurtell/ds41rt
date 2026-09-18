@@ -297,6 +297,72 @@ weights) and trails on prefill (trellis decode compute). One
 code-reasoning repeat produced an empty final response because all tokens
 went to reasoning; the campaign should confirm the budget is sufficient.
 
+### NVFP4 launch-contract diagnosis (September 19)
+
+The first `cudaErrorInvalidValue` is a **host guard failure**, not a CUDA
+kernel launch failure: the exporter confused the public b12x **policy**
+sentinel `policy_max_active_clusters=-1` with the compiled entry's resolved
+positive `max_active_clusters`. `_launch_dynamic_impl` passes `mac` returned
+by `_get_dynamic_kernel` to the compiled callable (`_impl.py:12114`), and
+`dynamic.py:2744` uses it directly as the cooperative grid dimension. The
+shared positive-cap guard is correct and remains unchanged. The exporter
+must record the returned positive count, not the policy sentinel.
+
+The temporary launch diagnostic sat **after** that guard, explaining its
+absence. A faithful probe of the pre-fix binary on SM120 proves the boundary:
+NVFP4 m1 with all 44 slots non-null rejects -1/0; caps 1 and 188 reach the
+compiled entry, return status 0, synchronize, and publish zero BF16 routes.
+W4A8 m1 with corrected binding similarly succeeds for 1/188 and rejects -1/0;
+its captured launch passes three graph replays.
+
+The old W4A8 probe result was unrelated: it left slots 26–33 null, used BF16
+instead of the FP8-K32 input wire, and did not allocate native packed planes.
+The corrected probe follows the native binder aliases and advertised sizes;
+it does not mutate workspace extent scalars or pass undersized allocations.
+
+Additional integration defects found before the full rebuild:
+
+- Deterministic NVFP4 slot 41 is BF16 `[rows,topk,5120]` **routes**, not token
+  sums. The b12x public wrapper runs a separate top-k reduction after the
+  exported dynamic kernel. The engine needs an explicit BF16-routes output
+  kind and format-aware TP2 and Spark reduction, with full route-plane sizing.
+- The former TP2 BF16 branch called a four-plane reducer with two null
+  planes; that reducer correctly rejects null planes.
+- Giving every missing scratch slot offset zero overwrote request pointers
+  when binding a smaller Spark decode arena. Only unused W4A8 slots 26–33
+  need placeholders; request and weight pointers must be preserved.
+- Per-expert scale uploads reused one pinned source before asynchronous H2D
+  copies completed. Each queued source must remain immutable until drained.
+- Native weight sizing and Spark small/decode scratch sizing must query the
+  selected family rather than an unconditional opposite-family interface.
+- TP2 FFN was passing the native FP8 wire to NVFP4 kernels instead of the
+  already-broadcast BF16 normalized rows. The remote Spark sender likewise
+  needs BF16 bytes and a BF16 protocol tag, not its unconditional FP8 payload.
+
+Initial qualification: `./wip.sh --slot v7q-a1 --role both` completed on
+SM120/SM121; all six RTX variants now advertise positive clusters=188,
+BF16 routes, and preserved external scratch slots. Host launch guards pass
+for both family fixtures; Rust FFI metadata tests pass. The real CUDA BF16
+route compaction/TP2 reduction test matches its exact nonzero oracle across
+rows 1/16/80/3/1. RTX NVFP4 launch contracts pass rows 1/16/80 and W4A8
+passes rows 1/16 (including poisoned outputs and three graph replays).
+All 17 W4A8 generated artifact hashes and its manifest are unchanged.
+Nonzero NVFP4 RTX/public-b12x parity at rows 1 and 16 is **bit-exact**:
+initial absmax 2.671875, mutated input/routing absmax 5.46875, max error 0;
+native BF16 reduction and three graph replays pass. The public m1 oracle
+uses supported grouped deterministic routing while the exported native m1
+variant uses direct routing. Spark NVFP4 launch contracts also pass rows
+1/16/80; nonzero parity at rows 1/16 is bit-exact (absmax 1.3359375 before
+mutation, 2.734375 after), including native reduction and three graph replays.
+The numerical selftest therefore defaults to zero tolerance.
+
+**End-to-end verified:** after the sender build, the exact 8-token smoke
+returned a completion (reasoning exhausted that tiny budget); at 128 tokens
+it returned `OK`/`finish_reason=stop` with a prefix-cache hit. Three concurrent
+fresh requests returned `42`, `BLUE`, and `READY`, including 1,838-token
+prefill. Full root cause, artifact identities, commands, exact API responses,
+and qualification limits: [NVFP4 inference fix](release-v7-nvfp4-inference-fix.md).
+
 ### NVFP4 launch probe (scaffold, not yet faithful)
 
 `runs/v7q-a1/nvfp4_bridge_probe.py` drives an exported variant through the

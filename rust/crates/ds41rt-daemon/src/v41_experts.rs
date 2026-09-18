@@ -190,8 +190,7 @@ impl<'a> ExpertWeights<'a> {
             return Self::nvfp4_layout(library, catalog, layer);
         }
         let first = catalog.expert_staging(layer.expert(0))?;
-        // The NVFP4 family reports its own geometry (unpadded intermediate).
-        let info = layer.nvfp4_info(library, 16)?;
+        let info = layer.info(library, 16)?;
         ensure!(
             info.role == layer.role(),
             "native expert role does not match layer placement"
@@ -398,6 +397,10 @@ impl<'a> ExpertWeights<'a> {
             kernel.info().role == self.layer.role()
                 && kernel.info().experts as usize == self.experts,
             "expert weights do not match kernel role"
+        );
+        ensure!(
+            self.is_nvfp4() == (kernel.output_kind() == ds41rt_ffi::V41ExpertOutputKind::Bf16Routes),
+            "expert weights and kernel quantization families differ"
         );
         ensure!(
             !slots[34].is_null() && !slots[37].is_null(),

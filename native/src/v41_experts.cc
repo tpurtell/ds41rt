@@ -16,10 +16,8 @@
 #include "v41_local_expert_variants.h"
 #else
 #include "v41_expert_variants.h"
-#endif
-// The FP8 row quantizer is part of the shared launch surface; the W4A4
-// family never calls it (BF16 rows) but still needs the symbols declared.
 #include "v41_input_quant_dispatch.h"
+#endif
 #ifndef DS41RT_V41_OUTPUT_KIND
 #define DS41RT_V41_OUTPUT_KIND(capacity) 0
 #endif
@@ -219,7 +217,9 @@ extern "C" int32_t ds41rt_v41_expert_launch(void* kernel, const ds41rt_v41_exper
   return result;
 }
 
-#ifndef DS41RT_V41_LOCAL_EXPERTS
+// The FP8 row quantizer belongs to the native family only: W4A4 hidden rows
+// are BF16, and every native role already defines these entry points.
+#if !defined(DS41RT_V41_LOCAL_EXPERTS) && !defined(DS41RT_V41_NVFP4_VARIANTS_HEADER)
 namespace {
 struct InputQuantModule {
   cudaLibrary_t library = nullptr;
@@ -283,4 +283,4 @@ extern "C" int32_t ds41rt_v41_expert_input_quantize_async(void* kernel,
   return result;
 }
 
-#endif // DS41RT_V41_LOCAL_EXPERTS
+#endif // native-family FP8 row quantizer
