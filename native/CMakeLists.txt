@@ -273,6 +273,7 @@ if(DS41RT_ENABLE_CUDA)
     cuda/kernels/sampling.cu
     cuda/kernels/nibbles.cu
     cuda/kernels/nvfp4_payload.cu
+    cuda/kernels/nvfp4_scale.cu
     cuda/kernels/ds4_flash_direct.cu
   )
 endif()
