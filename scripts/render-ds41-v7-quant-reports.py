@@ -69,6 +69,23 @@ PENDING_COMMON = [
 ]
 
 
+def load_prefill(package: Path, stem: str):
+    """The full matrix if it has cells, else the base-0 row, else whatever
+    partial file exists. The best-prefill cell comes from the base-0 row in
+    every configuration measured so far."""
+    candidates = [f"{stem}-prefill", f"{stem}-prefill-base0"]
+    fallback = None
+    for name in candidates:
+        document = load(package, name)
+        if document is None:
+            continue
+        cells = document.get("cells") or []
+        if any(c.get("median_effective_prefill_tokens_per_second") for c in cells):
+            return document
+        fallback = fallback or document
+    return fallback
+
+
 def load(package: Path, stem: str):
     path = package / f"{stem}.json"
     try:
@@ -130,7 +147,7 @@ def change(second, first):
 def render(quant: str, package: Path) -> str:
     spec = QUANTS[quant]
     documents = {layout: (load(package, f"{stem}-{quant}-dspark"),
-                          load(package, f"{stem}-{quant}-prefill"))
+                          load_prefill(package, f"{stem}-{quant}"))
                  for layout, stem, _, _ in spec["layouts"]}
     measured = {layout: (decode_cells(decode), prefill)
                 for layout, (decode, prefill) in documents.items()}
