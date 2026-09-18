@@ -297,6 +297,34 @@ weights) and trails on prefill (trellis decode compute). One
 code-reasoning repeat produced an empty final response because all tokens
 went to reasoning; the campaign should confirm the budget is sufficient.
 
+### NVFP4 launch probe (scaffold, not yet faithful)
+
+`runs/v7q-a1/nvfp4_bridge_probe.py` drives an exported variant through the
+engine's own 44-slot ABI from Python: it reads the C info, initializes a
+handle, binds and initializes scratch, fills the slots the generated bridge
+reads, and calls the family launch with the engine's scalars, then bisects
+the scalars. Against the real library it reads the metadata correctly
+(max_active_clusters now -1) and reproduces `status=1` for the W4A4 TP2
+variant at every scalar setting.
+
+**But the same probe also returns status 1 for the known-good W4A8 TP2
+variant**, which the daemon launches successfully. So the probe is missing
+something the daemon does and cannot yet be used to indict the W4A4 bridge.
+Run it as:
+
+  python3 nvfp4_bridge_probe.py <libds41rt_native.so> <variants.json> <rows> [family-prefix]
+
+Next round should instrument the daemon's own launch instead of
+reconstructing it: log the 53-slot array and the seven scalars for a
+working W4A8 request, capture the same for W4A4, and diff the two. That is
+a direct A/B on the real path and avoids guessing at the convention.
+
+Also worth noting for that comparison: the b12x runtime writes the
+deterministic kernel's output into `workspace.route_output` (not the
+caller's scatter buffer), so the engine's slot 41 is the right target only
+because the core workspace maps that tensor to the scatter slot - worth
+re-confirming in the same diff.
+
 ### NVFP4 W4A4 serves end to end; request path fails at the expert launch
 
 Status: the full serving stack now starts on the real NVFP4 checkpoint in the
