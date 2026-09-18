@@ -11,6 +11,27 @@ use ds41rt_ffi::{
 };
 use std::{ffi::c_void, path::Path, rc::Rc};
 
+/// Activation contract of the resident kernel, independent of remote wire format.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LocalInputFormat {
+    Fp8K32,
+    Bf16,
+}
+impl LocalInputFormat {
+    fn for_nvfp4(nvfp4: bool) -> Self {
+        if nvfp4 { Self::Bf16 } else { Self::Fp8K32 }
+    }
+    fn row_bytes(self) -> usize {
+        match self { Self::Fp8K32 => 5280, Self::Bf16 => 10240 }
+    }
+    fn select(self, rows: u32, bf16: Ds41rtDeviceBuffer, fp8: Ds41rtDeviceBuffer) -> Result<Ds41rtDeviceBuffer> {
+        let input = match self { Self::Bf16 => bf16, Self::Fp8K32 => fp8 };
+        ensure!(input.bytes == rows as usize * self.row_bytes(),
+            "local expert activation extent differs from {self:?} kernel input");
+        Ok(input)
+    }
+}
+
 struct State<'a> {
     kernel: V41ExpertKernel<'a>,
     slots: [*mut c_void; 44],
@@ -33,6 +54,7 @@ pub(crate) struct LocalExpertWave<'a> {
     output: DeviceAllocation<'a>,
     reducer: V41LocalExpertReducer<'a>,
     capacity: u32,
+    input_format: LocalInputFormat,
 }
 impl<'a> LocalExpertWave<'a> {
     fn capacities(capacity: u32) -> Result<Vec<u32>> {
@@ -85,6 +107,8 @@ impl<'a> LocalExpertWave<'a> {
             );
         }
         let nvfp4 = weights.first().is_some_and(|weight| weight.is_nvfp4());
+        ensure!(weights.iter().all(|weight| weight.is_nvfp4() == nvfp4),
+            "local expert layers mix activation formats");
         ensure!(
             Self::device_bytes_for(library, capacity, nvfp4)? <= budget,
             "local expert workspace exceeds budget"
@@ -104,6 +128,8 @@ impl<'a> LocalExpertWave<'a> {
             } else {
                 library.v41_local_expert_kernel(c)?
             };
+            ensure!(kernel.info().input_row_bytes()? == LocalInputFormat::for_nvfp4(nvfp4).row_bytes(),
+                "local expert kernel activation format differs from resident weights");
             let mut slots = [std::ptr::null_mut(); 44];
             unsafe {
                 kernel.bind_scratch(scratch.buffer.ptr, scratch.buffer.bytes as u64, &mut slots)?;
@@ -126,6 +152,7 @@ impl<'a> LocalExpertWave<'a> {
                 _scratch: scratch,
                 weights,
             },
+            input_format: LocalInputFormat::for_nvfp4(nvfp4),
             output: DeviceAllocation::new(library, capacity as usize * 10240)?,
             reducer: library.v41_local_expert_reducer()?,
             capacity,
@@ -195,6 +222,7 @@ impl<'a> LocalExpertWave<'a> {
                 states,
                 layers: weights.len(),
             },
+            input_format: LocalInputFormat::Fp8K32,
             output: DeviceAllocation::new(library, capacity as usize * 10240)?,
             reducer: library.v41_local_expert_reducer()?,
             capacity,
@@ -265,7 +293,7 @@ impl<'a> LocalExpertWave<'a> {
             self.enqueue_buffers(
                 routed.layer,
                 rows,
-                [routed.expert_input, routed.ids, routed.routing],
+                [self.input_format.select(rows, routed.input, routed.expert_input)?, routed.ids, routed.routing],
                 shared.values,
             )
         }
@@ -284,7 +312,7 @@ impl<'a> LocalExpertWave<'a> {
             "local expert layer/rows are not resident or exceed capacity"
         );
         for (buffer, bytes) in [
-            (inputs[0], rows as usize * 5280),
+            (inputs[0], rows as usize * self.input_format.row_bytes()),
             (inputs[1], rows as usize * 24),
             (inputs[2], rows as usize * 24),
             (shared, rows as usize * 10240),
@@ -349,14 +377,16 @@ impl<'a> LocalExpertWave<'a> {
                         state.kernel.launch(&args)?;
                     }
                     unsafe {
-                        self.reducer.finish(
-                            state.slots[41].cast(),
-                            shared.ptr.cast(),
-                            self.output.buffer.ptr.cast(),
-                            rows,
-                            state.kernel.accumulates_tokens(),
-                            self.stream.raw,
-                        )
+                        match state.kernel.output_kind() {
+                            ds41rt_ffi::V41ExpertOutputKind::Bf16Routes => self.reducer.finish_bf16_routes(
+                                state.slots[41].cast(), shared.ptr.cast(),
+                                self.output.buffer.ptr.cast(), rows, self.stream.raw),
+                            ds41rt_ffi::V41ExpertOutputKind::Fp32Routes |
+                            ds41rt_ffi::V41ExpertOutputKind::Fp32Tokens => self.reducer.finish(
+                                state.slots[41].cast(), shared.ptr.cast(),
+                                self.output.buffer.ptr.cast(), rows,
+                                state.kernel.accumulates_tokens(), self.stream.raw),
+                        }
                     }
                 }
             }

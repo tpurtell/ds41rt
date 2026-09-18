@@ -110,6 +110,11 @@ int32_t ds41rt_v41_finish_local_experts_async(const float* routed,
     const uint16_t* shared, uint16_t* output, uint32_t rows,
     uint32_t token_sums, void* stream);
 
+/* NVFP4 local equivalent: BF16 [rows,6,5120] routes accumulated in FP32,
+ * rounded to BF16 before optional shared addition. Same alias/lifetime rules. */
+int32_t ds41rt_v41_finish_local_bf16_routes_async(const uint16_t* routed,
+    const uint16_t* shared, uint16_t* output, uint32_t rows, void* stream);
+
 /* NVFP4 deterministic route reduction. Inputs are BF16 [rows,6,5120];
  * accumulate six routes (and corresponding TP2 rank pairs) in FP32, with
  * a single final BF16 rounding. 1 <= rows <= 4096; disjoint input/output

@@ -740,6 +740,82 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires DS41RT_NATIVE_LIB and CUDA; local BF16 route/shared oracle"]
+    fn local_bf16_routes_preserve_compact_boundary() -> Result<()> {
+        let library = unsafe { NativeLibrary::load(std::env::var("DS41RT_NATIVE_LIB")?)? };
+        library.cuda_set_device(0)?;
+        let reducer = library.v41_local_expert_reducer()?;
+        let capacity = 80usize;
+        let mut routes = library.alloc_device_buffer(capacity * 6 * 5120 * 2)?;
+        let mut fp32_routes = library.alloc_device_buffer(capacity * 6 * 5120 * 4)?;
+        let mut shared = library.alloc_device_buffer(capacity * 5120 * 2)?;
+        let mut output = library.alloc_device_buffer(capacity * 5120 * 2)?;
+        let bf16 = |value: f32| {
+            let bits = value.to_bits();
+            ((bits.wrapping_add(0x7fff + ((bits >> 16) & 1))) >> 16) as u16
+        };
+        let value = |row: usize, route: usize, col: usize| -> f32 {
+            if col % 7 == 0 { match route { 0 => 256., 1 => 1., _ => 0. } }
+            else if col % 7 == 1 { match route { 0 => 256., 1 | 2 => 1., _ => 0. } }
+            else { (row as i32 % 7 + route as i32 - col as i32 % 3) as f32 * 0.25 }
+        };
+        let result = (|| -> Result<()> {
+            for rows in [1usize, 16, 80, 3, 1] {
+                let mut source = Vec::new();
+                for row in 0..rows { for route in 0..6 { for col in 0..5120 {
+                    source.extend_from_slice(&bf16(value(row, route, col)).to_ne_bytes());
+                } } }
+                library.copy_h2d(routes, &source)?;
+                let floats: Vec<u8> = source.chunks_exact(2).flat_map(|b|
+                    f32::from_bits((u16::from_ne_bytes([b[0], b[1]]) as u32) << 16).to_ne_bytes()).collect();
+                library.copy_h2d(fp32_routes, &floats)?;
+                let shared_bytes: Vec<u8> = (0..rows * 5120).flat_map(|_| bf16(1.).to_ne_bytes()).collect();
+                for mode in 0..3 {
+                    library.copy_h2d(shared, &shared_bytes)?;
+                    library.copy_h2d(output, &vec![0xa5; output.bytes])?;
+                    let (s, out) = match mode {
+                        0 => (std::ptr::null(), output),
+                        1 => (shared.ptr.cast::<u16>() as *const u16, output),
+                        _ => (shared.ptr.cast::<u16>() as *const u16, shared),
+                    };
+                    unsafe {
+                        assert!(reducer.finish_bf16_routes(routes.ptr.cast(), s, out.ptr.cast(), 0, std::ptr::null_mut()).is_err());
+                        assert!(reducer.finish_bf16_routes(routes.ptr.cast(), s, routes.ptr.cast(), rows as u32, std::ptr::null_mut()).is_err());
+                        reducer.finish_bf16_routes(routes.ptr.cast(), s, out.ptr.cast(), rows as u32, std::ptr::null_mut())?;
+                        library.cuda_stream_synchronize(std::ptr::null_mut())?;
+                    }
+                    let mut actual = vec![0u8; out.bytes];
+                    library.copy_d2h(&mut actual, out)?;
+                    for i in 0..rows * 5120 {
+                        let sum: f32 = (0..6).map(|route| value(i / 5120, route, i % 5120)).sum();
+                        let compact = f32::from_bits((bf16(sum) as u32) << 16);
+                        let expected = bf16(compact + if mode == 0 { 0. } else { 1. });
+                        assert_eq!(u16::from_ne_bytes(actual[i*2..i*2+2].try_into()?), expected,
+                            "rows={rows} mode={mode} element={i}");
+                    }
+                    if mode < 2 { assert!(actual[rows * 10240..].iter().all(|&b| b == 0xa5)); }
+                    // Keep the existing MXFP4/EXL3 FP32-route reducer numerically
+                    // identical to the BF16 path for exactly representable inputs.
+                    library.copy_h2d(shared, &shared_bytes)?;
+                    unsafe {
+                        reducer.finish(fp32_routes.ptr.cast(), s, out.ptr.cast(), rows as u32, false, std::ptr::null_mut())?;
+                        library.cuda_stream_synchronize(std::ptr::null_mut())?;
+                    }
+                    let mut legacy = vec![0u8; rows * 10240];
+                    library.copy_d2h(&mut legacy, out)?;
+                    assert_eq!(legacy, actual[..legacy.len()]);
+                }
+            }
+            Ok(())
+        })();
+        library.free_device_buffer(&mut routes)?;
+        library.free_device_buffer(&mut fp32_routes)?;
+        library.free_device_buffer(&mut shared)?;
+        library.free_device_buffer(&mut output)?;
+        result
+    }
+
+    #[test]
     fn expert_input_storage_tracks_encoded_representation() {
         let mut info = V41ExpertInfo {
             hidden_size: 5120,
@@ -907,17 +983,32 @@ impl V41Tp2ExpertReducer<'_> {
     }
 }
 
+type FinishLocalBf16RoutesFn = unsafe extern "C" fn(*const u16, *const u16, *mut u16, u32, *mut c_void) -> i32;
 pub struct V41LocalExpertReducer<'a> {
     _library: &'a NativeLibrary,
     finish: FinishLocalFn,
+    finish_bf16_routes: Option<FinishLocalBf16RoutesFn>,
 }
 impl NativeLibrary {
     pub fn v41_local_expert_reducer(&self) -> Result<V41LocalExpertReducer<'_>> {
         Ok(V41LocalExpertReducer { _library: self,
-            finish: unsafe { *self.lib.get::<FinishLocalFn>(b"ds41rt_v41_finish_local_experts_async")? } })
+            finish: unsafe { *self.lib.get::<FinishLocalFn>(b"ds41rt_v41_finish_local_experts_async")? },
+            finish_bf16_routes: unsafe { self.lib.get::<FinishLocalBf16RoutesFn>(b"ds41rt_v41_finish_local_bf16_routes_async").ok().map(|f| *f) } })
     }
 }
 impl V41LocalExpertReducer<'_> {
+    /// Sum six BF16 routes in FP32, round to BF16, then add optional shared FFN.
+    /// # Safety
+    /// Complete BF16 routes [rows,6,5120] and optional shared [rows,5120] must
+    /// remain live on the current device through stream completion. Output must
+    /// not overlap routes; it may alias shared only exactly.
+    pub unsafe fn finish_bf16_routes(&self, routed: *const u16, shared: *const u16,
+        output: *mut u16, rows: u32, stream: *mut c_void) -> Result<()> {
+        let function = self.finish_bf16_routes.context("native local BF16 route reduction unavailable")?;
+        let status = unsafe { function(routed, shared, output, rows, stream) };
+        ensure!(status == 0, "local BF16 expert reduction failed with CUDA status {status}");
+        Ok(())
+    }
     /// # Safety
     /// Complete FP32 routes/token sums and optional BF16 shared input must be
     /// live on the current CUDA device, ordered before this operation. Output

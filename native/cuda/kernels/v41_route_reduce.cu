@@ -248,16 +248,19 @@ __global__ void reduce_tp2(const float* rank0, const float* rank1,
   }
 }
 
-template<int Routes>
-__global__ void finish_local(const float* routed, const __nv_bfloat16* shared,
+__device__ float local_value(float value) { return value; }
+__device__ float local_value(__nv_bfloat16 value) { return __bfloat162float(value); }
+
+template<int Routes, typename T>
+__global__ void finish_local(const T* routed, const __nv_bfloat16* shared,
     __nv_bfloat16* output, uint64_t count) {
   for (uint64_t i = uint64_t(blockIdx.x) * blockDim.x + threadIdx.x;
        i < count; i += uint64_t(gridDim.x) * blockDim.x) {
     const uint64_t base = (i / hidden) * Routes * hidden + i % hidden;
-    float value = routed[base];
+    float value = local_value(routed[base]);
 #pragma unroll
     for (int route = 1; route < Routes; ++route)
-      value = __fadd_rn(value, routed[base + route * hidden]);
+      value = __fadd_rn(value, local_value(routed[base + route * hidden]));
     // Preserve the compact routed-output boundary before adding shared FFN.
     value = __bfloat162float(__float2bfloat16_rn(value));
     if (shared) value = __fadd_rn(value, __bfloat162float(shared[i]));
@@ -303,6 +306,22 @@ extern "C" int32_t ds41rt_v41_reduce_tp2_experts_async(const float* rank0,
   else
     reduce_tp2<6><<<blocks, 256, 0, static_cast<cudaStream_t>(stream)>>>(rank0, rank1,
         reinterpret_cast<__nv_bfloat16*>(output), count);
+  return cudaGetLastError();
+}
+
+extern "C" int32_t ds41rt_v41_finish_local_bf16_routes_async(const uint16_t* routed,
+    const uint16_t* shared, uint16_t* output, uint32_t rows, void* stream) {
+  const uint64_t count = uint64_t(rows) * hidden;
+  const uint64_t output_bytes = count * 2;
+  if (!rows || rows > 4096 || !valid_bf16_routes(routed, output, count) ||
+      (shared && (reinterpret_cast<uintptr_t>(shared) % 2 ||
+        reinterpret_cast<uintptr_t>(shared) > UINTPTR_MAX - output_bytes ||
+        (shared != output && overlaps(shared, output_bytes, output, output_bytes)))))
+    return cudaErrorInvalidValue;
+  const unsigned blocks = static_cast<unsigned>(count / 256 < 4096 ? count / 256 : 4096);
+  finish_local<6><<<blocks, 256, 0, static_cast<cudaStream_t>(stream)>>>(
+      reinterpret_cast<const __nv_bfloat16*>(routed),
+      reinterpret_cast<const __nv_bfloat16*>(shared), reinterpret_cast<__nv_bfloat16*>(output), count);
   return cudaGetLastError();
 }
 

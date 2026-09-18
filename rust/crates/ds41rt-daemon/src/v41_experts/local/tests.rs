@@ -7,6 +7,24 @@ fn bf16(value: f32) -> u16 {
 }
 
 #[test]
+fn local_activation_contract_selects_bf16_only_for_nvfp4() -> Result<()> {
+    for rows in [1, 3, 16, 80, 4096] {
+        let bf16 = Ds41rtDeviceBuffer { ptr: 0x1000usize as *mut c_void,
+            bytes: rows as usize * 10240, device_id: 0, flags: 0 };
+        let fp8 = Ds41rtDeviceBuffer { ptr: 0x2000usize as *mut c_void,
+            bytes: rows as usize * 5280, device_id: 0, flags: 0 };
+        for (nvfp4, expected) in [(false, fp8), (true, bf16)] {
+            let format = LocalInputFormat::for_nvfp4(nvfp4);
+            let selected = format.select(rows, bf16, fp8)?;
+            assert_eq!(selected.ptr, expected.ptr);
+            assert_eq!(selected.bytes, expected.bytes);
+            assert!(format.select(rows, fp8, bf16).is_err());
+        }
+    }
+    Ok(())
+}
+
+#[test]
 #[ignore = "requires RTX, full EXL3 snapshot, TP1 package and six-expert FP8-wire fixture"]
 fn exl3_local_capacity_lanes_and_shared_sum_match_reference() -> Result<()> {
     let lib = unsafe { NativeLibrary::load(std::env::var("DS41RT_NATIVE_LIB")?)? };
