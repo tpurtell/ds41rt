@@ -182,7 +182,27 @@ Tests run against the pinned SparkInfer tree, all passing:
 `tests/moe/test_nvfp4_split_backend.py` (6),
 `python/tests/test_v41_nvfp4_tile_policy.py` (39).
 
+### Launch contract passes on the share-input kernels
+
+`native/tests/v41_nvfp4_launch_selftest.py` against
+`native/build-nvfp4-share/libds41rt_native.so`, one row, device 0:
+
+| role | manifest | bridge prefix | result |
+|---|---|---|---|
+| `rtx_tp2` | `v41_nvfp4_rtx_tp2` | `ds41rt_v41_nvfp4_tp2_expert` | PASS |
+| `rtx_backbone` | `v41_nvfp4_rtx_backbone` | `ds41rt_v41_nvfp4_local_expert` | PASS |
+
+Both reject zero tokens, over-capacity rows, mismatched scatter/max_rows/
+rows_padded/max_tasks/max_phys_tiles, and the backbone bridge rejects null
+slots 42/43. Bridge selection is by role, not by manifest name: the
+`rtx_backbone` export binds the full-width `local_expert` bridge, so using the
+`tp2_expert` prefix fails with a scratch mismatch rather than a clear error.
+
+Scope: this is ABI validation and zero-data output, explicitly *not* nonzero
+numerical accuracy. The numerical gate remains owed.
+
 ### The Spark kernels cannot be built here
+
 
 `ROLES["spark"]` requires device capability `(12, 1)` (SM121, GB10). The local
 cards are SM120, and the exporter hard-fails on a mismatch, so the
