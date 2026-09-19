@@ -22,12 +22,12 @@ topology at two widths, so they carry no change column.
 
 | Measurement | Official 1x | Official 2x | Δ | NVFP4 1x | NVFP4 2x | Δ | EXL3 5090+2-spark | EXL3 2x6000 0-spark |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Prefill | 7,824 | 8,355 | +6.8% | 4,141 | 7,370 | +78.0% | 2,013 | 5,597 |
-| Counting decode | 161.58 | 221.64 | +37.2% | 114.06 | 149.98 | +31.5% | 161.98 | 337.00 |
-| Weighted decode | 92.00 | 109.44 | +19.0% | 66.81 | 78.57 | +17.6% | 88.20 | 146.24 |
-| C1 code decode | 130.41 | 155.70 | +19.4% | 86.58 | 106.38 | +22.9% | 122.50 | 225.20 |
+| Prefill | 7,824 | 8,355 | +6.8% | 5,237 | 7,371 | +40.7% | 2,013 | 5,597 |
+| Counting decode | 161.58 | 221.64 | +37.2% | 144.66 | 192.42 | +33.0% | 161.98 | 337.00 |
+| Weighted decode | 92.00 | 109.44 | +19.0% | 81.74 | 100.78 | +23.3% | 88.20 | 146.24 |
+| C1 code decode | 130.41 | 155.70 | +19.4% | 112.55 | 145.96 | +29.7% | 122.50 | 225.20 |
 
-New-quant reports: [NVFP4 W4A4](docs/release-v7-nvfp4-performance.md) · [EXL3 K2 (including the 5090+2-spark compact profile)](docs/release-v7-exl3-k2-performance.md).
+New-quant reports: [NVFP4 W4A4 (v8)](docs/release-v8-nvfp4-performance.md) · [EXL3 K2 (including the 5090+2-spark compact profile)](docs/release-v7-exl3-k2-performance.md).
 
 **EXL3 5090+2-spark** uses one RTX PRO 6000 with a **32 GiB total budget
 including headroom** and **two TP2 Sparks**; **EXL3 2x6000 0-spark** uses two
