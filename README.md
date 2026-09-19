@@ -4,6 +4,8 @@ DS41RT serves the official [DeepSeek V4.1 Flash](https://huggingface.co/deepseek
 
 The historical official-image v6 campaign used an enforced **400 W power limit** and **standard 14,001 MHz maximum memory speed with no memory overclock**. Its loaded memory clock reached 13,365 MHz; the RTX driver was 595.91.07. The four GB10 workers used driver 580.159.03. V7 quant measurements and their outstanding provenance are identified separately below.
 
+[![DS41RT v7 serving configurations: expert loading, KV, execution and other occupancy across all six deployments](docs/release-v7-configurations.svg)](docs/release-v7-configurations.svg)
+
 [![DS41RT native execution across RTX coordinators and four expert workers](docs/native-path-execution.svg)](docs/native-path-execution.svg)
 
 ## Performance
