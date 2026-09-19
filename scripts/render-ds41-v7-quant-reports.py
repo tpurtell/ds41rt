@@ -54,13 +54,13 @@ QUANTS = {
     ),
 }
 
-PENDING_NVFP4 = ["1x and 2x completed tool-call evaluation runs"]
-PENDING_EXL3 = ["2x completed tool-call evaluation runs (1x compact carries three completed runs)",
-                "Reasoning-code completion qualification: failed samples remain disclosed, not counted as quality passes",
+PENDING_NVFP4 = ["Full battery (tool-call evaluation, retained-context decode with its 2K control, "
+                 "counting/code/topic concurrency scaling, mixed traffic and target-only decode) is "
+                 "deferred pending the W4A4 optimization: that work changes the kernel family and the "
+                 "activation wire, so measuring the battery now would have to be redone"]
+PENDING_EXL3 = ["Reasoning-code completion qualification: failed samples remain disclosed, not counted as quality passes",
                 "RTX 5090 hardware performance (only same-capability grid checks on RTX PRO 6000, not physical RTX 5090 tests)"]
 PENDING_COMMON = [
-    "Fresh target-only decode; retained-context decode including the separate 2K control; "
-    "counting/code/topic concurrency scaling and mixed-traffic sweeps: not qualified here to the v5/v6 scope",
     "Per-layout startup, memory and cache-capacity qualification; adaptive draft acceptance and "
     "fixed-history quant agreement: not replaced by historical official-image or v5 EXL3 results",
     "Per-campaign engine/SparkInfer revisions, quant snapshot and binary/launch identity, "
@@ -498,11 +498,11 @@ def render(quant: str, package: Path) -> str:
                     f" ({result.get('points')} points): {note}")
     if evaluated:
         checks += ["", "**Tool-call evaluation.** Completed runs; every scenario that did not fully pass is listed."] + evaluated
-        if quant == "exl3" and measured.get("1x") and load_tool_eval(package, quant, "1x"):
-            # These three runs were recorded on the working-tree build, before the
-            # published-image campaign, so they are not published-image evidence.
-            checks += ["", "_The EXL3 1x tool-call runs above were recorded on the working-tree build, "
-                       "before the published-image campaign; they are not published-image evidence._"]
+        unmeasured = [label for layout, _stem, label, _detail in spec["layouts"]
+                      if not load_tool_eval(package, quant, layout)]
+        if unmeasured:
+            checks += ["", f"_No completed tool-call evaluation is published for: "
+                       f"{'; '.join(unmeasured)}._"]
     else:
         checks += ["", "Tool-call evaluation, adaptive draft acceptance and fixed-history quant agreement "
                    "have no completed results published here. Historical official or v5 EXL3 quality scores "
