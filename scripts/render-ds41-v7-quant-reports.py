@@ -339,6 +339,11 @@ def render(quant: str, package: Path) -> str:
                     f" ({result.get('points')} points): {note}")
     if evaluated:
         checks += ["", "**Tool-call evaluation.** Completed runs; every scenario that did not fully pass is listed."] + evaluated
+        if quant == "exl3" and measured.get("1x") and load_tool_eval(package, quant, "1x"):
+            # These three runs were recorded on the working-tree build, before the
+            # published-image campaign, so they are not published-image evidence.
+            checks += ["", "_The EXL3 1x tool-call runs above were recorded on the working-tree build, "
+                       "before the published-image campaign; they are not published-image evidence._"]
     else:
         checks += ["", "Tool-call evaluation, adaptive draft acceptance and fixed-history quant agreement "
                    "have no completed results published here. Historical official or v5 EXL3 quality scores "
