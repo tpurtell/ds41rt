@@ -32,7 +32,7 @@ async fn timeout_behavior_is_reported() -> Result<()> {
     let err = tcp_roundtrip(
         addr,
         &request,
-        TcpTransportConfig {
+        TcpTransportConfig { timing: false,
             timeout: Duration::from_millis(25),
             max_frame_bytes: DEFAULT_MAX_FRAME_BYTES,
         },

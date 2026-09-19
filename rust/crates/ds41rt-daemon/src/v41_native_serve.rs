@@ -157,8 +157,18 @@ fn compact_budget(reservation: &mut Option<memory::Reservation>, kv: &mut Option
     Ok(())
 }
 
-fn spark_transport(peers: &[std::net::SocketAddr], capacity: u32) -> Result<V41Tp4Roce> {
-    let config = TcpTransportConfig { timeout: Duration::from_secs(120), max_frame_bytes: 64 * 1024 * 1024 };
+/// Protocol-v2 per-chunk transport diagnostics. Resolved once here so the RDMA
+/// progress/poll path never reaches the process environment; the value is only
+/// meaningful for a launch, so a start-time read is sufficient.
+pub(crate) fn protocol_v2_timing() -> bool {
+    match std::env::var("DS41RT_PROTOCOL_V2_TCP_TIMING") {
+        Ok(value) => matches!(value.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"),
+        Err(_) => false,
+    }
+}
+
+fn spark_transport(peers: &[std::net::SocketAddr], capacity: u32, timing: bool) -> Result<V41Tp4Roce> {
+    let config = TcpTransportConfig { timing, timeout: Duration::from_secs(120), max_frame_bytes: 64 * 1024 * 1024 };
     match peers.len() {
         2 => V41Tp4Roce::new_tp2(peers.try_into().expect("two peers"), [
             ds41rt_transport::v41_expert::v41_spark_executor_id(2, 0)?,
@@ -284,7 +294,8 @@ fn worker(
         )?,
         Duration::from_secs(120),
     )?;
-    let roce = spark_transport(&args.peers, capacity)?;
+    let protocol_v2_timing = protocol_v2_timing();
+    let roce = spark_transport(&args.peers, capacity, protocol_v2_timing)?;
     let mut transport = NativeTp4Wave::new(&lib, roce, NativeTp4Wave::device_bytes(capacity)?)?;
     if let Some(profile) = &paired_profile { transport.install_paired(profile.clone())?; }
     let mut prefill_pass = TargetPass::new(
@@ -303,7 +314,7 @@ fn worker(
         pass.reserve_sparse_decode_rows(64)?;
         prefill_pass.reserve_sparse_decode_rows(64)?;
     }
-    let prefill_roce = spark_transport(&args.peers, capacity)?;
+    let prefill_roce = spark_transport(&args.peers, capacity, protocol_v2_timing)?;
     let mut prefill_transport = NativeTp4Wave::new(&lib, prefill_roce, NativeTp4Wave::device_bytes(capacity)?)?;
     if let Some(profile) = &paired_profile { prefill_transport.install_paired(profile.clone())?; }
     let exl3_tiers: &[usize] = catalog.exl3().map(|m| m.decoder_tiers()).unwrap_or(&[]);

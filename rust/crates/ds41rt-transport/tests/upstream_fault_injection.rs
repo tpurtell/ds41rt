@@ -354,7 +354,7 @@ async fn hanging_upstream_times_out_within_configured_deadline() -> Result<()> {
     });
 
     let request = test_request(6_000)?;
-    let config = TcpTransportConfig {
+    let config = TcpTransportConfig { timing: false,
         timeout: FAST_TIMEOUT,
         ..TcpTransportConfig::default()
     };
@@ -414,7 +414,7 @@ async fn response_header_then_stall_times_out_on_payload_read() -> Result<()> {
     });
 
     let request = test_request(6_010)?;
-    let config = TcpTransportConfig {
+    let config = TcpTransportConfig { timing: false,
         timeout: FAST_TIMEOUT,
         ..TcpTransportConfig::default()
     };
@@ -766,7 +766,7 @@ async fn mid_stream_stall_fails_and_never_replays_the_partial_wave() -> Result<(
         }
     });
 
-    let config = TcpTransportConfig {
+    let config = TcpTransportConfig { timing: false,
         timeout: FAST_TIMEOUT,
         ..TcpTransportConfig::default()
     };

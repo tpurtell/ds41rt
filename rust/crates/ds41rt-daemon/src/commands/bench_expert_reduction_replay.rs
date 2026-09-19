@@ -105,7 +105,7 @@ pub(crate) async fn run_bench_expert_reduction_replay(
         .map(|target| target.host.clone())
         .collect::<Vec<_>>();
     verbs_host_preflight().context("verbs-host replay preflight failed")?;
-    let config = TcpTransportConfig {
+    let config = TcpTransportConfig { timing: false,
         timeout: Duration::from_millis(args.timeout_ms),
         ..TcpTransportConfig::default()
     };

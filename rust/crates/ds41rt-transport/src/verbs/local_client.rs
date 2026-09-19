@@ -141,7 +141,7 @@ mod tests {
     #[test]
     fn tp2_reset_retains_only_two_actual_peer_slots() -> Result<()> {
         let peers = ["127.0.0.1:19441".parse()?, "127.0.0.1:19442".parse()?];
-        let mut client = LocalTp4Client::new_tp2(peers, TcpTransportConfig {
+        let mut client = LocalTp4Client::new_tp2(peers, TcpTransportConfig { timing: false,
             timeout: std::time::Duration::from_secs(1), max_frame_bytes: 200_000,
         });
         let (_sender, receiver) = tokio::sync::mpsc::unbounded_channel();

@@ -162,7 +162,7 @@ fn main() -> Result<()> {
             peers,
             [1, 2, 3, 4],
             80,
-            TcpTransportConfig {
+            TcpTransportConfig { timing: false,
                 timeout: Duration::from_secs(30),
                 max_frame_bytes: 2 * 1024 * 1024,
             },

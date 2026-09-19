@@ -516,7 +516,7 @@ mod tests {
             peers,
             [1, 2, 3, 4],
             16,
-            TcpTransportConfig {
+            TcpTransportConfig { timing: crate::v41_native_serve::protocol_v2_timing(),
                 timeout: std::time::Duration::from_secs(1),
                 max_frame_bytes: 2 * 1024 * 1024,
             },

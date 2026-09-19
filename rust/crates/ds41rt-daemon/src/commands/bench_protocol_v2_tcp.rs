@@ -438,7 +438,7 @@ impl ProtocolV2BenchClient {
             BenchTransport::VerbsHost => Ok(Self::VerbsHost {
                 client: VerbsHostProtocolV2PersistentClient::new(
                     config.addr_socket,
-                    TcpTransportConfig {
+                    TcpTransportConfig { timing: false,
                         timeout: config.timeout.max(config.warmup_timeout),
                         max_frame_bytes: config.max_frame_bytes,
                     },

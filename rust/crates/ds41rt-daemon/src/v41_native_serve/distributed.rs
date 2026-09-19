@@ -353,7 +353,7 @@ pub(super) fn worker(mut args: crate::cli::NativeServeArgs, mut receive: mpsc::R
     let make_transport = || {
         let mut transport = devices[1].own(|| NativeTp4Wave::new(&lib,
             V41Tp4Roce::new(args.peers.clone().try_into().map_err(|_| anyhow::anyhow!("four Spark peers required"))?,
-                [1, 2, 3, 4], capacity, TcpTransportConfig { timeout: Duration::from_secs(120),
+                [1, 2, 3, 4], capacity, TcpTransportConfig { timing: crate::v41_native_serve::protocol_v2_timing(), timeout: Duration::from_secs(120),
                     max_frame_bytes: 64 << 20 })?, NativeTp4Wave::device_bytes(capacity)?))?;
         if let Some(profile) = &paired_profile { transport.install_paired(profile.clone())?; }
         transport.install_tp2(tp2_ffn::Wave::new(routed.clone(), shared.clone(), expert_layers, capacity)?)?;

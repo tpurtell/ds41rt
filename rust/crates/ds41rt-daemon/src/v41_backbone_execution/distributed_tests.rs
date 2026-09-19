@@ -199,7 +199,7 @@ fn real_layer_zero_executes_embedding_attention_tp4_and_mhc() -> Result<()> {
         peers,
         [1, 2, 3, 4],
         80,
-        TcpTransportConfig {
+        TcpTransportConfig { timing: false,
             timeout: Duration::from_secs(120),
             max_frame_bytes: 2 * 1024 * 1024,
         },
@@ -441,7 +441,7 @@ fn real_layer_zero_executes_embedding_attention_tp4_and_mhc() -> Result<()> {
     let mut lane1 = BackboneLane::new(&weights, 80, BackboneLane::workspace_bytes(&lib, 80)?.into_iter().sum())?;
     let mut index1 = IndexLane::new(&index_weights, 80, IndexLane::workspace_bytes(&lib, 80)?.into_iter().sum())?;
     let mut execution1 = BackboneExecution::new(&producers, 80, BackboneExecution::workspace_bytes(&lib, 80)?)?;
-    let roce1 = V41Tp4Roce::new(peers, [1, 2, 3, 4], 80, TcpTransportConfig {
+    let roce1 = V41Tp4Roce::new(peers, [1, 2, 3, 4], 80, TcpTransportConfig { timing: false,
         timeout: Duration::from_secs(120), max_frame_bytes: 2 * 1024 * 1024,
     })?;
     let mut transport1 = NativeTp4Wave::new(&lib, roce1, NativeTp4Wave::device_bytes(80)?)?;

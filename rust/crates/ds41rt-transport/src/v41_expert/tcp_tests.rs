@@ -34,8 +34,8 @@ async fn respond(stream: &mut TcpStream, frame: &[u8], rank: usize) -> Result<()
     }
     Ok(())
 }
-fn config() -> TcpTransportConfig {
-    TcpTransportConfig {
+fn config() -> TcpTransportConfig { timing: false,
+    TcpTransportConfig { timing: false,
         timeout: Duration::from_secs(3),
         max_frame_bytes: FRAME,
     }

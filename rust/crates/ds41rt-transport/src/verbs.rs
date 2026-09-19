@@ -1649,7 +1649,7 @@ fn verbs_host_protocol_v2_lane_fanout_roundtrip(
         .checked_add(config.timeout)
         .context("verbs-host lane fanout deadline overflow")?;
     let busy_poll_started = Instant::now();
-    let timing_enabled = protocol_v2_transport_timing_enabled();
+    let timing_enabled = config.timing;
     while pending_by_host.iter().any(|pending| !pending.is_empty()) {
         if Instant::now() >= deadline {
             bail!(
@@ -2028,7 +2028,7 @@ fn verbs_host_protocol_v2_persistent_client_roundtrip(
     ) {
         Ok(frame) => Ok(frame),
         Err(error) if is_verbs_host_protocol_v2_persistent_retryable_error(&error) => {
-            if protocol_v2_transport_timing_enabled() {
+            if config.timing {
                 eprintln!(
                     "protocol_v2_verbs_persistent_client_retry addr={} request_id={} layer_id={} rows={} routes={} error={:#}",
                     addr,
@@ -2066,7 +2066,7 @@ fn verbs_host_protocol_v2_persistent_client_roundtrip_once(
     session: &mut Option<VerbsHostProtocolV2PersistentClientSession>,
     request: &ExpertProtocolV2Request,
 ) -> Result<Vec<u8>> {
-    let timing_enabled = protocol_v2_transport_timing_enabled();
+    let timing_enabled = config.timing;
     let total_started = timing_enabled.then(Instant::now);
     if session
         .as_ref()
@@ -2491,7 +2491,7 @@ impl VerbsHostProtocolV2PersistentClientSession {
             request_registered_span_bytes,
             response_ring.depth,
         )?;
-        if protocol_v2_transport_timing_enabled() {
+        if config.timing {
             let client_native = endpoint.native_descriptor();
             eprintln!(
                 "protocol_v2_verbs_persistent_client_connect addr={} ring_depth={} request_capacity={} request_stride={} request_span={} response_capacity={} response_stride={} response_span={} client_device={} client_gid={} client_status=\"{}\" server_device={} server_gid={} server_status=\"{}\"",
@@ -2614,7 +2614,7 @@ impl VerbsHostProtocolV2PersistentClientSession {
         if let Some(ring) = &mut self.retained_response_ring {
             ring.reclaim_before_request(&self.endpoint, self.response_ring)?;
         }
-        let timing_enabled = protocol_v2_transport_timing_enabled();
+        let timing_enabled = config.timing;
         let total_started = timing_enabled.then(Instant::now);
         let encode_started = timing_enabled.then(Instant::now);
         let request_prefix = self.request_frame.encode_request_prefix(request)?;
@@ -2683,7 +2683,7 @@ impl VerbsHostProtocolV2PersistentClientSession {
         self.try_progress_chunk_requests_with_timing(
             pending,
             config,
-            protocol_v2_transport_timing_enabled(),
+            config.timing,
         )
     }
 
@@ -2711,7 +2711,7 @@ impl VerbsHostProtocolV2PersistentClientSession {
         pending: &mut VecDeque<VerbsHostProtocolV2PendingChunkRoundtrip>,
         config: &TcpTransportConfig,
     ) -> Result<()> {
-        let timing_enabled = protocol_v2_transport_timing_enabled();
+        let timing_enabled = config.timing;
         if let (Some(harvester), Some(waiter)) = (&self.cq_harvester, &self.cq_waiter) {
             let poll_started = timing_enabled.then(Instant::now);
             let stats = harvester.wait_for_response(
@@ -2769,7 +2769,7 @@ impl VerbsHostProtocolV2PersistentClientSession {
         pending: &mut VecDeque<VerbsHostProtocolV2PendingChunkRoundtrip>,
         config: &TcpTransportConfig,
     ) -> Result<()> {
-        let timing_enabled = protocol_v2_transport_timing_enabled();
+        let timing_enabled = config.timing;
         let response_recv_slot = self.response_recv_sequence % self.response_ring.depth;
         let response_recv_offset = self.response_ring.slot_offset(self.response_recv_sequence);
         let copy_started = timing_enabled.then(Instant::now);
@@ -2905,7 +2905,7 @@ impl VerbsHostProtocolV2PersistentClientSession {
             &mut usize,
         )>,
     ) -> Result<(Option<Vec<u8>>, VerbsHostProtocolV2ResponseStreamStats)> {
-        let timing_enabled = protocol_v2_transport_timing_enabled();
+        let timing_enabled = config.timing;
         let streaming = stream.is_some();
         let total_started = timing_enabled.then(Instant::now);
         let encode_started = timing_enabled.then(Instant::now);

@@ -641,7 +641,7 @@ mod upload_tests {
         let peers = std::env::var("DS41RT_LIVE_ROCE_PEERS")?.split(',')
             .map(str::parse).collect::<std::result::Result<Vec<std::net::SocketAddr>, _>>()?
             .try_into().map_err(|_| anyhow::anyhow!("four peers required"))?;
-        let mut client = V41Tp4Roce::new(peers, [1,2,3,4], 4096, TcpTransportConfig {
+        let mut client = V41Tp4Roce::new(peers, [1,2,3,4], 4096, TcpTransportConfig { timing: false,
             timeout: std::time::Duration::from_secs(30), max_frame_bytes: 64 << 20,
         })?;
         let planes: [DeviceAllocation<'_>; 4] = (0..4).map(|_| DeviceAllocation::new(&library, 4096 * 10240))

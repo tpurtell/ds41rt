@@ -214,7 +214,7 @@ mod tests {
     #[test]
     fn tp2_constructor_validates_real_peers_and_identities() -> Result<()> {
         let peers = ["127.0.0.1:19441".parse()?, "127.0.0.1:19442".parse()?];
-        let config = TcpTransportConfig {
+        let config = TcpTransportConfig { timing: false,
             timeout: std::time::Duration::from_secs(1), max_frame_bytes: 200_000,
         };
         let mut client = V41Tp4Roce::new_tp2(peers, [11, 27], 2, config.clone())?;
@@ -363,7 +363,7 @@ mod tests {
                 peers,
                 [1, 2, 3, 4],
                 capacity,
-                TcpTransportConfig {
+                TcpTransportConfig { timing: false,
                     timeout: std::time::Duration::from_secs(10),
                     max_frame_bytes: 64 * 1024 * 1024,
                 },

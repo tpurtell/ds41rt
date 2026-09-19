@@ -194,7 +194,7 @@ pub(crate) fn run_bench_rdma_ring(args: BenchRdmaRingArgs) -> Result<()> {
         );
     }
     let ring_config = VerbsHostMappedRdmaRingConfig::new(args.slot_bytes, args.depth)?;
-    let transport = TcpTransportConfig {
+    let transport = TcpTransportConfig { timing: false,
         timeout: Duration::from_millis(args.timeout_ms),
         max_frame_bytes: args.slot_bytes,
     };

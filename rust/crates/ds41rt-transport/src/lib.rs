@@ -96,6 +96,9 @@ pub(crate) const DEFAULT_MAX_FRAME_BYTES: usize = 64 * 1024 * 1024;
 pub struct TcpTransportConfig {
     pub timeout: Duration,
     pub max_frame_bytes: usize,
+    /// Per-chunk transport diagnostics. Resolved once from the process
+    /// environment at startup so the progress/poll path never calls `getenv`.
+    pub timing: bool,
 }
 
 impl Default for TcpTransportConfig {
@@ -103,6 +106,7 @@ impl Default for TcpTransportConfig {
         Self {
             timeout: DEFAULT_TIMEOUT,
             max_frame_bytes: DEFAULT_MAX_FRAME_BYTES,
+            timing: false,
         }
     }
 }
