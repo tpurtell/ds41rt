@@ -219,15 +219,36 @@ def retained_contexts(package: Path, quant: str, stem: str):
 
 
 def concurrency_scaling(package: Path, quant: str, stem: str):
-    """Median aggregate tokens/s by case and concurrency level."""
+    """Median aggregate tokens/s by case and concurrency level.
+
+    A case with no summaries is omitted rather than carried as an empty column:
+    the bench writes records while it runs, so a partially written document must
+    not render as a column of em dashes.
+    """
     scaling = {}
     for case in ("counting", "code", "topic"):
         document = load(package, f"{stem}-{quant}-concurrency-{case}")
-        if not document:
-            continue
-        scaling[case] = {row["concurrency"]: row.get("median_aggregate_tps")
-                         for row in document.get("summaries") or []}
+        rows = {row["concurrency"]: row.get("median_aggregate_tps")
+                for row in (document or {}).get("summaries") or []}
+        if rows:
+            scaling[case] = rows
     return scaling
+
+
+def retained_failures(package: Path, quant: str, stem: str):
+    """Samples in the retained campaign that did not pass their objective checks."""
+    seen = {}
+    for suffix in ("retained", "retained-2k"):
+        document = load(package, f"{stem}-{quant}-{suffix}")
+        for sample in (document or {}).get("samples") or []:
+            if sample.get("passed") is True:
+                continue
+            issues = []
+            for check in (sample.get("objective_checks") or {}).values():
+                issues += (check or {}).get("issues") or []
+            key = (sample.get("context_tokens"), sample.get("case"))
+            seen[key] = issues or ["did not pass its objective checks"]
+    return seen
 
 
 def mixed_traffic(package: Path, quant: str, stem: str):
@@ -286,6 +307,14 @@ def sweep_sections(quant: str, package: Path, spec: dict):
             one = retained[layouts[0][1]].get(base)
             two = retained[layouts[1][1]].get(base)
             lines.append(f"| {base // 1024}K | {fmt(one, True)} | {fmt(two, True)} | {change(two, one)} |")
+        # The retained campaign can miss its objective checks on the same
+        # high-effort reasoning samples the decode campaigns already disclose.
+        for layout, stem in layouts:
+            failures = retained_failures(package, quant, stem)
+            for (context, case), issues in sorted(failures.items(),
+                                                  key=lambda kv: (kv[0][0] or 0, kv[0][1] or "")):
+                lines += ["", f"_{layout} {context // 1024}K {case} did not pass: {'; '.join(issues)}. "
+                          "Throughput above includes it._"]
 
     scaling = {stem: concurrency_scaling(package, quant, stem) for _l, stem in layouts}
     cases = [case for case in ("counting", "code", "topic")
