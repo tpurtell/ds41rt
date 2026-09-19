@@ -269,6 +269,27 @@ because the contract is exact-bit, not approximate:
 This is why the numerical comparison against the per-route baseline is a
 required gate, not a formality.
 
+### Static confirmation that the split is the right one
+
+Sharing is only sound if the kernel keeps the *weight* dequant per expert while
+sharing only the *activation* scale. Confirmed in
+`b12x/moe/_shared/kernels/dynamic.py`:
+
+- `alpha[task_expert_idx]` — FC1 dequant, indexed per expert (line 5269)
+- `down_alpha[task_expert_idx]` — FC2 dequant, per expert (line 5357; also 2265)
+- `input_global_scale[0]` — the shared activation quant scale (line 3571-3573)
+
+The ctor comment at line 1073 states the same contract: "alpha[e] (FC1 dequant)
+and ... down_alpha[e] feeds phase 2".
+
+So the host publishes `input_scales[e] = 1/S` uniformly while
+`alpha_values[e] = weight_scale_2[e] * S` stays per-expert, and each expert
+dequantizes its own weight scale against the shared activation scale. The
+arithmetic closes. This is a static check, and it does not replace the
+full-model comparison, but it removes the risk that the shared input scale was
+being applied without a per-expert weight correction.
+
+
 ### Shared-scale precision cost measured: negligible
 
 The dequant step is `e4m3(max_abs * gs / 6) / gs` with `gs = 1/S`, which is
