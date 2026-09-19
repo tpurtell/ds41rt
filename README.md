@@ -15,27 +15,30 @@ The release protocol uses **400 W per RTX card and standard memory speed, withou
 **Headlines.** Tokens/s across all six configurations. Prefill is the best cell median
 from a completed, passing matrix; decode is C1 dSpark, with a weighted nine-category
 score excluding counting. `Δ` compares two RTX cards with one for the official and
-NVFP4 pairs; EXL3 compares different deployment profiles, not isolated second-GPU scaling.
+NVFP4 pairs; the EXL3 columns are different deployment profiles rather than one
+topology at two widths, so they carry no change column.
 
-| Measurement | Official 1x | Official 2x | Δ | NVFP4 1x | NVFP4 2x | Δ | EXL3 1x | EXL3 2x | Δ |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Prefill | 7,824 | 8,355 | +6.8% | — | 7,432 | — | 2,015 | 5,702 | +182.9% |
-| Counting decode | 161.58 | 221.64 | +37.2% | 113.32 | 152.25 | +34.4% | 163.55 | 337.35 | +106.3% |
-| Weighted decode | 92.00 | 109.44 | +19.0% | 66.60 | 80.12 | +20.3% | 88.10 | 145.10 | +64.7% |
-| C1 code decode | 130.41 | 155.70 | +19.4% | 88.77 | 109.20 | +23.0% | 123.54 | 222.06 | +79.7% |
+| Measurement | Official 1x | Official 2x | Δ | NVFP4 1x | NVFP4 2x | Δ | EXL3 5090+2-spark | EXL3 2x6000 0-spark |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Prefill | 7,824 | 8,355 | +6.8% | — | 7,432 | — | 2,015 | 5,702 |
+| Counting decode | 161.58 | 221.64 | +37.2% | 113.32 | 152.25 | +34.4% | 163.55 | 337.35 |
+| Weighted decode | 92.00 | 109.44 | +19.0% | 66.60 | 80.12 | +20.3% | 88.10 | 145.10 |
+| C1 code decode | 130.41 | 155.70 | +19.4% | 88.77 | 109.20 | +23.0% | 123.54 | 222.06 |
 
-New-quant reports: [NVFP4 W4A4](docs/release-v7-nvfp4-performance.md) · [EXL3 K2 (including 1x compact)](docs/release-v7-exl3-k2-performance.md).
+New-quant reports: [NVFP4 W4A4](docs/release-v7-nvfp4-performance.md) · [EXL3 K2 (including the 5090+2-spark compact profile)](docs/release-v7-exl3-k2-performance.md).
 
-EXL3 1x uses one RTX PRO 6000 with a **32 GiB total budget including headroom**
-and **two TP2 Sparks**; EXL3 2x uses no Sparks. This simulates RTX 5090 memory
-capacity, not its performance, and the change column is not isolated second-GPU
+**EXL3 5090+2-spark** uses one RTX PRO 6000 with a **32 GiB total budget
+including headroom** and **two TP2 Sparks**; **EXL3 2x6000 0-spark** uses two
+uncapped RTX PRO 6000 cards and no Sparks. The first simulates RTX 5090 memory
+capacity, not its performance, and the two columns are not isolated second-GPU
 scaling. Both EXL3 prefill campaigns completed all 30 cells. Decode completion
-checks passed **29/30 for EXL3 1x** and **28/30 for EXL3 2x**: the failed
-high-effort reasoning samples exhausted 4,096 output tokens with no final code;
-throughput includes them. Three completed high-effort tool-call evaluations of
-EXL3 1x scored **155/176, 160/176 and 157/176**; every scenario that did not
-fully pass is named in the [performance report](docs/release-v7-exl3-k2-performance.md),
-and no tool-call evaluation has completed for the other configurations.
+checks passed **29/30 for EXL3 5090+2-spark** and **28/30 for EXL3 2x6000
+0-spark**: the failed high-effort reasoning samples exhausted 4,096 output
+tokens with no final code; throughput includes them. Three completed high-effort
+tool-call evaluations of EXL3 5090+2-spark scored **155/176, 160/176 and
+157/176**; every scenario that did not fully pass is named in the
+[performance report](docs/release-v7-exl3-k2-performance.md), and no tool-call
+evaluation has completed for the other configurations.
 See [compact setup and residency](docs/release-v7-exl3-compact.md)
 and the [configuration accounting chart](docs/release-v7-configurations.svg).
 No physical RTX 5090 has been tested; the same-capability grid checks used RTX PRO 6000.
@@ -46,7 +49,7 @@ NVFP4 1x best prefill remains unmeasured after an interrupted campaign and is no
 **Official image only below.** Every remaining performance table in this section is
 preserved from v6, not re-measured for v7. Older official-reference, acceptance and
 tool-evaluation results retain their separately named historical campaigns; apart
-from the EXL3 1x runs above, none qualifies either new quant.
+from the EXL3 5090+2-spark runs above, none qualifies either new quant.
 
 **Content-type decode.** Median tokens/s. Official Flash values are the historical one-shot reference, including its prior fable wording; they were not rerun.
 

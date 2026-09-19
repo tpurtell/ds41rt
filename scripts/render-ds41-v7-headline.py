@@ -13,9 +13,15 @@ CONFIGS = [
                                              "Weighted decode": 92.00, "C1 code decode": 130.41}),
     ("Official 2x", "official", "2x", "v6", {"Prefill": 8355.22, "Counting decode": 221.64,
                                              "Weighted decode": 109.44, "C1 code decode": 155.70}),
-] + [(f"{label} {layout}", quant, layout, "v7", dict.fromkeys(METRICS))
-     for quant, label in (("nvfp4", "NVFP4"), ("exl3", "EXL3"))
-     for layout in ("1x", "2x")]
+] + [(f"NVFP4 {layout}", "nvfp4", layout, "v7", dict.fromkeys(METRICS))
+     for layout in ("1x", "2x")] + [
+    # The two EXL3 profiles are different deployments, not one topology at two
+    # widths: one is a 32 GiB-capped card with two TP2 Sparks (an RTX 5090
+    # memory target), the other two uncapped cards with no Sparks. Neither
+    # carries a change column.
+    ("EXL3 5090+2-spark", "exl3", "1x", "v7", dict.fromkeys(METRICS)),
+    ("EXL3 2x6000 0-spark", "exl3", "2x", "v7", dict.fromkeys(METRICS)),
+]
 
 
 def number(value):
@@ -81,16 +87,16 @@ def pairs(configs=None):
 def render(pending_note=True, configs=None, documents=None):
     configs = CONFIGS if configs is None else configs
     lines = [
-        "Tokens/s. `Δ` compares the two RTX cards with one for the official and NVFP4 quants; "
-        "EXL3 compares 2x RTX PRO 6000 with no Sparks against 1x RTX PRO 6000 capped at "
-        "32 GiB plus 2x Spark, not isolated second-GPU scaling.",
+        "Tokens/s. `Δ` compares the two RTX cards with one for the official and NVFP4 pairs. "
+        "The EXL3 columns are different deployment profiles rather than one topology at two "
+        "widths, so they carry no change column.",
         "",
         "Official columns are historical v6 measurements, not re-campaigned for v7. "
         "NVFP4 and EXL3 cells come from the selected v7 raw-result package, without historical fallback. "
         "Prefill headlines require a completed, passing campaign.",
         "",
-        "| Measurement | Official 1x | Official 2x | Δ | NVFP4 1x | NVFP4 2x | Δ | EXL3 1x | EXL3 2x | Δ |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Measurement | Official 1x | Official 2x | Δ | NVFP4 1x | NVFP4 2x | Δ | EXL3 5090+2-spark | EXL3 2x6000 0-spark |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     by_quant = pairs(configs)
     for metric in METRICS:
@@ -98,7 +104,9 @@ def render(pending_note=True, configs=None, documents=None):
         for quant in ("official", "nvfp4", "exl3"):
             one = by_quant[quant].get("1x", {}).get(metric)
             two = by_quant[quant].get("2x", {}).get(metric)
-            row += [number(one), number(two), change(two, one)]
+            row += [number(one), number(two)]
+            if quant != "exl3":
+                row.append(change(two, one))
         lines.append("| " + " | ".join(row) + " |")
     if pending_note:
         missing = [f"{column} {metric.lower()}" for column, _q, _l, _p, values in configs
@@ -107,8 +115,10 @@ def render(pending_note=True, configs=None, documents=None):
             lines += ["", "_No usable qualifying result: " + "; ".join(missing) +
                       ". Cells are marked — rather than estimated; records may be missing, unreadable, or incomplete._"]
     # Scientific/topology disclosure must not depend on showing the pending list.
-    lines += ["", "_EXL3 1x uses one RTX PRO 6000 capped at 32 GiB including headroom plus two TP2 Sparks; "
-                  "this simulates RTX 5090 memory capacity, not its performance. EXL3 2x uses no Sparks._"]
+    lines += ["", "_EXL3 5090+2-spark uses one RTX PRO 6000 capped at 32 GiB including headroom plus two "
+                  "TP2 Sparks; this simulates RTX 5090 memory capacity, not its performance, and is not an "
+                  "RTX 5090 measurement. EXL3 2x6000 0-spark uses two uncapped RTX PRO 6000 cards and no "
+                  "Sparks, so the two columns are not isolated second-GPU scaling._"]
     for column, (decode, prefill) in (documents or {}).items():
         if prefill is not None and not prefill_complete(prefill):
             lines += ["", f"_{column} prefill has not established completed, passing status; "

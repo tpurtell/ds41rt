@@ -49,7 +49,7 @@ CONFIGS = [
                        original_path="runs/v7q-a1/dual-regression.log", lines="23,26-27",
                        fields=["rank_peak_bytes", "cache_bytes", "transport_bytes", "occupied_bytes"],
                        scope="rebuilt regression startup, not campaign peak")],
-         speed_columns=[("EXL3", "EXL3 2x")]),
+         speed_columns=[("EXL3", "EXL3 2x6000 0-spark")]),
     dict(title=["EXL3 2.0 bpw compact", "1x RTX PRO 6000 + 2x Spark"],
          subtitle="32 GiB budget; NOT RTX 5090 hardware",
          devices=[("RTX0 budget", 32, [3433037824, 2191668736, 177724136]),
@@ -64,7 +64,7 @@ CONFIGS = [
                        fields=["resident_bytes", "workspace_bytes"],
                        corroboration="runs/v7q-a1/compact-final-dodo.log:1,41",
                        scope="each Spark; excludes transport/context, no Spark KV")],
-         speed_columns=[("EXL3", "EXL3 1x")]),
+         speed_columns=[("EXL3", "EXL3 5090+2-spark")]),
 ]
 
 

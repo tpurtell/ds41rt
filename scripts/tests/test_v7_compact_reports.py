@@ -69,14 +69,31 @@ class CompactReports(unittest.TestCase):
 
     def test_headline_missing_note_follows_cells(self):
         report = load('render-ds41-v7-headline')
-        self.assertIn('EXL3 1x weighted decode', report.render())
+        exl3_single = next(column for column, quant, layout, _p, _v in report.CONFIGS
+                           if quant == 'exl3' and layout == '1x')
+        self.assertIn(f'{exl3_single} weighted decode', report.render())
         for column, _q, _l, _p, values in report.CONFIGS:
-            if column == 'EXL3 1x':
+            if column == exl3_single:
                 values.update({metric: 42 for metric in report.METRICS})
         text = report.render()
-        self.assertNotIn('EXL3 1x weighted decode', text)
+        self.assertNotIn(f'{exl3_single} weighted decode', text)
         self.assertIn('simulates RTX 5090 memory capacity, not its performance', text)
         self.assertIn('NVFP4 1x prefill', text)
+
+    def test_headline_exl3_columns_are_named_and_carry_no_change(self):
+        report = load('render-ds41-v7-headline')
+        text = report.render(pending_note=False)
+        header = next(line for line in text.splitlines() if line.startswith('| Measurement |'))
+        cells = [cell.strip() for cell in header.strip('|').split('|')]
+        self.assertEqual(cells, ['Measurement',
+                                 'Official 1x', 'Official 2x', 'Δ',
+                                 'NVFP4 1x', 'NVFP4 2x', 'Δ',
+                                 'EXL3 5090+2-spark', 'EXL3 2x6000 0-spark'])
+        # The EXL3 columns are different deployments, not one topology at two
+        # widths, so they must not gain a change cell.
+        for line in text.splitlines():
+            if line.startswith('|') and not line.startswith('|--'):
+                self.assertEqual(len(line.strip('|').split('|')), len(cells), line)
 
     def test_headline_never_falls_back_or_retains_previous_package(self):
         report = load('render-ds41-v7-headline')

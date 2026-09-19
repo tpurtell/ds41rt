@@ -45,7 +45,7 @@ class V7ConfigurationsTests(unittest.TestCase):
     def test_missing_package_no_v7_fallback(self):
         with tempfile.TemporaryDirectory() as directory:
             values, _docs = CHART["load_measurements"](Path(directory))
-            for column in ["EXL3 1x", "EXL3 2x", "NVFP4 1x", "NVFP4 2x"]:
+            for column in ["EXL3 5090+2-spark", "EXL3 2x6000 0-spark", "NVFP4 1x", "NVFP4 2x"]:
                 self.assertTrue(all(v is None for v in values[column].values()))
             svg = CHART["render"](Path(directory))
             CHART["self_check"](svg)
@@ -63,8 +63,8 @@ class V7ConfigurationsTests(unittest.TestCase):
             (package / "single-exl3-prefill.json").write_text(json.dumps({
                 "passed": False, "cells": [{"median_effective_prefill_tokens_per_second": 9999}]}))
             values, _docs = CHART["load_measurements"](package)
-            self.assertEqual(values["EXL3 1x"]["C1 code decode"], 12)
-            self.assertIsNone(values["EXL3 1x"]["Prefill"])
+            self.assertEqual(values["EXL3 5090+2-spark"]["C1 code decode"], 12)
+            self.assertIsNone(values["EXL3 5090+2-spark"]["Prefill"])
             svg = CHART["render"](package)
             CHART["self_check"](svg)
             self.assertIn("0/3 decode checks; failed samples included", svg)
