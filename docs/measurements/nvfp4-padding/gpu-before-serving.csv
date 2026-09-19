@@ -1,0 +1,3 @@
+uuid, power.limit [W], clocks.current.memory [MHz], temperature.gpu, utilization.gpu [%]
+GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0, 400.00 W, 405 MHz, 37, 0 %
+GPU-95f8f212-9131-df99-fd53-7535965197d7, 400.00 W, 405 MHz, 39, 0 %

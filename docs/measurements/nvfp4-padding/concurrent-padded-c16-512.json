@@ -1,0 +1,1713 @@
+{
+  "scope": "Concurrent warm counting, code, or topic decode through C16, including admission gaps.",
+  "base_url": "http://127.0.0.1:8000",
+  "label": "nvfp4-padding-ab",
+  "case": "code",
+  "corpus_sha256": "1972e572fbf9d468cd86c2db5d3d3de60641329edca152fe013a179eb55001de",
+  "prompt": "nvfp4-padding-ab padding-layout-fixed. Write a Python function merge_intervals(intervals) that merges overlapping integer intervals. Include type hints, a short docstring, and three assert-based examples. Return only one Python code block.",
+  "max_tokens": 512,
+  "thinking": "disabled",
+  "reasoning_effort": null,
+  "warmup": {
+    "text": "```python\nfrom typing import List, Tuple\n\ndef merge_intervals(intervals: List[Tuple[int, int]]) -> List[Tuple[int, int]]:\n    \"\"\"Merge overlapping integer intervals and return sorted, disjoint intervals.\"\"\"\n    if not intervals:\n        return []\n    sorted_intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [sorted_intervals[0]]\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1] = (last_start, max(last_end, end))\n        else:\n            merged.append((start, end))\n    return merged\n\nassert merge_intervals([(1, 3), (2, 6), (8, 10), (15, 18)]) == [(1, 6), (8, 10), (15, 18)]\nassert merge_intervals([(1, 4), (4, 5)]) == [(1, 5)]\nassert merge_intervals([]) == []\n```",
+    "reasoning": "",
+    "first_output_seconds": 0.009695868007838726,
+    "first_content_seconds": 0.009695868007838726,
+    "finish_seconds": 2.5110123269987525,
+    "finish_reason": "stop",
+    "observed_decode_tokens_per_second": 91.15200085157566,
+    "usage": {
+      "prompt_tokens": 56,
+      "completion_tokens": 229,
+      "total_tokens": 285,
+      "prompt_tokens_details": {
+        "cached_tokens": 56
+      },
+      "prompt_cache_hit_tokens": 56,
+      "prompt_cache_miss_tokens": 0
+    }
+  },
+  "warmup_checks": {
+    "response_nonempty": true,
+    "objective_checks": {
+      "python_structure": {
+        "passed": true,
+        "issues": []
+      }
+    },
+    "objective_checks_passed": true,
+    "prose_quality_assessed": false
+  },
+  "concurrency": [
+    16
+  ],
+  "repeats": 3,
+  "records": [
+    {
+      "concurrency": 16,
+      "repeat": 1,
+      "aggregate_tps": 621.614249378943,
+      "per_stream_mean": 41.78504156374431,
+      "rows": [
+        {
+          "start": 76871.322113168,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Args:\n        intervals: List of [start, end] integer pairs (inclusive).\n\n    Returns:\n        A new list of merged, non-overlapping intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n\n    sorted_intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [sorted_intervals[0][:]]\n\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1][1] = max(last_end, end)\n        else:\n            merged.append([start, end])\n\n    return merged\n\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.004490803010412492,
+            "first_content_seconds": 0.004490803010412492,
+            "finish_seconds": 5.939508973999182,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 41.617395749076536,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 248,
+              "total_tokens": 304,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76871.322510896,
+          "result": {
+            "text": "```python\nfrom typing import List, Tuple\n\ndef merge_intervals(intervals: List[Tuple[int, int]]) -> List[Tuple[int, int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Args:\n        intervals: List of (start, end) tuples, where start <= end.\n\n    Returns:\n        A list of merged, non-overlapping intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n\n    sorted_intervals = sorted(intervals, key=lambda x: (x[0], x[1]))\n    merged = [sorted_intervals[0]]\n\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1] = (last_start, max(last_end, end))\n        else:\n            merged.append((start, end))\n\n    return merged\n\n\nassert merge_intervals([(1, 3), (2, 6), (8, 10), (15, 18)]) == [(1, 6), (8, 10), (15, 18)]\nassert merge_intervals([(1, 4), (4, 5)]) == [(1, 5)]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.003368978010257706,
+            "first_content_seconds": 0.003368978010257706,
+            "finish_seconds": 6.23708943001111,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 42.831564561785946,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 268,
+              "total_tokens": 324,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76871.322778888,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Args:\n        intervals: List of [start, end] integer pairs (inclusive).\n\n    Returns:\n        A new list of merged, non-overlapping intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n\n    sorted_intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [sorted_intervals[0][:]]\n\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1][1] = max(last_end, end)\n        else:\n            merged.append([start, end])\n\n    return merged\n\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.002461595999193378,
+            "first_content_seconds": 0.002461595999193378,
+            "finish_seconds": 6.395135746002779,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 38.63797750427518,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 248,
+              "total_tokens": 304,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76871.322991367,
+          "result": {
+            "text": "```python\nfrom typing import List, Tuple\n\ndef merge_intervals(intervals: List[Tuple[int, int]]) -> List[Tuple[int, int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Args:\n        intervals: List of (start, end) tuples, where start <= end.\n\n    Returns:\n        A list of merged, non-overlapping intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n\n    sorted_intervals = sorted(intervals, key=lambda x: (x[0], x[1]))\n    merged = [sorted_intervals[0]]\n\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1] = (last_start, max(last_end, end))\n        else:\n            merged.append((start, end))\n\n    return merged\n\n\nassert merge_intervals([(1, 3), (2, 6), (8, 10), (15, 18)]) == [(1, 6), (8, 10), (15, 18)]\nassert merge_intervals([(1, 4), (4, 5)]) == [(1, 5)]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.0016334119864040986,
+            "first_content_seconds": 0.0016334119864040986,
+            "finish_seconds": 6.236512894000043,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 42.823602408072325,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 268,
+              "total_tokens": 324,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76871.323189695,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Args:\n        intervals: List of [start, end] integer pairs (inclusive).\n\n    Returns:\n        A new list of merged, non-overlapping intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n\n    sorted_intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [sorted_intervals[0][:]]\n\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1][1] = max(last_end, end)\n        else:\n            merged.append([start, end])\n\n    return merged\n\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.004412043999764137,
+            "first_content_seconds": 0.004412043999764137,
+            "finish_seconds": 5.938546167992172,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 41.62359576628875,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 248,
+              "total_tokens": 304,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76871.323625199,
+          "result": {
+            "text": "```python\nfrom typing import List, Tuple\n\ndef merge_intervals(intervals: List[Tuple[int, int]]) -> List[Tuple[int, int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Args:\n        intervals: List of (start, end) tuples, where start <= end.\n\n    Returns:\n        A list of merged, non-overlapping intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n\n    sorted_intervals = sorted(intervals, key=lambda x: (x[0], x[1]))\n    merged = [sorted_intervals[0]]\n\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1] = (last_start, max(last_end, end))\n        else:\n            merged.append((start, end))\n\n    return merged\n\n\nassert merge_intervals([(1, 3), (2, 6), (8, 10), (15, 18)]) == [(1, 6), (8, 10), (15, 18)]\nassert merge_intervals([(1, 4), (4, 5)]) == [(1, 5)]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.0034829100040951744,
+            "first_content_seconds": 0.0034829100040951744,
+            "finish_seconds": 6.2377165319921914,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 42.828038888098924,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 268,
+              "total_tokens": 324,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76871.323938429,
+          "result": {
+            "text": "```python\nfrom typing import List, Tuple\n\ndef merge_intervals(intervals: List[Tuple[int, int]]) -> List[Tuple[int, int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Args:\n        intervals: List of (start, end) tuples, where start <= end.\n\n    Returns:\n        A list of merged, non-overlapping intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n\n    sorted_intervals = sorted(intervals, key=lambda x: (x[0], x[1]))\n    merged = [sorted_intervals[0]]\n\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1] = (last_start, max(last_end, end))\n        else:\n            merged.append((start, end))\n\n    return merged\n\n\nassert merge_intervals([(1, 3), (2, 6), (8, 10), (15, 18)]) == [(1, 6), (8, 10), (15, 18)]\nassert merge_intervals([(1, 4), (4, 5)]) == [(1, 5)]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.004243842005962506,
+            "first_content_seconds": 0.004243842005962506,
+            "finish_seconds": 6.2382189860072685,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 42.82981465797517,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 268,
+              "total_tokens": 324,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76871.324238169,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Args:\n        intervals: List of [start, end] integer pairs (inclusive).\n\n    Returns:\n        A new list of merged, non-overlapping intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n\n    sorted_intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [sorted_intervals[0][:]]\n\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1][1] = max(last_end, end)\n        else:\n            merged.append([start, end])\n\n    return merged\n\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.004514177999226376,
+            "first_content_seconds": 0.004514177999226376,
+            "finish_seconds": 6.615421584006981,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 37.362495771085115,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 248,
+              "total_tokens": 304,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76871.32438543,
+          "result": {
+            "text": "```python\nfrom typing import List, Tuple\n\ndef merge_intervals(intervals: List[Tuple[int, int]]) -> List[Tuple[int, int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Args:\n        intervals: List of (start, end) tuples, where start <= end.\n\n    Returns:\n        A list of merged, non-overlapping intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n\n    sorted_intervals = sorted(intervals, key=lambda x: (x[0], x[1]))\n    merged = [sorted_intervals[0]]\n\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1] = (last_start, max(last_end, end))\n        else:\n            merged.append((start, end))\n\n    return merged\n\n\nassert merge_intervals([(1, 3), (2, 6), (8, 10), (15, 18)]) == [(1, 6), (8, 10), (15, 18)]\nassert merge_intervals([(1, 4), (4, 5)]) == [(1, 5)]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.004961860002367757,
+            "first_content_seconds": 0.004961860002367757,
+            "finish_seconds": 6.238415300002089,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 42.83339926575467,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 268,
+              "total_tokens": 324,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76871.32465864,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Args:\n        intervals: List of [start, end] integer pairs (inclusive).\n\n    Returns:\n        A new list of merged, non-overlapping intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n\n    sorted_intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [sorted_intervals[0][:]]\n\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1][1] = max(last_end, end)\n        else:\n            merged.append([start, end])\n\n    return merged\n\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.005275190997053869,
+            "first_content_seconds": 0.005275190997053869,
+            "finish_seconds": 5.93829577199358,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 41.63140791911988,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 248,
+              "total_tokens": 304,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76871.324796047,
+          "result": {
+            "text": "```python\nfrom typing import List, Tuple\n\ndef merge_intervals(intervals: List[Tuple[int, int]]) -> List[Tuple[int, int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Args:\n        intervals: List of (start, end) tuples, where start <= end.\n\n    Returns:\n        A list of merged, non-overlapping intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n\n    sorted_intervals = sorted(intervals, key=lambda x: (x[0], x[1]))\n    merged = [sorted_intervals[0]]\n\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1] = (last_start, max(last_end, end))\n        else:\n            merged.append((start, end))\n\n    return merged\n\n\nassert merge_intervals([(1, 3), (2, 6), (8, 10), (15, 18)]) == [(1, 6), (8, 10), (15, 18)]\nassert merge_intervals([(1, 4), (4, 5)]) == [(1, 5)]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.00576591701246798,
+            "first_content_seconds": 0.00576591701246798,
+            "finish_seconds": 6.235720204000245,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 42.857457326399775,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 268,
+              "total_tokens": 324,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76871.325022277,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Args:\n        intervals: List of [start, end] integer pairs (inclusive).\n\n    Returns:\n        A new list of merged, non-overlapping intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n\n    sorted_intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [sorted_intervals[0][:]]\n\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1][1] = max(last_end, end)\n        else:\n            merged.append([start, end])\n\n    return merged\n\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.006135292001999915,
+            "first_content_seconds": 0.006135292001999915,
+            "finish_seconds": 5.936530352002592,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 41.649839091828625,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 248,
+              "total_tokens": 304,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76871.325458311,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Args:\n        intervals: List of [start, end] integer pairs (inclusive).\n\n    Returns:\n        A new list of merged, non-overlapping intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n\n    sorted_intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [sorted_intervals[0][:]]\n\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1][1] = max(last_end, end)\n        else:\n            merged.append([start, end])\n\n    return merged\n\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.0069280830066418275,
+            "first_content_seconds": 0.0069280830066418275,
+            "finish_seconds": 5.938072076998651,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 41.64457990738384,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 248,
+              "total_tokens": 304,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76871.325651822,
+          "result": {
+            "text": "```python\nfrom typing import List, Tuple\n\ndef merge_intervals(intervals: List[Tuple[int, int]]) -> List[Tuple[int, int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Args:\n        intervals: List of (start, end) tuples, where start <= end.\n\n    Returns:\n        A list of merged, non-overlapping intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n\n    sorted_intervals = sorted(intervals, key=lambda x: (x[0], x[1]))\n    merged = [sorted_intervals[0]]\n\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1] = (last_start, max(last_end, end))\n        else:\n            merged.append((start, end))\n\n    return merged\n\n\nassert merge_intervals([(1, 3), (2, 6), (8, 10), (15, 18)]) == [(1, 6), (8, 10), (15, 18)]\nassert merge_intervals([(1, 4), (4, 5)]) == [(1, 5)]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.006041521002771333,
+            "first_content_seconds": 0.006041521002771333,
+            "finish_seconds": 6.234953181992751,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 42.86463101927583,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 268,
+              "total_tokens": 324,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76871.325935167,
+          "result": {
+            "text": "```python\nfrom typing import List, Tuple\n\ndef merge_intervals(intervals: List[Tuple[int, int]]) -> List[Tuple[int, int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Args:\n        intervals: List of (start, end) tuples, where start <= end.\n\n    Returns:\n        A list of merged, non-overlapping intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n\n    sorted_intervals = sorted(intervals, key=lambda x: (x[0], x[1]))\n    merged = [sorted_intervals[0]]\n\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1] = (last_start, max(last_end, end))\n        else:\n            merged.append((start, end))\n\n    return merged\n\n\nassert merge_intervals([(1, 3), (2, 6), (8, 10), (15, 18)]) == [(1, 6), (8, 10), (15, 18)]\nassert merge_intervals([(1, 4), (4, 5)]) == [(1, 5)]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.006941662999452092,
+            "first_content_seconds": 0.006941662999452092,
+            "finish_seconds": 6.234727203001967,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 42.87238188999877,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 268,
+              "total_tokens": 324,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76871.326198633,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Args:\n        intervals: List of [start, end] integer pairs (inclusive).\n\n    Returns:\n        A new list of merged, non-overlapping intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n\n    sorted_intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [sorted_intervals[0][:]]\n\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1][1] = max(last_end, end)\n        else:\n            merged.append([start, end])\n\n    return merged\n\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.007252360010170378,
+            "first_content_seconds": 0.007252360010170378,
+            "finish_seconds": 5.937270944006741,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 41.652483293489595,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 248,
+              "total_tokens": 304,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        }
+      ]
+    },
+    {
+      "concurrency": 16,
+      "repeat": 2,
+      "aggregate_tps": 512.4666712627417,
+      "per_stream_mean": 41.40996766012698,
+      "rows": [
+        {
+          "start": 76877.942058665,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"Merge overlapping integer intervals and return sorted, disjoint intervals.\"\"\"\n    if not intervals:\n        return []\n    intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [list(intervals[0])]\n    for start, end in intervals[1:]:\n        last = merged[-1]\n        if start <= last[1]:\n            last[1] = max(last[1], end)\n        else:\n            merged.append([start, end])\n    return merged\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.0021003739966545254,
+            "first_content_seconds": 0.0021003739966545254,
+            "finish_seconds": 5.321346554992488,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 38.539295423552154,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 206,
+              "total_tokens": 262,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76877.942312547,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Args:\n        intervals: A list of [start, end] integer intervals.\n\n    Returns:\n        A list of merged, non-overlapping intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n\n    sorted_intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [sorted_intervals[0][:]]\n\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1][1] = max(last_end, end)\n        else:\n            merged.append([start, end])\n\n    return merged\n\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.004337352002039552,
+            "first_content_seconds": 0.004337352002039552,
+            "finish_seconds": 5.693625890999101,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 42.88761210255186,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 245,
+              "total_tokens": 301,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76877.942521751,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Args:\n        intervals: A list of [start, end] integer intervals.\n\n    Returns:\n        A list of merged, non-overlapping intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n\n    sorted_intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [sorted_intervals[0][:]]\n\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1][1] = max(last_end, end)\n        else:\n            merged.append([start, end])\n\n    return merged\n\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.0032330149988410994,
+            "first_content_seconds": 0.0032330149988410994,
+            "finish_seconds": 5.69190485701256,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 42.89226145863022,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 245,
+              "total_tokens": 301,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76877.942625256,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Args:\n        intervals: A list of [start, end] integer intervals.\n\n    Returns:\n        A list of merged, non-overlapping intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n\n    sorted_intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [sorted_intervals[0][:]]\n\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1][1] = max(last_end, end)\n        else:\n            merged.append([start, end])\n\n    return merged\n\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.001971839999896474,
+            "first_content_seconds": 0.001971839999896474,
+            "finish_seconds": 5.6914425830036635,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 42.88623863652733,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 245,
+              "total_tokens": 301,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76877.942758506,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"Merge overlapping integer intervals and return sorted, disjoint intervals.\"\"\"\n    if not intervals:\n        return []\n    intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [list(intervals[0])]\n    for start, end in intervals[1:]:\n        last = merged[-1]\n        if start <= last[1]:\n            last[1] = max(last[1], end)\n        else:\n            merged.append([start, end])\n    return merged\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.0033509420027257875,
+            "first_content_seconds": 0.0033509420027257875,
+            "finish_seconds": 5.32077107099758,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 38.55253017947087,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 206,
+              "total_tokens": 262,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76877.942962473,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"Merge overlapping integer intervals and return sorted, disjoint intervals.\"\"\"\n    if not intervals:\n        return []\n    intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [list(intervals[0])]\n    for start, end in intervals[1:]:\n        last = merged[-1]\n        if start <= last[1]:\n            last[1] = max(last[1], end)\n        else:\n            merged.append([start, end])\n    return merged\n\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.0023583720030728728,
+            "first_content_seconds": 0.0023583720030728728,
+            "finish_seconds": 5.320496689004358,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 38.547323852906565,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 206,
+              "total_tokens": 262,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76877.943186088,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Args:\n        intervals: A list of [start, end] integer intervals.\n\n    Returns:\n        A list of merged, non-overlapping intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n\n    sorted_intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [sorted_intervals[0][:]]\n\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1][1] = max(last_end, end)\n        else:\n            merged.append([start, end])\n\n    return merged\n\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.004613507000613026,
+            "first_content_seconds": 0.004613507000613026,
+            "finish_seconds": 5.691181529997266,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 42.90813000271106,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 245,
+              "total_tokens": 301,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76877.943441331,
+          "result": {
+            "text": "```python\nfrom typing import List, Tuple\n\ndef merge_intervals(intervals: List[Tuple[int, int]]) -> List[Tuple[int, int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Args:\n        intervals: List of (start, end) tuples, inclusive.\n\n    Returns:\n        List of merged, non-overlapping intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n\n    sorted_intervals = sorted(intervals, key=lambda x: (x[0], x[1]))\n    merged = [sorted_intervals[0]]\n\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1] = (last_start, max(last_end, end))\n        else:\n            merged.append((start, end))\n\n    return merged\n\n\nassert merge_intervals([(1, 3), (2, 6), (8, 10), (15, 18)]) == [(1, 6), (8, 10), (15, 18)]\nassert merge_intervals([(1, 4), (4, 5)]) == [(1, 5)]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.003802428997005336,
+            "first_content_seconds": 0.003802428997005336,
+            "finish_seconds": 6.729879513004562,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 39.101544141581314,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 264,
+              "total_tokens": 320,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76877.943668603,
+          "result": {
+            "text": "```python\nfrom typing import List, Tuple\n\ndef merge_intervals(intervals: List[Tuple[int, int]]) -> List[Tuple[int, int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Given a list of (start, end) tuples, return a new list where any\n    overlapping or adjacent intervals are combined into single intervals.\n    The result is sorted by start value.\n\n    Examples:\n        merge_intervals([(1, 3), (2, 6), (8, 10)]) -> [(1, 6), (8, 10)]\n        merge_intervals([(1, 4), (4, 5)]) -> [(1, 5)]\n        merge_intervals([]) -> []\n    \"\"\"\n    if not intervals:\n        return []\n\n    sorted_intervals = sorted(intervals, key=lambda x: x[0])\n    merged: List[Tuple[int, int]] = [sorted_intervals[0]]\n\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1] = (last_start, max(last_end, end))\n        else:\n            merged.append((start, end))\n\n    return merged\n\n\nassert merge_intervals([(1, 3), (2, 6), (8, 10)]) == [(1, 6), (8, 10)]\nassert merge_intervals([(1, 4), (4, 5)]) == [(1, 5)]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.004690143003244884,
+            "first_content_seconds": 0.004690143003244884,
+            "finish_seconds": 7.985311950993491,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 41.72607197932853,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 334,
+              "total_tokens": 390,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76877.94394016,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Args:\n        intervals: A list of [start, end] integer intervals.\n\n    Returns:\n        A list of merged, non-overlapping intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n\n    sorted_intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [sorted_intervals[0][:]]\n\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1][1] = max(last_end, end)\n        else:\n            merged.append([start, end])\n\n    return merged\n\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.004945736000081524,
+            "first_content_seconds": 0.004945736000081524,
+            "finish_seconds": 5.692043143993942,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 42.904135887848575,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 245,
+              "total_tokens": 301,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76877.944298839,
+          "result": {
+            "text": "```python\nfrom typing import List, Tuple\n\ndef merge_intervals(intervals: List[Tuple[int, int]]) -> List[Tuple[int, int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Args:\n        intervals: List of (start, end) tuples, inclusive.\n\n    Returns:\n        List of merged, non-overlapping intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n\n    sorted_intervals = sorted(intervals, key=lambda x: (x[0], x[1]))\n    merged = [sorted_intervals[0]]\n\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1] = (last_start, max(last_end, end))\n        else:\n            merged.append((start, end))\n\n    return merged\n\n\nassert merge_intervals([(1, 3), (2, 6), (8, 10), (15, 18)]) == [(1, 6), (8, 10), (15, 18)]\nassert merge_intervals([(1, 4), (4, 5)]) == [(1, 5)]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.005157903986400925,
+            "first_content_seconds": 0.005157903986400925,
+            "finish_seconds": 6.729133611996076,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 39.11376415097863,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 264,
+              "total_tokens": 320,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76877.944648214,
+          "result": {
+            "text": "```python\nfrom typing import List, Tuple\n\ndef merge_intervals(intervals: List[Tuple[int, int]]) -> List[Tuple[int, int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Given a list of (start, end) tuples, return a new list where any\n    overlapping or adjacent intervals are combined into single intervals.\n    The result is sorted by start value.\n\n    Examples:\n        merge_intervals([(1, 3), (2, 6), (8, 10)]) -> [(1, 6), (8, 10)]\n        merge_intervals([(1, 4), (4, 5)]) -> [(1, 5)]\n        merge_intervals([]) -> []\n    \"\"\"\n    if not intervals:\n        return []\n\n    sorted_intervals = sorted(intervals, key=lambda x: x[0])\n    merged: List[Tuple[int, int]] = [sorted_intervals[0]]\n\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1] = (last_start, max(last_end, end))\n        else:\n            merged.append((start, end))\n\n    return merged\n\n\nassert merge_intervals([(1, 3), (2, 6), (8, 10)]) == [(1, 6), (8, 10)]\nassert merge_intervals([(1, 4), (4, 5)]) == [(1, 5)]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.005897886003367603,
+            "first_content_seconds": 0.005897886003367603,
+            "finish_seconds": 7.939367135011707,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 41.974070806617675,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 334,
+              "total_tokens": 390,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76877.944807643,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Args:\n        intervals: A list of [start, end] integer intervals.\n\n    Returns:\n        A list of merged, non-overlapping intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n\n    sorted_intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [sorted_intervals[0][:]]\n\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1][1] = max(last_end, end)\n        else:\n            merged.append([start, end])\n\n    return merged\n\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.0063135000091278926,
+            "first_content_seconds": 0.0063135000091278926,
+            "finish_seconds": 5.6894864960049745,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 42.93376256044174,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 245,
+              "total_tokens": 301,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76877.945102966,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Args:\n        intervals: A list of [start, end] integer intervals.\n\n    Returns:\n        A list of merged, non-overlapping intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n\n    sorted_intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [sorted_intervals[0][:]]\n\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1][1] = max(last_end, end)\n        else:\n            merged.append([start, end])\n\n    return merged\n\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.0048935879894997925,
+            "first_content_seconds": 0.0048935879894997925,
+            "finish_seconds": 5.691656023991527,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 42.90666310505133,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 245,
+              "total_tokens": 301,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76877.945455195,
+          "result": {
+            "text": "```python\nfrom typing import List, Tuple\n\ndef merge_intervals(intervals: List[Tuple[int, int]]) -> List[Tuple[int, int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Given a list of (start, end) tuples, return a new list where any\n    overlapping or adjacent intervals are combined into single intervals.\n    The result is sorted by start value.\n\n    Examples:\n        merge_intervals([(1, 3), (2, 6), (8, 10)]) -> [(1, 6), (8, 10)]\n        merge_intervals([(1, 4), (4, 5)]) -> [(1, 5)]\n        merge_intervals([]) -> []\n    \"\"\"\n    if not intervals:\n        return []\n\n    sorted_intervals = sorted(intervals, key=lambda x: x[0])\n    merged: List[Tuple[int, int]] = [sorted_intervals[0]]\n\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1] = (last_start, max(last_end, end))\n        else:\n            merged.append((start, end))\n\n    return merged\n\n\nassert merge_intervals([(1, 3), (2, 6), (8, 10)]) == [(1, 6), (8, 10)]\nassert merge_intervals([(1, 4), (4, 5)]) == [(1, 5)]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.006230184997548349,
+            "first_content_seconds": 0.006230184997548349,
+            "finish_seconds": 7.983613359989249,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 41.74301179914759,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 334,
+              "total_tokens": 390,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76877.945803068,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Args:\n        intervals: A list of [start, end] integer intervals.\n\n    Returns:\n        A list of merged, non-overlapping intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n\n    sorted_intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [sorted_intervals[0][:]]\n\n    for start, end in sorted_intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:\n            merged[-1][1] = max(last_end, end)\n        else:\n            merged.append([start, end])\n\n    return merged\n\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.006434130991692655,
+            "first_content_seconds": 0.006434130991692655,
+            "finish_seconds": 5.688375828001881,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 42.943066474686226,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 245,
+              "total_tokens": 301,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        }
+      ]
+    },
+    {
+      "concurrency": 16,
+      "repeat": 3,
+      "aggregate_tps": 615.7605720541134,
+      "per_stream_mean": 43.52248720368222,
+      "rows": [
+        {
+          "start": 76885.932806798,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Args:\n        intervals: List of [start, end] integer pairs.\n\n    Returns:\n        A list of merged, non-overlapping intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n\n    intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [intervals[0][:]]\n\n    for start, end in intervals[1:]:\n        last = merged[-1]\n        if start <= last[1]:\n            last[1] = max(last[1], end)\n        else:\n            merged.append([start, end])\n\n    return merged\n\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.004153185989707708,
+            "first_content_seconds": 0.004153185989707708,
+            "finish_seconds": 5.711897475994192,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 40.99693120621845,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 235,
+              "total_tokens": 291,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76885.933086718,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"Merge overlapping integer intervals and return sorted, disjoint intervals.\"\"\"\n    if not intervals:\n        return []\n    intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [list(intervals[0])]\n    for start, end in intervals[1:]:\n        last = merged[-1]\n        if start <= last[1]:\n            last[1] = max(last[1], end)\n        else:\n            merged.append([start, end])\n    return merged\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.004084372005308978,
+            "first_content_seconds": 0.004084372005308978,
+            "finish_seconds": 4.502936905002571,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 45.56717485101101,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 206,
+              "total_tokens": 262,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76885.933292057,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"Merge overlapping integer intervals and return sorted, disjoint intervals.\"\"\"\n    if not intervals:\n        return []\n    intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [list(intervals[0])]\n    for start, end in intervals[1:]:\n        last = merged[-1]\n        if start <= last[1]:\n            last[1] = max(last[1], end)\n        else:\n            merged.append([start, end])\n    return merged\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.0029506399878300726,
+            "first_content_seconds": 0.0029506399878300726,
+            "finish_seconds": 4.501081078997231,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 45.574489841861066,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 206,
+              "total_tokens": 262,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76885.933468902,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"Merge overlapping integer intervals and return sorted, disjoint intervals.\"\"\"\n    if not intervals:\n        return []\n    intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [list(intervals[0])]\n    for start, end in intervals[1:]:\n        last = merged[-1]\n        if start <= last[1]:\n            last[1] = max(last[1], end)\n        else:\n            merged.append([start, end])\n    return merged\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.0013819550076732412,
+            "first_content_seconds": 0.0013819550076732412,
+            "finish_seconds": 4.500812976999441,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 45.56131630822344,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 206,
+              "total_tokens": 262,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76885.933646489,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Args:\n        intervals: List of [start, end] integer pairs.\n\n    Returns:\n        A list of merged, non-overlapping intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n\n    intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [intervals[0][:]]\n\n    for start, end in intervals[1:]:\n        last = merged[-1]\n        if start <= last[1]:\n            last[1] = max(last[1], end)\n        else:\n            merged.append([start, end])\n\n    return merged\n\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.0016675439983373508,
+            "first_content_seconds": 0.0016675439983373508,
+            "finish_seconds": 5.71034029799921,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 40.990263426118304,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 235,
+              "total_tokens": 291,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76885.933922614,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Args:\n        intervals: List of [start, end] integer pairs.\n\n    Returns:\n        A list of merged, non-overlapping intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n\n    intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [intervals[0][:]]\n\n    for start, end in intervals[1:]:\n        last = merged[-1]\n        if start <= last[1]:\n            last[1] = max(last[1], end)\n        else:\n            merged.append([start, end])\n\n    return merged\n\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.0036537750129355118,
+            "first_content_seconds": 0.0036537750129355118,
+            "finish_seconds": 5.710148288999335,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 41.00590992008754,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 235,
+              "total_tokens": 291,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76885.934123215,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Args:\n        intervals: List of [start, end] integer pairs.\n\n    Returns:\n        A list of merged, non-overlapping intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n\n    intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [intervals[0][:]]\n\n    for start, end in intervals[1:]:\n        last = merged[-1]\n        if start <= last[1]:\n            last[1] = max(last[1], end)\n        else:\n            merged.append([start, end])\n\n    return merged\n\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.004533507002633996,
+            "first_content_seconds": 0.004533507002633996,
+            "finish_seconds": 5.710671926004579,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 41.00846891844743,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 235,
+              "total_tokens": 291,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76885.934392279,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"Merge overlapping integer intervals and return sorted, disjoint intervals.\"\"\"\n    if not intervals:\n        return []\n    intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [list(intervals[0])]\n    for start, end in intervals[1:]:\n        last = merged[-1]\n        if start <= last[1]:\n            last[1] = max(last[1], end)\n        else:\n            merged.append([start, end])\n    return merged\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.003737831997568719,
+            "first_content_seconds": 0.003737831997568719,
+            "finish_seconds": 4.500077792006778,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 45.59263797294815,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 206,
+              "total_tokens": 262,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76885.934549124,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"Merge overlapping integer intervals and return sorted, disjoint intervals.\"\"\"\n    if not intervals:\n        return []\n    intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [list(intervals[0])]\n    for start, end in intervals[1:]:\n        last = merged[-1]\n        if start <= last[1]:\n            last[1] = max(last[1], end)\n        else:\n            merged.append([start, end])\n    return merged\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.0046619500062661245,
+            "first_content_seconds": 0.0046619500062661245,
+            "finish_seconds": 4.5006398760015145,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 45.596309273386915,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 206,
+              "total_tokens": 262,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76885.934984268,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Args:\n        intervals: A list of [start, end] integer intervals.\n\n    Returns:\n        A list of merged, non-overlapping intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n\n    intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [list(intervals[0])]\n\n    for start, end in intervals[1:]:\n        last = merged[-1]\n        if start <= last[1]:\n            last[1] = max(last[1], end)\n        else:\n            merged.append([start, end])\n\n    return merged\n\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.005945658005657606,
+            "first_content_seconds": 0.005945658005657606,
+            "finish_seconds": 5.522939546004636,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 42.776918878479584,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 237,
+              "total_tokens": 293,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76885.935384469,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"Merge overlapping integer intervals and return sorted, disjoint intervals.\"\"\"\n    if not intervals:\n        return []\n    intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [list(intervals[0])]\n    for start, end in intervals[1:]:\n        last = merged[-1]\n        if start <= last[1]:\n            last[1] = max(last[1], end)\n        else:\n            merged.append([start, end])\n    return merged\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.004975069998181425,
+            "first_content_seconds": 0.004975069998181425,
+            "finish_seconds": 4.500591122996411,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 45.599979531899926,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 206,
+              "total_tokens": 262,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76885.935540663,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Args:\n        intervals: A list of [start, end] integer intervals.\n\n    Returns:\n        A list of merged, non-overlapping intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n\n    intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [list(intervals[0])]\n\n    for start, end in intervals[1:]:\n        last = merged[-1]\n        if start <= last[1]:\n            last[1] = max(last[1], end)\n        else:\n            merged.append([start, end])\n\n    return merged\n\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.00422224000794813,
+            "first_content_seconds": 0.00422224000794813,
+            "finish_seconds": 5.522826176005765,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 42.76443874882442,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 237,
+              "total_tokens": 293,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76885.935743077,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"Merge overlapping integer intervals and return sorted, disjoint intervals.\"\"\"\n    if not intervals:\n        return []\n    intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [list(intervals[0])]\n    for start, end in intervals[1:]:\n        last = merged[-1]\n        if start <= last[1]:\n            last[1] = max(last[1], end)\n        else:\n            merged.append([start, end])\n    return merged\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.005694691004464403,
+            "first_content_seconds": 0.005694691004464403,
+            "finish_seconds": 4.499596951005515,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 45.61736952417654,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 206,
+              "total_tokens": 262,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76885.936287504,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"Merge overlapping integer intervals and return sorted, disjoint intervals.\"\"\"\n    if not intervals:\n        return []\n    intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [list(intervals[0])]\n    for start, end in intervals[1:]:\n        last = merged[-1]\n        if start <= last[1]:\n            last[1] = max(last[1], end)\n        else:\n            merged.append([start, end])\n    return merged\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.006261059999815188,
+            "first_content_seconds": 0.006261059999815188,
+            "finish_seconds": 4.498978221003199,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 45.629402576105235,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 206,
+              "total_tokens": 262,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76885.936471571,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Args:\n        intervals: List of [start, end] integer pairs.\n\n    Returns:\n        A list of merged, non-overlapping intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n\n    intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [intervals[0][:]]\n\n    for start, end in intervals[1:]:\n        last = merged[-1]\n        if start <= last[1]:\n            last[1] = max(last[1], end)\n        else:\n            merged.append([start, end])\n\n    return merged\n\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.006764596997527406,
+            "first_content_seconds": 0.006764596997527406,
+            "finish_seconds": 5.708390870990115,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 41.040922143102954,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 235,
+              "total_tokens": 291,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        },
+        {
+          "start": 76885.936700204,
+          "result": {
+            "text": "```python\ndef merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    \"\"\"\n    Merge overlapping integer intervals.\n\n    Args:\n        intervals: List of [start, end] integer pairs.\n\n    Returns:\n        A list of merged, non-overlapping intervals sorted by start.\n    \"\"\"\n    if not intervals:\n        return []\n\n    intervals = sorted(intervals, key=lambda x: x[0])\n    merged = [intervals[0][:]]\n\n    for start, end in intervals[1:]:\n        last = merged[-1]\n        if start <= last[1]:\n            last[1] = max(last[1], end)\n        else:\n            merged.append([start, end])\n\n    return merged\n\n\nassert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]\nassert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]\nassert merge_intervals([]) == []\n```",
+            "reasoning": "",
+            "first_output_seconds": 0.005298065007082187,
+            "first_content_seconds": 0.005298065007082187,
+            "finish_seconds": 5.707432851995691,
+            "finish_reason": "stop",
+            "observed_decode_tokens_per_second": 41.037262138024495,
+            "usage": {
+              "prompt_tokens": 56,
+              "completion_tokens": 235,
+              "total_tokens": 291,
+              "prompt_tokens_details": {
+                "cached_tokens": 56
+              },
+              "prompt_cache_hit_tokens": 56,
+              "prompt_cache_miss_tokens": 0
+            }
+          },
+          "output_checks": {
+            "response_nonempty": true,
+            "objective_checks": {
+              "python_structure": {
+                "passed": true,
+                "issues": []
+              }
+            },
+            "objective_checks_passed": true,
+            "prose_quality_assessed": false
+          },
+          "passed": true
+        }
+      ]
+    }
+  ],
+  "summaries": [
+    {
+      "concurrency": 16,
+      "samples": 3,
+      "median_aggregate_tps": 615.7605720541134,
+      "min_aggregate_tps": 512.4666712627417,
+      "max_aggregate_tps": 621.614249378943
+    }
+  ],
+  "passed": true
+}

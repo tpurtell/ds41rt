@@ -415,3 +415,57 @@ coordinator and Spark WIP builds pass. Serving qualification remains outstanding
 
 RTX-side activation quantization / NVFP4 transport are deferred at the user's
 request; this phase focuses on layout, tiling and kernel parallelism.
+
+### Padding serving A/B (September 19; development only)
+
+The source-built candidate passes the targeted serving comparison. This is a
+useful improvement, **not a release qualification**: code still trails the
+previous official-checkpoint result of approximately 130 tok/s. Padding remains
+opt-in. No release image or tag changed.
+
+One RTX PRO 6000 at a 400 W power limit and standard memory settings, four
+Spark ranks, dSpark enabled; identical coordinator/daemon and checkpoint in both
+arms. Only the Spark AOT library changes logical/kernel width 576/576 to
+576/640. Both arms retain the same current activation scaling and BF16 wire.
+Source implementation: `5ba005e` (build frozen before final documentation and
+manifest-only edits). Artifact hashes, launch configuration, raw results and the
+failed trial are in [the evidence directory](measurements/nvfp4-padding/).
+
+| Measurement (median of three) | Unpadded | Padded | Change |
+| --- | ---: | ---: | ---: |
+| C1 weighted nine-category decode, tok/s | 63.83 | 78.85 | +23.5% |
+| C1 code, tok/s | 86.97 | 105.36 | +21.1% |
+| C1 reasoning code, tok/s | 74.54 | 91.06 | +22.2% |
+| C1 topic, tok/s | 50.88 | 64.25 | +26.3% |
+| C1 counting, tok/s | 112.55 | 132.11 | +17.4% |
+| C2 code aggregate, tok/s | 131.16 | 151.33 | +15.4% |
+| C8 code aggregate, tok/s | 366.43 | 443.64 | +21.1% |
+| C16 code aggregate, tok/s (512 output limit) | 398.42 | 615.76 | +54.5% |
+| 32K fresh prefill, effective tok/s | 4038.40 | 5083.16 | +25.9% |
+
+All 30 C1 requests per arm pass the corpus structural checks; all paired content
+hashes **and reasoning strings** match exactly. This does not substitute for a
+full tool/quality evaluation. C2/C8 use the original 320-token output limit.
+The first padded C16 trial hit that limit in three responses before closing the
+code fence; it remains recorded as failed. Both C16 arms were rerun with 512,
+passing all three batches. Concurrency outputs may differ across schedules;
+C16 ranges were 338.98–432.25 unpadded and 512.47–621.61 padded. Treat the
+concurrency improvement as noisier than C1, not a universal speedup estimate.
+
+Prefill uses the same frozen README text, tokenizer, 32768-token suffix and
+zero base, with one excluded warmup and three measured runs per arm. Expert
+startup (container start to loaded listener, one paired restart) had medians
+41.40 s unpadded and 42.45 s padded across the four hosts. This small observed
+increase is not a repeated loading qualification. The API model listing can
+precede backend readiness: early warmup streams failed during expert loading;
+subsequent complete warmup succeeded before measurement.
+
+Reproduction: `bench-ds41-release-decode.py --repeats 3 --nonce-seed 198474001
+--include-counting`; concurrency uses `--case code --repeats 3 --label
+nvfp4-padding-ab --nonce padding-layout-fixed`, with `--concurrency 2 8 16`
+initially and `--concurrency 16 --max-tokens 512` for the corrected paired C16.
+Prefill uses `--base 0 --suffix 32768 --repeats 3 --warmups 1`. Pass the same
+API URL, tokenizer and frozen context file to both arms; raw JSON records their
+identities. This supersedes the outstanding serving item above only for this
+NVFP4 1×RTX padding comparison; native nonregression, 2×RTX and release gates
+remain unverified.

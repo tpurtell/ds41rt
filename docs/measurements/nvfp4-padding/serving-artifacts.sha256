@@ -1,0 +1,5 @@
+1a5e6664e7a8bb870b9a7eaf4bb8face7179b7fdca02af387d5487951f43a1f8  runs/nvfp4-opt/coordinator/ds41rt
+92f32415dda725386c2a27c2569edd3acf0a0ef2d832dcd6020f868a0b0a6212  runs/nvfp4-opt/coordinator/libds41rt_native.so
+bf9aafcb7d27e97e58dea62216913a5c9162bd07c6e7add408bcc4dc7113a331  runs/nvfp4-opt/expert/ds41rt
+96da254bedbeb98ec5b40bddd594d2791ec164c1c80717dc03665308a25ee0ad  runs/nvfp4-opt/expert/libds41rt_native.so
+baaf4289d1f4d896e5a7bfa0708d753881fd59e20490f75f39537651c98a16c5  runs/nvfp4-opt/expert-baseline/libds41rt_native.so

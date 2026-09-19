@@ -10,9 +10,12 @@ parser.add_argument('--repeats', type=int, default=3)
 parser.add_argument('--label', default='release-concurrency')
 parser.add_argument('--case', choices=['counting','code','code-reasoning','topic'], default='counting')
 parser.add_argument('--nonce', help='Use the same prompt nonce for controlled comparisons; defaults to a fresh UUID')
+parser.add_argument('--max-tokens', type=int, help='Override the corpus output budget for both arms of a controlled comparison')
 args=parser.parse_args()
 if args.repeats < 1 or any(c < 1 or c > 16 for c in args.concurrency):
  parser.error('repeats must be positive and concurrency must be 1..16')
+if args.max_tokens is not None and args.max_tokens < 1:
+ parser.error('max-tokens must be positive')
 if args.output.exists() or len(set(args.concurrency)) != len(args.concurrency):
  parser.error('output must be new and concurrency values unique')
 api=runpy.run_path(str(Path(__file__).with_name('qualify-ds41-native-api.py')));records=[]
@@ -20,6 +23,8 @@ corpus_path=Path(__file__).with_name('fixtures')/'release-semantic-corpus.json'
 corpus=json.loads(corpus_path.read_text())
 checks=runpy.run_path(str(Path(__file__).with_name('release_throughput_checks.py')))
 definition={'prompt':'Count from 1 to 200, separated by commas. Output only the sequence.','max_tokens':640} if args.case=='counting' else corpus['cases'][args.case]
+if args.max_tokens is not None:
+ definition=dict(definition,max_tokens=args.max_tokens)
 prompt=f"{args.label} {args.nonce if args.nonce is not None else uuid.uuid4().hex}. {definition['prompt']}"
 def validate(result):
  if args.case=='counting':
