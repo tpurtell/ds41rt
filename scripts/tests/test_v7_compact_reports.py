@@ -201,5 +201,46 @@ class CompactReports(unittest.TestCase):
                         headline.main()
                     self.assertTrue((root / 'headline.md').exists())
 
+    def test_sweep_sections_appear_only_when_both_layouts_contribute(self):
+        quant = load('render-ds41-v7-quant-reports')
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+
+            def write_sweeps(stem, scale):
+                (root / f'{stem}-retained.json').write_text(json.dumps({'context_summaries': [
+                    {'context_tokens': 0, 'weighted_observed_decode_tokens_per_second': 100.0 * scale},
+                    {'context_tokens': 262144, 'weighted_observed_decode_tokens_per_second': 50.0 * scale}]}))
+                (root / f'{stem}-retained-2k.json').write_text(json.dumps({'context_summaries': [
+                    {'context_tokens': 2048, 'weighted_observed_decode_tokens_per_second': 90.0 * scale}]}))
+                for case in ('counting', 'code', 'topic'):
+                    (root / f'{stem}-concurrency-{case}.json').write_text(json.dumps({'summaries': [
+                        {'concurrency': 1, 'median_aggregate_tps': 10.0 * scale},
+                        {'concurrency': 16, 'median_aggregate_tps': 40.0 * scale}]}))
+                (root / f'{stem}-mixed.json').write_text(json.dumps({'batches': [
+                    {'concurrency': 4, 'aggregate_tps': 20.0 * scale}]}))
+                (root / f'{stem}-target.json').write_text(json.dumps({'passed': True, 'samples': [
+                    {'case': 'code', 'observed_decode_tokens_per_second': 30.0 * scale}]}))
+
+            # One layout alone must not produce a table: there is nothing to compare.
+            write_sweeps('single-exl3', 1)
+            alone = quant.render('exl3', root)
+            self.assertNotIn('## Decode over retained context', alone)
+            self.assertNotIn('## Concurrency scaling', alone)
+
+            write_sweeps('dual-exl3', 2)
+            text = quant.render('exl3', root)
+            self.assertIn('## Decode over retained context', text)
+            self.assertIn('| Retained base | 1x | 2x | Change |', text)
+            self.assertIn('| 2K | 90 | 180 | +100.0% |', text)
+            self.assertIn('| 256K | 50 | 100 | +100.0% |', text)
+            self.assertIn('## Concurrency scaling', text)
+            self.assertIn('| Concurrency | 1x counting | 1x code | 1x topic '
+                          '| 2x counting | 2x code | 2x topic |', text)
+            self.assertIn('| 16 | 40 | 40 | 40 | 80 | 80 | 80 |', text)
+            self.assertIn('## Mixed traffic', text)
+            self.assertIn('| 4 | 20 | 40 | +100.0% |', text)
+            self.assertIn('## Target-only decode', text)
+            self.assertIn('| Code | 30.00 | 60.00 | +100.0% |', text)
+
 if __name__ == '__main__':
     unittest.main()

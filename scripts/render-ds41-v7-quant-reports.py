@@ -262,7 +262,7 @@ def sweep_sections(quant: str, package: Path, spec: dict):
     cases = [case for case in ("counting", "code", "topic")
              if all(case in scaling[stem] for _l, stem in layouts)]
     if cases:
-        levels = sorted(next(iter(scaling[layouts[0][1]][cases[0]])))
+        levels = sorted(scaling[layouts[0][1]][cases[0]])
         lines += ["", "## Concurrency scaling",
                   "", "Median aggregate tokens/s from earliest first output to final completion, "
                   "including admission gaps.", "",
