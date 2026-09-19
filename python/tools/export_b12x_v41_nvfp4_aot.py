@@ -157,6 +157,7 @@ def export(
         "capability": [properties.major, properties.minor],
         "physical_sms": properties.multi_processor_count,
         "tile_m": tile_m,
+        "share_input": share_input,
         "geometry": {
             "experts": experts,
             "hidden": 5120,

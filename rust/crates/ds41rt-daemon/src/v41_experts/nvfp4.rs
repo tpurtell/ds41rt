@@ -154,6 +154,12 @@ impl<'a> Nvfp4Side<'a> {
         let mut down_input_scales = vec![0f32; experts];
         let mut alpha_values = vec![0f32; experts];
         let mut down_alpha_values = vec![0f32; experts];
+        // Raw FC1 checkpoint scalars, captured per expert so one shared
+        // activation scale can be chosen once every expert is known. Only the
+        // FC1 input is a broadcast token row; each expert produces its own FC2
+        // intermediate, so the FC2 pair is derived inline and stays calibrated.
+        let mut w1_weight_scale_2_raw = vec![0f32; experts];
+        let mut w1_input_scale_raw = vec![0f32; experts];
         for expert in 0..EXPERT_READ_LANES.min(experts) {
             catalog.nvfp4_expert_staging(layer.expert(expert))?.prefetch()?;
         }
@@ -273,13 +279,41 @@ impl<'a> Nvfp4Side<'a> {
                     w1_input_scale > 0.0 && w2_input_scale > 0.0,
                     "NVFP4 expert {expert} has a non-positive activation scale"
                 );
-                input_scales[expert] = 1.0 / w1_input_scale;
+                // Defer the FC1 pair until every expert is known; FC2 keeps its
+                // per-expert calibrated scale.
+                w1_weight_scale_2_raw[expert] = w1_weight_scale_2;
+                w1_input_scale_raw[expert] = w1_input_scale;
                 down_input_scales[expert] = 1.0 / w2_input_scale;
-                alpha_values[expert] = w1_weight_scale_2 * w1_input_scale;
                 down_alpha_values[expert] = w2_weight_scale_2 * w2_input_scale;
                 let _ = SLOT_SCALARS;
             }
             unsafe { library.cuda_stream_synchronize(stream.raw)?; }
+        }
+        // W4A4 shared-input preparation. The b12x front end can quantize each
+        // token's activation once and fan that row out to every routed expert,
+        // which removes the per-route re-quantization of an identical BF16 row.
+        // That path requires one activation scale to serve the whole rank, and
+        // the kernel reads index 0, so every entry must agree.
+        //
+        // The weight scale stays per-expert in `alpha`, which keeps the
+        // arithmetic exact: the activation is quantized with S, so FC1 must
+        // dequantize with alpha[e] = weight_scale_2[e] * S. The published
+        // checkpoint calibrates a different input scale per expert (measured
+        // spread up to ~6x for FC1), so a shared S is an approximation.
+        //
+        // Maximum is the conservative choice. The block scale is
+        // `max_abs * (1/S) / 6` clamped to the E4M3 maximum, so a larger S
+        // lowers the block scale and buys headroom against saturation; the
+        // per-16 E4M3 block scale then absorbs the range difference for experts
+        // calibrated smaller. The reverse choice can saturate the clamp.
+        let shared_fc1_input_scale = w1_input_scale_raw.iter().copied().fold(0f32, f32::max);
+        ensure!(
+            shared_fc1_input_scale > 0.0 && shared_fc1_input_scale.is_finite(),
+            "NVFP4 layer has no usable shared FC1 activation scale"
+        );
+        for expert in 0..experts {
+            input_scales[expert] = 1.0 / shared_fc1_input_scale;
+            alpha_values[expert] = w1_weight_scale_2_raw[expert] * shared_fc1_input_scale;
         }
         // Per-expert vectors are tiny; upload once per layer on the load stream.
         {

@@ -19,6 +19,15 @@ if(NOT "${DS41RT_V41_NVFP4_TILE_M}" MATCHES "^(auto|16|32|64|128)$")
   message(FATAL_ERROR "DS41RT_V41_NVFP4_TILE_M must be auto, 16, 32, 64, or 128")
 endif()
 set(DS41RT_V41_NVFP4_INCLUDE_DIRS)
+# Quantize each token's activation once with a shared scale and fan it out to
+# every routed expert instead of re-quantizing the identical BF16 row per route.
+# The host publishes a uniform FC1 activation scale to match (v41_experts/nvfp4.rs).
+option(DS41RT_V41_NVFP4_SHARE_INPUT "Export NVFP4 experts with shared-input activation quantization" OFF)
+if(DS41RT_V41_NVFP4_SHARE_INPUT)
+  set(DS41RT_V41_NVFP4_SHARE_INPUT_ARG "--share-input")
+else()
+  set(DS41RT_V41_NVFP4_SHARE_INPUT_ARG "")
+endif()
 list(JOIN DS41RT_V41_NVFP4_CAPACITIES "," DS41RT_V41_NVFP4_CAPACITY_ARG)
 foreach(role IN LISTS DS41RT_V41_NVFP4_ROLES)
   set(nvfp4_dir "${CMAKE_CURRENT_BINARY_DIR}/v41_nvfp4_${role}")
@@ -39,6 +48,7 @@ foreach(role IN LISTS DS41RT_V41_NVFP4_ROLES)
       --output-dir "${nvfp4_dir}" --role "${role}"
       --rows "${DS41RT_V41_NVFP4_CAPACITY_ARG}"
       --tile-m "${DS41RT_V41_NVFP4_TILE_M}"
+      ${DS41RT_V41_NVFP4_SHARE_INPUT_ARG}
     COMMAND "${CMAKE_COMMAND}" -E copy
       "${nvfp4_dir}/v41_expert_variants.h"
       "${nvfp4_dir}/v41_nvfp4_${role}_variants.h"
