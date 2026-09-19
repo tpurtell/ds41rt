@@ -58,7 +58,7 @@ def test_export_rejects_invalid_tiles_before_gpu_import(exporter, monkeypatch, t
     assert not (tmp_path / "output").exists()
 
 
-@pytest.mark.parametrize("value", [0, -1, 3, 6, True, 5.0, "5", None])
+@pytest.mark.parametrize("value", [-1, 3, 6, True, 5.0, "5", None])
 def test_export_rejects_invalid_shards_before_gpu_import(exporter, monkeypatch, tmp_path, value):
     monkeypatch.setitem(sys.modules, "torch", None)
     with pytest.raises(ValueError, match="output_shards"):
@@ -66,14 +66,15 @@ def test_export_rejects_invalid_shards_before_gpu_import(exporter, monkeypatch, 
 
 
 @pytest.mark.parametrize("requested", [None, 16, 32, 64, 128])
-def test_export_uses_resolved_scratch_tile(exporter, monkeypatch, tmp_path, requested):
+@pytest.mark.parametrize("shards", [0, 1, 5])
+def test_export_uses_resolved_scratch_tile(exporter, monkeypatch, tmp_path, requested, shards):
     dtype = NS(itemsize=2)
     torch = NS(bfloat16=dtype, int32="int32", device=lambda *args: "cuda",
                cuda=NS(init=Mock(), current_device=lambda: 0,
                        get_device_properties=lambda _: NS(major=12, minor=0,
                            name="mock GPU", multi_processor_count=100)))
     monkeypatch.setitem(sys.modules, "torch", torch)
-    configs, resolved, compiled_tiles = [], [], []
+    configs, resolved, compiled_tiles, compiled_shards = [], [], [], []
 
     def plan_scratch(caps, **kwargs):
         configs.append(caps.decode_config)
@@ -90,6 +91,7 @@ def test_export_uses_resolved_scratch_tile(exporter, monkeypatch, tmp_path, requ
 
     def get_kernel(*args, **kwargs):
         compiled_tiles.append(kwargs["planned_tile_m"])
+        compiled_shards.append(kwargs["nvfp4_output_shards"])
         def export_to_c(output, label, symbol):
             (Path(output) / f"{label}.h").write_text(
                 f"void _mlir_{symbol}(void **args, int32_t num_args);\n"
@@ -107,10 +109,13 @@ def test_export_uses_resolved_scratch_tile(exporter, monkeypatch, tmp_path, requ
     monkeypatch.setitem(sys.modules, "b12x.moe.fused_moe", NS(_impl=moe))
     monkeypatch.setitem(sys.modules, "b12x.moe.fused_moe._tuning",
                         NS(MoeDecodeConfig=lambda **kwargs: NS(**kwargs)))
-    exporter.export(tmp_path, "rtx_tp2", [1, 80, 256, 4096], requested)
+    exporter.export(tmp_path, "rtx_tp2", [1, 80, 256, 4096], requested, output_shards=shards)
     manifest = json.loads((tmp_path / "v41_nvfp4_experts.json").read_text())
     assert [config.dynamic_tile_m for config in configs] == [requested] * 4
     assert compiled_tiles == resolved == [16, 32, 64, 128]
+    expected_shards = [0] * 4 if shards == 0 else [shards, 1, 1, 1]
+    assert compiled_shards == expected_shards
+    assert [v["output_shards"] for v in manifest["variants"]] == expected_shards
     assert manifest["tile_m"] == requested
     assert [variant["tile_m"] for variant in manifest["variants"]] == resolved
     assert [variant["route_mode"] for variant in manifest["variants"]] == [

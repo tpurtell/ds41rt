@@ -115,8 +115,8 @@ def export(
         raise TypeError("share_input must be boolean")
     if type(pad_intermediate) is not bool:
         raise TypeError("pad_intermediate must be boolean")
-    if type(output_shards) is not int or output_shards < 1 or 40 % output_shards:
-        raise ValueError("output_shards must be a positive divisor of 40")
+    if type(output_shards) is not int or output_shards < 0 or (output_shards and 40 % output_shards):
+        raise ValueError("output_shards must be 0 (adaptive) or a positive divisor of 40")
     if tile_m is not None and (type(tile_m) is not int or tile_m not in TILE_M_CHOICES):
         raise ValueError("tile_m must be None (auto), 16, 32, 64, or 128")
 
@@ -237,7 +237,7 @@ def export(
             deterministic_output=True,
             swiglu_limit=10,
             mac_override=max_active_clusters,
-            nvfp4_output_shards=output_shards if route_mode == "direct" else 1,
+            nvfp4_output_shards=output_shards if route_mode == "direct" or output_shards == 0 else 1,
         )
         if not 0 < clusters <= 2 * properties.multi_processor_count:
             raise ValueError(f"invalid NVFP4 cooperative launch grid: {clusters}")
@@ -357,7 +357,7 @@ def export(
                 "name": label,
                 "native_entry": entry[0],
                 "route_mode": route_mode,
-                "output_shards": output_shards if route_mode == "direct" else 1,
+                "output_shards": output_shards if route_mode == "direct" or output_shards == 0 else 1,
                 "tile_m": plan.execution.tile_m,
                 "output_kind": 2,
                 "output_format": "bf16_routes",
@@ -417,7 +417,7 @@ def main() -> None:
         help="positive cooperative grid override; unset uses measured kernel occupancy",
     )
     parser.add_argument("--output-shards", type=int, default=1,
-                        help="experimental direct-route output shards; positive divisor of 40")
+                        help="experimental output shards: 0 adapts direct/grouped routing; positive divisors of 40 split direct routing")
     parser.add_argument("--pad-intermediate", action="store_true",
                         help="zero-pad intermediate to 128 to avoid transposed FC1")
     parser.add_argument(

@@ -1,0 +1,8 @@
+{"source": "/wip/nvfp4-adaptive-source", "source_sha256": {"b12x/moe/fused_moe/_impl.py": "c99adee5fbcc680b041af08cbf66e42377321e5f74a96a74ae7014a891d39fd0", "b12x/moe/_shared/kernels/dynamic.py": "f7b4a1e0b82767d043647566191fa7e617574cdf3a2ad8792fe10c2bf667d1b6"}}
+{"device": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition", "geometry": [384, 5120, 1152, 6], "capacity": 16, "live": 8, "routing": "shared", "tile_m": 16, "padded_intermediate": 1152}
+compile grouped:1
+correct grouped:1 mac 188
+compile grouped:0
+correct grouped:0 mac 188
+{"case": "grouped:1", "us": [367.720947265625, 369.37744140625, 368.3550262451172, 369.4132614135742, 368.53633880615234, 369.3638229370117, 368.2990264892578, 369.2638397216797, 368.2841491699219], "median_us": 368.53633880615234, "bit_exact": true}
+{"case": "grouped:0", "us": [161.28591537475586, 161.14303588867188, 161.35520935058594, 161.35631561279297, 161.4379119873047, 161.56272888183594, 161.34544372558594, 161.63631439208984, 161.23647689819336], "median_us": 161.35520935058594, "bit_exact": true}

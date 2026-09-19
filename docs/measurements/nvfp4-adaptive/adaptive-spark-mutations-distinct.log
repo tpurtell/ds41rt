@@ -1,0 +1,11 @@
+{"source": "/wip/nvfp4-adaptive-source", "source_sha256": {"b12x/moe/fused_moe/_impl.py": "c99adee5fbcc680b041af08cbf66e42377321e5f74a96a74ae7014a891d39fd0", "b12x/moe/_shared/kernels/dynamic.py": "f7b4a1e0b82767d043647566191fa7e617574cdf3a2ad8792fe10c2bf667d1b6"}}
+{"device": "NVIDIA GB10", "geometry": [384, 5120, 576, 6], "capacity": 16, "live": 8, "routing": "distinct", "tile_m": 16, "padded_intermediate": 640}
+compile grouped:1
+correct grouped:1 mac 48
+compile grouped:0
+correct grouped:0 mac 48
+mutated graph routes exact 0
+mutated graph routes exact 6
+mutated graph routes exact 2
+{"case": "grouped:1", "us": [1330.5461120605469, 1328.6991882324219, 1333.026123046875, 1331.4833068847656, 1332.3265075683594, 1330.4399108886719, 1330.2424621582031, 1331.1698913574219, 1327.6835632324219], "median_us": 1330.5461120605469, "bit_exact": true}
+{"case": "grouped:0", "us": [1336.1181640625, 1338.6549377441406, 1331.2567138671875, 1333.1156921386719, 1337.2944641113281, 1331.6607666015625, 1334.6157836914062, 1332.1913146972656, 1340.3128051757812], "median_us": 1334.6157836914062, "bit_exact": true}

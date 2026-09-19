@@ -24,6 +24,8 @@ def main():
     p.add_argument('--capacity', type=int, default=16)
     p.add_argument('--live', type=int, default=8)
     p.add_argument('--cases', default='grouped:1')
+    p.add_argument('--check-live-counts', action='store_true',
+                   help='check sparse/full live counts with the already resolved kernels')
     p.add_argument('--routing', choices=['shared', 'distinct'], default='shared')
     a = p.parse_args()
     sys.path.insert(0, a.source)
@@ -69,6 +71,7 @@ def main():
         return make_ptr(dtype, t.data_ptr(), cute.AddressSpace.gmem, assumed_align=align)
     I, F, B, U, S, Q = (cutlass.Int32, cutlass.Float32, cutlass.BFloat16, cutlass.Uint8, cutlass.Float8E4M3FN, cutlass.Float4E2M1FN)
     arms = []
+    live_invocations = []
     reference = None
     for case in a.cases.split(','):
         route, shards = case.split(':')
@@ -114,7 +117,32 @@ def main():
         torch.cuda.synchronize()
         torch.testing.assert_close(ws['route_output'][:M * K], out, rtol=0, atol=0)
         arms.append((case, graph, ws, []))
+        live_invocations.append((case, launch, args, ws))
         print('correct', case, 'mac', mac, flush=True)
+    # Reuse the captured kernels and addresses while route occupancy changes.
+    # This also catches a policy accidentally frozen to its warmup work count.
+    original_ids, original_x = ids.clone(), x.clone()
+    for stride in (0, K, 2):
+        ids.copy_((torch.arange(C, device=dev)[:, None] * stride
+                   + torch.arange(K, device=dev)[None, :]).remainder(E).to(torch.int32))
+        x.copy_(original_x * (1.0 + (stride + 1) / 16))
+        mutated_reference = None
+        for case, graph, ws, _ in arms:
+            ws['route_output'].fill_(float('nan'))
+            graph.replay()
+            torch.cuda.synchronize()
+            actual = ws['route_output'][:M * K].clone()
+            assert torch.isfinite(actual).all() and actual.abs().sum() > 0
+            if mutated_reference is None:
+                mutated_reference = actual
+            else:
+                torch.testing.assert_close(actual, mutated_reference, rtol=0, atol=0)
+        print('mutated graph routes exact', stride, flush=True)
+    ids.copy_(original_ids)
+    x.copy_(original_x)
+    for _, graph, _, _ in arms:
+        graph.replay()
+    torch.cuda.synchronize()
     for rep in range(9):
         for case, graph, ws, samples in arms if rep % 2 == 0 else list(reversed(arms)):
             start, end = (torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True))
@@ -126,6 +154,31 @@ def main():
             samples.append(start.elapsed_time(end) * 1000 / 200)
     for case, graph, ws, samples in arms:
         print(json.dumps({'case': case, 'us': samples, 'median_us': statistics.median(samples), 'bit_exact': True}), flush=True)
+
+    if a.check_live_counts:
+        for live in sorted({1, M, C}):
+            live_reference = None
+            for case, launch, args, ws in live_invocations:
+                # Runtime scalar arguments only: do not resolve another kernel.
+                args[-8], args[-6] = live, live * K
+                ws['route_output'].fill_(float('nan'))
+                launch()
+                torch.cuda.synchronize()
+                actual = ws['route_output'][:live * K].clone()
+                assert torch.isfinite(actual).all() and actual.abs().sum() > 0
+                if live_reference is None:
+                    live_reference = actual
+                else:
+                    torch.testing.assert_close(actual, live_reference, rtol=0, atol=0)
+                live_graph = torch.cuda.CUDAGraph()
+                with torch.cuda.graph(live_graph):
+                    launch()
+                for _ in range(3):
+                    live_graph.replay()
+                torch.cuda.synchronize()
+                torch.testing.assert_close(ws['route_output'][:live * K], actual,
+                                           rtol=0, atol=0)
+            print('frozen kernels live count exact', live, flush=True)
 
 
 if __name__ == "__main__":

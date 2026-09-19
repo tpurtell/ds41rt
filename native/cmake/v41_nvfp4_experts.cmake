@@ -18,6 +18,10 @@ set_property(CACHE DS41RT_V41_NVFP4_TILE_M PROPERTY STRINGS auto 16 32 64 128)
 if(NOT "${DS41RT_V41_NVFP4_TILE_M}" MATCHES "^(auto|16|32|64|128)$")
   message(FATAL_ERROR "DS41RT_V41_NVFP4_TILE_M must be auto, 16, 32, 64, or 128")
 endif()
+set(DS41RT_V41_NVFP4_OUTPUT_SHARDS "1" CACHE STRING "NVFP4 output splitting: 0 adaptive (experimental), 1 disabled, positive divisor of 40 direct-only")
+if(NOT "${DS41RT_V41_NVFP4_OUTPUT_SHARDS}" MATCHES "^(0|1|2|4|5|8|10|20|40)$")
+  message(FATAL_ERROR "DS41RT_V41_NVFP4_OUTPUT_SHARDS must be 0 or a positive divisor of 40")
+endif()
 set(DS41RT_V41_NVFP4_INCLUDE_DIRS)
 # Quantize each token's activation once with a shared scale and fan it out to
 # every routed expert instead of re-quantizing the identical BF16 row per route.
@@ -53,6 +57,7 @@ foreach(role IN LISTS DS41RT_V41_NVFP4_ROLES)
       --output-dir "${nvfp4_dir}" --role "${role}"
       --rows "${DS41RT_V41_NVFP4_CAPACITY_ARG}"
       --tile-m "${DS41RT_V41_NVFP4_TILE_M}"
+      --output-shards "${DS41RT_V41_NVFP4_OUTPUT_SHARDS}"
       ${DS41RT_V41_NVFP4_SHARE_INPUT_ARG}
       ${DS41RT_V41_NVFP4_PAD_ARG}
     COMMAND "${CMAKE_COMMAND}" -E copy

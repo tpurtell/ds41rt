@@ -469,3 +469,46 @@ API URL, tokenizer and frozen context file to both arms; raw JSON records their
 identities. This supersedes the outstanding serving item above only for this
 NVFP4 1×RTX padding comparison; native nonregression, 2×RTX and release gates
 remain unverified.
+
+### Adaptive output splitting candidate (September 19)
+
+Fork revision `4b095414` adds opt-in `nvfp4_output_shards=0`: after the existing
+non-streaming routing barrier, each CTA reads the published task count and
+chooses the largest divisor of 40 up to eight that fits one resident-grid wave.
+Only the consumer work domain expands. The decision is GPU-local, depends on
+actual routes, and adds no host feedback, lane join, workspace or compile key.
+Default shard count stays one; native W4A8 keeps its existing policy.
+
+`DS41RT_V41_NVFP4_OUTPUT_SHARDS=0` exposes this in native builds (default one).
+The exporter records zero for adaptive direct and grouped variants; existing
+positive values retain direct-only behavior. This candidate is not yet serving
+qualified. Padding remains a separate option. Prioritize splitting and tiling;
+materializing FC1 intermediates is deferred because additional memory traffic
+could hurt Spark.
+
+Component timings below use the same diagnostic geometry/method as above,
+capacity 16/live 8/M16 unless marked direct (capacity/live one). No end-to-end
+speedup is inferred. [Raw probe logs](measurements/nvfp4-adaptive/) record source
+hashes; the committed kernel differs from the prototype only in comments and
+validation error text.
+
+| Probe | Shard one µs | Adaptive µs |
+| --- | ---: | ---: |
+| RTX N1152, six shared experts | 368.54 | 161.36 |
+| RTX N1152, 48 distinct experts | 365.69 | 350.36 |
+| RTX N2304, six shared experts | 709.16 | 286.00 |
+| RTX N2304, 48 distinct experts | 725.78 | 679.16 |
+| Spark padded 640, six shared experts | 296.49 | 200.88 |
+| Spark padded 640, 48 distinct experts | 1330.55 | 1334.62 |
+| RTX N2304, direct one row | 417.70 | 239.40 |
+| Spark padded 640, direct one row | 198.68 | 173.87 |
+| RTX N1152, capacity80/live33 distinct | 1800.03 | 1799.99 |
+| Spark padded640, capacity80/live33 distinct | 5439.56 | 5443.91 |
+
+Every comparison passes bit-exact route outputs. Updated diagnostic tooling
+also mutates inputs and route sharing under the same captured graphs, and
+`--check-live-counts` exercises already resolved kernels at live 1/33/80 with
+three graph replays each. These pass on both architectures. Constructor tests
+pass 55 cases; exporter/tile/router tests pass 50 cases. This remains a synthetic
+kernel comparison, not an independent mathematical oracle. Native artifact
+builds, ABI checks, serving A/B and native nonregression remain next.
