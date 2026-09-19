@@ -134,6 +134,51 @@ measured against the parallelism hypothesis rather than assumed to be the fix.
    dtype flag (code 4 is currently response-only), and which does not remove the
    per-expert scale problem — it inherits the same `S` calibration.
 
+## Progress
+
+### Step 2 done and verified (compile level)
+
+`python/tools/export_b12x_v41_nvfp4_aot.py` now takes `--share-input`, which sets
+`nvfp4_share_input` on the decode config and `share_input_across_experts` on the
+kernel. `nvfp4_materialize_intermediate` stays `False`, `deterministic_output`
+stays `True`, and the tile is unchanged.
+
+Evidence, `rtx_tp2` capacity 16 (`--rows 16 --tile-m 16`), run in
+`ds41rt-coordinator-wip` against the pinned SparkInfer revision:
+
+| build | `v41_nvfp4_rtx_tp2_m16.o` | sha256 |
+|---|---:|---|
+| baseline | 157,728 B | `ebd6ae244a12c80cde173cd9e2fca71294eea760034559181f3be6675be4cdfd` |
+| `--share-input` | 176,416 B | `826845abbc5e837763c95e52ecf46008d72edfb576a0f3db456d759088ca8c2a` |
+
+Both export cleanly and the objects differ, so the flag is not silently ignored:
+the NVFP4 share-input producer compiles at M16 with deterministic output. This
+confirms Finding 5 — no ctor guard rejects the combination, and the
+`deterministic_output`/M128 conditions live only in the auto-enable heuristic.
+
+This is a compile-level result. It does not yet show that the kernel is
+numerically correct, nor that the runtime accepts it: `can_share_input()` still
+fails against the shipped per-expert scales, so step 1 must land before the
+kernel can be bound.
+
+### Step 1 open
+
+`v41_experts/nvfp4.rs` fills `input_scales`, `alpha_values`, `down_input_scales`
+and `down_alpha_values` inside a per-batch loop
+(`for (offset, (plan, host)) in plans.iter().zip(&hosts).enumerate()`,
+`expert = first + offset`, lines 183-281). Uniformity is required across every
+expert the rank holds, which spans all batches, so this needs a two-pass
+restructure: accumulate the four per-expert scalars into temporaries during the
+loop, then after the final batch choose `S` and fill the vectors. The kernel
+reads `input_global_scale[0]` for the shared row
+(`dynamic.py:3571-3573`), so making every entry equal is both necessary and
+sufficient.
+
+`S` selection is unresolved. `max(w1_input_scale)` is the conservative choice
+(most headroom against E4M3 block-scale overflow); the per-16 adaptive block
+scale should absorb the spread, but this must be validated, not assumed.
+
+
 ## Environment notes
 
 - Host `nvidia-smi` fails ("couldn't communicate with the NVIDIA driver") but

@@ -108,7 +108,10 @@ def export(
     tile_m: int | None,
     max_active_clusters: int | None = None,
     output_shards: int = 1,
+    share_input: bool = False,
 ) -> None:
+    if type(share_input) is not bool:
+        raise TypeError("share_input must be boolean")
     if type(output_shards) is not int or output_shards < 1 or 40 % output_shards:
         raise ValueError("output_shards must be a positive divisor of 40")
     if tile_m is not None and (type(tile_m) is not int or tile_m not in TILE_M_CHOICES):
@@ -184,6 +187,7 @@ def export(
             dynamic_tile_m=tile_m,
             dynamic_route_mode=route_mode,
             w4a16_route_mode=None,
+            nvfp4_share_input=share_input,
         )
         scratch_plan = moe.plan_tp_moe_scratch(
             moe.TPMoEScratchCaps(
@@ -215,6 +219,10 @@ def export(
             quant_mode="nvfp4",
             w4a8_repacked=False,
             nvfp4_materialize_intermediate=False,
+            # The front end quantizes each token once with a single shared
+            # activation scale and fans the row out to every routed expert,
+            # instead of re-quantizing the identical BF16 row per route.
+            share_input_across_experts=share_input,
             direct_routing=route_mode == "direct",
             # Compile with the same resolved tile that sized the scratch arena.
             planned_tile_m=plan.execution.tile_m,
@@ -402,10 +410,16 @@ def main() -> None:
     )
     parser.add_argument("--output-shards", type=int, default=1,
                         help="experimental direct-route output shards; positive divisor of 40")
+    parser.add_argument(
+        "--share-input",
+        action="store_true",
+        help="quantize each token's activation once with a shared scale and fan it "
+             "out to every routed expert instead of per route",
+    )
     args = parser.parse_args()
     rows = [int(value) for value in args.rows.split(",") if value]
     export(args.output_dir, args.role, rows, args.tile_m, args.max_active_clusters,
-           args.output_shards)
+           args.output_shards, args.share_input)
 
 
 if __name__ == "__main__":
