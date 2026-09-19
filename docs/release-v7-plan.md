@@ -1178,3 +1178,27 @@ compact occupied plus headroom stays inside 32 GiB on RTX PRO 6000 hardware.
 The chart embeds exact bytes/source fields/formulas and uses the published
 performance directory with the existing completed-prefill gate, no historical
 v7 throughput fallback. No serving process, container, Spark or GPU was touched.
+
+### Push the submodule before pinning it
+
+`third_party/sparkinfer` is a submodule (gitlink `160000`), not a vendored tree.
+The v7 work advanced it from `63e2140e` to `2bcbe122` and committed that gitlink
+in ds41rt, and `third_party/sparkinfer.lock.json` pinned the same revision - but
+the two fork commits were never pushed to
+`https://github.com/tpurtell/sparkinfer-glmrt.git`, so `origin/master` still sat
+at the old pin. Anyone cloning ds41rt and running `git submodule update --init`
+would have failed: a pinned revision that exists only in one working copy is not
+reproducible, and the published images recorded `io.ds41rt.sparkinfer.revision`
+for a commit the remote did not have.
+
+Both commits are now on `origin/master` (`63e2140e..2bcbe122`, a fast-forward),
+and a fresh `git fetch --depth=1 <url> 2bcbe122` succeeds, which is the check
+that actually proves a consumer can obtain the pin. The other three submodules
+(gptqmodel, transformers, xgrammar) were verified reachable on remote refs at
+the same time.
+
+The general rule: advancing a submodule gitlink is a two-repository change. Push
+the submodule first, then commit the gitlink, and verify by fetching the exact
+revision from the remote rather than by inspecting the local checkout. The
+in-tree verification (`verify-sparkinfer-source.py`) only proves the working
+tree matches the lock; it cannot see whether the remote has the commit.
