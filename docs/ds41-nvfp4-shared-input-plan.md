@@ -373,3 +373,29 @@ checkout must be a real git repo at the locked revision. Clone
 `2bcbe122bf34d77fecbaf288df2f395b9c09e79e`. The
 `/home/tj/.ds41rt-wip-source-staging` tree on ostrich is a different revision
 (`63e2140e`) and is not a git repo, so it cannot be substituted.
+
+## Existing tests do NOT gate share-vs-per-route numerics
+
+Important not to overclaim. `tests/moe/test_nvfp4_split_backend.py` does exercise
+`share_input_across_experts=True`, and all six tests pass, but none of them is
+the gate this change needs:
+
+- `_compile_launch` hardcodes `share_input_across_experts=True` (line 134) for
+  **both** arms; `materialize` is the only thing toggled between them.
+- `test_nvfp4_split_matches_monolithic_under_real_scales` (line 417) varies
+  `alpha` / `down_alpha` / `global_scale` per expert and requires cos > 0.9999
+  between split and monolithic, but its own docstring states the a1 input scale
+  "is folded by the shared route/pack front-end, so it is exercised identically
+  on both arms". It validates alpha/requant folding, not the shared input scale.
+- It also passes a *distinct* per-expert `input_global_scale` vector while
+  sharing, which both arms read at index 0, so the variation is inert. That is
+  consistent with the kernel reading `input_global_scale[0]`, and is further
+  evidence that the host must publish uniform values for the result to be
+  well-defined.
+
+So the passing suite is evidence about adjacent contracts, not about this
+change. The share-vs-per-route numerical gate still has to be built: compile the
+monolithic backend with `share_input_across_experts` True and False, publish
+uniform `input_scales` with matching per-expert `alpha` on the shared arm and
+the calibrated per-expert `input_scales` on the other, and compare against
+`moe_reference_nvfp4`.
