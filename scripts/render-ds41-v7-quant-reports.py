@@ -61,8 +61,8 @@ PENDING_NVFP4 = ["Full battery (tool-call evaluation, retained-context decode wi
 PENDING_EXL3 = ["Reasoning-code completion qualification: failed samples remain disclosed, not counted as quality passes",
                 "RTX 5090 hardware performance (only same-capability grid checks on RTX PRO 6000, not physical RTX 5090 tests)"]
 PENDING_COMMON = [
-    "Per-layout startup, memory and cache-capacity qualification; adaptive draft acceptance and "
-    "fixed-history quant agreement: not replaced by historical official-image or v5 EXL3 results",
+    "Cache-capacity qualification; adaptive draft acceptance and fixed-history quant agreement: "
+    "not replaced by historical official-image or v5 EXL3 results",
     "Per-campaign engine/SparkInfer revisions, quant snapshot and binary/launch identity, "
     "KV/PLE and TP2 controls, plus power/clock evidence (including stock-memory settings)",
     # Superseded: the images were built for both roles and published after the

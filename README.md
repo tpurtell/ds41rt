@@ -36,11 +36,20 @@ capacity, not its performance, and the two columns are not isolated second-GPU
 scaling. Both EXL3 prefill campaigns completed all 30 cells. Decode completion
 checks passed **29/30 for EXL3 5090+2-spark** and **28/30 for EXL3 2x6000
 0-spark**: the failed high-effort reasoning samples exhausted 4,096 output
-tokens with no final code; throughput includes them. Three completed high-effort
-tool-call evaluations of EXL3 5090+2-spark scored **155/176, 160/176 and
-157/176**; every scenario that did not fully pass is named in the
-[performance report](docs/release-v7-exl3-k2-performance.md), and no tool-call
-evaluation has completed for the other configurations.
+tokens with no final code; throughput includes them.
+
+Both EXL3 configurations carry the **full battery** on the published images:
+decode, prefill, retained-context decode with its separate 2K control,
+counting/code/topic concurrency scaling, mixed traffic and target-only decode,
+plus three completed high-effort tool-call evaluations each — EXL3 5090+2-spark
+at **156/176, 157/176 and 153/176**, EXL3 2x6000 0-spark at **159/176, 154/176
+and 156/176**. Every scenario that did not fully pass is named in the
+[performance report](docs/release-v7-exl3-k2-performance.md). `TC-43` (empty
+web_search query) and `TC-68` (called tools when none were needed) fail in all
+six runs, so they read as stable behaviour rather than sampling noise.
+The NVFP4 battery is **deferred pending the W4A4 optimization**, which changes
+the kernel family and the activation wire; re-measuring it first would only have
+to be redone.
 See [compact setup and residency](docs/release-v7-exl3-compact.md)
 and the [configuration accounting chart](docs/release-v7-configurations.svg).
 No physical RTX 5090 has been tested; the same-capability grid checks used RTX PRO 6000.

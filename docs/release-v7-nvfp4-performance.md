@@ -82,10 +82,18 @@ Median effective tokens/s: uncached suffix tokens divided by client time to firs
 
 Tool-call evaluation, adaptive draft acceptance and fixed-history quant agreement have no completed results published here. Historical official or v5 EXL3 quality scores are not evidence for these new quants.
 
+
+## Startup and memory
+
+Container start to readiness, including orchestration; memory is sampled once after readiness and excludes later graph capture. `Coordinator` is the API-ready moment, `full` also waits for the last Spark expert.
+
+| Configuration | Coordinator s | Full s | GPU used MiB |
+|---|---:|---:|---|
+| 1x RTX PRO 6000 + 4x Spark | 11.2 | 46.8 | 0: 89,724, 1: 12 |
+| 2x RTX PRO 6000 + 4x Spark | 31.7 | 31.7 | 0: 94,128, 1: 96,482 |
 ## Outstanding measurements and qualification
 
-- 1x and 2x completed tool-call evaluation runs
-- Fresh target-only decode; retained-context decode including the separate 2K control; counting/code/topic concurrency scaling and mixed-traffic sweeps: not qualified here to the v5/v6 scope
-- Per-layout startup, memory and cache-capacity qualification; adaptive draft acceptance and fixed-history quant agreement: not replaced by historical official-image or v5 EXL3 results
+- Full battery (tool-call evaluation, retained-context decode with its 2K control, counting/code/topic concurrency scaling, mixed traffic and target-only decode) is deferred pending the W4A4 optimization: that work changes the kernel family and the activation wire, so measuring the battery now would have to be redone
+- Cache-capacity qualification; adaptive draft acceptance and fixed-history quant agreement: not replaced by historical official-image or v5 EXL3 results
 - Per-campaign engine/SparkInfer revisions, quant snapshot and binary/launch identity, KV/PLE and TP2 controls, plus power/clock evidence (including stock-memory settings)
 - v7 release images are built and published (ghcr.io/tpurtell/ds41rt-coordinator:v7 sha256:d85608bb, ghcr.io/tpurtell/ds41rt-spark-expert:v7 sha256:aa477ff1); physical RTX 5090 validation remains owed
