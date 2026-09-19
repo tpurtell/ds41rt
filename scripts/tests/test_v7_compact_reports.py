@@ -167,12 +167,21 @@ class CompactReports(unittest.TestCase):
             (root / 'single-exl3-dspark.json').write_text(json.dumps({'samples': samples}))
             with mock.patch.object(quant, 'load', wraps=quant.load) as reader:
                 text = quant.render('exl3', root)
-                self.assertEqual(reader.call_count, 4)
+            # The invariant is that no record is read twice (the renderer may
+            # legitimately read more records as sections are added), so assert
+            # uniqueness rather than a fixed count.
+            read_stems = [call.args[1] for call in reader.call_args_list]
+            self.assertEqual(len(read_stems), len(set(read_stems)),
+                             f'each record must be read at most once: {read_stems}')
+            self.assertGreaterEqual(reader.call_count, 4)
             self.assertIn('1/4 sample checks explicitly passed; 1 failed; 2 unknown/unreported', text)
             with mock.patch.object(headline, 'load', wraps=headline.load) as reader:
                 configs, documents = headline.load_measurements(root)
                 text = headline.render(configs=configs, documents=documents)
-                self.assertEqual(reader.call_count, 8)
+            read_stems = [call.args[1] for call in reader.call_args_list]
+            self.assertEqual(len(read_stems), len(set(read_stems)),
+                             f'each record must be read at most once: {read_stems}')
+            self.assertGreaterEqual(reader.call_count, 8)
             self.assertIn('1/4 decode sample checks explicitly passed; 1 failed; 2 unknown/unreported', text)
 
     def test_invalid_records_are_unavailable_without_crashing(self):

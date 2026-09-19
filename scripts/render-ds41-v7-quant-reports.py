@@ -205,6 +205,107 @@ def change(second, first):
     return f"{100 * (second / first - 1):+.1f}%"
 
 
+def retained_contexts(package: Path, quant: str, stem: str):
+    """Weighted nine-category decode rate by retained base, from the main
+    retained-context campaign and its separate 2K control."""
+    rows = {}
+    for suffix in ("retained", "retained-2k"):
+        document = load(package, f"{stem}-{quant}-{suffix}")
+        for row in (document or {}).get("context_summaries") or []:
+            rate = row.get("weighted_observed_decode_tokens_per_second")
+            if rate is not None:
+                rows[row["context_tokens"]] = rate
+    return rows
+
+
+def concurrency_scaling(package: Path, quant: str, stem: str):
+    """Median aggregate tokens/s by case and concurrency level."""
+    scaling = {}
+    for case in ("counting", "code", "topic"):
+        document = load(package, f"{stem}-{quant}-concurrency-{case}")
+        if not document:
+            continue
+        scaling[case] = {row["concurrency"]: row.get("median_aggregate_tps")
+                         for row in document.get("summaries") or []}
+    return scaling
+
+
+def mixed_traffic(package: Path, quant: str, stem: str):
+    """Aggregate tokens/s by concurrency level for the code/fable/topic mix."""
+    document = load(package, f"{stem}-{quant}-mixed")
+    return {row["concurrency"]: row.get("aggregate_tps")
+            for row in (document or {}).get("batches") or []}
+
+
+def sweep_sections(quant: str, package: Path, spec: dict):
+    """Retained-context, concurrency and mixed-traffic tables.
+
+    These come from the published-image battery. A missing record omits its row
+    rather than substituting a historical or estimated value, and a section is
+    only emitted at all when every layout contributes to it.
+    """
+    layouts = [(layout, stem) for layout, stem, _label, _detail in spec["layouts"]]
+    lines = []
+
+    retained = {stem: retained_contexts(package, quant, stem) for _l, stem in layouts}
+    if all(retained[stem] for _l, stem in layouts) and len({frozenset(v) for v in retained.values()}) == 1:
+        bases = sorted(next(iter(retained.values())))
+        lines += ["", "## Decode over retained context",
+                  "", "Weighted nine-category dSpark tokens/s with verified prefix reuse.", "",
+                  "| Retained base | 1x | 2x | Change |", "|---|---:|---:|---:|"]
+        for base in bases:
+            one = retained[layouts[0][1]].get(base)
+            two = retained[layouts[1][1]].get(base)
+            lines.append(f"| {base // 1024}K | {fmt(one, True)} | {fmt(two, True)} | {change(two, one)} |")
+
+    scaling = {stem: concurrency_scaling(package, quant, stem) for _l, stem in layouts}
+    cases = [case for case in ("counting", "code", "topic")
+             if all(case in scaling[stem] for _l, stem in layouts)]
+    if cases:
+        levels = sorted(next(iter(scaling[layouts[0][1]][cases[0]])))
+        lines += ["", "## Concurrency scaling",
+                  "", "Median aggregate tokens/s from earliest first output to final completion, "
+                  "including admission gaps.", "",
+                  "| Concurrency | " + " | ".join(
+                      f"{layout} {case}" for layout in ("1x", "2x") for case in cases) + " |",
+                  "|---|" + "---:|" * (2 * len(cases))]
+        for level in levels:
+            cells = [fmt((scaling[stem].get(case) or {}).get(level), True)
+                     for _l, stem in layouts for case in cases]
+            lines.append(f"| {level} | " + " | ".join(cells) + " |")
+
+    mixed = {stem: mixed_traffic(package, quant, stem) for _l, stem in layouts}
+    if all(mixed[stem] for _l, stem in layouts):
+        levels = sorted(set(mixed[layouts[0][1]]) & set(mixed[layouts[1][1]]))
+        lines += ["", "## Mixed traffic",
+                  "", "Code/fable/topic mix; aggregate tokens/s by concurrency level.", "",
+                  "| Concurrency | 1x | 2x | Change |", "|---|---:|---:|---:|"]
+        for level in levels:
+            one = mixed[layouts[0][1]].get(level)
+            two = mixed[layouts[1][1]].get(level)
+            lines.append(f"| {level} | {fmt(one, True)} | {fmt(two, True)} | {change(two, one)} |")
+
+    targets = {stem: load(package, f"{stem}-{quant}-target") for _l, stem in layouts}
+    if all(targets[stem] for _l, stem in layouts):
+        def rate(document, case):
+            values = [s.get("observed_decode_tokens_per_second") for s in document.get("samples") or []
+                      if s.get("case") == case]
+            values = [v for v in values if v is not None]
+            return statistics.median(values) if values else None
+        lines += ["", "## Target-only decode",
+                  "", "dSpark disabled: median C1 tokens/s per case.", "",
+                  "| Case | 1x | 2x | Change |", "|---|---:|---:|---:|"]
+        for case, label in (("code", "Code"), ("counting", "Counting 1–200")):
+            one = rate(targets[layouts[0][1]], case)
+            two = rate(targets[layouts[1][1]], case)
+            lines.append(f"| {label} | {fmt(one)} | {fmt(two)} | {change(two, one)} |")
+        for _l, stem in layouts:
+            document = targets[stem]
+            if document and document.get("passed") is not True:
+                lines += ["", f"_{stem} target-only decode did not pass every sample check._"]
+    return lines
+
+
 def render(quant: str, package: Path) -> str:
     spec = QUANTS[quant]
     documents = {layout: (load(package, f"{stem}-{quant}-dspark"),
@@ -382,6 +483,7 @@ def render(quant: str, package: Path) -> str:
             lines.append("| " + " | ".join(row) + " |")
         lines.append("")
     lines += checks + [""]
+    lines += sweep_sections(quant, package, spec)
     if quant == "nvfp4" and not prefill_complete(measured["1x"][1]):
         lines += ["The 1x prefill campaign was interrupted by a service restart "
                   "([campaign record](release-v7-plan.md)). Its raw file retains partial samples, "
