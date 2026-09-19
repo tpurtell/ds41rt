@@ -136,6 +136,60 @@ measured against the parallelism hypothesis rather than assumed to be the fix.
 
 ## Progress
 
+### Share-input library builds and links (SM120)
+
+`-DDS41RT_ENABLE_V41_NVFP4_AOT=ON -DDS41RT_V41_NVFP4_SHARE_INPUT=ON` in
+`ds41rt-coordinator-dev` on the local RTX PRO 6000 (SM120):
+
+- `v41_nvfp4_rtx_tp2` and `v41_nvfp4_rtx_backbone` manifests both report
+  `share_input: True`, `tile_m: 16`, 6 variants each (capacities
+  1/16/80/256/1024/4096).
+- `libds41rt_native.so` links: 16,960,712 B, versus 14,855,152 B built without
+  the NVFP4 AOT.
+- The library exports 204 `v41_nvfp4*` symbols, including
+  `ds41rt_v41_nvfp4_local_expert_launch` / `_bind_scratch` / `_info`.
+
+Trap to remember: `cmake/v41_nvfp4_experts.cmake` is included only when
+`DS41RT_ENABLE_V41_NVFP4_AOT` is set, and that flag is absent from the
+documented `build-native-coordinator-test` recipe. A build without it succeeds
+while exporting no NVFP4 kernels at all. Verify artifacts, not exit codes.
+
+Command used (the `ds41rt-dev.sh` wrapper cannot resolve a GPU selector on this
+host because host `nvidia-smi` is broken; drive Docker directly):
+
+```
+docker run --rm --gpus all -v $PWD:/workspace/ds41rt \
+  -v $HOME/.cache/huggingface:$HOME/.cache/huggingface:ro \
+  -v $HOME/.cache/huggingface:/root/.cache/huggingface:ro \
+  -e HF_HOME=$HOME/.cache/huggingface -e HF_HUB_OFFLINE=1 \
+  -w /workspace/ds41rt ds41rt-coordinator-dev:latest bash -lc '
+    cmake -S native -B native/build-nvfp4-share -G Ninja \
+      -DDS41RT_ENABLE_CUDA=ON -DDS41RT_ENABLE_RDMA=ON \
+      -DDS41RT_ENABLE_SPARKINFER_COORDINATOR_AOT=ON \
+      -DDS41RT_ENABLE_V41_NVFP4_AOT=ON \
+      -DDS41RT_V41_NVFP4_SHARE_INPUT=ON \
+      -DDS41RT_SPARKINFER_SOURCE_DIR=/workspace/ds41rt/third_party/sparkinfer \
+      -DDS41RT_SPARKINFER_LOCK_FILE=/workspace/ds41rt/third_party/sparkinfer.lock.json \
+      -DPython3_EXECUTABLE=/usr/bin/python3 -DDS41RT_CUDA_ARCHITECTURES=120
+    cmake --build native/build-nvfp4-share -j 16'
+```
+
+Use `/usr/bin/python3` (container Python 3.12 with the b12x deps); the repo
+`.venv` is host-built and cannot be executed inside the container.
+
+Tests run against the pinned SparkInfer tree, all passing:
+`tests/moe/test_nvfp4_shared_input_scales.py` (15),
+`tests/moe/test_nvfp4_split_backend.py` (6),
+`python/tests/test_v41_nvfp4_tile_policy.py` (39).
+
+### The Spark kernels cannot be built here
+
+`ROLES["spark"]` requires device capability `(12, 1)` (SM121, GB10). The local
+cards are SM120, and the exporter hard-fails on a mismatch, so the
+wire-facing Spark NVFP4 kernels must be exported on a Spark host or in the
+ARM Spark image. Everything verified locally so far is the RTX path.
+
+
 ### Step 2 done and verified (compile level)
 
 `python/tools/export_b12x_v41_nvfp4_aot.py` now takes `--share-input`, which sets
