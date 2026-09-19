@@ -43,10 +43,9 @@ decode, prefill, retained-context decode with its separate 2K control,
 counting/code/topic concurrency scaling, mixed traffic and target-only decode,
 plus three completed high-effort tool-call evaluations each — EXL3 5090+2-spark
 at **156/176, 157/176 and 153/176**, EXL3 2x6000 0-spark at **159/176, 154/176
-and 156/176**. Every scenario that did not fully pass is named in the
-[performance report](docs/release-v7-exl3-k2-performance.md). `TC-43` (empty
-web_search query) and `TC-68` (called tools when none were needed) fail in all
-six runs, so they read as stable behaviour rather than sampling noise.
+and 156/176**. Run scores move with sampling, so the
+[performance report](docs/release-v7-exl3-k2-performance.md) lists every run
+rather than averaging them.
 The NVFP4 battery is **deferred pending the W4A4 optimization**, which changes
 the kernel family and the activation wire; re-measuring it first would only have
 to be redone.

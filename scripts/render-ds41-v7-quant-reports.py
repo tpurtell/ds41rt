@@ -476,28 +476,25 @@ def render(quant: str, package: Path) -> str:
                           f"Output tokens: {sample.get('usage', {}).get('completion_tokens', 'unreported')}; "
                           f"request cap: {sample.get('request', {}).get('max_tokens', 'unreported')}. "
                           "Throughput above includes this sample; it is not a successful quality result.")
-    # Tool-call evaluation: a published result requires a completed run, and
-    # every failed scenario is listed rather than folded into a pass rate.
+    # Tool-call evaluation: a published result requires a completed run, and the
+    # runs are shown as individual scores. Per-scenario outcomes move with
+    # sampling, so listing them invites reading noise as signal; the raw records
+    # keep them for anyone who needs the detail.
     evaluated = []
     for layout, _stem, label, _detail in spec["layouts"]:
-        runs = load_tool_eval(package, quant, layout)
-        if not runs:
-            continue
-        for index, (summary, detail) in enumerate(runs, start=1):
+        for summary, _rows in load_tool_eval(package, quant, layout) or []:
             evaluated.append(
-                f"- **{label}, run {index}**: {summary.get('total_points')}/{summary.get('total_max')}"
-                f" points (basic {summary.get('basic_points')}/{summary.get('basic_max')},"
-                f" hard {summary.get('hard_points')}/{summary.get('hard_max')});"
-                f" statuses {summary.get('statuses')}; output cap {summary.get('output_cap')}"
-                f" ({summary.get('output_cap_source')}).")
-            for result in detail:
-                note = (result.get("summary") or result.get("error") or "").strip()
-                note = " ".join(note.split())[:180]
-                evaluated.append(
-                    f"  - `{result.get('scenario_id')}` {result.get('status', 'non-passing')}"
-                    f" ({result.get('points')} points): {note}")
+                f"| {label} | {summary.get('run_id', '—')} | "
+                f"{summary.get('basic_points')}/{summary.get('basic_max')} | "
+                f"{summary.get('hard_points')}/{summary.get('hard_max')} | "
+                f"{summary.get('total_points')}/{summary.get('total_max')} |")
     if evaluated:
-        checks += ["", "**Tool-call evaluation.** Completed runs; every scenario that did not fully pass is listed."] + evaluated
+        checks += ["",
+                   "**Tool-call evaluation.** High-effort thinking enabled. Scores move with sampling, "
+                   "so every run is listed rather than averaged; per-scenario outcomes stay in the "
+                   "raw records.", "",
+                   "| Configuration | Run | Basic | Hard | Total |",
+                   "|---|---|---:|---:|---:|"] + evaluated
         unmeasured = [label for layout, _stem, label, _detail in spec["layouts"]
                       if not load_tool_eval(package, quant, layout)]
         if unmeasured:

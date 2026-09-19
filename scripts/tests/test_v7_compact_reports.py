@@ -258,5 +258,33 @@ class CompactReports(unittest.TestCase):
             self.assertIn('## Startup and memory', text)
             self.assertIn('| 2x RTX PRO 6000, no Spark | 12.5 | 40.0 | 0: 1,000 |', text)
 
+    def test_tool_eval_collapses_to_run_scores(self):
+        quant = load('render-ds41-v7-quant-reports')
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            package = root / 'performance'
+            package.mkdir()
+            for name in ('exl3-compact', 'exl3-dual'):
+                directory = root / 'tool-eval' / name
+                (directory / 'run-01').mkdir(parents=True)
+                (directory / 'summaries.json').write_text(json.dumps([
+                    {'run_id': f'{name}-run{i}', 'total_points': 150 + i, 'total_max': 176,
+                     'basic_points': 120 + i, 'basic_max': 138, 'hard_points': 33, 'hard_max': 38,
+                     'statuses': {'pass': 70, 'partial': 13, 'fail': 5}} for i in (1, 2, 3)]))
+                # A non-passing scenario that must not surface in the report.
+                (directory / 'run-01' / 'tool-eval.json').write_text(json.dumps(
+                    {'scores': {'scenario_results': [
+                        {'scenario_id': 'TC-99', 'status': 'fail', 'points': 0,
+                         'summary': 'invented per-scenario note'}]}}))
+            text = quant.render('exl3', package)
+            self.assertIn('| Configuration | Run | Basic | Hard | Total |', text)
+            self.assertIn('| 2x RTX PRO 6000, no Spark | exl3-dual-run1 | 121/138 | 33/38 | 151/176 |', text)
+            self.assertIn('| 1x RTX PRO 6000 (32 GiB budget) + 2x Spark | exl3-compact-run3 '
+                          '| 123/138 | 33/38 | 153/176 |', text)
+            # Scores are listed per run because they move with sampling; the
+            # per-scenario outcomes are deliberately not reproduced.
+            self.assertNotIn('TC-99', text)
+            self.assertNotIn('invented per-scenario note', text)
+
 if __name__ == '__main__':
     unittest.main()
