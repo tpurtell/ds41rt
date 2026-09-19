@@ -13,6 +13,8 @@ import statistics
 import sys
 from pathlib import Path
 
+import _pinned_sparkinfer  # noqa: F401  (verifies and prepends the pinned tree)
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--source', default=str(Path(__file__).resolve().parents[2] / 'third_party/sparkinfer'))

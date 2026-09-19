@@ -25,9 +25,14 @@ CASES = [
     ("counting", "Counting 1–200"),
 ]
 
+# The release these reports describe. v7 covers both quants; v8 re-measured
+# NVFP4 only, so `--release v8 --only nvfp4` writes release-v8-nvfp4-performance.md
+# and leaves the v7 record intact.
+RELEASE = "v7"
+
 QUANTS = {
     "nvfp4": dict(
-        file="release-v7-nvfp4-performance.md",
+        file="release-{release}-nvfp4-performance.md",
         title="NVIDIA DeepSeek-V4.1-Flash-NVFP4 (W4A4)",
         checkpoint="nvidia/DeepSeek-V4.1-Flash-NVFP4",
         layouts=[("1x", "single", "1x RTX PRO 6000 + 4x Spark",
@@ -38,7 +43,7 @@ QUANTS = {
              "scales, activations quantized in-kernel from BF16 rows.",
     ),
     "exl3": dict(
-        file="release-v7-exl3-k2-performance.md",
+        file="release-{release}-exl3-k2-performance.md",
         title="diffbot DeepSeek-V4.1-Flash-EXL3 (2.0 bpw, K=2)",
         checkpoint="diffbot/DeepSeek-V4.1-Flash-EXL3-2.0bpw-2x-RTX-PRO-6000",
         layouts=[("1x", "single", "1x RTX PRO 6000 (32 GiB budget) + 2x Spark",
@@ -60,18 +65,26 @@ PENDING_NVFP4 = ["Full battery (tool-call evaluation, retained-context decode wi
                  "activation wire, so measuring the battery now would have to be redone"]
 PENDING_EXL3 = ["Reasoning-code completion qualification: failed samples remain disclosed, not counted as quality passes",
                 "RTX 5090 hardware performance (only same-capability grid checks on RTX PRO 6000, not physical RTX 5090 tests)"]
-PENDING_COMMON = [
-    "Cache-capacity qualification; adaptive draft acceptance and fixed-history quant agreement: "
-    "not replaced by historical official-image or v5 EXL3 results",
-    "Per-campaign engine/SparkInfer revisions, quant snapshot and binary/launch identity, "
-    "KV/PLE and TP2 controls, plus power/clock evidence (including stock-memory settings)",
-    # Superseded: the images were built for both roles and published after the
-    # review that added this line, so the report must not still claim otherwise.
-    "v7 release images are built and published "
-    "(ghcr.io/tpurtell/ds41rt-coordinator:v7 sha256:d85608bb, "
-    "ghcr.io/tpurtell/ds41rt-spark-expert:v7 sha256:aa477ff1); "
-    "physical RTX 5090 validation remains owed",
-]
+# Published-image digests per release, so the provenance bullet names the
+# release the report describes instead of always the first one.
+IMAGE_DIGESTS = {
+    "v7": ("d85608bb", "aa477ff1"),
+    "v8": ("08c2d6df", "99079839"),
+}
+
+
+def pending_common():
+    coordinator, expert = IMAGE_DIGESTS.get(RELEASE, ("unknown", "unknown"))
+    return [
+        "Cache-capacity qualification; adaptive draft acceptance and fixed-history quant agreement: "
+        "not replaced by historical official-image or v5 EXL3 results",
+        "Per-campaign engine/SparkInfer revisions, quant snapshot and binary/launch identity, "
+        "KV/PLE and TP2 controls, plus power/clock evidence (including stock-memory settings)",
+        f"{RELEASE} release images are built and published "
+        f"(ghcr.io/tpurtell/ds41rt-coordinator:{RELEASE} sha256:{coordinator}, "
+        f"ghcr.io/tpurtell/ds41rt-spark-expert:{RELEASE} sha256:{expert}); "
+        "physical RTX 5090 validation remains owed",
+    ]
 
 
 # Where the tool evaluation writes its per-configuration runs, relative to the
@@ -372,7 +385,7 @@ def render(quant: str, package: Path) -> str:
     measured = {layout: (decode_cells(decode), prefill)
                 for layout, (decode, prefill) in documents.items()}
     lines = [
-        f"# DS41RT v7 performance - {spec['title']}",
+        f"# DS41RT {RELEASE} performance - {spec['title']}",
         "",
         f"Checkpoint `{spec['checkpoint']}`. {spec['note']}",
         "",
@@ -381,7 +394,7 @@ def render(quant: str, package: Path) -> str:
         "high-effort thinking for reasoning code and thinking disabled for the other cases. "
         "Decode uses C1 dSpark; reasoning throughput includes reasoning and final-answer tokens.",
         "",
-        "These are new v7 quant campaigns, not the historical official-image "
+        f"These are new {RELEASE} quant campaigns, not the historical official-image "
         "[v6 measurements](release-v6-performance.md) shown below the headline in the "
         "[README](../README.md#performance). V5 EXL3 results use a different checkpoint and are not substituted here.",
         "",
@@ -404,7 +417,7 @@ def render(quant: str, package: Path) -> str:
         "natural/schema JSON weight 0.5 each, other categories 1, counting excluded). "
         "Best prefill is the maximum `median_effective_prefill_tokens_per_second` over a completed, "
         "passing matrix. Change is `(2x / 1x - 1) × 100`, calculated before display rounding.",
-        "Each report table is generated from the raw bench output in the v7 package by "
+        f"Each report table is generated from the raw bench output in the {RELEASE} package by "
         "`scripts/render-ds41-v7-quant-reports.py`; an em dash means no usable qualifying result "
         "is available in the selected package, not necessarily that a measurement was never attempted. "
         "Best prefill requires a completed, passing campaign; incomplete matrices are provisional.",
@@ -544,7 +557,7 @@ def render(quant: str, package: Path) -> str:
         lines += ["The 1x prefill campaign was interrupted by a service restart "
                   "([campaign record](release-v7-plan.md)). Its raw file retains partial samples, "
                   "but no finalized cell summaries or completed, passing matrix; no best is estimated.", ""]
-    pending = list(PENDING_NVFP4 if quant == "nvfp4" else PENDING_EXL3) + PENDING_COMMON
+    pending = list(PENDING_NVFP4 if quant == "nvfp4" else PENDING_EXL3) + pending_common()
     for layout, _stem, label, _detail in spec["layouts"]:
         if not prefill_complete(measured[layout][1]):
             pending.append(f"{label} full prefill: no completed, passing campaign result available; "
@@ -556,13 +569,20 @@ def render(quant: str, package: Path) -> str:
 
 
 def main():
+    global RELEASE
     parser = argparse.ArgumentParser()
     parser.add_argument("--package", type=Path,
                         default=Path.home() / ".cache/ds41rt-v7-published/performance")
     parser.add_argument("--output-dir", type=Path, default=Path("docs"))
+    parser.add_argument("--release", default=RELEASE,
+                        help="release these reports describe, e.g. v7 or v8")
+    parser.add_argument("--only", action="append", choices=sorted(QUANTS),
+                        help="restrict to one quant; repeatable")
     args = parser.parse_args()
-    for quant, spec in QUANTS.items():
-        path = args.output_dir / spec["file"]
+    RELEASE = args.release
+    for quant in args.only or list(QUANTS):
+        spec = QUANTS[quant]
+        path = args.output_dir / spec["file"].format(release=RELEASE)
         path.write_text(render(quant, args.package))
         print(f"wrote {path}")
 
