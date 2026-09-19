@@ -31,6 +31,11 @@ NVFP4_REL=hub/models--nvidia--DeepSeek-V4.1-Flash-NVFP4/snapshots/3431dde3247c13
 EXL3_REL=hub/models--diffbot--DeepSeek-V4.1-Flash-EXL3-2.0bpw-2x-RTX-PRO-6000/snapshots/28b7ab71ba2eb15569b08b91a8ea07df8eda8a75
 RTX_UUID=GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0
 RTX_UUID_2=GPU-95f8f212-9131-df99-fd53-7535965197d7
+# DSPARK=0 serves the target path alone, which is how the v6 "target" phase was
+# measured; the default is the dSpark path the headline uses.
+DSPARK="${DSPARK:-1}"
+dspark_args=()
+[[ "$DSPARK" == 0 ]] || dspark_args=(--dspark)
 
 # config: model | spark_count | rtx_gpus | prefill_batch | extra coordinator args
 case "$CONFIG" in
@@ -95,7 +100,7 @@ start_coordinator() {
       --peers "$(peers)" --rtx-gpus "$RTX_GPUS" --listen 0.0.0.0:8000 \
       --prefill-batch-tokens "$PREFILL_BATCH_TOKENS" --concurrency 16 \
       --prefix-cache-entries 20 --max-context-tokens 1048576 \
-      --max-output-tokens 393216 --host-cache-bytes auto "${EXTRA[@]}" --dspark >/dev/null
+      --max-output-tokens 393216 --host-cache-bytes auto "${EXTRA[@]}" "${dspark_args[@]}" >/dev/null
 }
 
 case "$ACTION" in
