@@ -215,6 +215,34 @@ because the contract is exact-bit, not approximate:
 This is why the numerical comparison against the per-route baseline is a
 required gate, not a formality.
 
+### Shared-scale precision cost measured: negligible
+
+The dequant step is `e4m3(max_abs * gs / 6) / gs` with `gs = 1/S`, which is
+`≈ max_abs / 6` — the global scale largely cancels, so `S` only affects how
+finely the *block scale itself* is represented in E4M3. That is a relative
+granularity of ~2^-4 regardless of exponent, so the activation error stays
+dominated by the E2M1 mantissa.
+
+Measured against real per-expert FC1 scales from the published checkpoint
+(4096-row synthetic blocks, real E4M3 rounding, code clamped to the E2M1
+range):
+
+| layer | spread | step err at max S | step err at min S | relL2 per-expert | relL2 shared |
+|---|---:|---:|---:|---:|---:|
+| 0 | 1.64x | 0.9% | 1.0-29.3% | 6.87e-03 | 6.76e-03 |
+| 20 | 2.32x | ~0% | 3.1% | 6.93e-03 | 6.94e-03 |
+| 39 | 5.87x | 0.4% | 1.8% | 6.94e-03 | 6.84e-03 |
+
+The shared (max) scale is consistently *closer* to the ideal step than the
+minimum-calibrated scale, and the end-to-end activation quantization error is
+within ~1-2% of the per-expert path. Sharing `S` is therefore safe in this
+regime, which is the main numerical risk retired.
+
+Caveat: this bounds the *activation* quantization only, on synthetic blocks
+whose magnitude was swept over 0.25-1.0. It does not exercise the FC1 GEMM,
+routing, or the reduction. The full-model logit comparison is still owed.
+
+
 
 
 ## Environment notes
