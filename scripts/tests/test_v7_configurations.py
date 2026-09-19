@@ -11,36 +11,61 @@ CHART = runpy.run_path(str(ROOT / "scripts/render-ds41-v7-configurations.py"))
 
 
 class V7ConfigurationsTests(unittest.TestCase):
+    def by_name(self, name):
+        return next(c for c in CHART["CONFIGS"] if c["speed_columns"][0][1] == name)
+
     def test_embedded_compact_and_dual_source_values(self):
         evidence = json.loads((ROOT / "docs/release-v7-exl3-compact-evidence.json").read_text())
-        configs = CHART["CONFIGS"]
-        logs = evidence["logs"]
-        compact = logs["compact-final-residency.log"]
-        for value in configs[3]["devices"][0][2]:
-            self.assertIn(str(value), compact)
-        for worker in ["compact-final-ostrich.log", "compact-final-dodo.log"]:
-            for value in configs[3]["devices"][1][2]:
-                if value is not None:
-                    self.assertIn(str(value), logs[worker])
-        for device in configs[2]["devices"]:
-            for value in device[2]:
-                self.assertIn(str(value), logs["dual-regression.log"])
-        # Rank peak is the expert loading plan; transport and KV are separate.
-        self.assertIn("rank_peak_bytes", configs[2]["sources"][0]["fields"])
+        published = (ROOT / "docs/release-v7-published-memory-evidence.log").read_text()
+        compact = self.by_name("EXL3 5090+2-spark")
+        for b in compact["devices"][0]["bands"][:3]:
+            self.assertIn(str(b["bytes"]), published)
+            self.assertEqual(b["status"], "logged")
+        dual = self.by_name("EXL3 2x6000 0-spark")
+        for device in dual["devices"]:
+            for b in device["bands"][:3]:
+                self.assertIn(str(b["bytes"]), evidence["logs"]["dual-regression.log"])
+            self.assertEqual(device["bands"][0]["status"], "plan")
+
+    def test_official_sources_and_padded_spark_geometry(self):
+        launches = json.loads((ROOT / "docs/release-v6-performance.json").read_text())["launches"]
+        for count, layout in [(1, "single"), (2, "dual")]:
+            cfg = self.by_name(f"Official {count}x")
+            dep = launches[layout]["deployment"]
+            self.assertEqual(cfg["devices"][-1]["bands"][0]["bytes"],
+                             384 * 5120 * 640 * 51 // 32 * dep["spark_layers"])
+            for dev in cfg["devices"][:count]:
+                self.assertEqual(dev["bands"][0]["bytes"],
+                                 7219445760 * dep["rtx_expert_layers"] // count)
+                self.assertEqual(dev["bands"][-1]["status"], "estimate")
+            self.assertNotIn("NVFP4", str(cfg))
+
+    def test_six_profiles_and_estimate_provenance(self):
+        headline = runpy.run_path(str(ROOT / "scripts/render-ds41-v7-headline.py"))
+        self.assertEqual([c["speed_columns"][0][1] for c in CHART["CONFIGS"]],
+                         [c[0] for c in headline["CONFIGS"]])
+        for cfg in CHART["CONFIGS"]:
+            for dev in cfg["devices"]:
+                self.assertTrue(dev["bands"])
+                for b in dev["bands"]:
+                    self.assertIsNotNone(b["bytes"])
+                    self.assertTrue(b["source"])
+                    if b["status"] == "estimate":
+                        self.assertTrue(b["basis"])
+                if "Spark" in dev["label"]:
+                    self.assertEqual(dev["bands"][1]["bytes"], 0)
+                if dev["occupied"] is not None:
+                    self.assertEqual(sum(b["bytes"] for b in dev["bands"]), dev["occupied"])
+        compact = self.by_name("EXL3 5090+2-spark")["devices"][0]
+        self.assertLessEqual(compact["occupied"] + compact["headroom"], 32 * CHART["GIB"])
 
     def test_single_nvfp4_raw_source_when_available(self):
-        path = ROOT / CHART["CONFIGS"][0]["sources"][0]["path"]
+        path = ROOT / "runs/v7q-a1/single-nvfp4-coordinator.log"
         if not path.exists():
-            self.skipTest("historical local NVFP4 startup log not archived in checkout")
+            self.skipTest("local historical startup log unavailable")
         log = re.sub(r"\x1b\[[0-9;]*m", "", path.read_text())
-        for value in CHART["CONFIGS"][0]["devices"][0][2]:
-            self.assertIn(str(value), log)
-
-    def test_unsourced_devices_are_blank_not_estimated(self):
-        self.assertEqual(CHART["CONFIGS"][1]["sources"], [])
-        for _label, _capacity, bands in CHART["CONFIGS"][1]["devices"]:
-            self.assertTrue(all(value is None for value in bands))
-        self.assertIsNone(CHART["CONFIGS"][3]["devices"][1][2][1])  # no Spark KV
+        for b in self.by_name("NVFP4 1x")["devices"][0]["bands"][:3]:
+            self.assertIn(str(b["bytes"]), log)
 
     def test_missing_package_no_v7_fallback(self):
         with tempfile.TemporaryDirectory() as directory:

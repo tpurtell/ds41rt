@@ -1147,3 +1147,34 @@ that document and the generated performance report.
   blockscaled `mm_nvfp4` primitive.
 - Found and cleared a zombie kernel pinning GPU 0 at 100% util (server
   reboot by user); both RTX cards idle clean at 0%/24 W afterward.
+
+### Configuration chart memory correction (CPU-only)
+
+The chart now has six distinct profiles rather than official-labelled panels
+containing NVFP4 memory. Official panels use `release-v6-performance.json`
+launches: measured GPU used memory, logged global KV pool and headroom, and
+loaded (not merely active) Spark layers. Official expert bands are estimates
+from native packed MXFP4 geometry (384 * 5120 * padded intermediate * 51/32
+bytes/layer); TP4 Spark intermediate 576 pads to 640. Dual official KV is an
+estimated 60:40 division of the logged global pool, excluding physical tails.
+
+Solid bands preserve logged values: NVFP4 local weights/workspace or dual
+loading plan/transport/KV, published compact RTX allocations, historical
+compact Spark weights, and historical dual-EXL3 regression allocations.
+NVFP4 single KV is explicitly historical WIP with matching token capacity.
+`release-v7-published-memory-evidence.log` archives the supplied published
+observations (NVFP4 from the owner's handoff, not newly captured logs) and the
+historical capacity4096 Spark workspace. The capacity256 compact measurement
+remains in the compact evidence JSON; it is not substituted for capacity4096.
+
+Hatched, `est.` bands are not measurements: RTX Other is observed occupancy
+minus displayed allocations/plans, not an attention-only measurement; NVFP4
+Spark weights multiply per-layer residency by placement; Spark execution uses
+an explicit 2 GiB heuristic excluding OS/unrelated shared RAM. Compact Spark
+execution adds the historical capacity4096 workspace (799442308 bytes) to that
+allowance. These partial Spark models do not establish peak fit. Loading plans
+are labelled plans; headroom is a reserve, never added to occupied usage, and
+compact occupied plus headroom stays inside 32 GiB on RTX PRO 6000 hardware.
+The chart embeds exact bytes/source fields/formulas and uses the published
+performance directory with the existing completed-prefill gate, no historical
+v7 throughput fallback. No serving process, container, Spark or GPU was touched.

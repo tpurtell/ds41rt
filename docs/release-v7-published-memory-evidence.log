@@ -1,0 +1,38 @@
+# Published-image memory evidence for the configuration chart
+# EXL3 lines copied from runs/v7p/published-memory-evidence.log (2026-09-19).
+# NVFP4 observations transcribed from the owner's task handoff: captured from
+# running published-image coordinators before their containers were removed.
+# This file archives that handoff, NOT a new measurement or a synthetic raw log.
+# No serving containers were accessed during chart work.
+
+[EXL3 5090+2-spark; published startup]
+snapshot_slots=42 snapshot_bytes=122766336
+source_pages=[4712,4712,4712,9424] global_bytes=2147164160 cache_bytes=2191668736 device_occupied_bytes_before_KV=24594612224 reservation_bytes=34359738368 runtime_headroom_bytes=2147483648
+rtx_layers=1 resident_bytes=3433037824 workspace_bytes=177724136 peak_bytes=3610761960
+ready_device_occupied_bytes=30428889088 remote_dispatch_layers=39 spark_world=2
+host_cache device_tokens=2383872 host_tokens=18588160 pinned_bytes=18253611008
+Spark capacity=4096 first_layer=1 layers=39
+owner reported nvidia-smi RTX0 used_MiB=29190
+
+[NVFP4 1x; published startup; owner handoff]
+rtx_layers=4 resident_bytes=30576500736 workspace_bytes=766661816 peak_bytes=31363069196
+ready_device_occupied_bytes=94073257984 device_budget_bytes=101973491712 runtime_headroom_bytes=2147483648 remote_dispatch_layers=36 spark_world=4
+host_cache device_tokens=18736128 host_tokens=2235904 pinned_bytes=3489660928
+nvidia-smi RTX0 used_MiB=90250 free_MiB=7001 RTX1=idle
+Spark layers=36 resident_bytes_per_layer=1911035904 capacity=4096
+# Historical WIP KV, copied from runs/v7q-a1/single-nvfp4-coordinator.log:4:
+# global_bytes=16700672000 cache_bytes=16745176576
+# Not captured in the published handoff; same device token budget.
+
+[EXL3 historical Spark capacity4096; runs/v7q-a1/compact-ostrich.log:1,41]
+resident_bytes=67394076672 workspace_bytes=799442308 device_budget_bytes=107374182400
+rank=0 world=2 capacity=4096 first_layer=1 layers=39
+# This differs from the capacity256 final compact evidence's workspace_bytes=56007284;
+# the chart preserves that final measurement in its cited compact JSON, but uses
+# this capacity-matched historical workspace as an explicit published estimate.
+
+[NVFP4 2x; published startup; owner handoff]
+expert_layers=20 expert_budget=[78951037480,76451439400] rank_peak_bytes=[76451266644,76451266644] reserved_cache_bytes=[2339472256,1566464640] transport_bytes=[1794720344,2046378584] setup_headroom_bytes=67108864
+source_pages=[8642,8642,8642,17284] global_bytes=3937986560 cache_bytes=[2385404800,1597086336] occupied_before=[96262684672,99534241792] reservation_bytes=[101973491712,101970345984] unused_bytes=[2486541440,157056] snapshot_slots=42 snapshot_bytes=122766336 runtime_headroom_bytes=838860800
+allocated_KV_occupied_bytes=[98666020864,101136465920]
+host_cache device_tokens=4396032 host_tokens=16576000 pinned_bytes=16374562816
