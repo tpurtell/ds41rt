@@ -161,22 +161,60 @@ numerically correct, nor that the runtime accepts it: `can_share_input()` still
 fails against the shipped per-expert scales, so step 1 must land before the
 kernel can be bound.
 
-### Step 1 open
+### Step 1 done and verified (compile + contract level)
 
-`v41_experts/nvfp4.rs` fills `input_scales`, `alpha_values`, `down_input_scales`
-and `down_alpha_values` inside a per-batch loop
-(`for (offset, (plan, host)) in plans.iter().zip(&hosts).enumerate()`,
-`expert = first + offset`, lines 183-281). Uniformity is required across every
-expert the rank holds, which spans all batches, so this needs a two-pass
-restructure: accumulate the four per-expert scalars into temporaries during the
-loop, then after the final batch choose `S` and fill the vectors. The kernel
-reads `input_global_scale[0]` for the shared row
-(`dynamic.py:3571-3573`), so making every entry equal is both necessary and
-sufficient.
+`v41_experts/nvfp4.rs` now captures the raw FC1 scalars per expert, chooses a
+single `S = max(w1_input_scale)` after the final batch, and publishes
+`input_scales[e] = 1/S` with `alpha_values[e] = w1_weight_scale_2[e] * S`.
 
-`S` selection is unresolved. `max(w1_input_scale)` is the conservative choice
-(most headroom against E4M3 block-scale overflow); the per-16 adaptive block
-scale should absorb the spread, but this must be validated, not assumed.
+Scale direction is settled from the kernel body
+(`b12x/_lib/intrinsics.py:6125`):
+
+```
+scale_float = max_abs * global_scale_val / 6      # clamped to E4M3 max
+```
+
+with `global_scale_val = input_global_scale = 1/S`. A larger `S` therefore
+lowers the block scale and buys headroom against the saturation clamp, so
+`max` is the safe direction. Only FC1 is broadcast — each expert produces its
+own FC2 intermediate — so `down_input_scales` and `down_alpha_values` keep
+their calibrated per-expert values.
+
+Wiring: `DS41RT_V41_NVFP4_SHARE_INPUT` (default OFF) in
+`native/cmake/v41_nvfp4_experts.cmake` passes `--share-input`; the export
+manifest records `share_input`.
+
+Evidence:
+
+- `cargo check -p ds41rt-daemon` (via `scripts/run-with-python-env.sh` with
+  `DS41RT_PYTHON=python3.12`; system Python 3.14 exceeds PyO3 0.22's ceiling)
+  finishes with warnings only.
+- `python/tests/test_v41_nvfp4_tile_policy.py` — 39 passed.
+- `third_party/sparkinfer/tests/moe/test_nvfp4_shared_input_scales.py` — 15
+  passed.
+
+### The runtime has no safety net for this invariant
+
+`can_share_input()` is a Python **planning/preparation**-time guard. The AOT
+export builds a *synthetic* weight plan, so it has no real per-expert scales to
+check, and the engine does not go through `_impl.py`'s launch path at runtime —
+the Rust daemon binds the 44-slot ABI and calls the exported kernel directly.
+
+The kernel itself does not validate either: it silently reads
+`input_global_scale[0]` for every expert (`dynamic.py:3571-3573`). So if the
+host published non-uniform scales while running a shared-input kernel, every
+expert except the first would be quantized with the wrong scale and `alpha`
+would not compensate — a silent numerical error, not a failure.
+
+Correctness therefore rests entirely on the host publishing uniform
+`input_scales` with matching `alpha`. The Rust change guarantees that by
+construction (`1.0 / S` for every expert is bit-identical), which matters
+because the contract is exact-bit, not approximate:
+`test_one_ulp_difference_does_not_share`.
+
+This is why the numerical comparison against the per-route baseline is a
+required gate, not a formality.
+
 
 
 ## Environment notes
