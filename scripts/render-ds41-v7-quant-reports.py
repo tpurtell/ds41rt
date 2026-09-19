@@ -237,6 +237,35 @@ def mixed_traffic(package: Path, quant: str, stem: str):
             for row in (document or {}).get("batches") or []}
 
 
+def startup_section(quant: str, package: Path, spec: dict):
+    """Startup latency and post-readiness memory, when recorded.
+
+    The record lives beside the performance package because it is captured from
+    the running containers rather than from a bench run.
+    """
+    names = {("nvfp4", "1x"): "nvfp4-1x", ("nvfp4", "2x"): "nvfp4-2x",
+             ("exl3", "1x"): "exl3-5090", ("exl3", "2x"): "exl3-2x"}
+    try:
+        store = json.loads((package.parent / "startup-memory.json").read_text())
+    except (OSError, json.JSONDecodeError):
+        return []
+    if not all(names.get((quant, layout)) in store
+               for layout, _stem, _label, _detail in spec["layouts"]):
+        return []
+    lines = ["", "## Startup and memory",
+             "", "Container start to readiness, including orchestration; memory is sampled "
+             "once after readiness and excludes later graph capture. `Coordinator` is the "
+             "API-ready moment, `full` also waits for the last Spark expert.", "",
+             "| Configuration | Coordinator s | Full s | GPU used MiB |", "|---|---:|---:|---|"]
+    for layout, _stem, label, _detail in spec["layouts"]:
+        record = store[names[(quant, layout)]]
+        memory = ", ".join(f"{gpu['index']}: {gpu['used_mib']:,}"
+                           for gpu in record.get("gpu_memory_used_mib") or [])
+        lines.append(f"| {label} | {record.get('coordinator_seconds', 0):,.1f} | "
+                     f"{record.get('full_seconds', 0):,.1f} | {memory or '—'} |")
+    return lines
+
+
 def sweep_sections(quant: str, package: Path, spec: dict):
     """Retained-context, concurrency and mixed-traffic tables.
 
@@ -483,6 +512,7 @@ def render(quant: str, package: Path) -> str:
             lines.append("| " + " | ".join(row) + " |")
         lines.append("")
     lines += checks + [""]
+    lines += startup_section(quant, package, spec)
     lines += sweep_sections(quant, package, spec)
     if quant == "nvfp4" and not prefill_complete(measured["1x"][1]):
         lines += ["The 1x prefill campaign was interrupted by a service restart "

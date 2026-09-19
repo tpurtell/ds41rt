@@ -242,5 +242,21 @@ class CompactReports(unittest.TestCase):
             self.assertIn('## Target-only decode', text)
             self.assertIn('| Code | 30.00 | 60.00 | +100.0% |', text)
 
+    def test_startup_section_needs_every_layout(self):
+        quant = load('render-ds41-v7-quant-reports')
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / 'performance'
+            root.mkdir()
+            store = root.parent / 'startup-memory.json'
+            record = {'coordinator_seconds': 12.5, 'full_seconds': 40.0,
+                      'gpu_memory_used_mib': [{'index': 0, 'used_mib': 1000}]}
+            store.write_text(json.dumps({'exl3-2x': record}))
+            # One configuration alone is not a comparison.
+            self.assertNotIn('## Startup and memory', quant.render('exl3', root))
+            store.write_text(json.dumps({'exl3-2x': record, 'exl3-5090': record}))
+            text = quant.render('exl3', root)
+            self.assertIn('## Startup and memory', text)
+            self.assertIn('| 2x RTX PRO 6000, no Spark | 12.5 | 40.0 | 0: 1,000 |', text)
+
 if __name__ == '__main__':
     unittest.main()
