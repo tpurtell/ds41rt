@@ -18,7 +18,10 @@ The release protocol uses **400 W per RTX card and standard memory speed, withou
 from a completed, passing matrix; decode is C1 dSpark, with a weighted nine-category
 score excluding counting. `Δ` compares two RTX cards with one for the official and
 NVFP4 pairs; the EXL3 columns are different deployment profiles rather than one
-topology at two widths, so they carry no change column.
+topology at two widths, so they carry no change column. Each column pair comes
+from its own campaign: the official columns are the historical v6 measurements,
+NVFP4 is the [v8 campaign](docs/release-v8-notes.md) on the published v8 images,
+and EXL3 is the v7 campaign. They are not a single co-measured run.
 
 | Measurement | Official 1x | Official 2x | Δ | NVFP4 1x | NVFP4 2x | Δ | EXL3 5090+2-spark | EXL3 2x6000 0-spark |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
