@@ -1,0 +1,3 @@
+initial: max_abs=0 exact=True native_absmax=2.671875
+mutated-input-routing: max_abs=0 exact=True native_absmax=5.46875
+PASS nonzero public parity and 3 graph replays: rows=16 device=0

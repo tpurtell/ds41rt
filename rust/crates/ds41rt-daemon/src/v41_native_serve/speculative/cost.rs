@@ -21,9 +21,9 @@ pub(super) struct Model {
 }
 
 impl Model {
-    /// Single-RTX uses the calibrated placement profile by default. Explicit
+    /// Single-RTX uses the checkpoint-format calibration by default. Explicit
     /// profiles override either layout; "legacy" restores the original formula.
-    pub fn from_environment(transport: &NativeTp4Wave<'_>) -> Result<Option<Self>> {
+    pub fn from_environment(transport: &NativeTp4Wave<'_>, nvfp4: bool) -> Result<Option<Self>> {
         let path = std::env::var_os("DS41RT_ADAPTIVE_COST_PROFILE");
         if path.as_deref() == Some(std::ffi::OsStr::new("legacy")) { return Ok(None); }
         let placement: [String; 40] = std::array::from_fn(|layer| {
@@ -39,13 +39,18 @@ impl Model {
             Some(path) => std::fs::read(path).context("reading adaptive cost profile")?,
             // The built-in measurements are TP4, not TP2. Use the legacy
             // adaptive heuristic until a Spark TP2 calibration is supplied.
-            None if gpus == 1 && transport.spark_world() == 4 => include_bytes!("cost-profile.json").to_vec(),
+            None if gpus == 1 && transport.spark_world() == 4 => Self::builtin(nvfp4).to_vec(),
             None => return Ok(None),
         };
         let model = Self::parse(&bytes, &placement, gpus)?;
-        tracing::info!(profile=?path, gpus, placement=?placement,
+        tracing::info!(profile=?path, nvfp4, gpus, placement=?placement,
             "placement-aware adaptive costs loaded");
         Ok(Some(model))
+    }
+
+    fn builtin(nvfp4: bool) -> &'static [u8] {
+        if nvfp4 { include_bytes!("cost-profile-nvfp4.json") }
+        else { include_bytes!("cost-profile.json") }
     }
 
     fn parse(bytes: &[u8], placement: &[String; 40], gpus: usize) -> Result<Self> {
@@ -104,9 +109,21 @@ mod tests {
             let placement = std::array::from_fn(|layer| if layer < local_layers {
                 "rtx_local_shared1".to_owned()
             } else { "spark_tp4_shared1".to_owned() });
-            let model = Model::parse(include_bytes!("cost-profile.json"), &placement, 1)?;
-            assert!(model.verify_us(64, 8, &[384; 40]).is_finite());
+            for nvfp4 in [false, true] {
+                let model = Model::parse(Model::builtin(nvfp4), &placement, 1)?;
+                assert!(model.verify_us(64, 8, &[384; 40]).is_finite());
+            }
         }
+        Ok(())
+    }
+
+    #[test]
+    fn checkpoint_format_selects_distinct_calibration() -> Result<()> {
+        let placement = std::array::from_fn(|_| "spark_tp4_shared1".to_owned());
+        let native = Model::parse(Model::builtin(false), &placement, 1)?;
+        let nvfp4 = Model::parse(Model::builtin(true), &placement, 1)?;
+        assert_eq!(Model::builtin(false), include_bytes!("cost-profile.json"));
+        assert_ne!(native.verify_us(6, 1, &[24; 40]), nvfp4.verify_us(6, 1, &[24; 40]));
         Ok(())
     }
 

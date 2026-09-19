@@ -1,0 +1,337 @@
+{
+  "scope": "Fit exploratory placement-aware costs from fixed-prefix serving traces.\n\nFits odd draft widths and reports held-out even widths on code and mixed workloads.\nAdditional explicitly segmented workloads, such as topic, are entirely held out.\nThese use observed routes, not forecasts: route-forecast error is a separate gate.\nThe capped16 diagnostic allows a lower positive row slope above 16; it is not\nexportable to the current runtime profile schema.\n",
+  "trace_sha256": {
+    "calibration-rtx1-k1": "ac4309e0d416eb73f7fd10163929efe7addbff4b0ae7ec75fea0bc46f7fb946a",
+    "calibration-rtx1-k3": "6abd1e197d4381bd1253faf370f46ad448dc06308b9ddd155bd90cd70725855b",
+    "calibration-rtx1-k5": "b3925c5650b74bc7ee16728b53e8c34d19cedad9caf4ebf9fb7616c656d10e03",
+    "calibration-rtx1-k7": "ad79c577ea5e71008208efec7c9e3cafab9268c9fd82daaa7676102742290b5e",
+    "calibration-rtx1-k4": "f0c4ff7f6fb32220be93d907f9df2970f9718e0822151e4fc7d9303647cb5a1a"
+  },
+  "rounds": 4166,
+  "warm_rounds": 4081,
+  "training_rounds": 3372,
+  "training_workload": "both",
+  "variants": {
+    "affine": {
+      "experts": {
+        "rtx_local_shared1": [
+          272.33835195194416,
+          32.96616242962756,
+          7.898775219453546
+        ],
+        "spark_tp4_shared1": [
+          0.0,
+          65.66927218156107,
+          30.88026400659939
+        ]
+      },
+      "other": {
+        "1": [
+          8676.354198155152,
+          556.2586147529761,
+          275.05056056945244
+        ]
+      },
+      "evaluations": {
+        "rtx1_code_even_holdout": {
+          "training": false,
+          "candidate": {
+            "rounds": 290,
+            "median_absolute_relative_error": 0.2515076849398932,
+            "p90_absolute_relative_error": 0.2846180978418918,
+            "median_signed_relative_error": 0.2509597642640855
+          },
+          "old": {
+            "rounds": 290,
+            "median_absolute_relative_error": 0.1317419417298411,
+            "p90_absolute_relative_error": 0.265495184494092,
+            "median_signed_relative_error": 0.10973613526253184
+          }
+        },
+        "rtx1_code_odd": {
+          "training": true,
+          "candidate": {
+            "rounds": 1487,
+            "median_absolute_relative_error": 0.08531009331809662,
+            "p90_absolute_relative_error": 0.31902679923978494,
+            "median_signed_relative_error": 0.05343265912735004
+          },
+          "old": {
+            "rounds": 1487,
+            "median_absolute_relative_error": 0.12348492174205494,
+            "p90_absolute_relative_error": 0.27169039297886594,
+            "median_signed_relative_error": 0.002969037872708103
+          }
+        },
+        "rtx1_mixed_even_holdout": {
+          "training": false,
+          "candidate": {
+            "rounds": 418,
+            "median_absolute_relative_error": 0.11262956941601981,
+            "p90_absolute_relative_error": 0.36555100286316405,
+            "median_signed_relative_error": -0.031470659723733196
+          },
+          "old": {
+            "rounds": 418,
+            "median_absolute_relative_error": 0.17912698422084256,
+            "p90_absolute_relative_error": 0.3256876148268289,
+            "median_signed_relative_error": -0.1790379521558333
+          }
+        },
+        "rtx1_mixed_odd": {
+          "training": true,
+          "candidate": {
+            "rounds": 1885,
+            "median_absolute_relative_error": 0.09195882897107335,
+            "p90_absolute_relative_error": 0.3079172690149265,
+            "median_signed_relative_error": -0.046931484094918346
+          },
+          "old": {
+            "rounds": 1885,
+            "median_absolute_relative_error": 0.18712739916341523,
+            "p90_absolute_relative_error": 0.33048889480207283,
+            "median_signed_relative_error": -0.1870653881058034
+          }
+        },
+        "rtx1_warmup_even_holdout": {
+          "training": false,
+          "candidate": null,
+          "old": null
+        },
+        "rtx1_warmup_odd": {
+          "training": false,
+          "candidate": {
+            "rounds": 1,
+            "median_absolute_relative_error": 0.0014252926748427631,
+            "p90_absolute_relative_error": 0.0014252926748427631,
+            "median_signed_relative_error": 0.0014252926748427631
+          },
+          "old": {
+            "rounds": 1,
+            "median_absolute_relative_error": 0.020993423975167257,
+            "p90_absolute_relative_error": 0.020993423975167257,
+            "median_signed_relative_error": -0.020993423975167257
+          }
+        }
+      }
+    },
+    "hinge16": {
+      "experts": {
+        "rtx_local_shared1": [
+          337.30058924314267,
+          15.099049941077524,
+          9.333551557767336,
+          49.953093877832195
+        ],
+        "spark_tp4_shared1": [
+          0.0,
+          63.711191346548254,
+          31.320610535500556,
+          3.4591937301487072
+        ]
+      },
+      "other": {
+        "1": [
+          9239.324263034969,
+          429.51055866049967,
+          330.47420645193404,
+          346.6958151675359
+        ]
+      },
+      "evaluations": {
+        "rtx1_code_even_holdout": {
+          "training": false,
+          "candidate": {
+            "rounds": 290,
+            "median_absolute_relative_error": 0.2506787404418136,
+            "p90_absolute_relative_error": 0.2835184706126319,
+            "median_signed_relative_error": 0.2501583339662684
+          },
+          "old": {
+            "rounds": 290,
+            "median_absolute_relative_error": 0.1317419417298411,
+            "p90_absolute_relative_error": 0.265495184494092,
+            "median_signed_relative_error": 0.10973613526253184
+          }
+        },
+        "rtx1_code_odd": {
+          "training": true,
+          "candidate": {
+            "rounds": 1487,
+            "median_absolute_relative_error": 0.08862706518663883,
+            "p90_absolute_relative_error": 0.3118517409586074,
+            "median_signed_relative_error": 0.06739844021455645
+          },
+          "old": {
+            "rounds": 1487,
+            "median_absolute_relative_error": 0.12348492174205494,
+            "p90_absolute_relative_error": 0.27169039297886594,
+            "median_signed_relative_error": 0.002969037872708103
+          }
+        },
+        "rtx1_mixed_even_holdout": {
+          "training": false,
+          "candidate": {
+            "rounds": 418,
+            "median_absolute_relative_error": 0.11546037008474762,
+            "p90_absolute_relative_error": 0.34916240640455526,
+            "median_signed_relative_error": -0.03943347779378636
+          },
+          "old": {
+            "rounds": 418,
+            "median_absolute_relative_error": 0.17912698422084256,
+            "p90_absolute_relative_error": 0.3256876148268289,
+            "median_signed_relative_error": -0.1790379521558333
+          }
+        },
+        "rtx1_mixed_odd": {
+          "training": true,
+          "candidate": {
+            "rounds": 1885,
+            "median_absolute_relative_error": 0.09594518617421953,
+            "p90_absolute_relative_error": 0.29830477971632396,
+            "median_signed_relative_error": -0.048532277071365086
+          },
+          "old": {
+            "rounds": 1885,
+            "median_absolute_relative_error": 0.18712739916341523,
+            "p90_absolute_relative_error": 0.33048889480207283,
+            "median_signed_relative_error": -0.1870653881058034
+          }
+        },
+        "rtx1_warmup_even_holdout": {
+          "training": false,
+          "candidate": null,
+          "old": null
+        },
+        "rtx1_warmup_odd": {
+          "training": false,
+          "candidate": {
+            "rounds": 1,
+            "median_absolute_relative_error": 0.021879669127791424,
+            "p90_absolute_relative_error": 0.021879669127791424,
+            "median_signed_relative_error": 0.021879669127791424
+          },
+          "old": {
+            "rounds": 1,
+            "median_absolute_relative_error": 0.020993423975167257,
+            "p90_absolute_relative_error": 0.020993423975167257,
+            "median_signed_relative_error": -0.020993423975167257
+          }
+        }
+      }
+    },
+    "capped16": {
+      "experts": {
+        "rtx_local_shared1": [
+          337.30048441829524,
+          15.099420307129868,
+          9.333455772076288,
+          65.05221095745577
+        ],
+        "spark_tp4_shared1": [
+          0.0,
+          63.711233829216376,
+          31.32060633763733,
+          67.170402793354
+        ]
+      },
+      "other": {
+        "1": [
+          9239.324482403325,
+          429.51051821774684,
+          330.4741977112554,
+          776.2064042792668
+        ]
+      },
+      "evaluations": {
+        "rtx1_code_even_holdout": {
+          "training": false,
+          "candidate": {
+            "rounds": 290,
+            "median_absolute_relative_error": 0.25067882373851746,
+            "p90_absolute_relative_error": 0.2835184528769442,
+            "median_signed_relative_error": 0.25015844721633307
+          },
+          "old": {
+            "rounds": 290,
+            "median_absolute_relative_error": 0.1317419417298411,
+            "p90_absolute_relative_error": 0.265495184494092,
+            "median_signed_relative_error": 0.10973613526253184
+          }
+        },
+        "rtx1_code_odd": {
+          "training": true,
+          "candidate": {
+            "rounds": 1487,
+            "median_absolute_relative_error": 0.08862707818199717,
+            "p90_absolute_relative_error": 0.31185185271236593,
+            "median_signed_relative_error": 0.06739842923813648
+          },
+          "old": {
+            "rounds": 1487,
+            "median_absolute_relative_error": 0.12348492174205494,
+            "p90_absolute_relative_error": 0.27169039297886594,
+            "median_signed_relative_error": 0.002969037872708103
+          }
+        },
+        "rtx1_mixed_even_holdout": {
+          "training": false,
+          "candidate": {
+            "rounds": 418,
+            "median_absolute_relative_error": 0.11546027798982667,
+            "p90_absolute_relative_error": 0.349162491458129,
+            "median_signed_relative_error": -0.039433398350845694
+          },
+          "old": {
+            "rounds": 418,
+            "median_absolute_relative_error": 0.17912698422084256,
+            "p90_absolute_relative_error": 0.3256876148268289,
+            "median_signed_relative_error": -0.1790379521558333
+          }
+        },
+        "rtx1_mixed_odd": {
+          "training": true,
+          "candidate": {
+            "rounds": 1885,
+            "median_absolute_relative_error": 0.09594512319016946,
+            "p90_absolute_relative_error": 0.2983048877617529,
+            "median_signed_relative_error": -0.04853224607689852
+          },
+          "old": {
+            "rounds": 1885,
+            "median_absolute_relative_error": 0.18712739916341523,
+            "p90_absolute_relative_error": 0.33048889480207283,
+            "median_signed_relative_error": -0.1870653881058034
+          }
+        },
+        "rtx1_warmup_even_holdout": {
+          "training": false,
+          "candidate": null,
+          "old": null
+        },
+        "rtx1_warmup_odd": {
+          "training": false,
+          "candidate": {
+            "rounds": 1,
+            "median_absolute_relative_error": 0.021879679758803637,
+            "p90_absolute_relative_error": 0.021879679758803637,
+            "median_signed_relative_error": 0.021879679758803637
+          },
+          "old": {
+            "rounds": 1,
+            "median_absolute_relative_error": 0.020993423975167257,
+            "p90_absolute_relative_error": 0.020993423975167257,
+            "median_signed_relative_error": -0.020993423975167257
+          }
+        }
+      }
+    }
+  },
+  "limitations": "Observed expert routes; no history prediction error included. Odd widths train; even widths are held out. Workload selection is explicit. Elapsed timing includes instrumentation and concurrent scheduling. Short-context corpus only; not a serving-default qualification.",
+  "baseline_profile": {
+    "path": "rust/crates/ds41rt-daemon/src/v41_native_serve/speculative/cost-profile.json",
+    "sha256": "f3d195a3301f4624bb727f41aaf4fcd655538fe3a0002414e92a1a8eded9a691"
+  },
+  "excluded_non_verification_batches": {}
+}

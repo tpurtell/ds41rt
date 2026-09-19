@@ -45,7 +45,8 @@ def observations(directory):
     for raw in path.open('rb'):
         begin = offset
         offset += len(raw)
-        line = raw.decode()
+        # Keep byte offsets/hashes tied to the raw trace, but parse colored logs too.
+        line = re.sub(r"\x1b\[[0-9;]*m", "", raw.decode())
         if 'ds41rt::cost_model:' not in line or 'verification cost forecast' in line:
             continue
         fields = dict(re.findall(r'(\w+)=("[^"]*"|[^ ]+)', line.strip()))
@@ -150,6 +151,8 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--export-profile', type=Path,
                         help='Optional experimental runtime profile; validation report remains separate')
+    parser.add_argument('--baseline-profile', type=Path,
+                        help='Compare against this installed profile instead of the legacy formula')
     parser.add_argument('--variant', choices=['affine', 'hinge16'], default='affine')
     parser.add_argument('--training-workload', choices=['code', 'both'], default='both',
                         help='Code alone also holds out all mixed traffic; both trains on odd widths of each')
@@ -158,6 +161,13 @@ def main():
         parser.error('output must be new')
     if args.export_profile and (args.export_profile.exists() or args.export_profile == args.output):
         parser.error('profile must be a separate new output')
+    baseline = json.loads(args.baseline_profile.read_text()) if args.baseline_profile else None
+    if baseline is not None:
+        if baseline['version'] != 1:
+            raise ValueError('unsupported baseline profile version')
+        for coefficients in [*baseline['experts'].values(), *baseline['other'].values()]:
+            if len(coefficients) != 4 or not all(np.isfinite(v) and v >= 0 for v in coefficients):
+                raise ValueError('invalid baseline profile coefficients')
     records, hashes = [], {}
     for directory in args.directories:
         rows, hashes[directory.name] = observations(directory)
@@ -185,6 +195,10 @@ def main():
                     predicted = [float(np.dot(other[gpus], other_features(r, variant))) + sum(
                         float(np.dot(experts[b], expert_features(r, group, variant))) for b, group in r['groups'].items()) for r in rows]
                     old = [19864+803*r['rows']+636*sum(g['unique'] for g in r['groups'].values())/40 for r in rows]
+                    if baseline is not None:
+                        old = [float(np.dot(baseline['other'][str(gpus)], other_features(r, 'hinge16'))) + sum(
+                            float(np.dot(baseline['experts'][b], expert_features(r, group, 'hinge16')))
+                            for b, group in r['groups'].items()) for r in rows]
                     key = f'rtx{gpus}_{workload}_{"even_holdout" if parity == 0 else "odd"}'
                     evaluations[key] = dict(training=parity == 1 and workload in training_workloads,
                                             candidate=error_summary(predicted, [r['verify_us'] for r in rows]),
@@ -193,6 +207,9 @@ def main():
     report = dict(scope=__doc__, trace_sha256=hashes, rounds=len(records), warm_rounds=len(warm),
                   training_rounds=len(training), training_workload=args.training_workload, variants=variants,
                   limitations='Observed expert routes; no history prediction error included. Odd widths train; even widths are held out. Workload selection is explicit. Elapsed timing includes instrumentation and concurrent scheduling. Short-context corpus only; not a serving-default qualification.')
+    report['baseline_profile'] = (dict(path=str(args.baseline_profile),
+        sha256=hashlib.sha256(args.baseline_profile.read_bytes()).hexdigest())
+        if args.baseline_profile else None)
     report['excluded_non_verification_batches'] = {
         directory.name: json.loads((directory / 'excluded_non_verification_batches.json').read_text())
         for directory in args.directories if (directory / 'excluded_non_verification_batches.json').exists()}

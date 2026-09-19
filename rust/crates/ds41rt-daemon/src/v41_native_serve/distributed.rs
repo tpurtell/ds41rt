@@ -362,7 +362,7 @@ pub(super) fn worker(mut args: crate::cli::NativeServeArgs, mut receive: mpsc::R
     let mut transport = make_transport()?;
     let mut second_transport = make_transport()?;
     memory_checkpoint("TP2 transports")?;
-    if let Some(draft) = &mut draft { draft.configure_cost_model(&transport)?; }
+    if let Some(draft) = &mut draft { draft.configure_cost_model(&transport, catalog.nvfp4().is_some())?; }
     let memory = [devices[0].run(|| lib.cuda_memory_info())?, devices[1].run(|| lib.cuda_memory_info())?];
     let pool = memory::distributed::PoolPlan::with_replication(map, args.concurrency as usize,
         args.max_context_tokens as usize, args.prefix_cache_entries as usize, snapshot_bytes,

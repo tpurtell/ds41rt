@@ -1,5 +1,10 @@
 # V7 NVFP4 optimization investigation
 
+September 19 bounded optimization is complete: **108.4 code / 80.8 weighted
+tok/s and 5,157 tok/s 32K prefill**, one RTX + four Sparks, 400 W RTX power limit,
+standard memory settings. [Final settings and evidence](#final-bounded-optimization-results-september-19)
+supersede historical pending/default statements below. No release was published.
+
 ## Published-pair follow-up (source c2ccf16)
 
 The previous image-revision blocker is fixed. `run.sh --config
@@ -512,3 +517,113 @@ three graph replays each. These pass on both architectures. Constructor tests
 pass 55 cases; exporter/tile/router tests pass 50 cases. This remains a synthetic
 kernel comparison, not an independent mathematical oracle. Native artifact
 builds, ABI checks, serving A/B and native nonregression remain next.
+
+### Bounded serving/tile screen and MXFP4 check
+
+The user narrowed completion to light NVFP4 splitting/tiling checks, an MXFP4
+adaptive-splitting benefit check, dSpark calibration, and final quick C1 code,
+weighted decode and 32K prefill measurements. Release preparation is delegated
+to a separate agent. RTX activation quantization/FP4 transport remain deferred.
+
+The adaptive NVFP4 native builds pass rows16 ABI/public-path exact parity on
+SM120/SM121, including mutated inputs/routes and three graph replays. First
+nine-category serving screen passes with all nine content hashes matching the
+first padding-only repeat: weighted 78.85→79.37 tok/s; code 102.27→106.49 tok/s
+for that paired repeat (padding's three-repeat median was 105.36). One screen
+does not establish a repeatable adaptive serving win. Artifacts and raw JSON
+are in [adaptive evidence](measurements/nvfp4-adaptive/).
+
+M32 loses to M16 in the tested NVFP4 regimes: adaptive RTX N2304 decode
+286→369 µs; Spark padded decode 201→228 µs. Capacity4096/live2048 distinct-route
+prefill probes are 11804→12613 µs on RTX and 18128→18486 µs on Spark, with
+bit-exact M16/M32 route outputs. Keep M16. These are component timings, not
+32K API prefill measurements.
+
+[MXFP4 prototype evidence](measurements/mxfp4-adaptive-screen/) keeps the native
+slice kernel, wire format and ordered reduction contract. It duplicates FC1
+across disjoint output-column shards and selects the count on GPU from an
+existing device work-count scalar. The fixture supplies that scalar alongside
+its route metadata; this is a compute-only experiment, not integrated routing
+or serving. No production MXFP4 code changes were made.
+
+The width192 Spark probe passes its GPU numerical reference and exact candidate
+comparison across sparse, mixed and shared rows. Shared8 improves 178.58→165.02
+µs and shared16 219.48→201.17 µs, but mixed6 stays 456.38→456.75 µs and shared2
+regresses 138.59→145.14 µs. Width192 one-row results do not represent the shipped
+Spark M1 width64 path. RTX N1152 shared8 regresses 80.35→84.97 µs; limiting the
+adaptive maximum to two shards is worse, 80.47→94.11 µs. These mixed results do
+not justify broad native enablement. MXFP4 defaults remain unchanged.
+
+## Final bounded optimization results (September 19)
+
+One RTX PRO 6000 (400 W limit, standard memory settings), Spark TP4, NVIDIA
+checkpoint revision `3431dde3247c13b5957f682b1e3c6fcae2566079`. Automatic residency
+places four routed-expert layers on RTX and dispatches the remaining 36 to the
+Sparks. Three repeats, same nine-category corpus, high-effort reasoning for
+reasoning code and thinking disabled for other categories. The final quick
+screen omits counting, so repeat-two/three nonce offsets differ from the earlier
+counting-inclusive baseline. The first repeat's nine identical requests retain
+identical content hashes. This is a development performance check, not a full
+quality/release qualification.
+
+| Median | Before this work | Padding only | Final |
+| --- | ---: | ---: | ---: |
+| C1 code, tok/s | 86.97 | 105.36 | **108.40** |
+| C1 weighted nine-category decode, tok/s | 63.83 | 78.85 | **80.78** |
+| Fresh 32K effective prefill, tok/s | 4038.40 | 5083.16 | **5156.54** |
+
+Final code repeats: 109.62 / 103.39 / 108.40. Weighted repeats:
+80.94 / 79.43 / 80.78. Prefill: 5157.95 / 5123.27 / 5156.54, after one excluded
+warmup. All 27 decode requests and all prefill measurements pass their checks.
+The original official-checkpoint ~130 code tok/s remains a historical reference;
+this work does not claim NVFP4 has reached parity or that its performance ceiling
+has been found.
+
+Retained defaults:
+
+- `DS41RT_V41_NVFP4_PAD_INTERMEDIATE=ON`: exact load-time Spark padding.
+- `DS41RT_V41_NVFP4_OUTPUT_SHARDS=0`: GPU-local adaptive splitting.
+- Tile M16, unchanged; M32 lost the targeted comparisons.
+- K5 for one RTX, unchanged; with the new profile, the K7 screen lost weighted
+  80.41→76.69 tok/s and code 109.58→108.08.
+- A separate embedded NVFP4 cost profile is selected from checkpoint metadata
+  for one RTX + Spark TP4. The final daemon confirmed `nvfp4=true`, `profile=None`:
+  no environment override. MXFP4 retains its existing profile, kernels and defaults.
+  Dual-RTX/Spark-TP2 profile selection remains unchanged; these timings do not
+  qualify those layouts. Existing CMake caches need the explicit values above
+  when rebuilding; fresh builds get them by default.
+
+The calibration validates 4,166 complete instrumented verification rounds at
+fixed K1/K3/K5/K7 and held-out K4. The selected affine fit trains on 1,487 warm
+code rounds; mixed traffic stays held out. Code K4 median absolute relative
+prediction error improves 13.17%→10.19%; mixed K4 changes 17.91%→19.65%.
+The code+mixed fit was rejected because it worsened held-out code error to 25.15%.
+These are observed-route timing errors, not acceptance or serving-throughput
+measurements. The parser now handles ANSI-colored logs without changing raw
+trace hashes/byte offsets and can compare against the actual installed profile.
+
+Uninstrumented one-repeat screens isolate the choices: padding + new profile
+gets 105.47 code / 77.57 weighted; adding adaptive splitting gets 109.58 / 80.41.
+With splitting but the inherited profile, the screen gets 106.49 / 79.37.
+The final three-repeat run uses the new embedded selection, not a profile-file
+substitution. This supports keeping the combined candidate; small differences
+between individual screens should not be treated as precise general speedups.
+
+Evidence: [final measurements and calibration](measurements/nvfp4-final/),
+[adaptive/tile/native-ABI gates](measurements/nvfp4-adaptive/),
+[padding baseline](measurements/nvfp4-padding/), and
+[MXFP4 experiment](measurements/mxfp4-adaptive-screen/). Artifact hashes and launch
+arguments are retained. Four focused Rust cost tests, 54 focused Python tests,
+source-lock verification, native builds on both architectures, and exact NVFP4
+ABI/public-path checks pass. Initial host Rust test execution needed the Python
+3.12 shared-library directory in `LD_LIBRARY_PATH`; the corrected invocation
+passes. No full qualification suite was rerun.
+
+MXFP4's mixed component results do not justify a production change, so its final
+serving benchmarks were not rerun. RTX-side NVFP4 quantization/transport,
+materialized FC1 experiments, further tuning and release preparation are outside
+this completed bounded phase. README release tables/images/tags were not changed.
+The final WIP service remains on port 8000 (`ds41rt-nvfp4-final` locally, existing
+`ds41rt-nvfp4-pad-ab` expert containers remotely); stopped calibration containers
+and redundant source archives were removed. The separate release owner can use
+this evidence and rebuild/package the committed defaults.

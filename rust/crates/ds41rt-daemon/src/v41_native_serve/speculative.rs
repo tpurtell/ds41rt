@@ -117,8 +117,8 @@ impl<'w, 'a, C: DraftChain<'a>> DraftRuntime<'w, 'a, C> {
     pub fn set_adaptive(&mut self, enabled: bool) {
         self.adaptive = enabled.then(ds41rt_core::DsparkRouteHistory::default);
     }
-    pub fn configure_cost_model(&mut self, transport: &NativeTp4Wave<'_>) -> Result<()> {
-        self.cost_model = cost::Model::from_environment(transport)?;
+    pub fn configure_cost_model(&mut self, transport: &NativeTp4Wave<'_>, nvfp4: bool) -> Result<()> {
+        self.cost_model = cost::Model::from_environment(transport, nvfp4)?;
         Ok(())
     }
     pub fn set_confidence_cutoff(&mut self, threshold: Option<f64>) {

@@ -1,0 +1,5 @@
+{
+  "runs/nvfp4-opt/adaptive-artifacts/coordinator.so": "180b52421631205f167af246a6ea78c1043249f8884ecafb76fede8eeee4c672",
+  "runs/nvfp4-opt/adaptive-artifacts/ds41rt": "14e7b5f0d900fb5f6a0b8b0685e94e9f7f3ab66055af50a3e557e76c831e9634",
+  "runs/nvfp4-opt/adaptive-artifacts/expert.so": "a9939aae882e66e48604ff1ef590c3f31b9d3606545284f0df7d22d7270b92ce"
+}

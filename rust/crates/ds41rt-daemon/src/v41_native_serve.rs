@@ -421,7 +421,7 @@ fn worker(
         remote_dispatch_layers=40-local_layers, spark_world=args.peers.len(),
         device_occupied_bytes=occupied, device_budget_bytes=pool.reservation_bytes,
         runtime_headroom_bytes=memory::RUNTIME_HEADROOM, "native serving residency ready");
-    if let Some(draft) = &mut draft { draft.configure_cost_model(&transport)?; }
+    if let Some(draft) = &mut draft { draft.configure_cost_model(&transport, catalog.nvfp4().is_some())?; }
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;

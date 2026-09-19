@@ -1,0 +1,14 @@
+{"source": "/wip/nvfp4-adaptive-source", "source_sha256": {"b12x/moe/fused_moe/_impl.py": "c99adee5fbcc680b041af08cbf66e42377321e5f74a96a74ae7014a891d39fd0", "b12x/moe/_shared/kernels/dynamic.py": "f7b4a1e0b82767d043647566191fa7e617574cdf3a2ad8792fe10c2bf667d1b6"}}
+{"device": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition", "geometry": [384, 5120, 2304, 6], "capacity": 16, "live": 8, "routing": "shared", "tile_m": 32, "padded_intermediate": 2304}
+compile grouped:1
+correct grouped:1 mac 188
+compile grouped:0
+correct grouped:0 mac 188
+mutated graph routes exact 0
+mutated graph routes exact 6
+mutated graph routes exact 2
+{"case": "grouped:1", "us": [806.1280059814453, 809.1065979003906, 805.3718566894531, 808.6577606201172, 805.5921936035156, 806.2728118896484, 806.8217468261719, 807.9904174804688, 805.9865570068359], "median_us": 806.2728118896484, "bit_exact": true}
+{"case": "grouped:0", "us": [369.1352081298828, 368.9944076538086, 369.0198516845703, 369.3067169189453, 369.00447845458984, 369.1737747192383, 368.8719940185547, 369.5625686645508, 368.9271926879883], "median_us": 369.0198516845703, "bit_exact": true}
+frozen kernels live count exact 1
+frozen kernels live count exact 8
+frozen kernels live count exact 16
