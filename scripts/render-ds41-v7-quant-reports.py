@@ -2,7 +2,7 @@
 """Render the two v7 per-quant performance reports from the measured package.
 
 Both reports are generated from the bench JSONs under
-~/.cache/ds41rt-v7-package/performance so a table can never disagree with the
+~/.cache/ds41rt-v7-published/performance so a table can never disagree with the
 raw results. Unavailable or nonqualifying results render as an em dash;
 nothing is estimated. Partial prefill matrices are explicitly provisional.
 """
@@ -68,8 +68,8 @@ PENDING_COMMON = [
     # Superseded: the images were built for both roles and published after the
     # review that added this line, so the report must not still claim otherwise.
     "v7 release images are built and published "
-    "(ghcr.io/tpurtell/ds41rt-coordinator:v7 sha256:53af6703, "
-    "ghcr.io/tpurtell/ds41rt-spark:v7 sha256:81918fe4); "
+    "(ghcr.io/tpurtell/ds41rt-coordinator:v7 sha256:d85608bb, "
+    "ghcr.io/tpurtell/ds41rt-spark-expert:v7 sha256:aa477ff1); "
     "physical RTX 5090 validation remains owed",
 ]
 
@@ -226,13 +226,18 @@ def render(quant: str, package: Path) -> str:
         "[v6 measurements](release-v6-performance.md) shown below the headline in the "
         "[README](../README.md#performance). V5 EXL3 results use a different checkpoint and are not substituted here.",
         "",
-        "**Provenance.** Raw records are under `~/.cache/ds41rt-v7-package/performance/`; "
-        "the filenames and SHA-256 digests below identify the selected inputs. They preserve "
+        "**Provenance.** Raw records are under `~/.cache/ds41rt-v7-published/performance/`; "
+        "the filenames and SHA-256 digests below identify the selected inputs. The campaigns were "
+        "served from the published release images "
+        "(`ghcr.io/tpurtell/ds41rt-coordinator:v7` sha256:d85608bb, "
+        "`ghcr.io/tpurtell/ds41rt-spark-expert:v7` sha256:aa477ff1, both engine revision "
+        "`0107d01e3d35d22b1dbc5de70c4e1a32d32d165f`), and each decode campaign reuses the nonce seed "
+        "its recorded predecessor used so the two are directly comparable. The records preserve "
         "request controls, timestamps, corpus/tokenizer hashes and individual samples, but their "
         "`model` is an API alias, not proof of the quant snapshot. They do not bind each campaign "
-        "to engine/SparkInfer revisions, release-image hashes or power/clock telemetry. "
+        "to engine/SparkInfer revisions or power/clock telemetry. "
         "Those missing bindings remain owed; the protocol above is not a claim that every hardware control "
-        "is independently verified by these JSON files. V7 release Docker images have not been built or published.",
+        "is independently verified by these JSON files.",
         "",
         "Decode cells are medians of `observed_decode_tokens_per_second` by case; weighted decode "
         "is `median_weighted_observed_decode_tokens_per_second`: the median of repeat-level "
@@ -372,7 +377,7 @@ def render(quant: str, package: Path) -> str:
             lines.append("| " + " | ".join(row) + " |")
         lines.append("")
     lines += checks + [""]
-    if quant == "nvfp4":
+    if quant == "nvfp4" and not prefill_complete(measured["1x"][1]):
         lines += ["The 1x prefill campaign was interrupted by a service restart "
                   "([campaign record](release-v7-plan.md)). Its raw file retains partial samples, "
                   "but no finalized cell summaries or completed, passing matrix; no best is estimated.", ""]
@@ -390,7 +395,7 @@ def render(quant: str, package: Path) -> str:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--package", type=Path,
-                        default=Path.home() / ".cache/ds41rt-v7-package/performance")
+                        default=Path.home() / ".cache/ds41rt-v7-published/performance")
     parser.add_argument("--output-dir", type=Path, default=Path("docs"))
     args = parser.parse_args()
     for quant, spec in QUANTS.items():

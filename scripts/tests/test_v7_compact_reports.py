@@ -53,7 +53,10 @@ class CompactReports(unittest.TestCase):
             self.assertIn('| Case | 1 RTX dSpark | 2 RTX dSpark |', text)
             self.assertIn('| Code | — | — |', text)
             self.assertIn('not proof of the quant snapshot', text)
-            self.assertIn('have not been built or published', text)
+            # The images are built and published now, so the report must name the
+            # published provenance rather than claiming they do not exist.
+            self.assertIn('published release images', text)
+            self.assertNotIn('have not been built or published', text)
             self.assertIn('SHA-256 `unavailable`', text)
             self.assertLess(text.index('## Prefill'), text.index('## Quality and evaluation'))
             self.assertIn('target-only decode', text)

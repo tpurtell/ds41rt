@@ -22,10 +22,10 @@ topology at two widths, so they carry no change column.
 
 | Measurement | Official 1x | Official 2x | Δ | NVFP4 1x | NVFP4 2x | Δ | EXL3 5090+2-spark | EXL3 2x6000 0-spark |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Prefill | 7,824 | 8,355 | +6.8% | — | 7,432 | — | 2,015 | 5,702 |
-| Counting decode | 161.58 | 221.64 | +37.2% | 113.32 | 152.25 | +34.4% | 163.55 | 337.35 |
-| Weighted decode | 92.00 | 109.44 | +19.0% | 66.60 | 80.12 | +20.3% | 88.10 | 145.10 |
-| C1 code decode | 130.41 | 155.70 | +19.4% | 88.77 | 109.20 | +23.0% | 123.54 | 222.06 |
+| Prefill | 7,824 | 8,355 | +6.8% | 4,141 | 7,370 | +78.0% | 2,013 | 5,597 |
+| Counting decode | 161.58 | 221.64 | +37.2% | 114.06 | 149.98 | +31.5% | 161.98 | 337.00 |
+| Weighted decode | 92.00 | 109.44 | +19.0% | 66.81 | 78.57 | +17.6% | 88.20 | 146.24 |
+| C1 code decode | 130.41 | 155.70 | +19.4% | 86.58 | 106.38 | +22.9% | 122.50 | 225.20 |
 
 New-quant reports: [NVFP4 W4A4](docs/release-v7-nvfp4-performance.md) · [EXL3 K2 (including the 5090+2-spark compact profile)](docs/release-v7-exl3-k2-performance.md).
 
@@ -46,7 +46,10 @@ and the [configuration accounting chart](docs/release-v7-configurations.svg).
 No physical RTX 5090 has been tested; the same-capability grid checks used RTX PRO 6000.
 V7 release images are published as `ghcr.io/tpurtell/ds41rt-coordinator:v7` and
 `ghcr.io/tpurtell/ds41rt-spark-expert:v7` ([digests](docs/release-v7-notes.md)).
-NVFP4 1x best prefill remains unmeasured after an interrupted campaign and is not estimated.
+These four new-quant campaigns were re-run against the **published release images**,
+so the headline is a published-image measurement rather than a working-tree build; the
+earlier NVFP4 1x prefill attempt that an interrupted campaign left unfinished is now a
+completed, passing matrix (4,141 tok/s) instead of a dash.
 
 **Official image only below.** Every remaining performance table in this section is
 preserved from v6, not re-measured for v7. Older official-reference, acceptance and

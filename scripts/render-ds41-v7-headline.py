@@ -138,7 +138,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--package", type=Path,
-                        default=Path.home() / ".cache/ds41rt-v7-package/performance")
+                        default=Path.home() / ".cache/ds41rt-v7-published/performance")
     args = parser.parse_args()
     configs, documents = load_measurements(args.package)
     args.output.write_text(render(configs=configs, documents=documents))
