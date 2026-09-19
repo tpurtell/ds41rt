@@ -4,8 +4,8 @@
 //! kernel-native `[up(w3); gate(w1)]` row order plus `[down(w2)]`, an
 //! F8_128x4-swizzled E4M3 K16 scale plane per fused projection, and four
 //! per-expert FP32 launch vectors. Loading therefore avoids any weight
-//! repack: each expert plane is staged contiguously and lands with one
-//! device-to-device copy, the scale planes are swizzled on device, and the
+//! requantization: each expert plane is staged contiguously and copied or
+//! zero-padded into the AOT's resident width. Scale planes are swizzled on device; the
 //! scalar vectors are computed on the host from the checkpoint's per-tensor
 //! `weight_scale_2` and `input_scale`.
 use super::{ExpertLayer, ExpertLoadBudget, EXPERT_READ_LANES};
@@ -64,6 +64,23 @@ pub(crate) fn plane_sizes(intermediate: usize) -> [usize; 4] {
 }
 
 impl<'a> Nvfp4Side<'a> {
+    /// Resident width comes from the AOT contract; logical checkpoint width
+    /// remains unchanged. This keeps padded and unpadded experiment libraries
+    /// usable by the same daemon without a runtime environment switch.
+    pub(crate) fn kernel_intermediate(
+        library: &NativeLibrary,
+        catalog: &OfficialV41Catalog,
+        layer: ExpertLayer,
+    ) -> Result<usize> {
+        let (source, experts) = Self::rank_planes(layer, catalog)?;
+        let info = layer.nvfp4_info(library, 16)?;
+        let kernel = info.kernel_intermediate as usize;
+        ensure!(info.logical_intermediate as usize == source && info.experts as usize == experts,
+                "NVFP4 checkpoint and AOT geometry differ");
+        ensure!(kernel == source || (source % 64 == 0 && kernel == align_up(source, 128)),
+                "unsupported NVFP4 padded width: {source} -> {kernel}");
+        Ok(kernel)
+    }
     /// Per-rank intermediate width and routed-expert count for a layer.
     pub(crate) fn rank_planes(layer: ExpertLayer, catalog: &OfficialV41Catalog) -> Result<(usize, usize)> {
         let text = catalog.config().text();
@@ -85,9 +102,9 @@ impl<'a> Nvfp4Side<'a> {
         catalog: &OfficialV41Catalog,
         layer: ExpertLayer,
     ) -> Result<ExpertLoadBudget> {
-        let (intermediate, experts) = Self::rank_planes(layer, catalog)?;
+        let (_, experts) = Self::rank_planes(layer, catalog)?;
         let staging = catalog.nvfp4_expert_staging(layer.expert(0))?;
-        let sizes = plane_sizes(intermediate);
+        let sizes = plane_sizes(Self::kernel_intermediate(library, catalog, layer)?);
         let resident_bytes = sizes
             .iter()
             .try_fold(0usize, |sum, size| {
@@ -119,13 +136,14 @@ impl<'a> Nvfp4Side<'a> {
         available_device_bytes: usize,
     ) -> Result<([DeviceAllocation<'a>; 4], Self)> {
         let (intermediate, experts) = Self::rank_planes(layer, catalog)?;
+        let kernel_intermediate = Self::kernel_intermediate(library, catalog, layer)?;
         let budget = Self::plan(library, catalog, layer)?;
         ensure!(
             budget.peak_device_bytes()? <= available_device_bytes,
             "NVFP4 expert layer needs {} device bytes including staging, budget is {available_device_bytes}",
             budget.peak_device_bytes()?
         );
-        let sizes = plane_sizes(intermediate);
+        let sizes = plane_sizes(kernel_intermediate);
         let mut owned = Vec::with_capacity(4);
         for size in sizes {
             owned.push(DeviceAllocation::new(
@@ -221,39 +239,55 @@ impl<'a> Nvfp4Side<'a> {
                     };
                     // Fused FC1 payload: [up(w3); gate(w1)] staged adjacently.
                     let fc1_bytes = ranges[SLOT_GATE_WEIGHT].end - ranges[SLOT_UP_WEIGHT].start;
-                    library.copy_d2d_async(
-                        destination(buffers[0].buffer, sizes[0]),
-                        staging_span(ranges[SLOT_UP_WEIGHT].start, fc1_bytes),
-                        fc1_bytes,
-                        stream.raw,
-                    )?;
-                    let down_bytes = ranges[SLOT_DOWN_WEIGHT].len();
-                    library.copy_d2d_async(
-                        destination(buffers[2].buffer, sizes[2]),
-                        staging_span(ranges[SLOT_DOWN_WEIGHT].start, down_bytes),
-                        down_bytes,
-                        stream.raw,
-                    )?;
-                    // Fused FC1 scale plane: swizzle the concatenated pair.
-                    let fc1_scale_bytes =
-                        ranges[SLOT_GATE_SCALE].end - ranges[SLOT_UP_SCALE].start;
-                    let fc1_scale_rows = 2 * intermediate;
-                    let fc1_scale_cols = HIDDEN / 16;
-                    library.cuda_nvfp4_swizzle_scale_async(
-                        staging_span(ranges[SLOT_UP_SCALE].start, fc1_scale_bytes),
-                        destination(buffers[1].buffer, sizes[1]),
-                        fc1_scale_rows,
-                        fc1_scale_cols,
-                        stream.raw,
-                    )?;
-                    let down_scale_bytes = ranges[SLOT_DOWN_SCALE].len();
-                    library.cuda_nvfp4_swizzle_scale_async(
-                        staging_span(ranges[SLOT_DOWN_SCALE].start, down_scale_bytes),
-                        destination(buffers[3].buffer, sizes[3]),
-                        HIDDEN,
-                        down_cols,
-                        stream.raw,
-                    )?;
+                    if kernel_intermediate != intermediate {
+                        let fc1_scale_bytes = ranges[SLOT_GATE_SCALE].end - ranges[SLOT_UP_SCALE].start;
+                        library.cuda_nvfp4_pad_expert_async(
+                            [
+                                staging_span(ranges[SLOT_UP_WEIGHT].start, fc1_bytes),
+                                staging_span(ranges[SLOT_UP_SCALE].start, fc1_scale_bytes),
+                                staging_span(ranges[SLOT_DOWN_WEIGHT].start, ranges[SLOT_DOWN_WEIGHT].len()),
+                                staging_span(ranges[SLOT_DOWN_SCALE].start, ranges[SLOT_DOWN_SCALE].len()),
+                            ],
+                            std::array::from_fn(|i| destination(buffers[i].buffer, sizes[i])),
+                            intermediate,
+                            kernel_intermediate,
+                            stream.raw,
+                        )?;
+                    } else {
+                        library.copy_d2d_async(
+                            destination(buffers[0].buffer, sizes[0]),
+                            staging_span(ranges[SLOT_UP_WEIGHT].start, fc1_bytes),
+                            fc1_bytes,
+                            stream.raw,
+                        )?;
+                        let down_bytes = ranges[SLOT_DOWN_WEIGHT].len();
+                        library.copy_d2d_async(
+                            destination(buffers[2].buffer, sizes[2]),
+                            staging_span(ranges[SLOT_DOWN_WEIGHT].start, down_bytes),
+                            down_bytes,
+                            stream.raw,
+                        )?;
+                        // Fused FC1 scale plane: swizzle the concatenated pair.
+                        let fc1_scale_bytes =
+                            ranges[SLOT_GATE_SCALE].end - ranges[SLOT_UP_SCALE].start;
+                        let fc1_scale_rows = 2 * intermediate;
+                        let fc1_scale_cols = HIDDEN / 16;
+                        library.cuda_nvfp4_swizzle_scale_async(
+                            staging_span(ranges[SLOT_UP_SCALE].start, fc1_scale_bytes),
+                            destination(buffers[1].buffer, sizes[1]),
+                            fc1_scale_rows,
+                            fc1_scale_cols,
+                            stream.raw,
+                        )?;
+                        let down_scale_bytes = ranges[SLOT_DOWN_SCALE].len();
+                        library.cuda_nvfp4_swizzle_scale_async(
+                            staging_span(ranges[SLOT_DOWN_SCALE].start, down_scale_bytes),
+                            destination(buffers[3].buffer, sizes[3]),
+                            HIDDEN,
+                            down_cols,
+                            stream.raw,
+                        )?;
+                    }
                 }
                 let scalar = |slot: usize| -> f32 {
                     f32::from_le_bytes(

@@ -852,6 +852,12 @@ ds41rt_status_t ds41rt_cuda_b12x_w4a16_pack_weight_strided_async(
 ds41rt_status_t ds41rt_cuda_nvfp4_swizzle_scale_async(
     ds41rt_device_buffer_t source, ds41rt_device_buffer_t destination, size_t rows,
     size_t cols, void* cuda_stream);
+/* Load-time zero padding for H=5120. Four planes: FC1 payload, plain FC1
+   scales, FC2 payload, plain FC2 scales; destination scales are swizzled.
+   source_n is a positive multiple of 64; kernel_n is a multiple of 128. */
+ds41rt_status_t ds41rt_cuda_nvfp4_pad_expert_async(
+    const ds41rt_device_buffer_t* sources, const ds41rt_device_buffer_t* destinations,
+    size_t source_n, size_t kernel_n, void* cuda_stream);
 ds41rt_status_t ds41rt_cuda_b12x_w4a16_pack_scale_async(
     ds41rt_device_buffer_t source, ds41rt_device_buffer_t destination, size_t size_k,
     size_t size_n, size_t row_rotation, float scale_factor, void* cuda_stream);

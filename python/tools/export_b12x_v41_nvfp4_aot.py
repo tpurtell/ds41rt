@@ -109,9 +109,12 @@ def export(
     max_active_clusters: int | None = None,
     output_shards: int = 1,
     share_input: bool = False,
+    pad_intermediate: bool = False,
 ) -> None:
     if type(share_input) is not bool:
         raise TypeError("share_input must be boolean")
+    if type(pad_intermediate) is not bool:
+        raise TypeError("pad_intermediate must be boolean")
     if type(output_shards) is not int or output_shards < 1 or 40 % output_shards:
         raise ValueError("output_shards must be a positive divisor of 40")
     if tile_m is not None and (type(tile_m) is not int or tile_m not in TILE_M_CHOICES):
@@ -126,6 +129,9 @@ def export(
     if role not in ROLES:
         raise ValueError(f"unsupported NVFP4 expert role {role!r}")
     experts, intermediate, topk, capability = ROLES[role]
+    source_intermediate = intermediate
+    if pad_intermediate:
+        intermediate = (intermediate + 127) // 128 * 128
     torch.cuda.init()
     properties = torch.cuda.get_device_properties(0)
     if (properties.major, properties.minor) != capability:
@@ -158,10 +164,11 @@ def export(
         "physical_sms": properties.multi_processor_count,
         "tile_m": tile_m,
         "share_input": share_input,
+        "pad_intermediate": pad_intermediate,
         "geometry": {
             "experts": experts,
             "hidden": 5120,
-            "intermediate": intermediate,
+            "intermediate": source_intermediate,
             "kernel_intermediate": intermediate,
             "topk": topk,
         },
@@ -315,7 +322,7 @@ def export(
             {"spark": 1, "rtx_backbone": 2, "rtx_tp2": 3, "dspark_tp2": 4}[role],
             experts,
             5120,
-            intermediate,
+            source_intermediate,
             intermediate,
             topk,
             capacity,
@@ -411,6 +418,8 @@ def main() -> None:
     )
     parser.add_argument("--output-shards", type=int, default=1,
                         help="experimental direct-route output shards; positive divisor of 40")
+    parser.add_argument("--pad-intermediate", action="store_true",
+                        help="zero-pad intermediate to 128 to avoid transposed FC1")
     parser.add_argument(
         "--share-input",
         action="store_true",
@@ -420,7 +429,7 @@ def main() -> None:
     args = parser.parse_args()
     rows = [int(value) for value in args.rows.split(",") if value]
     export(args.output_dir, args.role, rows, args.tile_m, args.max_active_clusters,
-           args.output_shards, args.share_input)
+           args.output_shards, args.share_input, args.pad_intermediate)
 
 
 if __name__ == "__main__":

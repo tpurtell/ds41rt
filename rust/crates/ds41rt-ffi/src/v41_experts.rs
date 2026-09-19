@@ -477,7 +477,8 @@ impl NativeLibrary {
             "unsupported native expert input representation"
         );
         let expected = match (nvfp4, info.role) {
-            // NVFP4 keeps the unpadded intermediate: 576 Spark, 1152 RTX TP2.
+            // Both exact source layout and zero-padded Spark AOTs are valid.
+            (true, 1) if info.kernel_intermediate == 640 => (384, 576, 640, 6),
             (true, 1) => (384, 576, 576, 6),
             (true, 2) => (384, 2304, 2304, 6),
             (true, 3) => (384, 1152, 1152, 6),

@@ -248,7 +248,7 @@ impl<'a> ExpertWeights<'a> {
         let (intermediate, experts) =
             nvfp4::Nvfp4Side::rank_planes(layer, catalog)?;
         let budget = nvfp4::Nvfp4Side::plan(library, catalog, layer)?;
-        let sizes = nvfp4::plane_sizes(intermediate);
+        let sizes = nvfp4::plane_sizes(nvfp4::Nvfp4Side::kernel_intermediate(library, catalog, layer)?);
         Ok((budget, sizes, intermediate as u32, experts))
     }
 

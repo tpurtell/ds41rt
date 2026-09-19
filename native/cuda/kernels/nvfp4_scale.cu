@@ -41,6 +41,65 @@ __global__ void swizzle_nvfp4_scale_kernel(const uint8_t* __restrict__ source,
 
 }  // namespace
 
+namespace {
+// Load-time padding only: preserve every checkpoint byte and insert exact
+// zeros. FC1's gate half must move independently of its up half. Scale planes
+// are swizzled directly into their final resident layout.
+template <bool Fc1, bool Scale>
+__global__ void pad_nvfp4_plane(const uint8_t* source, uint8_t* destination,
+                               size_t source_n, size_t kernel_n) {
+  constexpr size_t hidden = 5120;
+  constexpr size_t divisor = Scale ? 16 : 2;
+  const size_t rows = Fc1 ? 2 * kernel_n : hidden;
+  const size_t cols = (Fc1 ? hidden : kernel_n) / divisor;
+  const size_t source_cols = (Fc1 ? hidden : source_n) / divisor;
+  const size_t index = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (index >= rows * cols) return;
+  const size_t row = index / cols;
+  const size_t col = index % cols;
+  const size_t half_row = Fc1 ? row % kernel_n : row;
+  const size_t source_row = Fc1 ? half_row + (row / kernel_n) * source_n : row;
+  const bool valid = (!Fc1 || half_row < source_n) && col < source_cols;
+  const size_t offset = Scale
+      ? (row / 128) * (cols * 128) + (col / 4) * 512 +
+            (row % 32) * 16 + ((row / 32) % 4) * 4 + col % 4
+      : index;
+  destination[offset] = valid ? source[source_row * source_cols + col] : 0;
+}
+}  // namespace
+
+extern "C" ds41rt_status_t ds41rt_cuda_nvfp4_pad_expert_async(
+    const ds41rt_device_buffer_t* sources, const ds41rt_device_buffer_t* destinations,
+    size_t source_n, size_t kernel_n, void* cuda_stream) {
+  // Bounded model geometry also keeps all byte/grid arithmetic representable.
+  if (!sources || !destinations || source_n == 0 || source_n % 64 != 0 ||
+      kernel_n < source_n || kernel_n % 128 != 0 || kernel_n > 8192) {
+    return DS41RT_STATUS_INVALID_ARGUMENT;
+  }
+  const size_t source_bytes[] = {2 * source_n * 2560, 2 * source_n * 320,
+                                 5120 * source_n / 2, 5120 * source_n / 16};
+  const size_t destination_bytes[] = {2 * kernel_n * 2560, 2 * kernel_n * 320,
+                                      5120 * kernel_n / 2, 5120 * kernel_n / 16};
+  for (int i = 0; i < 4; ++i) {
+    if (!nvfp4_buffer_has_bytes(sources[i], source_bytes[i]) ||
+        !nvfp4_buffer_has_bytes(destinations[i], destination_bytes[i])) {
+      return DS41RT_STATUS_BUFFER_TOO_SMALL;
+    }
+  }
+  auto stream = reinterpret_cast<cudaStream_t>(cuda_stream);
+#define PAD_PLANE(index, fc1, scale) \
+  pad_nvfp4_plane<fc1, scale><<<static_cast<unsigned>((destination_bytes[index] + 255) / 256), 256, 0, stream>>>( \
+      static_cast<const uint8_t*>(sources[index].ptr), \
+      static_cast<uint8_t*>(destinations[index].ptr), source_n, kernel_n); \
+  if (auto error = cudaGetLastError(); error != cudaSuccess) return status_from_cuda(error)
+  PAD_PLANE(0, true, false);
+  PAD_PLANE(1, true, true);
+  PAD_PLANE(2, false, false);
+  PAD_PLANE(3, false, true);
+#undef PAD_PLANE
+  return DS41RT_STATUS_OK;
+}
+
 extern "C" ds41rt_status_t ds41rt_cuda_nvfp4_swizzle_scale_async(
     ds41rt_device_buffer_t source, ds41rt_device_buffer_t destination, size_t rows,
     size_t cols, void* cuda_stream) {

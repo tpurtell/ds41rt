@@ -357,3 +357,61 @@ qualified source-built baseline is needed before a comparable serving A/B.
   chunk/capacity effects. Default M16 remains intentional pending evidence.
 - FP4 activation transport/prequantized input; no scale-uniformity proof obtained.
 - Other native selftests are not implicitly covered by the eight passing invocations above.
+
+### Load-time padding investigation (September 19)
+
+The native MXFP4 loader already pads Spark's logical 576-wide intermediate to
+640 and repacks it for the W4A8 kernel. NVFP4 retained width 576, which selects
+b12x's transposed (`swap_ab`) FC1 and disables its fused gate/up FC1 path.
+Zero-padding each gate/up half and the down projection to 640 selects the
+regular W4A4 path without changing checkpoint values or activation scales.
+
+Preliminary **component** results, synthetic nonuniform FP4 payloads,
+per-expert activation/weight scales, E=384/H=5120/top-k=6, capacity 16/live 8,
+tile M16. Timings are CUDA-event medians of nine batches, each 200 captured
+kernel executions. These are warm repeated routes, not serving throughput.
+
+| Device / routing | Baseline µs | Candidate µs | Candidate |
+| --- | ---: | ---: | --- |
+| Spark, six shared experts | 581.04 | 293.48 | Identical weights zero-padded 576→640 |
+| Spark, six shared experts | 293.48 | 191.22 | Padded 640 + grouped output shards 5 |
+| RTX TP2, six shared experts | 368.73 | 169.23 | Grouped output shards 5 |
+| RTX TP2, 48 distinct experts | 366.45 | 448.35 | Grouped output shards 5: regression |
+| RTX TP2, 48 distinct experts | 365.62 | 349.71 | Grouped output shards 2 |
+
+Every compared route output was bitwise identical, including captured replays.
+Padding baseline/candidate were separate processes with the same seed 43;
+sharding arms were timed in alternating order within one process. This is not
+an independent mathematical oracle or real-checkpoint quality qualification.
+Grouped sharding required removing its direct-routing-only guards in an
+isolated b12x copy; those changes are not in the pinned submodule. Fixed
+five-way sharding is unsuitable as a blanket default given low-reuse results.
+
+Reproduction tool: `python/tools/bench_nvfp4_routing.py`, inside the appropriate
+CUDA container. For padding, run `--intermediate 576 --capacity 16 --live 8
+--save-output /path/original.pt`, then the same command with `--pad-to 640
+--reference /path/original.pt` (omit `--save-output`). Both use the pinned
+SparkInfer revision 2bcbe122 by default. `--routing distinct` probes low reuse.
+`--source` selects an isolated kernel experiment; `--cases grouped:1,grouped:5`
+requires that experiment's grouped-sharding support.
+
+An opt-in native loader/AOT candidate now uses
+`DS41RT_V41_NVFP4_PAD_INTERMEDIATE=ON`. Its metadata retains logical 576 and
+publishes kernel 640; the loader derives allocation sizes from that metadata,
+pads on GPU directly into resident planes, and swizzles scales in the same
+load-time operation. No saved conversion or per-token repacking is needed.
+Padding adds approximately 0.198 GiB per resident routed-expert layer per Spark
+(7.91 GiB if all 40 layers reside there); budgets account for the actual width.
+The default remains unchanged pending full serving and loading measurements.
+
+The native padding byte-layout gate passes on SM120 and SM121 for 64→128,
+576→640, and 1152→1152, including every plane, zero padding, source immutability,
+output guards, and undersized-buffer rejection. Rust daemon `cargo check`
+passes with Python 3.12; 41 focused Python tests pass. The padded Spark AOT
+exports all six capacities 1/16/80/256/1024/4096 with logical 576/kernel 640.
+Native Spark ABI/public-path comparisons at rows 1, 16, and 1024 pass exactly,
+including mutated inputs/routing and three graph replays each. Both full
+coordinator and Spark WIP builds pass. Serving qualification remains outstanding.
+
+RTX-side activation quantization / NVFP4 transport are deferred at the user's
+request; this phase focuses on layout, tiling and kernel parallelism.

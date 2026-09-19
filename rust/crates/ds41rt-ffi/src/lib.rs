@@ -1327,6 +1327,13 @@ type CudaNvfp4SwizzleScaleAsyncFn = unsafe extern "C" fn(
     usize,
     *mut c_void,
 ) -> Ds41rtStatus;
+type CudaNvfp4PadExpertAsyncFn = unsafe extern "C" fn(
+    *const Ds41rtDeviceBuffer,
+    *const Ds41rtDeviceBuffer,
+    usize,
+    usize,
+    *mut c_void,
+) -> Ds41rtStatus;
 type CudaB12xW4a16PackWeightAsyncFn = unsafe extern "C" fn(
     source: Ds41rtDeviceBuffer,
     destination: Ds41rtDeviceBuffer,
@@ -7086,8 +7093,25 @@ impl NativeLibrary {
         )
     }
 
-    /// Re-swizzle one plain [rows, cols] E4M3 NVFP4 block-scale plane into the
-    /// 128x4 scale-factor atom layout the block-scaled MoE kernels consume.
+    /// Zero-pad one expert's four planes and swizzle scales at load time.
+    pub unsafe fn cuda_nvfp4_pad_expert_async(
+        &self,
+        sources: [Ds41rtDeviceBuffer; 4],
+        destinations: [Ds41rtDeviceBuffer; 4],
+        source_intermediate: usize,
+        kernel_intermediate: usize,
+        stream: *mut c_void,
+    ) -> Result<()> {
+        let kernel_fn: Symbol<CudaNvfp4PadExpertAsyncFn> =
+            unsafe { self.lib.get(b"ds41rt_cuda_nvfp4_pad_expert_async")? };
+        let status = unsafe {
+            kernel_fn(sources.as_ptr(), destinations.as_ptr(), source_intermediate,
+                      kernel_intermediate, stream)
+        };
+        self.status_to_result("ds41rt_cuda_nvfp4_pad_expert_async", status)
+    }
+
+    /// Re-swizzle a plain E4M3 plane into 128x4 scale-factor atoms.
     pub unsafe fn cuda_nvfp4_swizzle_scale_async(
         &self,
         source: Ds41rtDeviceBuffer,

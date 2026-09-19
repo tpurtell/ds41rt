@@ -29,6 +29,11 @@ else()
   set(DS41RT_V41_NVFP4_SHARE_INPUT_ARG "")
 endif()
 list(JOIN DS41RT_V41_NVFP4_CAPACITIES "," DS41RT_V41_NVFP4_CAPACITY_ARG)
+option(DS41RT_V41_NVFP4_PAD_INTERMEDIATE "Zero-pad NVFP4 shards to avoid transposed FC1 (experimental)" OFF)
+set(DS41RT_V41_NVFP4_PAD_ARG "")
+if(DS41RT_V41_NVFP4_PAD_INTERMEDIATE)
+  set(DS41RT_V41_NVFP4_PAD_ARG "--pad-intermediate")
+endif()
 foreach(role IN LISTS DS41RT_V41_NVFP4_ROLES)
   set(nvfp4_dir "${CMAKE_CURRENT_BINARY_DIR}/v41_nvfp4_${role}")
   set(nvfp4_objects)
@@ -49,6 +54,7 @@ foreach(role IN LISTS DS41RT_V41_NVFP4_ROLES)
       --rows "${DS41RT_V41_NVFP4_CAPACITY_ARG}"
       --tile-m "${DS41RT_V41_NVFP4_TILE_M}"
       ${DS41RT_V41_NVFP4_SHARE_INPUT_ARG}
+      ${DS41RT_V41_NVFP4_PAD_ARG}
     COMMAND "${CMAKE_COMMAND}" -E copy
       "${nvfp4_dir}/v41_expert_variants.h"
       "${nvfp4_dir}/v41_nvfp4_${role}_variants.h"
