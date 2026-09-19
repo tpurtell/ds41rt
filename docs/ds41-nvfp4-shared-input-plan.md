@@ -346,3 +346,30 @@ routing, or the reduction. The full-model logit comparison is still owed.
   GPUs are reachable inside `ds41rt-coordinator-wip`; use the container.
 - NVFP4 checkpoint is mounted in-container at
   `/root/.cache/huggingface/hub/models--nvidia--DeepSeek-V4.1-Flash-NVFP4`.
+
+## SM121 Spark export: done
+
+The Spark role needs capability `(12, 1)` (SM121, GB10) and the local cards are
+SM120, so the wire-facing kernels had to be exported on a Spark. All four
+Sparks (`ostrich`, `dodo`, `emu`, `kiwi` per `ds41rt.config:73-76`) answer over
+SSH and any can build.
+
+Exported on ostrich's GB10 in `ds41rt-spark-expert-dev:latest`, tree staged at
+`/home/tj/ds41rt-nvfp4-share`:
+
+```
+python3 python/tools/export_b12x_v41_nvfp4_aot.py \
+  --output-dir /src/out-spark-share --role spark --tile-m 16 --share-input
+```
+
+Manifest: `share_input: True`, `tile_m: 16`, `input_format: bf16`,
+`capability: [12, 1]`, device `NVIDIA GB10`, all six capacities present
+(m1/m16/m80/m256/m1024/m4096).
+
+Staging detail that cost a cycle: `_pinned_sparkinfer.py` verifies the tree
+with `git rev-parse`, so rsyncing the submodule *files* is not enough - the
+checkout must be a real git repo at the locked revision. Clone
+`https://github.com/tpurtell/sparkinfer-glmrt.git` and check out
+`2bcbe122bf34d77fecbaf288df2f395b9c09e79e`. The
+`/home/tj/.ds41rt-wip-source-staging` tree on ostrich is a different revision
+(`63e2140e`) and is not a git repo, so it cannot be substituted.
