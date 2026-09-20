@@ -24,6 +24,24 @@ links the full qualification evidence.
 
 ## Source and build
 
+**Never build on `/mnt/scratch` (NTFS kernel-driver bug).** This includes Cargo
+sources, target directories, caches, temporary build files and container bind
+aliases. The drive is intentionally read-only; do not remount it. Use root-NVMe
+storage, preferably a unique `~/.cache/ds41rt/builds/<task>` directory, and check
+all paths before running Cargo:
+
+```bash
+export CARGO_TARGET_DIR="$HOME/.cache/ds41rt/builds/my-task/cargo-target"
+python3 scripts/assert-build-filesystem.py "$PWD" "$CARGO_TARGET_DIR" \
+  "${CARGO_HOME:-$HOME/.cargo}" "${TMPDIR:-/tmp}"
+```
+
+The artifact build helpers perform the same filesystem check, including NTFS
+bind mounts. Direct Cargo commands still require the preflight above. Start a
+fresh target if the old cache has filesystem errors; do not treat copied Cargo
+artifacts as verified. See [cluster-hosts.md](docs/cluster-hosts.md) for current
+build-environment paths and the restricted rhea/moa fifth/sixth-node inventory.
+
 Inspect `git status --short --branch` before editing and preserve unrelated
 changes. Initialize the two runtime dependencies with:
 

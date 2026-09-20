@@ -12,6 +12,9 @@ role="$2"
 cuda_arch="$3"
 build_dir="$(realpath -m "$4")"
 output_dir="$(realpath -m "$5")"
+# Check source and destinations before creating files or invoking Cargo. This
+# also rejects NTFS exposed under a container alias such as /scratch.
+python3 "$(dirname "$0")/assert-build-filesystem.py" "$source_dir" "$build_dir" "$output_dir" "${CARGO_HOME:-$HOME/.cargo}" "${TMPDIR:-/tmp}"
 
 case "$role" in
   coordinator)

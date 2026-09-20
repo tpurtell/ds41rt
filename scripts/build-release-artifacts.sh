@@ -11,6 +11,8 @@ source_dir="$(realpath "$1")"
 role="$2"
 cuda_arch="$3"
 output_dir="$(realpath -m "$4")"
+# Reject unsafe source/output/cache filesystems before staging or invoking Cargo.
+python3 "$(dirname "$0")/assert-build-filesystem.py" "$source_dir" "$output_dir" "${CARGO_TARGET_DIR:-$source_dir/rust/target}" "${CARGO_HOME:-$HOME/.cargo}" /tmp
 
 case "$role" in
   coordinator)

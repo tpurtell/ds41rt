@@ -1,6 +1,8 @@
 # Agent development hints
 
 - Hosts: `raptor` (local x86_64, 172.22.2.12 / fabric 10.55.0.22), 2× RTX PRO 6000 96 GB, SM120; 400 W caps, stock memory clocks. Spark TP4 ranks: `ostrich,dodo,emu,kiwi`, ARM64 GB10/SM121, fabric 10.55.0.1–4. SSH by hostname. Verify current NICs/power with `ip -br -4 addr` / `nvidia-smi`; secondary-rail config may be stale.
+- **Build safety (mandatory): never run Cargo/builds with source, targets, caches or temporary build files on `/mnt/scratch`. Its NTFS driver has a kernel bug; the drive is read-only. Container aliases (notably the old raptor `/scratch` bind) are equally prohibited. Use a unique directory under `~/.cache/ds41rt/builds` on root NVMe; verify with `findmnt -T` and `python3 scripts/assert-build-filesystem.py PATH...` before builds. Do not remount the drive or reuse damaged Cargo caches.**
+- Additional Sparks: **rhea (rank 4 / fifth node), moa (rank 5 / sixth node)** are connected. Use them **only when a full six-Spark set is needed**, not for independent builds, microbenchmarks or overflow jobs. See [docs/cluster-hosts.md](docs/cluster-hosts.md) for measured inventory and qualification gaps. The existing four-host default remains unchanged.
 - Model/revision/topology: `ds41rt.config`. HF cache: `${HF_HOME:-$HOME/.cache/huggingface}`; reuse cached snapshots. API `localhost:8000`, expert port `19441`.
 - Isolation: separate git worktree/branch + unique WIP slot per goal. **Slots isolate artifacts, not GPUs, ports, build staging or containers. Serialize WIP builds and performance runs; coordinate before restarting services.** Preserve others' files/results.
 
