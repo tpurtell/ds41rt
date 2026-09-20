@@ -29,6 +29,7 @@ Command-line values override ds41rt.config for this launch.
   --max-output-tokens N         output limit (default 393216)
   --prefill-batch-tokens N      prefill step, 80..4096 (default 2048)
   --dspark | --no-dspark        enable or disable native dSpark
+  --dspark-draft-limit N        fixed draft tokens per request, 1..7 (default 5/7)
   --tp2-attention               split attention heads; replicate KV (default off)
   --tp2-query-projection        split query-B projection (default off)
   --tp2-output-projection       split output-B projection (default off)
@@ -36,12 +37,18 @@ Command-line values override ds41rt.config for this launch.
   --no-tp2-<option>             disable the corresponding configured TP2 option
   --restart                     replace the current release deployment
   --dry-run                     validate without changing services
+
+Optional RDMA tuning env values are forwarded to both roles only when set:
+  DS41RT_PROTOCOL_V2_VERBS_HOST_DEVICE_MAP (local-ip=device,...),
+  DS41RT_VERBS_APP_IB_PORT_NUM, DS41RT_PROTOCOL_V2_VERBS_HOST_EXECUTION_LANES.
+This is how a multi-homed six-rank launch pins the rail per host.
 EOF
 }
 
 config="$repo_root/ds41rt.config"
 restart=0
 dry_run=0
+dspark_draft_limit=""
 declare -A overrides=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -61,6 +68,7 @@ while [[ $# -gt 0 ]]; do
     --prefill-batch-tokens) overrides[PREFILL_BATCH_TOKENS]="${2:?$1 requires N}"; shift 2 ;;
     --dspark) overrides[DSPARK]=on; shift ;;
     --no-dspark) overrides[DSPARK]=off; shift ;;
+    --dspark-draft-limit) dspark_draft_limit="${2:?$1 requires N}"; shift 2 ;;
     --tp2-attention) overrides[TP2_ATTENTION]=on; shift ;;
     --no-tp2-attention) overrides[TP2_ATTENTION]=off; shift ;;
     --tp2-query-projection) overrides[TP2_QUERY_PROJECTION]=on; shift ;;
@@ -99,6 +107,11 @@ fi
 [[ "$HTTP_QUEUE_WAIT_MS" =~ ^[0-9]+$ ]] || release_die "HTTP_QUEUE_WAIT_MS must be non-negative"
 [[ "$HOST_CACHE_BYTES" == auto || "$HOST_CACHE_BYTES" =~ ^[0-9]+([.][0-9]{1,6})?(B|MB|GB|MiB|GiB)?$ ]] || release_die "HOST_CACHE_BYTES must be auto, 0, or a byte size"
 case "$DSPARK" in on|off) ;; *) release_die "DSPARK must be on or off" ;; esac
+[[ -z "$dspark_draft_limit" || "$dspark_draft_limit" =~ ^[1-7]$ ]] ||
+  release_die "--dspark-draft-limit must be in 1..7"
+[[ -z "$dspark_draft_limit" || "$DSPARK" == on ]] ||
+  release_die "--dspark-draft-limit requires dSpark"
+release_validate_verbs_device_map
 case "$RTX_GPUS" in auto|1|2) ;; *) release_die "RTX_GPUS must be auto, 1, or 2" ;; esac
 [[ "$RTX_EXPERT_LAYERS" == auto || "$RTX_EXPERT_LAYERS" =~ ^([0-9]|[1-3][0-9]|40)$ ]] || release_die "RTX_EXPERT_LAYERS must be auto or 0..40"
 [[ "$CONCURRENCY" =~ ^([1-9]|1[0-6])$ ]] || release_die "CONCURRENCY must be in 1..16"
@@ -302,7 +315,7 @@ else
   for lane in "${lanes[@]}"; do peer_addresses+=("$lane:$EXPERT_PORT"); done
   peers="$(IFS=,; echo "${peer_addresses[*]}")"
 fi
-fingerprint="$(printf '%s\n' "$engine_commit" "$RELEASE_MODEL_ID" "$RELEASE_MODEL_REVISION" "$ADDR" "$RELEASE_RTX_GPUS" "$gpu_uuid_csv" "$gpu_pci_csv" "$CONCURRENCY" "${HTTP_QUEUE_DEPTH:-$CONCURRENCY}" "$HTTP_QUEUE_WAIT_MS" "$HOST_CACHE_BYTES" "$RTX_EXPERT_LAYERS" "$KV_POOL_SIZE" "$MEMORY_RESERVATION" "$PREFIX_CACHE_ENTRIES" "$MAX_CONTEXT_TOKENS" "$MAX_OUTPUT_TOKENS" "$PREFILL_BATCH_TOKENS" "$DSPARK" "$TP2_ATTENTION" "$TP2_QUERY_PROJECTION" "$TP2_OUTPUT_PROJECTION" "$TP2_DSPARK_EXPERTS" "$SPARK_DEVICE_BUDGET_BYTES" "$spark_first_layer" "$SPARK_COUNT" "$(release_hosts_csv)" "$peers" "$spark_exl3_identity" "spark-topology=${spark_tp}x${spark_ep}:explicit=${topology_explicit}" "v41-spark-tp-roles=${spark_tp_roles_required}" | sha256sum | awk '{print $1}')"
+fingerprint="$(printf '%s\n' "$engine_commit" "$RELEASE_MODEL_ID" "$RELEASE_MODEL_REVISION" "$ADDR" "$RELEASE_RTX_GPUS" "$gpu_uuid_csv" "$gpu_pci_csv" "$CONCURRENCY" "${HTTP_QUEUE_DEPTH:-$CONCURRENCY}" "$HTTP_QUEUE_WAIT_MS" "$HOST_CACHE_BYTES" "$RTX_EXPERT_LAYERS" "$KV_POOL_SIZE" "$MEMORY_RESERVATION" "$PREFIX_CACHE_ENTRIES" "$MAX_CONTEXT_TOKENS" "$MAX_OUTPUT_TOKENS" "$PREFILL_BATCH_TOKENS" "$DSPARK" "$DSPARK_DRAFT_POLICY" "${dspark_draft_limit:-auto}" "$TP2_ATTENTION" "$TP2_QUERY_PROJECTION" "$TP2_OUTPUT_PROJECTION" "$TP2_DSPARK_EXPERTS" "${DS41RT_PROTOCOL_V2_VERBS_HOST_DEVICE_MAP:-}" "${DS41RT_VERBS_APP_IB_PORT_NUM:-}" "${DS41RT_PROTOCOL_V2_VERBS_HOST_EXECUTION_LANES:-}" "$SPARK_DEVICE_BUDGET_BYTES" "$spark_first_layer" "$SPARK_COUNT" "$(release_hosts_csv)" "$peers" "$spark_exl3_identity" "spark-topology=${spark_tp}x${spark_ep}:explicit=${topology_explicit}" "v41-spark-tp-roles=${spark_tp_roles_required}" | sha256sum | awk '{print $1}')"
 spark_prefix="$RELEASE_SPARK_CONTAINER_PREFIX"
 
 if ((dry_run)); then
@@ -324,6 +337,10 @@ if ((dry_run)); then
   fi
   echo "  coordinator memory reservation: ${MEMORY_RESERVATION:-runtime default}"
   echo "  prefill batch tokens: $PREFILL_BATCH_TOKENS; expert capacity: $expert_capacity"
+  echo "  dSpark draft: policy=$DSPARK_DRAFT_POLICY limit=${dspark_draft_limit:-auto-by-rtx-count}"
+  [[ -z "${DS41RT_PROTOCOL_V2_VERBS_HOST_DEVICE_MAP:-}" ]] || echo "  RDMA device map: $DS41RT_PROTOCOL_V2_VERBS_HOST_DEVICE_MAP"
+  [[ -z "${DS41RT_VERBS_APP_IB_PORT_NUM:-}" ]] || echo "  RDMA IB port: $DS41RT_VERBS_APP_IB_PORT_NUM"
+  [[ -z "${DS41RT_PROTOCOL_V2_VERBS_HOST_EXECUTION_LANES:-}" ]] || echo "  RDMA execution lanes: $DS41RT_PROTOCOL_V2_VERBS_HOST_EXECUTION_LANES"
   echo "  release identity: $fingerprint"
   [[ -z "$spark_exl3_identity" ]] || echo "  Spark EXL3 package: $spark_exl3_identity"
   exit 0
@@ -358,6 +375,15 @@ placement_directory=
 # single-RTX explicit topology (TP3EP2) loads all 40 remote layers and must not
 # wait for a plan. Revisit with the coordinated boot-ordering refactor.
 ((RELEASE_RTX_GPUS != 2)) || placement_directory=/run/ds41rt-placement
+
+# Optional RDMA tuning values travel to both roles only when the operator sets
+# them, so a multi-homed six-rank launch can pin the rail without changing any
+# default. Values were format-checked above by release_validate_verbs_device_map.
+rdma_env_args=()
+for rdma_env_name in DS41RT_PROTOCOL_V2_VERBS_HOST_DEVICE_MAP DS41RT_VERBS_APP_IB_PORT_NUM DS41RT_PROTOCOL_V2_VERBS_HOST_EXECUTION_LANES; do
+  [[ -n "${!rdma_env_name:-}" ]] && rdma_env_args+=(-e "$rdma_env_name=${!rdma_env_name}")
+done
+
 start_coordinator() {
 echo "== starting native RTX coordinator =="
 local -a args=(serve-native --snapshot "/root/.cache/huggingface/$snapshot_rel" --native-lib /opt/ds41rt/lib/libds41rt_native.so --peers "$peers" --rtx-gpus "$RELEASE_RTX_GPUS" --listen "$ADDR" --prefill-batch-tokens "$PREFILL_BATCH_TOKENS" --concurrency "$CONCURRENCY" --prefix-cache-entries "$PREFIX_CACHE_ENTRIES" --max-context-tokens "$MAX_CONTEXT_TOKENS" --max-output-tokens "$MAX_OUTPUT_TOKENS")
@@ -367,6 +393,8 @@ args+=(--http-queue-depth "${HTTP_QUEUE_DEPTH:-$CONCURRENCY}" --http-queue-wait-
 [[ -z "$KV_POOL_SIZE" ]] || args+=(--kv-pool-size "$KV_POOL_SIZE")
 [[ -z "$MEMORY_RESERVATION" ]] || args+=(--memory-reservation "$MEMORY_RESERVATION")
 [[ "$DSPARK" != on ]] || args+=(--dspark)
+[[ "$DSPARK" != on || "$DSPARK_DRAFT_POLICY" != full ]] || args+=(--dspark-fixed)
+[[ -z "$dspark_draft_limit" ]] || args+=(--dspark-draft-limit "$dspark_draft_limit")
 [[ "$TP2_ATTENTION" != on ]] || args+=(--tp2-attention)
 [[ "$TP2_QUERY_PROJECTION" != on ]] || args+=(--tp2-query-projection)
 [[ "$TP2_OUTPUT_PROJECTION" != on ]] || args+=(--tp2-output-projection)
@@ -381,6 +409,7 @@ fi
 docker run -d --name "$coordinator" --restart no --gpus "$gpu_request" --network host --ipc host --ulimit memlock=-1:-1 --device=/dev/infiniband \
   -e "CUDA_VISIBLE_DEVICES=$gpu_uuid_csv" \
   -e "DS41RT_RELEASE_CONFIG_SHA256=$fingerprint" -e "RUST_LOG=${RUST_LOG:-info}" \
+  "${rdma_env_args[@]}" \
   -v "$hf_home:/root/.cache/huggingface:ro" "$COORDINATOR_DOCKER_INFERENCE" ds41rt "${args[@]}" >/dev/null
 }
 deadline=$((SECONDS + ${DS41RT_RELEASE_READY_TIMEOUT_SECONDS:-900}))
@@ -414,15 +443,21 @@ echo "== starting native Spark experts =="
 pids=()
 for i in "${!hosts[@]}"; do
   host="${hosts[$i]}"; remote="${spark_prefix}-${host}-${EXPERT_PORT}"
-  ssh -o BatchMode=yes "$host" bash -s -- "$SPARK_EXPERT_DOCKER_INFERENCE" "$remote" "$i" "$expert_capacity" "$SPARK_DEVICE_BUDGET_BYTES" "$EXPERT_PORT" "$snapshot_rel" "$fingerprint" "$spark_first_layer" "$SPARK_COUNT" "$topology_explicit" "$spark_tp" "$spark_ep" <<'REMOTE' &
+  ssh -o BatchMode=yes "$host" bash -s -- "$SPARK_EXPERT_DOCKER_INFERENCE" "$remote" "$i" "$expert_capacity" "$SPARK_DEVICE_BUDGET_BYTES" "$EXPERT_PORT" "$snapshot_rel" "$fingerprint" "$spark_first_layer" "$SPARK_COUNT" "$topology_explicit" "$spark_tp" "$spark_ep" "${DS41RT_PROTOCOL_V2_VERBS_HOST_DEVICE_MAP:-}" "${DS41RT_VERBS_APP_IB_PORT_NUM:-}" "${DS41RT_PROTOCOL_V2_VERBS_HOST_EXECUTION_LANES:-}" <<'REMOTE' &
 set -euo pipefail
 image="$1"; name="$2"; rank="$3"; capacity="$4"; budget="$5"; port="$6"; snapshot_rel="$7"; fingerprint="$8"; first_layer="$9"; world="${10}"
 # Defaults keep a legacy invocation (ten positional arguments) valid.
 topology_explicit="${11:-0}"; topology_tp="${12:-}"; topology_ep="${13:-}"
 topology_args=()
 [[ "$topology_explicit" != 1 ]] || topology_args=(--spark-tp "$topology_tp" --spark-ep "$topology_ep")
+# Optional RDMA tuning, forwarded only when the operator set it.
+rdma_env="${14:-}"; ib_port="${15:-}"; execution_lanes="${16:-}"
+rdma_args=()
+[[ -z "$rdma_env" ]] || rdma_args+=(-e "DS41RT_PROTOCOL_V2_VERBS_HOST_DEVICE_MAP=$rdma_env")
+[[ -z "$ib_port" ]] || rdma_args+=(-e "DS41RT_VERBS_APP_IB_PORT_NUM=$ib_port")
+[[ -z "$execution_lanes" ]] || rdma_args+=(-e "DS41RT_PROTOCOL_V2_VERBS_HOST_EXECUTION_LANES=$execution_lanes")
 hf_home="${HF_HOME:-$HOME/.cache/huggingface}"
-docker run -d --name "$name" --restart no --gpus all --network host --ipc host --ulimit memlock=-1:-1 --device=/dev/infiniband -e "DS41RT_RELEASE_CONFIG_SHA256=$fingerprint" -v "$hf_home:/root/.cache/huggingface:ro" "$image" ds41rt expertd-native --snapshot "/root/.cache/huggingface/$snapshot_rel" --native-lib /opt/ds41rt/lib/libds41rt_native.so --rank "$rank" --world "$world" --capacity "$capacity" --device-budget-bytes "$budget" --first-layer "$first_layer" --listen "0.0.0.0:$port" "${topology_args[@]}" >/dev/null
+docker run -d --name "$name" --restart no --gpus all --network host --ipc host --ulimit memlock=-1:-1 --device=/dev/infiniband -e "DS41RT_RELEASE_CONFIG_SHA256=$fingerprint" "${rdma_args[@]}" -v "$hf_home:/root/.cache/huggingface:ro" "$image" ds41rt expertd-native --snapshot "/root/.cache/huggingface/$snapshot_rel" --native-lib /opt/ds41rt/lib/libds41rt_native.so --rank "$rank" --world "$world" --capacity "$capacity" --device-budget-bytes "$budget" --first-layer "$first_layer" --listen "0.0.0.0:$port" "${topology_args[@]}" >/dev/null
 REMOTE
   pids+=("$!")
 done

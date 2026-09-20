@@ -8,10 +8,11 @@ usage() {
   cat <<'EOF'
 Usage: ./stop.sh [--config FILE]
 
-Gracefully stops release and WIP DS41RT processes on the coordinator and four
-Sparks selected by ds41rt.config. Release containers are removed; persistent
-WIP development containers are stopped but retained. WIP slots, build caches,
-images, model caches, and unrelated containers are left untouched.
+Gracefully stops release and WIP DS41RT processes on the coordinator and every
+configured Spark rank (SPARK_COUNT; four or six) selected by the configuration.
+Release containers are removed; persistent WIP development containers are
+stopped but retained. WIP slots, build caches, images, model caches, and
+unrelated containers are left untouched.
 
 --config FILE selects an entire alternate
 configuration file.

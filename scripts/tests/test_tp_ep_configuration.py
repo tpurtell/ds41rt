@@ -286,7 +286,8 @@ else:
 class LauncherTopologyTest(unittest.TestCase):
     """Run run.sh's real startup block with process-boundary stubs."""
 
-    def run_startup(self, *, gpus, plan, topology_explicit, spark_tp, spark_ep, spark_count, hosts):
+    def run_startup(self, *, gpus, plan, topology_explicit, spark_tp, spark_ep, spark_count, hosts,
+                    extra_env=None, extra_setup=""):
         source = (ROOT / "run.sh").read_text()
         block = source[source.index("placement_directory="):source.index("api_url=")]
         with tempfile.TemporaryDirectory() as directory:
@@ -301,6 +302,7 @@ class LauncherTopologyTest(unittest.TestCase):
                 PATH=str(root) + os.pathsep + os.environ["PATH"],
                 EVENTS=str(root / "events"),
                 PLAN=str(root / "plan"),
+                **(extra_env or {}),
             )
             setup = f'''set -euo pipefail
 release_die() {{ echo "$*" >&2; exit 1; }}
@@ -321,6 +323,8 @@ HOST_CACHE_BYTES=auto
 KV_POOL_SIZE=
 MEMORY_RESERVATION=
 DSPARK=on
+DSPARK_DRAFT_POLICY=adaptive
+dspark_draft_limit=
 TP2_ATTENTION=off
 TP2_QUERY_PROJECTION=off
 TP2_OUTPUT_PROJECTION=off
@@ -343,7 +347,7 @@ EXPERT_PORT=19441
 expert_capacity=4096
 spark_first_layer=0
 SPARK_COUNT={spark_count}
-'''
+{extra_setup}'''
             result = subprocess.run(
                 ["bash", "-c", setup + block, "test", str(gpus)],
                 env=env,
@@ -374,7 +378,9 @@ SPARK_COUNT={spark_count}
         coordinator = next(args for tool, args in events if tool == "docker" and args[0] == "run")
         self.assertNotIn("--spark-tp", coordinator)
         self.assertNotIn("--spark-ep", coordinator)
-        self.assertTrue(all(args[-3] == "0" for tool, args in events if tool == "ssh" and "-s" in args))
+        # Worker positional tail ends with topology(explicit,tp,ep) then the
+        # three optional RDMA env values.
+        self.assertTrue(all(args[-6] == "0" for tool, args in events if tool == "ssh" and "-s" in args))
 
     def test_explicit_topology_reaches_coordinator_and_every_worker(self) -> None:
         result, events = self.run_startup(
@@ -397,8 +403,8 @@ SPARK_COUNT={spark_count}
         starts = [args for tool, args in events if tool == "ssh" and "-s" in args]
         self.assertEqual(len(starts), 4)
         for args in starts:
-            self.assertEqual(args[-3:], ["1", "2", "2"])
-            self.assertEqual(args[-4], "4")
+            self.assertEqual(args[-6:-3], ["1", "2", "2"])
+            self.assertEqual(args[-7], "4")
 
     def test_six_rank_explicit_topology_starts_six_workers(self) -> None:
         result, events = self.run_startup(
@@ -413,9 +419,9 @@ SPARK_COUNT={spark_count}
         self.assertEqual(result.returncode, 0, result.stderr)
         starts = [args for tool, args in events if tool == "ssh" and "-s" in args]
         self.assertEqual(len(starts), 6)
-        self.assertEqual([args[-5] for args in starts], ["12"] * 6)
-        self.assertEqual([args[-4] for args in starts], ["6"] * 6)
-        self.assertEqual([args[-3:] for args in starts], [["1", "2", "3"]] * 6)
+        self.assertEqual([args[-8] for args in starts], ["12"] * 6)
+        self.assertEqual([args[-7] for args in starts], ["6"] * 6)
+        self.assertEqual([args[-6:-3] for args in starts], [["1", "2", "3"]] * 6)
 
     def test_worker_remote_block_emits_flags_only_when_explicit(self) -> None:
         source = (ROOT / "run.sh").read_text()
@@ -445,6 +451,98 @@ SPARK_COUNT={spark_count}
         legacy_arguments = legacy.stdout.splitlines()
         self.assertNotIn("--spark-tp", legacy_arguments)
         self.assertEqual(legacy_arguments[legacy_arguments.index("--world") + 1], "4")
+
+    def test_six_rank_launch_forwards_rdma_env_and_draft_controls(self) -> None:
+        device_map = "10.55.0.1=rocep1s0f0,10.55.0.6=roceP2p1s0f0"
+        result, events = self.run_startup(
+            gpus=2,
+            plan=dict(version=1, rtx_gpus=2, nonce="fresh", rtx_expert_layers=20, spark_first_layer=20),
+            topology_explicit=1,
+            spark_tp=2,
+            spark_ep=3,
+            spark_count=6,
+            hosts=["a", "b", "c", "d", "e", "f"],
+            extra_env={
+                "DS41RT_PROTOCOL_V2_VERBS_HOST_DEVICE_MAP": device_map,
+                "DS41RT_VERBS_APP_IB_PORT_NUM": "1",
+                "DS41RT_PROTOCOL_V2_VERBS_HOST_EXECUTION_LANES": "2",
+            },
+            extra_setup="DSPARK_DRAFT_POLICY=full\ndspark_draft_limit=7\n",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        coordinator = next(args for tool, args in events if tool == "docker" and args[0] == "run")
+        self.assertIn("--dspark-fixed", coordinator)
+        self.assertEqual(coordinator[coordinator.index("--dspark-draft-limit") + 1], "7")
+        self.assertIn(f"DS41RT_PROTOCOL_V2_VERBS_HOST_DEVICE_MAP={device_map}", coordinator)
+        starts = [args for tool, args in events if tool == "ssh" and "-s" in args]
+        self.assertEqual(len(starts), 6)
+        for args in starts:
+            self.assertEqual(args[-3:], [device_map, "1", "2"])
+
+
+class VerbsDeviceMapTest(unittest.TestCase):
+    """The shared device-map validator is what both launchers depend on."""
+
+    def validate(self, value):
+        return subprocess.run(
+            ["bash", "-euc", "source scripts/release-common.sh; release_validate_verbs_device_map", "test"],
+            cwd=ROOT, text=True, capture_output=True,
+            env=dict(os.environ, DS41RT_PROTOCOL_V2_VERBS_HOST_DEVICE_MAP=value),
+        )
+
+    def test_accepts_unique_ipv4_device_entries(self) -> None:
+        result = self.validate("10.55.0.1=rocep1s0f0,10.55.0.6=roceP2p1s0f0")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_rejects_malformed_or_duplicate_entries(self) -> None:
+        for bad in ("10.55.0.1", "10.55.0.1=", "=rocep1s0f0", "10.55.0.1=a,10.55.0.1=b"):
+            with self.subTest(bad=bad):
+                result = self.validate(bad)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("DS41RT_PROTOCOL_V2_VERBS_HOST_DEVICE_MAP", result.stderr)
+
+
+class StopScriptTest(unittest.TestCase):
+    """Stop must cover every configured rank, not a fixed four-host list."""
+
+    def test_usage_names_configured_ranks(self) -> None:
+        text = (ROOT / "stop.sh").read_text()
+        self.assertNotIn("coordinator and four", text)
+        self.assertIn("configured Spark rank", text)
+
+    def test_release_stop_services_covers_six_configured_hosts(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            log = root / "stops"
+            stub = f'''#!/usr/bin/env bash
+printf '%s %s\\n' "$(basename "$0")" "$*" >> {log}
+exit 0
+'''
+            for name in ("docker", "ssh"):
+                path = root / name
+                path.write_text(stub)
+                path.chmod(0o755)
+            setup = f'''set -euo pipefail
+source scripts/release-common.sh
+SPARK_COUNT=6
+SPARK_0_HOST=h0
+SPARK_1_HOST=h1
+SPARK_2_HOST=h2
+SPARK_3_HOST=h3
+SPARK_4_HOST=h4
+SPARK_5_HOST=h5
+EXPERT_PORT=19441
+ADDR=127.0.0.1:18000
+release_stop_services coord worker
+'''
+            result = subprocess.run(
+                ["bash", "-euc", setup, "test"], cwd=ROOT, text=True, capture_output=True,
+                env=dict(os.environ, PATH=str(root) + os.pathsep + os.environ["PATH"]),
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            log_text = log.read_text() if log.exists() else ""
+            for host in ("h0", "h1", "h2", "h3", "h4", "h5"):
+                self.assertIn(host, log_text)
 
 
 class ManifestWriterTest(unittest.TestCase):

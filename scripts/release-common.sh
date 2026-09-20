@@ -463,6 +463,32 @@ release_lane_b_csv() {
   release_spark_values LANE_B | paste -sd, -
 }
 
+# Optional RDMA/verbs tuning values shared by run.sh and the isolated candidate
+# launcher. They are forwarded to both roles only when the operator sets them;
+# an empty value keeps the transport's own device selection. The device map is
+# `local-ip=device` comma-separated and must name unique IPv4 sources, which is
+# what multi-homed six-rank hosts (rhea/moa) need to pin a rail.
+release_validate_verbs_device_map() {
+  local map="${DS41RT_PROTOCOL_V2_VERBS_HOST_DEVICE_MAP:-}"
+  [[ -n "$map" ]] || return 0
+  local -a entries=() seen_ips=()
+  local entry ip dev prior
+  IFS=',' read -ra entries <<<"$map"
+  for entry in "${entries[@]}"; do
+    [[ "$entry" == *=* ]] ||
+      release_die "invalid DS41RT_PROTOCOL_V2_VERBS_HOST_DEVICE_MAP entry: '$entry' (expected local-ip=device)"
+    ip="${entry%%=*}"
+    dev="${entry#*=}"
+    [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ && -n "$dev" ]] ||
+      release_die "invalid DS41RT_PROTOCOL_V2_VERBS_HOST_DEVICE_MAP entry: '$entry' (expected local-ip=device)"
+    for prior in ${seen_ips[@]+"${seen_ips[@]}"}; do
+      [[ "$ip" != "$prior" ]] ||
+        release_die "duplicate DS41RT_PROTOCOL_V2_VERBS_HOST_DEVICE_MAP ip: $ip"
+    done
+    seen_ips+=("$ip")
+  done
+}
+
 release_expert_hosts_csv() {
   local i lane separator=
   for ((i = 0; i < SPARK_COUNT; i++)); do
