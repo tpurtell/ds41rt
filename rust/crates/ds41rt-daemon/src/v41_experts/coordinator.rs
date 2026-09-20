@@ -1,11 +1,170 @@
 //! One coordinator wave owns TP route planes through final native reduction.
 use super::{DeviceAllocation, LoadStream};
 use anyhow::{ensure, Context, Result};
+use ds41rt_core::{
+    replicated_expert_tie_seed_for, ReplicatedExpertCostModel, ReplicatedExpertScheduleConfig,
+    ReplicatedExpertScheduler, ReplicatedExpertTieSeedMode, INACTIVE_REPLICATED_EXPERT_GROUP,
+};
 use ds41rt_ffi::{Ds41rtDeviceBuffer, NativeLibrary, V41CompactReducer};
 use ds41rt_transport::{
-    v41_expert::{V41Tp4RocePending, V41Tp4Roce, V41_PARTIAL_ROW_BYTES},
+    v41_expert::{V41SparkTopology, V41Tp4RocePending, V41Tp4Roce, V41_PARTIAL_ROW_BYTES,
+        V41_ROUTED_EXPERTS},
     ExpertProtocolV2Request, VerbsHostProtocolV2ResponsePayload,
 };
+
+/// One replicated lane's whole-expert ownership planner. Preallocated once per
+/// independent lane; every field is lane-local, so two lanes can never perturb
+/// each other's assignment. The histogram and encoded owners are reused across
+/// layers and requests without allocating in the request path.
+pub(crate) struct ReplicatedGroupPlanner {
+    topology: V41SparkTopology,
+    tie_seed_mode: ReplicatedExpertTieSeedMode,
+    scheduler: ReplicatedExpertScheduler,
+    histogram: [u32; V41_ROUTED_EXPERTS],
+    owners: [u8; V41_ROUTED_EXPERTS],
+}
+
+/// Opt-in tie-seed control. Unset selects `dispatch`, which reproduces the
+/// historical per-dispatch-counter seed byte for byte. `layer` is the narrow
+/// diagnostic mode that pins the request component so repeats of the same work
+/// at the same layer share ownership when their histogram is unchanged.
+pub(crate) const REPLICATED_EXPERT_TIE_SEED_ENV: &str = "DS41RT_REPLICATED_EXPERT_TIE_SEED";
+
+/// Whole-expert weight-only profile: one positive weight unit per active expert
+/// and no per-row activation term, so ownership depends only on which experts a
+/// batch routed to. `tile_rows = 16` keeps the model valid without claiming a
+/// calibrated tile cost; supplying calibrated costs is an explicit opt-in
+/// environment override, never an invented profile.
+fn parse_replicated_cost(value: &str) -> Result<ReplicatedExpertCostModel> {
+    let parts = value.split(',').map(str::trim).collect::<Vec<_>>();
+    ensure!(
+        parts.len() == 3,
+        "DS41RT_REPLICATED_EXPERT_COST expects weight,tile_cost,tile_rows"
+    );
+    let weight = parts[0].parse::<u64>().context("replicated expert weight cost")?;
+    let tile_cost = parts[1].parse::<u64>().context("replicated expert tile cost")?;
+    let tile_rows = parts[2].parse::<u32>().context("replicated expert tile rows")?;
+    let model = ReplicatedExpertCostModel::new(weight, tile_cost, tile_rows);
+    model
+        .validate()
+        .map_err(|error| anyhow::anyhow!("invalid replicated expert cost model: {error}"))?;
+    Ok(model)
+}
+
+fn replicated_cost_model() -> Result<ReplicatedExpertCostModel> {
+    match std::env::var_os("DS41RT_REPLICATED_EXPERT_COST") {
+        None => Ok(ReplicatedExpertCostModel::new(1, 0, 16)),
+        Some(value) => parse_replicated_cost(
+            value
+                .to_str()
+                .context("DS41RT_REPLICATED_EXPERT_COST is not valid UTF-8")?,
+        ),
+    }
+}
+
+/// Resolve the opt-in tie-seed mode once, at planner construction. Missing
+/// environment selects the historical `dispatch` mode; every present value must
+/// be exactly `dispatch` or `layer`, so a typo fails closed before any request.
+fn replicated_tie_seed_mode() -> Result<ReplicatedExpertTieSeedMode> {
+    let value = match std::env::var_os(REPLICATED_EXPERT_TIE_SEED_ENV) {
+        None => None,
+        Some(raw) => Some(
+            raw.into_string()
+                .map_err(|_| anyhow::anyhow!("{REPLICATED_EXPERT_TIE_SEED_ENV} is not valid UTF-8"))?,
+        ),
+    };
+    ReplicatedExpertTieSeedMode::from_env_value(value.as_deref())
+        .map_err(|error| anyhow::anyhow!("{error}"))
+}
+
+impl ReplicatedGroupPlanner {
+    fn new(topology: V41SparkTopology) -> Result<Self> {
+        Self::new_with_seed_mode(topology, replicated_tie_seed_mode()?)
+    }
+
+    /// Constructor with an explicit mode, used by focused tests so they never
+    /// mutate process environment. Logs the resolved mode once per process.
+    fn new_with_seed_mode(
+        topology: V41SparkTopology,
+        tie_seed_mode: ReplicatedExpertTieSeedMode,
+    ) -> Result<Self> {
+        static TIE_SEED_MODE_LOGGED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+        TIE_SEED_MODE_LOGGED.get_or_init(|| {
+            tracing::info!(
+                env = REPLICATED_EXPERT_TIE_SEED_ENV,
+                mode = tie_seed_mode.as_str(),
+                "replicated expert tie-seed mode resolved"
+            );
+        });
+        let config = ReplicatedExpertScheduleConfig::new(
+            topology.group_count(),
+            replicated_cost_model()?,
+        );
+        let scheduler = ReplicatedExpertScheduler::new(config, V41_ROUTED_EXPERTS)
+            .map_err(|error| anyhow::anyhow!("replicated expert scheduler rejected: {error}"))?;
+        Ok(Self {
+            topology,
+            tie_seed_mode,
+            scheduler,
+            histogram: [0; V41_ROUTED_EXPERTS],
+            owners: [INACTIVE_REPLICATED_EXPERT_GROUP; V41_ROUTED_EXPERTS],
+        })
+    }
+
+    #[cfg(test)]
+    fn seed_mode(&self) -> ReplicatedExpertTieSeedMode {
+        self.tie_seed_mode
+    }
+
+    pub(crate) fn topology(&self) -> V41SparkTopology {
+        self.topology
+    }
+
+    /// Plan whole-expert ownership for one request from the router's host-side
+    /// route IDs (no device read and no allocation), copy the encoded assignment
+    /// into the request-owned route words, and prove the ownership contract
+    /// before any bytes travel. Planning exactly once per request keeps the
+    /// assignment reproducible from `(layer, request_id, histogram)`.
+    pub(crate) fn encode(&mut self, request: &mut ExpertProtocolV2Request) -> Result<()> {
+        ensure!(
+            request.header.row_count > 0
+                && request.header.row_count <= 4096
+                && request.routes.len() == request.header.row_count as usize * 6,
+            "replicated expert ownership needs one canonical bounded request"
+        );
+        self.histogram.fill(0);
+        for route in &request.routes {
+            let expert = route.expert_id as usize;
+            ensure!(
+                expert < V41_ROUTED_EXPERTS,
+                "replicated expert route id out of range"
+            );
+            self.histogram[expert] += 1;
+        }
+        let seed = replicated_expert_tie_seed_for(
+            self.tie_seed_mode,
+            request.header.layer_id,
+            request.header.request_id,
+        );
+        {
+            let plan = self
+                .scheduler
+                .plan(&self.histogram, seed)
+                .map_err(|error| anyhow::anyhow!("replicated expert schedule rejected: {error}"))?;
+            ensure!(
+                plan.group_count() == self.topology.group_count(),
+                "replicated expert plan group count differs from the bound topology"
+            );
+            self.owners.fill(INACTIVE_REPLICATED_EXPERT_GROUP);
+            for (expert, group) in plan.assignment().iter().enumerate() {
+                // Every routed expert is active, so it carries an active owner;
+                // the transport rejects inactive or out-of-range owners.
+                self.owners[expert] = group.encoded();
+            }
+        }
+        request.with_native_group_owners(&self.owners, self.topology)
+    }
+}
 
 pub(crate) struct NativeTp4Wave<'a> {
     transport: V41Tp4Roce,
@@ -21,17 +180,32 @@ pub(crate) struct NativeTp4Wave<'a> {
     local: Option<super::local::LocalExpertWave<'a>>,
     tp2: Option<Box<super::tp2_ffn::Wave<'a>>>,
     paired: Option<Box<(super::paired::PairedAssignment, std::rc::Rc<super::paired::PairedProfile>)>>,
+    /// Present only for an explicit `TP×EP` topology; legacy transports stay on
+    /// the canonical request contract.
+    native: Option<ReplicatedGroupPlanner>,
 }
 impl<'a> NativeTp4Wave<'a> {
     pub(crate) fn spark_world(&self) -> usize { self.transport.world_size() }
+    /// Explicit replicated topology of this lane, or `None` for the legacy path.
+    pub(crate) fn native_topology(&self) -> Option<V41SparkTopology> {
+        self.native.as_ref().map(ReplicatedGroupPlanner::topology)
+    }
     pub(crate) fn install_paired(&mut self, profile: std::rc::Rc<super::paired::PairedProfile>) -> Result<()> {
         ensure!(self.paired.is_none(), "paired assignment already installed");
+        ensure!(self.native.is_none(), "paired EXL3 and replicated groups are mutually exclusive");
         self.paired = Some(Box::new((super::paired::PairedAssignment::new(), profile)));
         Ok(())
     }
+    /// Apply the lane's whole-expert ownership to one remote request. Legacy
+    /// lanes are a no-op; replicated lanes re-encode the route words and set the
+    /// native group flag, so every remote path that dispatches through this wave
+    /// carries the same contract.
     pub(crate) fn prepare_remote_request(&mut self, request: &mut crate::v41_backbone_router::BoundExpertRequest) -> Result<()> {
         if let Some(paired) = &mut self.paired {
+            ensure!(self.native.is_none(), "paired EXL3 and replicated groups are mutually exclusive");
             request.assign_paired(&mut paired.0, &paired.1)?;
+        } else if let Some(native) = &mut self.native {
+            request.assign_native(native)?;
         }
         Ok(())
     }
@@ -100,14 +274,25 @@ impl<'a> NativeTp4Wave<'a> {
         self.ready_rows = None;
         self.transport.reset_connections();
     }
-    /// TP4 upper-bound reservation, also sufficient for a TP2 transport.
+    /// Legacy TP4 upper-bound reservation (four rank planes), also sufficient
+    /// for a legacy TP2 transport.
     pub fn device_bytes(capacity: u32) -> Result<usize> {
+        Self::device_bytes_for(capacity, 4)
+    }
+    /// Reservation for exactly `ranks` physical rank planes plus the shared
+    /// input and final output planes. Six-rank layouts need their own, larger
+    /// reservation; reusing the four-rank reserve undercounts by two planes.
+    pub fn device_bytes_for(capacity: u32, ranks: usize) -> Result<usize> {
         ensure!(
             capacity > 0 && capacity <= 4096,
             "invalid native TP wave capacity"
         );
+        ensure!(
+            matches!(ranks, 2 | 3 | 4 | 6),
+            "native TP wave requires two, three, four or six ranks"
+        );
         (capacity as usize)
-            .checked_mul(4 * V41_PARTIAL_ROW_BYTES as usize + 2 * 5120 * 2)
+            .checked_mul(ranks * V41_PARTIAL_ROW_BYTES as usize + 2 * 5120 * 2)
             .context("native TP wave budget overflow")
     }
     pub fn new(
@@ -117,17 +302,28 @@ impl<'a> NativeTp4Wave<'a> {
     ) -> Result<Self> {
         let capacity = transport.capacity();
         let world_size = transport.world_size();
-        ensure!(matches!(world_size, 2 | 4), "native TP wave requires two or four ranks");
         ensure!(
-            Self::device_bytes(capacity)? <= available_bytes,
+            matches!(world_size, 2 | 3 | 4 | 6),
+            "native TP wave requires two, three, four or six ranks"
+        );
+        ensure!(
+            Self::device_bytes_for(capacity, world_size)? <= available_bytes,
             "native TP wave exceeds device budget"
         );
         let reducer = library.v41_compact_reducer()?;
+        // Prove the exact physical-rank reduction is available before any plane
+        // or output allocation. Legacy two-rank transports also fail here rather
+        // than at their first request.
+        reducer.require_rank_count(world_size as u32)?;
         let plane_bytes = capacity as usize * V41_PARTIAL_ROW_BYTES as usize;
         let mut planes = Vec::with_capacity(world_size);
         for _ in 0..world_size {
             planes.push(DeviceAllocation::new(library, plane_bytes)?);
         }
+        let native = transport
+            .topology()
+            .map(ReplicatedGroupPlanner::new)
+            .transpose()?;
         let hidden_bytes = capacity as usize * 5120 * 2;
         Ok(Self {
             transport,
@@ -145,6 +341,7 @@ impl<'a> NativeTp4Wave<'a> {
             local: None,
             tp2: None,
             paired: None,
+            native,
         })
     }
     /// RoCE execution with optional host BF16 shared-expert contribution.
@@ -375,13 +572,20 @@ unsafe fn enqueue_reduce_planes(reducer: &V41CompactReducer<'_>, stream: &LoadSt
     shared: Option<Ds41rtDeviceBuffer>, rows: u32) -> Result<()> {
     let shared = shared.map_or(std::ptr::null(), |b| b.ptr.cast());
     match planes.len() {
+        // The 2- and 4-plane entry points are kept bit-identical for the legacy
+        // paths; the generic N-plane entry point carries 3- and 6-rank
+        // replicated layouts (and is ordered identically for 2/4).
         2 => unsafe { reducer.reduce_tp2(
             std::array::from_fn(|rank| planes[rank].buffer.ptr.cast::<u16>().cast_const()),
             shared, output.ptr.cast(), rows, stream.raw) },
         4 => unsafe { reducer.reduce(
             std::array::from_fn(|rank| planes[rank].buffer.ptr.cast::<u16>().cast_const()),
             shared, output.ptr.cast(), rows, stream.raw) },
-        _ => anyhow::bail!("native compact reduction requires two or four TP planes"),
+        3 | 6 => unsafe { reducer.reduce_planes(
+            std::array::from_fn(|rank| planes.get(rank)
+                .map_or(std::ptr::null(), |plane| plane.buffer.ptr.cast::<u16>().cast_const())),
+            planes.len() as u32, shared, output.ptr.cast(), rows, stream.raw) },
+        _ => anyhow::bail!("native compact reduction requires two, three, four or six TP planes"),
     }
 }
 fn reduce_planes(library: &NativeLibrary, reducer: &V41CompactReducer<'_>,
@@ -506,6 +710,336 @@ impl<'w> NativePendingFfn<'w, '_, '_> {
             binding: self.request.binding(),
             _owner: std::marker::PhantomData,
         })
+    }
+}
+
+#[cfg(test)]
+mod replicated_tests {
+    use super::*;
+    use ds41rt_transport::{
+        v41_expert::{V41BackboneRequest, V41NativeOwnerRouteWord, V41_NATIVE_GROUP_REQUEST_FLAG},
+        ExpertProtocolV2RowDescriptor, ExpertProtocolV2RouteEntry, ExpertV2Dtype, ExpertV2SourceKind,
+    };
+
+    fn request(layer: u32, request_id: u64, experts: &[u32]) -> ExpertProtocolV2Request {
+        let rows = experts.len() / 6;
+        assert_eq!(rows * 6, experts.len());
+        let mut request = ExpertProtocolV2Request::new(
+            request_id,
+            7,
+            layer,
+            5120,
+            ExpertV2Dtype::Fp8E4m3Ue8m0K32,
+            (0..rows).map(|r| ExpertProtocolV2RowDescriptor {
+                row_id: r as u64,
+                source_kind: ExpertV2SourceKind::Decode,
+                source_request_id: request_id,
+                token_position: r as u64,
+                route_offset: r as u32 * 6,
+                route_count: 6,
+            }).collect(),
+            experts.iter().enumerate().map(|(i, &expert_id)| ExpertProtocolV2RouteEntry {
+                row_index: (i / 6) as u32,
+                expert_id,
+                gate_weight: 1.0 / 6.0,
+            }).collect(),
+            vec![0; rows * 5280],
+        ).unwrap();
+        request.header.flags |=
+            ds41rt_transport::v41_expert::EXPERT_PROTOCOL_V2_FLAG_V41_COMPACT_BF16;
+        request
+    }
+
+    fn owners(request: &ExpertProtocolV2Request, topology: V41SparkTopology) -> Vec<u8> {
+        request.routes.iter().map(|route| {
+            let word = V41NativeOwnerRouteWord::decode(route.expert_id, topology.group_count()).unwrap();
+            assert!(word.expert_id < 384);
+            word.owner
+        }).collect()
+    }
+
+    #[test]
+    fn six_route_batches_split_evenly_across_replicated_groups() {
+        let unique = [0u32, 7, 19, 88, 200, 383];
+        for (topology, expected) in [
+            (V41SparkTopology::new(2, 2).unwrap(), 3usize),
+            (V41SparkTopology::new(3, 2).unwrap(), 3),
+            (V41SparkTopology::new(2, 3).unwrap(), 2),
+        ] {
+            let mut planner = ReplicatedGroupPlanner::new(topology).unwrap();
+            let mut request = request(3, 11, &unique);
+            planner.encode(&mut request).unwrap();
+            assert_ne!(request.header.flags & V41_NATIVE_GROUP_REQUEST_FLAG, 0);
+            V41BackboneRequest::validate_owned_native_group(&request, 1, topology).unwrap();
+            let owner = owners(&request, topology);
+            let mut per_group = [0usize; 3];
+            for group in &owner {
+                per_group[*group as usize] += 1;
+            }
+            assert!(
+                per_group[..topology.group_count() as usize]
+                    .iter()
+                    .all(|&count| count == expected),
+                "{:?}",
+                &per_group[..topology.group_count() as usize]
+            );
+            // Every route keeps its true expert id and exact gate weight.
+            for (route, &expert) in request.routes.iter().zip(&unique) {
+                let word = V41NativeOwnerRouteWord::decode(route.expert_id, topology.group_count()).unwrap();
+                assert_eq!(word.expert_id, expert);
+                assert_eq!(route.gate_weight, 1.0 / 6.0);
+            }
+        }
+    }
+
+    #[test]
+    fn seed_mode_is_wired_and_layer_is_stable_across_request_ids() {
+        // Uniform-cost experts make every ordering decision a tie, so only the
+        // seed can change the assignment.
+        let topology = V41SparkTopology::new(2, 2).unwrap();
+        let experts = [0u32, 7, 19, 88, 200, 383];
+
+        let mut layer = ReplicatedGroupPlanner::new_with_seed_mode(
+            topology,
+            ReplicatedExpertTieSeedMode::Layer,
+        )
+        .unwrap();
+        assert_eq!(layer.seed_mode(), ReplicatedExpertTieSeedMode::Layer);
+        let mut base = request(3, 11, &experts);
+        layer.encode(&mut base).unwrap();
+        let base_owners = owners(&base, topology);
+        for request_id in [12_u64, 99, u64::MAX] {
+            let mut repeat = request(3, request_id, &experts);
+            layer.encode(&mut repeat).unwrap();
+            assert_eq!(
+                owners(&repeat, topology),
+                base_owners,
+                "layer mode must ignore the dispatch request id"
+            );
+        }
+
+        let mut dispatch = ReplicatedGroupPlanner::new_with_seed_mode(
+            topology,
+            ReplicatedExpertTieSeedMode::Dispatch,
+        )
+        .unwrap();
+        assert_eq!(dispatch.seed_mode(), ReplicatedExpertTieSeedMode::Dispatch);
+        let mut dispatch_base = request(3, 11, &experts);
+        dispatch.encode(&mut dispatch_base).unwrap();
+        let dispatch_owners = owners(&dispatch_base, topology);
+        let mut varied = false;
+        for request_id in 2_u64..512 {
+            let mut repeat = request(3, request_id, &experts);
+            dispatch.encode(&mut repeat).unwrap();
+            if owners(&repeat, topology) != dispatch_owners {
+                varied = true;
+                break;
+            }
+        }
+        assert!(
+            varied,
+            "dispatch mode must still depend on the request id on tie-heavy routes"
+        );
+    }
+
+    #[test]
+    fn single_group_seed_modes_have_no_effect() {
+        // EP1 negative: group_count == 1 makes the seed irrelevant.
+        let topology = V41SparkTopology::new(4, 1).unwrap();
+        let experts = [0u32, 7, 19, 88, 200, 383];
+        for mode in [
+            ReplicatedExpertTieSeedMode::Dispatch,
+            ReplicatedExpertTieSeedMode::Layer,
+        ] {
+            let mut planner = ReplicatedGroupPlanner::new_with_seed_mode(topology, mode).unwrap();
+            for request_id in [1_u64, 42, u64::MAX] {
+                let mut request = request(3, request_id, &experts);
+                planner.encode(&mut request).unwrap();
+                assert!(
+                    owners(&request, topology).iter().all(|&group| group == 0),
+                    "single-group ownership must always be group 0"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn duplicate_experts_in_one_row_are_rejected_by_the_protocol() {
+        // A real router emits six distinct experts per token. This one-row
+        // fixture repeats expert 0 six times: it is an adversarial protocol case,
+        // and the canonical admission contract rejects it before ownership is
+        // ever encoded. Duplicate expert ids *across* rows are legitimate and are
+        // covered by the reuse fixture below.
+        let topology = V41SparkTopology::new(2, 2).unwrap();
+        let mut planner = ReplicatedGroupPlanner::new(topology).unwrap();
+        let mut encoded = request(5, 100, &[0u32; 6]);
+        let error = planner.encode(&mut encoded).unwrap_err().to_string();
+        assert!(error.contains("duplicate native expert route"), "{error}");
+    }
+
+    #[test]
+    fn real_row_reuse_keeps_one_group_per_expert_and_masks_weights_exactly() {
+        // Production-shaped fixture: each row routes six distinct experts; rows
+        // repeat a base set and frequently reuse one hot six-expert subset. Every
+        // occurrence of an expert must carry the same owner, and only owned routes
+        // may keep the exact FP32 gate weight; every other route is masked to the
+        // 384 sentinel with weight zero.
+        let topology = V41SparkTopology::new(2, 2).unwrap();
+        let base = [0u32, 1, 2, 3, 4, 5];
+        let hot = [200u32, 201, 202, 203, 204, 205];
+        let mut routes = Vec::new();
+        for row in 0..12usize {
+            if row % 4 == 3 { routes.extend_from_slice(&hot); }
+            else {
+                let offset = row % 6;
+                routes.extend((0..6).map(|slot| base[(slot + offset) % 6]));
+            }
+        }
+        let rows = routes.len() / 6;
+        let mut planner = ReplicatedGroupPlanner::new(topology).unwrap();
+        let mut encoded = request(6, 777, &routes);
+        planner.encode(&mut encoded).unwrap();
+        V41BackboneRequest::validate_owned_native_group(&encoded, rows as u32, topology).unwrap();
+        // Ownership is a pure function of the expert id, stable across rows.
+        let mut expert_owner = std::collections::BTreeMap::new();
+        for (route, &expert) in encoded.routes.iter().zip(&routes) {
+            let word = V41NativeOwnerRouteWord::decode(route.expert_id, topology.group_count()).unwrap();
+            assert_eq!(word.expert_id, expert);
+            if let Some(previous) = expert_owner.insert(expert, word.owner) {
+                assert_eq!(previous, word.owner, "expert {expert} changed group");
+            }
+        }
+        // Duplicate reuse actually happened, and both hot/base experts are active.
+        assert_eq!(routes.len(), 72);
+        assert!(expert_owner.contains_key(&0) && expert_owner.contains_key(&200));
+        // The hot six-expert subset appears in rows 3, 7 and 11.
+        assert_eq!(routes.iter().filter(|&&expert| expert == 200).count(), 3);
+        // The exact gate weights survive the ownership encode.
+        for route in &encoded.routes {
+            assert_eq!(route.gate_weight, 1.0 / 6.0);
+        }
+        // Unpacking each group preserves owned weights and masks the rest to the
+        // kernel's unassigned sentinel with a zero weight, exactly.
+        let frame = encoded.encode().unwrap();
+        for group in 0..topology.group_count() {
+            let mut ids = vec![0i32; encoded.routes.len()];
+            let mut weights = vec![0f32; encoded.routes.len()];
+            let view = V41BackboneRequest::parse_native_group(
+                &frame, rows as u32, topology).unwrap();
+            view.copy_native_group_routes_into(&mut ids, &mut weights, group).unwrap();
+            for (index, (route, &expert)) in encoded.routes.iter().zip(&routes).enumerate() {
+                let word = V41NativeOwnerRouteWord::decode(route.expert_id, topology.group_count()).unwrap();
+                if word.owner == group {
+                    assert_eq!(ids[index], expert as i32);
+                    assert_eq!(weights[index], 1.0 / 6.0);
+                } else {
+                    assert_eq!(ids[index], ds41rt_transport::v41_expert::V41_NATIVE_UNASSIGNED_EXPERT_ID);
+                    assert_eq!(weights[index], 0.0);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn an_empty_group_masks_every_route_and_returns_a_zero_plane() {
+        // The baseline scheduler balances any batch with at least two active
+        // experts, so an empty group is not reachable through whole-expert LPT on
+        // a canonical histogram. It is still a real transport state (for example
+        // a heavily skewed calibration), so this fixture drives the ownership
+        // contract directly: group 0 owns every expert, group 1 owns none, and
+        // group 1 must mask all six routes to the sentinel/zero plane.
+        let topology = V41SparkTopology::new(2, 2).unwrap();
+        let experts = [10u32, 11, 12, 13, 14, 15];
+        let mut encoded = request(5, 101, &experts);
+        let mut all_zero_owners = [0u8; 384];
+        all_zero_owners[10] = 0; // explicit: group 0 owns the whole batch
+        encoded.with_native_group_owners(&all_zero_owners, topology).unwrap();
+        let frame = encoded.encode().unwrap();
+        V41BackboneRequest::validate_owned_native_group(&encoded, 1, topology).unwrap();
+        for group in 0..topology.group_count() {
+            let mut ids = vec![0i32; 6];
+            let mut weights = vec![0f32; 6];
+            let view = V41BackboneRequest::parse_native_group(&frame, 1, topology).unwrap();
+            view.copy_native_group_routes_into(&mut ids, &mut weights, group).unwrap();
+            if group == 0 {
+                assert_eq!(ids, experts.map(|expert| expert as i32));
+            } else {
+                assert_eq!(
+                    ids,
+                    vec![ds41rt_transport::v41_expert::V41_NATIVE_UNASSIGNED_EXPERT_ID; 6]
+                );
+                assert!(weights.iter().all(|&weight| weight == 0.0));
+            }
+        }
+    }
+
+    #[test]
+    fn planning_is_reproducible_for_a_fixed_layer_and_request_id() {
+        // Same (histogram, layer, request_id) must reproduce the same assignment
+        // so a graph replay with unchanged input keeps identical ownership.
+        let topology = V41SparkTopology::new(2, 3).unwrap();
+        let experts = [3u32, 9, 12, 40, 77, 300];
+        let mut replan = || {
+            let mut planner = ReplicatedGroupPlanner::new(topology).unwrap();
+            let mut request = request(9, 4242, &experts);
+            planner.encode(&mut request).unwrap();
+            owners(&request, topology)
+        };
+        let first = replan();
+        let second = replan();
+        assert_eq!(first, second);
+        // A distinct request identity is allowed to break ties differently, but
+        // must still be a valid exactly-once assignment.
+        let mut planner = ReplicatedGroupPlanner::new(topology).unwrap();
+        let mut other = request(9, 4243, &experts);
+        planner.encode(&mut other).unwrap();
+        let mut per_group = [0usize; 3];
+        for group in owners(&other, topology) {
+            per_group[group as usize] += 1;
+        }
+        assert!(per_group.iter().all(|&count| count == 2));
+    }
+
+    #[test]
+    fn single_group_topology_owns_every_active_expert() {
+        let topology = V41SparkTopology::new(2, 1).unwrap();
+        let mut planner = ReplicatedGroupPlanner::new(topology).unwrap();
+        let mut request = request(0, 1, &[1, 2, 3, 4, 5, 6]);
+        planner.encode(&mut request).unwrap();
+        assert!(owners(&request, topology).iter().all(|&group| group == 0));
+    }
+
+    #[test]
+    fn wave_reservation_scales_with_the_physical_rank_count() {
+        for capacity in [1u32, 16, 80, 4096] {
+            let legacy = NativeTp4Wave::device_bytes(capacity).unwrap();
+            assert_eq!(legacy, NativeTp4Wave::device_bytes_for(capacity, 4).unwrap());
+            assert_eq!(legacy, capacity as usize * 6 * 10240);
+            for ranks in [2usize, 3, 4, 6] {
+                let expected = capacity as usize * (ranks * 10240 + 20480);
+                assert_eq!(NativeTp4Wave::device_bytes_for(capacity, ranks).unwrap(), expected);
+                assert!(expected >= capacity as usize * ranks * 10240);
+            }
+            // Six ranks reserve two more planes than the legacy TP4 forecast.
+            assert!(
+                NativeTp4Wave::device_bytes_for(capacity, 6).unwrap() > legacy
+            );
+        }
+        for (capacity, ranks) in [(0u32, 6usize), (4097, 6), (80, 0), (80, 1), (80, 5), (80, 8)] {
+            assert!(NativeTp4Wave::device_bytes_for(capacity, ranks).is_err(), "{capacity}/{ranks}");
+        }
+    }
+
+    #[test]
+    fn replicated_cost_override_is_validated_or_rejected() {
+        assert_eq!(parse_replicated_cost("1,0,16").unwrap(), ReplicatedExpertCostModel::new(1, 0, 16));
+        assert_eq!(parse_replicated_cost(" 4 , 2 , 32 ").unwrap(), ReplicatedExpertCostModel::new(4, 2, 32));
+        for invalid in ["", "1,0", "1,0,16,2", "1,0,0", "0,0,16", "x,0,16", "1,2"] {
+            assert!(parse_replicated_cost(invalid).is_err(), "{invalid:?}");
+        }
+        // The default profile is the documented whole-expert weight-only model.
+        assert_eq!(ReplicatedExpertCostModel::new(1, 0, 16).expert_cost(6).unwrap(), 1);
+        assert_eq!(ReplicatedExpertCostModel::new(1, 0, 16).expert_cost(0).unwrap(), 0);
     }
 }
 

@@ -524,7 +524,8 @@ def test_release_build_overrides_the_base_image_version_label() -> None:
     assert 'spark_release_version="${SPARK_EXPERT_DOCKER_INFERENCE##*:}"' in build
     assert '[[ "$spark_release_version" == "$release_version" ]]' in build
     assert 'release_version="$6"' in build
-    assert 'source_manifest_sha256="${8-}"' in build
+    assert 'source_manifest_sha256="${8-__legacy__}"' in build
+    assert 'spark_tp_roles="${9-__legacy__}"' in build
     assert build.count('--build-arg DS41RT_RELEASE_VERSION="$release_version"') == 2
     assert build.count('org.opencontainers.image.version') == 2
     remote_revision_label = next(

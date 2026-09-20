@@ -25,6 +25,11 @@ pub(crate) enum ExpertLayer {
     Backbone { layer: usize, rank: usize },
     BackboneFull { layer: usize },
     BackboneTp2 { layer: usize, rank: usize },
+    /// Explicit replicated-group native Spark shard. `world` is this group's
+    /// tensor-parallel degree (2, 3 or 4) and `rank` is the shard index inside
+    /// the group (`global_rank % world`). Only the official native checkpoint
+    /// may select it; EXL3/NVFP4 keep their own layers.
+    BackboneReplicatedTp { layer: usize, rank: usize, world: usize },
     Dspark { stage: usize },
     DsparkTp2 { stage: usize, rank: usize },
 }
@@ -38,8 +43,20 @@ impl ExpertLayer {
             },
             Self::BackboneFull { layer } => V41ExpertSelection::BackboneFull { layer, expert },
             Self::BackboneTp2 { layer, rank } => V41ExpertSelection::BackboneTp2 { layer, expert, rank },
+            Self::BackboneReplicatedTp { layer, rank, world } =>
+                V41ExpertSelection::BackboneTp { layer, expert, rank, world },
             Self::Dspark { stage } => V41ExpertSelection::Dspark { stage, expert },
             Self::DsparkTp2 { stage, rank } => V41ExpertSelection::DsparkTp2 { stage, expert, rank },
+        }
+    }
+    /// Physical layer index for resident-weight rebinding.
+    fn layer(self) -> usize {
+        match self {
+            Self::Backbone { layer, .. }
+            | Self::BackboneFull { layer }
+            | Self::BackboneTp2 { layer, .. }
+            | Self::BackboneReplicatedTp { layer, .. } => layer,
+            Self::Dspark { .. } | Self::DsparkTp2 { .. } => usize::MAX,
         }
     }
     fn role(self) -> u32 {
@@ -48,6 +65,11 @@ impl ExpertLayer {
             Self::Backbone { .. } => 1,
             Self::BackboneFull { .. } => 2,
             Self::BackboneTp2 { .. } => 3,
+            // Explicit replicated shards publish their own native roles; TP4 is
+            // only reachable through the legacy `Backbone` layer.
+            Self::BackboneReplicatedTp { world: 2, .. } => 5,
+            Self::BackboneReplicatedTp { world: 3, .. } => 6,
+            Self::BackboneReplicatedTp { .. } => 1,
             Self::DsparkTp2 { .. } => 4,
         }
     }
@@ -58,6 +80,13 @@ impl ExpertLayer {
             library.v41_tp2_expert_info(capacity)
         } else if matches!(self,Self::DsparkTp2 { .. }) {
             library.v41_dspark_tp2_expert_info(capacity)
+        } else if let Self::BackboneReplicatedTp { world, .. } = self {
+            match world {
+                2 => library.v41_spark_tp2_expert_info(capacity),
+                3 => library.v41_spark_tp3_expert_info(capacity),
+                4 => library.v41_expert_info(capacity),
+                other => anyhow::bail!("unsupported replicated Spark TP degree {other}"),
+            }
         } else { library.v41_expert_info(capacity) }
     }
     fn kernel(self, library: &NativeLibrary, capacity: u32) -> Result<V41ExpertKernel<'_>> {
@@ -67,6 +96,13 @@ impl ExpertLayer {
             library.v41_tp2_expert_kernel(capacity)
         } else if matches!(self,Self::DsparkTp2 { .. }) {
             library.v41_dspark_tp2_expert_kernel(capacity)
+        } else if let Self::BackboneReplicatedTp { world, .. } = self {
+            match world {
+                2 => library.v41_spark_tp2_expert_kernel(capacity),
+                3 => library.v41_spark_tp3_expert_kernel(capacity),
+                4 => library.v41_expert_kernel(capacity),
+                other => anyhow::bail!("unsupported replicated Spark TP degree {other}"),
+            }
         } else { library.v41_expert_kernel(capacity) }
     }
 

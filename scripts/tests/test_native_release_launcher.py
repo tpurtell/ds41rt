@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 import json
+import shlex
 import tempfile
 import unittest
 from pathlib import Path
@@ -31,12 +32,19 @@ class NativeReleaseLauncherTest(unittest.TestCase):
         block = source.split('echo "== building Spark development and inference images natively on $seed_host =="', 1)[1]
         invocation, remote = block.split("<<'REMOTE'", 1)
         preamble = remote.split('cd "$remote_dir"', 1)[0]
-        for digest in ('', 'a' * 64):
-            with self.subTest(digest=digest):
-                # OpenSSH joins the command arguments for a remote shell. An
-                # empty local argument is not retained as an empty remote one.
-                harness = '''set -euo pipefail
-ssh() { shift 3; bash -c "$*"; }
+        # The optional source manifest and the optional V41 expert roles are
+        # both carried behind non-empty sentinels. An empty earlier value must
+        # not shift a later one, because OpenSSH joins argv into one command
+        # string and does not preserve an empty argument.
+        for digest, roles, expected in (
+            ('', '', ['on', '', '']),
+            ('a' * 64, '', ['on', 'a' * 64, '']),
+            ('', 'tp2', ['on', '', 'tp2']),
+            ('a' * 64, 'tp2;tp3', ['on', 'a' * 64, 'tp2;tp3']),
+        ):
+            with self.subTest(digest=digest, roles=roles):
+                harness = f'''set -euo pipefail
+ssh() {{ shift 3; bash -c "$*"; }}
 seed_host=fixture
 remote_dir=/fixture
 SPARK_EXPERT_DOCKER_DEV=dev
@@ -45,14 +53,15 @@ engine_commit=engine
 sparkinfer_commit=fork
 release_version=v5
 EXL3_PAIRED_TP4=on
-source_manifest_sha256="$1"
+source_manifest_sha256={shlex.quote(digest)}
+spark_tp_roles={shlex.quote(roles)}
 '''
                 harness += invocation + "<<'REMOTE'" + preamble
-                harness += 'printf "%s\\n" "$exl3_paired_tp4" "$source_manifest_sha256"\nREMOTE\n'
-                result = subprocess.run(['bash', '-c', harness, 'test', digest],
+                harness += 'printf "%s\\n" "$exl3_paired_tp4" "$source_manifest_sha256" "$spark_tp_roles"\nREMOTE\n'
+                result = subprocess.run(['bash', '-c', harness],
                                         cwd=ROOT, text=True, capture_output=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertEqual(result.stdout.splitlines(), ['on', digest])
+                self.assertEqual(result.stdout.splitlines(), expected)
 
     def test_native_api_identity_is_independent_of_checkpoint_repository(self) -> None:
         for model, expected in [('deepseek-ai/DeepSeek-V4.1-Flash', 0),

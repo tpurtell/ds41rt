@@ -10,6 +10,15 @@ mod timing;
 use timing::ExpertTiming;
 use super::ExpertLayer;
 
+/// Native roles that publish token-major FP32 routed partials and therefore
+/// need the compact output buffer plus the compact reducer: legacy grouped
+/// Spark TP4 (role 1) and the replicated-group Spark TP2/TP3 shards (roles
+/// 5/6). The full-width RTX backbone (role 2) owns its separate local reducer
+/// and never enters this execution.
+fn compact_output_role(role: u32) -> bool {
+    matches!(role, 1 | 5 | 6)
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ExpertExecutionBudget {
     pub scratch_bytes: usize,
@@ -67,6 +76,10 @@ pub(crate) struct ExpertExecution<'weights, 'library> {
     shared: Option<DeviceAllocation<'library>>,
     slots: [*mut c_void; 44],
     graph: Option<(*mut c_void, u32, bool)>,
+    /// Replicated-group index this worker owns; set once at startup for an
+    /// explicit `TP×EP` topology, `None` for every legacy path. The group is
+    /// independent of the resident layer, so rebinding a layer never changes it.
+    native_group: Option<u8>,
     budget: ExpertExecutionBudget,
 }
 impl<'library> ExpertWeights<'library> {
@@ -89,12 +102,12 @@ impl<'library> ExpertWeights<'library> {
             .context("routing buffer overflow")?;
         Ok(ExpertExecutionBudget {
             scratch_bytes: usize::try_from(info.scratch_bytes)?,
-            decode_scratch_bytes: if info.role == 1 && capacity > 1 {
+            decode_scratch_bytes: if compact_output_role(info.role) && capacity > 1 {
                 usize::try_from(layer.select_info(library, 1, nvfp4)?.scratch_bytes)?
             } else {
                 0
             },
-            small_scratch_bytes: if info.role == 1 && capacity > 80 {
+            small_scratch_bytes: if compact_output_role(info.role) && capacity > 80 {
                 usize::try_from(layer.select_info(library, 80, nvfp4)?.scratch_bytes)?
             } else {
                 0
@@ -119,7 +132,10 @@ impl<'library> ExpertWeights<'library> {
         );
         let kernel = self.layer.select_kernel(library, capacity, self.is_nvfp4())?;
         let reducer = library.v41_route_reducer()?;
-        let timing = if kernel.info().role == 1
+        // Role-gated, DEBUG-only diagnostics. The same routed breakdown is
+        // available for the replicated Spark TP2/TP3 shards (roles 5/6), whose
+        // compact output and reducer buffers are already allocated.
+        let timing = if compact_output_role(kernel.info().role)
             && tracing::enabled!(target: "ds41rt::expert_timing", tracing::Level::DEBUG)
         {
             Some(ExpertTiming::new(library)?)
@@ -135,7 +151,7 @@ impl<'library> ExpertWeights<'library> {
         } else {
             None
         };
-        let compact_output = if kernel.info().role == 1 {
+        let compact_output = if compact_output_role(kernel.info().role) {
             Some(DeviceAllocation::new(
                 library,
                 budget.output_and_shared_bytes,
@@ -143,7 +159,7 @@ impl<'library> ExpertWeights<'library> {
         } else {
             None
         };
-        let compact_reducer = if kernel.info().role == 1 {
+        let compact_reducer = if compact_output_role(kernel.info().role) {
             Some(library.v41_compact_reducer()?)
         } else {
             None
@@ -228,11 +244,31 @@ impl<'library> ExpertWeights<'library> {
             shared,
             slots,
             graph: None,
+            native_group: None,
             budget,
         })
     }
 }
 impl<'weights, 'library> ExpertExecution<'weights, 'library> {
+    /// Bind this worker to its replicated group before serving. Called once at
+    /// startup; every remote request for this worker must then carry the native
+    /// ownership contract and is unpacked for exactly this group.
+    pub(crate) fn install_native_group(&mut self, group: Option<u8>) -> Result<()> {
+        ensure!(
+            self.graph.is_none(),
+            "cannot install a replicated group on a captured expert graph"
+        );
+        ensure!(
+            self.native_group.is_none(),
+            "replicated expert group already installed"
+        );
+        ensure!(
+            group.map_or(true, |group| group < 3),
+            "replicated expert group index out of range"
+        );
+        self.native_group = group;
+        Ok(())
+    }
     /// Reuse a wave's workspace across resident layers after its prior work drains.
     /// Captured graphs retain weight addresses and cannot be rebound.
     pub fn bind_layer(&mut self, weights: &'weights ExpertWeights<'library>) -> Result<()> {
@@ -531,16 +567,26 @@ pub(crate) struct HostExpertExchange {
     pub(super) partials: Vec<u8>,
 }
 impl HostExpertExchange {
-    pub fn new(capacity: u32) -> Result<Self> {
+    /// Exact bytes `new` allocates for this capacity. Admission uses this figure
+    /// instead of re-deriving the three extents.
+    pub fn bytes_for(capacity: u32) -> Result<usize> {
         ensure!(
             capacity > 0 && capacity <= 4096,
             "unsupported native host exchange capacity"
         );
         let routes = capacity as usize * 6;
+        routes
+            .checked_mul(8)
+            .and_then(|routes| routes.checked_add(capacity as usize * 5120 * 2))
+            .context("native host exchange size overflow")
+    }
+    pub fn new(capacity: u32) -> Result<Self> {
+        let bytes = Self::bytes_for(capacity)?;
+        let routes = capacity as usize * 6;
         Ok(Self {
             ids: vec![0; routes],
             routing: vec![0.0; routes],
-            partials: vec![0; capacity as usize * 5120 * 2],
+            partials: vec![0; bytes - routes * 8],
         })
     }
 }
@@ -620,8 +666,10 @@ impl ExpertExecution<'_, '_> {
         request: &ds41rt_transport::v41_expert::V41BackboneRequest<'_>, executor_id: u64,
         exchange: &mut HostExpertExchange, destination: Option<Ds41rtDeviceBuffer>,
     ) -> Result<()> {
-        let super::ExpertLayer::Backbone { layer, .. } = self._weights.layer else {
-            anyhow::bail!("backbone requests cannot execute on RTX dSpark weights");
+        let layer = match self._weights.layer {
+            super::ExpertLayer::Backbone { layer, .. }
+            | super::ExpertLayer::BackboneReplicatedTp { layer, .. } => layer,
+            _ => anyhow::bail!("backbone requests cannot execute on RTX dSpark weights"),
         };
         ensure!(
             request.layer() as usize == layer,
@@ -639,7 +687,21 @@ impl ExpertExecution<'_, '_> {
             exchange.partials.len() >= bytes,
             "host exchange is too small"
         );
-        request.copy_routes_into(&mut exchange.ids, &mut exchange.routing)?;
+        // The admission contract and the resident shard must agree: a
+        // topology-bound worker unpacks exactly its own group's routes and masks
+        // every other route to the kernel's unassigned sentinel, while a legacy
+        // worker rejects an ownership-encoded request outright.
+        match (self.native_group, request.is_native_group()) {
+            (Some(group), true) => request.copy_native_group_routes_into(
+                &mut exchange.ids,
+                &mut exchange.routing,
+                group,
+            )?,
+            (None, false) => request.copy_routes_into(&mut exchange.ids, &mut exchange.routing)?,
+            _ => anyhow::bail!(
+                "replicated expert group admission differs from this worker's bound topology"
+            ),
+        }
         let started = self.timing.as_ref().map(|_| std::time::Instant::now());
         self.synchronize()?;
         self.library
@@ -706,7 +768,11 @@ impl ExpertExecution<'_, '_> {
             let (kernel_us, compact_us) = unsafe { timing.elapsed_us()? };
             let mut histogram = [0u32; 384];
             for &expert in &exchange.ids[..routes] {
-                histogram[expert as usize] += 1;
+                // Ownership-masked routes carry the out-of-range sentinel and
+                // are not real expert work.
+                if let Some(slot) = histogram.get_mut(expert as usize) {
+                    *slot += 1;
+                }
             }
             let active_experts = histogram.iter().filter(|&&count| count != 0).count();
             // Exact expert-local M=1..16; final bin is M>=17. These counts
@@ -740,3 +806,20 @@ impl ExpertExecution<'_, '_> {
 
 #[cfg(test)]
 mod mapped_tests;
+
+#[cfg(test)]
+mod timing_role_tests {
+    /// The timing gate is the same predicate that selects the compact output
+    /// and reducer, so the replicated Spark shards (roles 5/6) and the legacy
+    /// grouped Spark TP4 (role 1) all publish the routed breakdown; the dSpark,
+    /// full-width RTX and RTX TP2 roles do not.
+    #[test]
+    fn routed_timing_is_enabled_for_the_compact_output_roles() {
+        for role in [1u32, 5, 6] {
+            assert!(super::compact_output_role(role), "role {role} must be timed");
+        }
+        for role in [0u32, 2, 3, 4, 7, u32::MAX] {
+            assert!(!super::compact_output_role(role), "role {role} must not be timed");
+        }
+    }
+}

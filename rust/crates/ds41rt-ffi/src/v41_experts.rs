@@ -167,6 +167,46 @@ type LaunchFn = unsafe extern "C" fn(*mut c_void, *const V41ExpertLaunchArgs) ->
 type PackedSizesFn = unsafe extern "C" fn(u32, *mut u64) -> i32;
 type PackFn = unsafe extern "C" fn(*const *const u8, *const *mut u8, u32, *mut c_void) -> i32;
 
+/// Native packer accept-list. Every accepted extent is a multiple of 32 so the
+/// K/32 UE8M0 scale axis is exact; 576 (Spark TP4) is storage-padded to 640.
+pub fn v41_pack_intermediate_supported(intermediate: u32) -> bool {
+    matches!(intermediate, 576 | 768 | 1152 | 2304)
+}
+
+/// Physical-rank counts the compact reduction contract defines: legacy 2 and 4
+/// plus replicated-group 3 and 6. Library-independent; use
+/// [`V41CompactReducer::supports_rank_count`] for what the loaded library can
+/// actually execute.
+pub fn v41_rank_count_supported(ranks: u32) -> bool {
+    matches!(ranks, 2 | 3 | 4 | 6)
+}
+
+/// Official geometry for one `(family, role)` pair. `kernel_intermediate`
+/// distinguishes the padded and exact Spark TP4 AOT exports.
+fn expected_expert_geometry(
+    nvfp4: bool,
+    role: u32,
+    kernel_intermediate: u32,
+) -> Option<(u32, u32, u32, u32)> {
+    match (nvfp4, role) {
+        // Both exact source layout and zero-padded Spark AOTs are valid.
+        (true, 1) if kernel_intermediate == 640 => Some((384, 576, 640, 6)),
+        (true, 1) => Some((384, 576, 576, 6)),
+        (true, 2) => Some((384, 2304, 2304, 6)),
+        (true, 3) => Some((384, 1152, 1152, 6)),
+        (false, 0) => Some((128, 2304, 2304, 3)),
+        (false, 1) => Some((384, 576, 640, 6)),
+        (false, 2) => Some((384, 2304, 2304, 6)),
+        (false, 3) => Some((384, 1152, 1152, 6)),
+        (false, 4) => Some((128, 1152, 1152, 3)),
+        // Replicated-group Spark shards: TP2 has no storage padding, TP3's 768
+        // is already 128-aligned.
+        (false, 5) => Some((384, 1152, 1152, 6)),
+        (false, 6) => Some((384, 768, 768, 6)),
+        _ => None,
+    }
+}
+
 /// Per-expert checkpoint staging avoids a second full layer of logical weights.
 pub struct V41ExpertPacker<'a> {
     _library: &'a NativeLibrary,
@@ -232,6 +272,8 @@ type CompactBf16RoutesFn = unsafe extern "C" fn(*const u16, *mut u16, u32, *mut 
 type ReduceTp2Bf16RoutesFn = unsafe extern "C" fn(*const u16, *const u16, *mut u16, u32, *mut c_void) -> i32;
 type ReduceCompactFn =
     unsafe extern "C" fn(*const *const u16, *const u16, *mut u16, u32, *mut c_void) -> i32;
+type ReduceCompactPlanesFn =
+    unsafe extern "C" fn(*const *const u16, *const u16, *mut u16, u32, u32, *mut c_void) -> i32;
 
 /// Compact BF16 backbone returns; independent from diagnostic per-route reduction.
 pub struct V41CompactReducer<'a> {
@@ -241,8 +283,48 @@ pub struct V41CompactReducer<'a> {
     compact_bf16_routes: Option<CompactBf16RoutesFn>,
     reduce: ReduceCompactFn,
     reduce_tp2: Option<ReduceCompactFn>,
+    reduce_planes: Option<ReduceCompactPlanesFn>,
 }
 impl V41CompactReducer<'_> {
+    /// Whether the loaded library can reduce `ranks` physical-rank BF16 planes.
+    ///
+    /// 4 is always available (the 4-plane entry point is required to construct
+    /// this handle); 2 depends on the optional TP2 entry point and 3/6 depend on
+    /// the optional N-plane entry point. Check this during admission, before any
+    /// allocation or readiness publication, so an older library fails fast
+    /// instead of at the first reduction. Any other value is unsupported.
+    pub fn supports_rank_count(&self, ranks: u32) -> bool {
+        match ranks {
+            2 => self.reduce_tp2.is_some(),
+            4 => true,
+            3 | 6 => self.reduce_planes.is_some(),
+            _ => false,
+        }
+    }
+
+    /// Admission gate for a planned physical-rank count: succeeds only when the
+    /// loaded library can execute it, with a descriptive error otherwise.
+    pub fn require_rank_count(&self, ranks: u32) -> Result<()> {
+        ensure!(
+            v41_rank_count_supported(ranks),
+            "unsupported physical rank count {ranks}; expected 2, 3, 4 or 6"
+        );
+        ensure!(
+            self.supports_rank_count(ranks),
+            "native library cannot reduce {ranks} physical-rank planes; rebuild it with the matching compact reducer entry point"
+        );
+        Ok(())
+    }
+
+    /// The physical-rank counts this loaded library can reduce, in ascending
+    /// order. Useful for startup logging and fallback rejection.
+    pub fn available_rank_counts(&self) -> Vec<u32> {
+        [2u32, 3, 4, 6]
+            .into_iter()
+            .filter(|ranks| self.supports_rank_count(*ranks))
+            .collect()
+    }
+
     /// Sum six local FP32 routes and round the rank partial once to BF16.
     /// # Safety
     /// Routes are CUDA FP32 [rows,6,5120], output CUDA BF16 [rows,5120].
@@ -330,6 +412,41 @@ impl V41CompactReducer<'_> {
         );
         Ok(())
     }
+
+    /// Sum `ranks` physical-rank BF16 [rows,5120] partial planes in rank order in
+    /// FP32, add the optional BF16 shared expert exactly once, then round once to
+    /// BF16. This is the replicated-group contract: every physical rank returns
+    /// one plane directly to the coordinator, with no group-local reduction.
+    /// # Safety
+    /// `planes[0..ranks]` must be live non-null CUDA BF16 [rows,5120] views on the
+    /// current device; `planes[ranks..6]` must be null. Output must not overlap any
+    /// plane and may alias `shared` only exactly. 1 <= rows <= 4096 and ranks is
+    /// 2, 3, 4 or 6. Storage and this library must outlive stream completion and
+    /// every captured graph replay, with producer writes ordered first. The six
+    /// pointers travel to the kernel by value; no device pointer array is used.
+    pub unsafe fn reduce_planes(
+        &self,
+        planes: [*const u16; 6],
+        ranks: u32,
+        shared: *const u16,
+        output: *mut u16,
+        rows: u32,
+        stream: *mut c_void,
+    ) -> Result<()> {
+        ensure!(
+            matches!(ranks, 2 | 3 | 4 | 6),
+            "N-plane reduction requires ranks 2, 3, 4 or 6"
+        );
+        let function = self
+            .reduce_planes
+            .context("native N-plane compact BF16 reduction unavailable")?;
+        let status = unsafe { function(planes.as_ptr(), shared, output, rows, ranks, stream) };
+        ensure!(
+            status == 0,
+            "V4.1 {ranks}-plane compact reduction failed with CUDA status {status}"
+        );
+        Ok(())
+    }
 }
 
 impl V41RouteReducer<'_> {
@@ -390,10 +507,20 @@ impl NativeLibrary {
             reduce_tp2: unsafe {
                 self.lib.get::<ReduceCompactFn>(b"ds41rt_v41_reduce_tp2_compact_bf16_async").ok().map(|f| *f)
             },
+            reduce_planes: unsafe {
+                self.lib
+                    .get::<ReduceCompactPlanesFn>(b"ds41rt_v41_reduce_compact_bf16_planes_async")
+                    .ok()
+                    .map(|f| *f)
+            },
         })
     }
 
     pub fn v41_expert_packer(&self, intermediate: u32) -> Result<V41ExpertPacker<'_>> {
+        ensure!(
+            v41_pack_intermediate_supported(intermediate),
+            "unsupported V4.1 pack intermediate {intermediate}; expected 576 (Spark TP4), 768 (Spark TP3), 1152 (TP2) or 2304 (full)"
+        );
         let sizes = unsafe {
             self.lib
                 .get::<PackedSizesFn>(b"ds41rt_v41_expert_packed_sizes")?
@@ -441,9 +568,20 @@ impl NativeLibrary {
         self.expert_info_for(capacity,4)
     }
 
+    /// Replicated-group Spark TP2 shard metadata (intermediate 1152, SM121).
+    pub fn v41_spark_tp2_expert_info(&self, capacity: u32) -> Result<V41ExpertInfo> {
+        self.expert_info_for(capacity, 8)
+    }
+
+    /// Replicated-group Spark TP3 shard metadata (intermediate 768, SM121).
+    pub fn v41_spark_tp3_expert_info(&self, capacity: u32) -> Result<V41ExpertInfo> {
+        self.expert_info_for(capacity, 9)
+    }
+
     fn expert_info_for(&self, capacity: u32, interface: u8) -> Result<V41ExpertInfo> {
-        // 5 and 6 select the W4A4 ModelOpt NVFP4 family (RTX TP2 and Spark TP4);
-        // 0..4 select the native W4A8 family; both may live in one library.
+        // 5..7 select the W4A4 ModelOpt NVFP4 family (RTX TP2, Spark TP4, full
+        // RTX); 0..4 select the native W4A8 family; 8/9 select the native
+        // replicated-group Spark TP2/TP3 shards. All may live in one library.
         let name: &[u8] = match interface {
             2 => b"ds41rt_v41_local_expert_info",
             3 => b"ds41rt_v41_tp2_expert_info",
@@ -451,6 +589,8 @@ impl NativeLibrary {
             5 => b"ds41rt_v41_nvfp4_tp2_expert_info",
             6 => b"ds41rt_v41_nvfp4_expert_info",
             7 => b"ds41rt_v41_nvfp4_local_expert_info",
+            8 => b"ds41rt_v41_spark_tp2_expert_info",
+            9 => b"ds41rt_v41_spark_tp3_expert_info",
             _ => b"ds41rt_v41_expert_info",
         };
         let function = unsafe { self.lib.get::<InfoFn>(name) }
@@ -472,23 +612,20 @@ impl NativeLibrary {
                 // inside the kernel.
                 info.input_dtype == 1
             } else {
-                info.input_dtype == 1 || (matches!(info.role, 1 | 2 | 3 | 4) && info.input_dtype == 7)
+                info.input_dtype == 1 || (matches!(info.role, 1 | 2 | 3 | 4 | 5 | 6) && info.input_dtype == 7)
             },
             "unsupported native expert input representation"
         );
-        let expected = match (nvfp4, info.role) {
-            // Both exact source layout and zero-padded Spark AOTs are valid.
-            (true, 1) if info.kernel_intermediate == 640 => (384, 576, 640, 6),
-            (true, 1) => (384, 576, 576, 6),
-            (true, 2) => (384, 2304, 2304, 6),
-            (true, 3) => (384, 1152, 1152, 6),
-            (false, 0) => (128, 2304, 2304, 3),
-            (false, 1) => (384, 576, 640, 6),
-            (false, 2) => (384, 2304, 2304, 6),
-            (false, 3) => (384, 1152, 1152, 6),
-            (false, 4) => (128, 1152, 1152, 3),
-            _ => anyhow::bail!("unknown V4.1 expert role {} for interface {interface}", info.role),
-        };
+        if matches!(interface, 8 | 9) {
+            // Replicated-group Spark shards are always exported from the native
+            // FP8 K32 wire format; reject a BF16-hidden artifact explicitly.
+            ensure!(
+                info.input_dtype == 7,
+                "Spark TP2/TP3 require the native FP8 K32 input representation"
+            );
+        }
+        let expected = expected_expert_geometry(nvfp4, info.role, info.kernel_intermediate)
+            .ok_or_else(|| anyhow::anyhow!("unknown V4.1 expert role {} for interface {interface}", info.role))?;
         ensure!(
             (
                 info.experts,
@@ -507,6 +644,8 @@ impl NativeLibrary {
             5 => Some(3),
             6 => Some(1),
             7 => Some(2),
+            8 => Some(5),
+            9 => Some(6),
             other => Some(u32::from(other)),
         };
         match expected_role {
@@ -531,6 +670,16 @@ impl NativeLibrary {
 
     pub fn v41_dspark_tp2_expert_kernel(&self,capacity:u32)->Result<V41ExpertKernel<'_>> {
         self.expert_kernel_for(capacity,4)
+    }
+
+    /// Replicated-group Spark TP2 shard kernels (native FP8 K32, SM121).
+    pub fn v41_spark_tp2_expert_kernel(&self, capacity: u32) -> Result<V41ExpertKernel<'_>> {
+        self.expert_kernel_for(capacity, 8)
+    }
+
+    /// Replicated-group Spark TP3 shard kernels (native FP8 K32, SM121).
+    pub fn v41_spark_tp3_expert_kernel(&self, capacity: u32) -> Result<V41ExpertKernel<'_>> {
+        self.expert_kernel_for(capacity, 9)
     }
 
     /// W4A4 ModelOpt NVFP4 expert kernels. The family publishes BF16
@@ -573,6 +722,8 @@ impl NativeLibrary {
             5 => "ds41rt_v41_nvfp4_tp2",
             6 => "ds41rt_v41_nvfp4",
             7 => "ds41rt_v41_nvfp4_local",
+            8 => "ds41rt_v41_spark_tp2",
+            9 => "ds41rt_v41_spark_tp3",
             _ => "ds41rt_v41",
         };
         let symbol = |operation: &str| format!("{prefix}_expert_{operation}").into_bytes();
@@ -607,7 +758,7 @@ impl NativeLibrary {
                     self.lib.get::<ReduceTp2Bf16RoutesFn>(b"ds41rt_v41_reduce_tp2_bf16_routes_async")?;
                 }
             } else {
-                ensure!(kind == V41ExpertOutputKind::Fp32Tokens && matches!(info.role, 1 | 2 | 3),
+                ensure!(kind == V41ExpertOutputKind::Fp32Tokens && matches!(info.role, 1 | 2 | 3 | 5 | 6),
                     "unsupported V4.1 ABI 3 output layout");
                 unsafe { self.lib.get::<CompactFn>(b"ds41rt_v41_compact_tokens_bf16_async")?; }
             }
@@ -705,6 +856,65 @@ mod tests {
             assert_eq!(kind.row_bytes(6), bytes);
         }
         assert!(V41ExpertOutputKind::from_native(3).is_err());
+    }
+
+    #[test]
+    fn packed_intermediate_accept_list_covers_spark_tp_degrees() {
+        for intermediate in [576u32, 768, 1152, 2304] {
+            assert!(v41_pack_intermediate_supported(intermediate));
+        }
+        for intermediate in [0u32, 1, 128, 577, 640, 2303, 4096] {
+            assert!(!v41_pack_intermediate_supported(intermediate));
+        }
+    }
+
+    #[test]
+    fn expected_geometry_covers_spark_tp2_tp3_without_touching_rtx_tp2() {
+        // Replicated-group Spark shards: TP2 1152 and TP3 768 are unpadded.
+        assert_eq!(expected_expert_geometry(false, 5, 1152), Some((384, 1152, 1152, 6)));
+        assert_eq!(expected_expert_geometry(false, 6, 768), Some((384, 768, 768, 6)));
+        // Historical Spark TP4 padding and RTX TP2 role semantics are unchanged.
+        assert_eq!(expected_expert_geometry(false, 1, 640), Some((384, 576, 640, 6)));
+        assert_eq!(expected_expert_geometry(false, 3, 1152), Some((384, 1152, 1152, 6)));
+        // Unknown or cross-family pairs still fail closed.
+        assert_eq!(expected_expert_geometry(false, 7, 768), None);
+        assert_eq!(expected_expert_geometry(true, 5, 1152), None);
+    }
+
+    #[test]
+    fn rank_count_contract_is_two_three_four_six() {
+        for ranks in [2u32, 3, 4, 6] {
+            assert!(v41_rank_count_supported(ranks));
+        }
+        for ranks in [0u32, 1, 5, 7, 12] {
+            assert!(!v41_rank_count_supported(ranks));
+        }
+    }
+
+    #[test]
+    #[ignore = "requires DS41RT_NATIVE_LIB and CUDA; reducer rank-count capability"]
+    fn compact_reducer_reports_available_rank_counts() -> Result<()> {
+        let library = unsafe { NativeLibrary::load(std::env::var("DS41RT_NATIVE_LIB")?)? };
+        library.cuda_set_device(0)?;
+        let reducer = library.v41_compact_reducer()?;
+        // A reducer handle always exposes the 4-plane entry point.
+        assert!(reducer.supports_rank_count(4));
+        assert!(reducer.require_rank_count(4).is_ok());
+        // Unsupported counts are rejected before any allocation or launch.
+        assert!(!reducer.supports_rank_count(5));
+        assert!(reducer.require_rank_count(5).is_err());
+        assert!(reducer.require_rank_count(0).is_err());
+        // Whatever the library reports must agree with the contract set.
+        for ranks in reducer.available_rank_counts() {
+            assert!(v41_rank_count_supported(ranks));
+            assert!(reducer.require_rank_count(ranks).is_ok());
+        }
+        // The current build must expose the replicated-group 3/6 path.
+        assert!(
+            reducer.supports_rank_count(3) && reducer.supports_rank_count(6),
+            "current library is missing the N-plane compact reducer"
+        );
+        Ok(())
     }
 
     #[test]

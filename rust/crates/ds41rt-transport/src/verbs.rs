@@ -3,7 +3,7 @@ use registered_response::{RegisteredResponseFrame, RegisteredResponseRing};
 mod local;
 mod local_client;
 pub(crate) use local_client::LocalTp4Client;
-pub use local::LocalVerbsExpertConnection;
+pub use local::{LocalVerbsExpertConnection, RingBudget, RingReservation};
 use anyhow::{bail, Context, Result};
 use ds41rt_core::{ExpertRequest, ExpertResponse};
 use ds41rt_ffi::{

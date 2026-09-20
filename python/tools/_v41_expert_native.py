@@ -61,8 +61,45 @@ class Launch(C.Structure):
 assert C.sizeof(Info) == 64 and C.sizeof(Launch) == 392
 
 
-def library(path, *, local=False, tp2=False):
-    assert not (local and tp2)
+SPARK_TP_PREFIX = {2: "ds41rt_v41_spark_tp2_expert_", 3: "ds41rt_v41_spark_tp3_expert_"}
+# Only the five per-family launch-ABI entry points are namespaced. The packer
+# size query and the packer itself are canonical symbols shared by every family.
+FAMILY_SYMBOLS = frozenset({
+    "ds41rt_v41_expert_info",
+    "ds41rt_v41_expert_initialize",
+    "ds41rt_v41_expert_bind_scratch",
+    "ds41rt_v41_expert_initialize_scratch_async",
+    "ds41rt_v41_expert_launch",
+})
+
+
+def namespaced_symbol(name, prefix):
+    """Family symbol for the launch-ABI entry points; canonical for everything else."""
+    if prefix != "ds41rt_v41_expert_" and name in FAMILY_SYMBOLS:
+        return name.replace("ds41rt_v41_expert_", prefix, 1)
+    return name
+
+
+def expert_symbol_prefix(*, local=False, tp2=False, spark_tp=None):
+    """Native symbol prefix for one expert family.
+
+    `spark_tp=2|3` selects the replicated-group Spark TP2/TP3 AOT families
+    (roles 5/6); `local`/`tp2` keep the historical RTX families unchanged, and
+    the default is the canonical TP4 family. At most one family may be selected.
+    """
+    assert sum(bool(x) for x in (local, tp2, spark_tp is not None)) <= 1
+    if spark_tp is not None:
+        assert spark_tp in SPARK_TP_PREFIX, spark_tp
+        return SPARK_TP_PREFIX[spark_tp]
+    if tp2:
+        return "ds41rt_v41_tp2_expert_"
+    if local:
+        return "ds41rt_v41_local_expert_"
+    return "ds41rt_v41_expert_"
+
+
+def library(path, *, local=False, tp2=False, spark_tp=None):
+    prefix = expert_symbol_prefix(local=local, tp2=tp2, spark_tp=spark_tp)
     lib = C.CDLL(path)
     for name, args in {
         "ds41rt_v41_expert_info": [I, C.POINTER(Info)],
@@ -70,20 +107,19 @@ def library(path, *, local=False, tp2=False):
         "ds41rt_v41_expert_bind_scratch": [P, P, L, C.POINTER(P)],
         "ds41rt_v41_expert_initialize_scratch_async": [P, P, L, P],
         "ds41rt_v41_expert_launch": [P, C.POINTER(Launch)],
+        "ds41rt_v41_expert_packed_sizes": [U, C.POINTER(L)],
         "ds41rt_v41_pack_expert_async": [C.POINTER(P), C.POINTER(P), U, P],
         "ds41rt_v41_compact_routes_bf16_async": [P, P, U, P],
+        "ds41rt_v41_compact_tokens_bf16_async": [P, P, U, P],
     }.items():
-        prefix = "ds41rt_v41_tp2_expert_" if tp2 else "ds41rt_v41_local_expert_"
-        selected = name.replace("ds41rt_v41_expert_", prefix, 1) if (local or tp2) and name.startswith("ds41rt_v41_expert_") else name
+        selected = namespaced_symbol(name, prefix)
         fn = getattr(lib, selected)
         if selected != name:
             setattr(lib, name, fn)
         fn.argtypes = args
         fn.restype = I
-    if tp2:
-        lib.ds41rt_v41_expert_output_kind = lib.ds41rt_v41_tp2_expert_output_kind
-    elif local:
-        lib.ds41rt_v41_expert_output_kind = lib.ds41rt_v41_local_expert_output_kind
+    if prefix != "ds41rt_v41_expert_":
+        lib.ds41rt_v41_expert_output_kind = getattr(lib, prefix + "output_kind")
     return lib
 
 
@@ -92,13 +128,16 @@ def check(code):
 
 
 class Native:
-    def __init__(self, lib, capacity, weights, wire, ids, routing, *, coordinator=False, full_backbone=False, tp2=False, storage=None):
-        assert sum((coordinator, full_backbone, tp2)) <= 1
+    def __init__(self, lib, capacity, weights, wire, ids, routing, *, coordinator=False, full_backbone=False, tp2=False, spark_tp=None, storage=None):
+        assert spark_tp in (None, 2, 3)
+        assert sum((coordinator, full_backbone, tp2, spark_tp is not None)) <= 1
         self.lib = lib
         self.info = info = Info()
         self.handle = P()
         check(lib.ds41rt_v41_expert_info(capacity, C.byref(info)))
-        expected = ((3, 384, 5120, 1152, 1152, 6, capacity, 7) if tp2 else
+        expected = ((5, 384, 5120, 1152, 1152, 6, capacity, 7) if spark_tp == 2 else
+                    (6, 384, 5120, 768, 768, 6, capacity, 7) if spark_tp == 3 else
+                    (3, 384, 5120, 1152, 1152, 6, capacity, 7) if tp2 else
                     (0, 128, 5120, 2304, 2304, 3, capacity, 1)
                     if coordinator else (2, 384, 5120, 2304, 2304, 6, capacity, 7)
                     if full_backbone else (1, 384, 5120, 576, 640, 6, capacity, 7))

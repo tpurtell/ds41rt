@@ -4,6 +4,24 @@ use anyhow::{Context, Result, ensure};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use crate::v41_experts::coordinator::NativeTp4Wave;
+use ds41rt_transport::v41_expert::V41SparkTopology;
+
+/// Remote backend label for one layer. The label must describe the actual
+/// Spark topology: a four-rank TP2×EP2 launch is not `spark_tp4`.
+fn remote_backend_label(topology: Option<V41SparkTopology>, world: usize) -> String {
+    match topology {
+        Some(topology) => format!("spark_tp{}ep{}", topology.tp(), topology.ep()),
+        None if world == 2 => "spark_tp2".to_owned(),
+        None => "spark_tp4".to_owned(),
+    }
+}
+
+/// The built-in calibrations measure the legacy single-RTX TP4×EP1 layout only.
+/// Any explicit replicated topology, or a multi-RTX layout, needs an explicit
+/// profile rather than a silently reused TP4 table.
+fn builtin_profile_applies(gpus: usize, topology: Option<V41SparkTopology>, world: usize) -> bool {
+    gpus == 1 && topology.is_none() && world == 4
+}
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -27,9 +45,9 @@ impl Model {
         let path = std::env::var_os("DS41RT_ADAPTIVE_COST_PROFILE");
         if path.as_deref() == Some(std::ffi::OsStr::new("legacy")) { return Ok(None); }
         let placement: [String; 40] = std::array::from_fn(|layer| {
-            let backend = if transport.has_tp2_layer(layer) { "rtx_tp2" }
-                else if transport.has_local_layer(layer) { "rtx_local" }
-                else if transport.spark_world() == 2 { "spark_tp2" } else { "spark_tp4" };
+            let backend = if transport.has_tp2_layer(layer) { "rtx_tp2".to_owned() }
+                else if transport.has_local_layer(layer) { "rtx_local".to_owned() }
+                else { remote_backend_label(transport.native_topology(), transport.spark_world()) };
             let shared_tp = if transport.has_tp2_shared_layer(layer) { 2 } else { 1 };
             format!("{backend}_shared{shared_tp}")
         });
@@ -37,9 +55,11 @@ impl Model {
             || transport.has_tp2_layer(layer)) { 2 } else { 1 };
         let bytes = match &path {
             Some(path) => std::fs::read(path).context("reading adaptive cost profile")?,
-            // The built-in measurements are TP4, not TP2. Use the legacy
-            // adaptive heuristic until a Spark TP2 calibration is supplied.
-            None if gpus == 1 && transport.spark_world() == 4 => Self::builtin(nvfp4).to_vec(),
+            // The built-in measurements are legacy single-RTX TP4×EP1. An
+            // explicit TP×EP topology has no shipped calibration yet, so it uses
+            // the legacy adaptive heuristic until a truthful profile is supplied.
+            None if builtin_profile_applies(gpus, transport.native_topology(), transport.spark_world()) =>
+                Self::builtin(nvfp4).to_vec(),
             None => return Ok(None),
         };
         let model = Self::parse(&bytes, &placement, gpus)?;
@@ -128,8 +148,45 @@ mod tests {
     }
 
     #[test]
-    fn profiles_cannot_silently_misprice_missing_backends_or_layouts() {
-        let mut placement = std::array::from_fn(|_| "spark_tp4_shared1".to_owned());
+    fn remote_backend_labels_report_the_actual_topology() {
+        for (tp, ep) in [(2u8, 1u8), (3, 1), (4, 1), (2, 2), (3, 2), (2, 3)] {
+            let topology = V41SparkTopology::new(tp, ep).unwrap();
+            assert_eq!(
+                remote_backend_label(Some(topology), topology.world_size()),
+                format!("spark_tp{tp}ep{ep}")
+            );
+        }
+        // A four-rank TP2×EP2 launch must not be labelled legacy TP4.
+        assert_eq!(remote_backend_label(Some(V41SparkTopology::new(2, 2).unwrap()), 4), "spark_tp2ep2");
+        assert_ne!(remote_backend_label(Some(V41SparkTopology::new(2, 2).unwrap()), 4), "spark_tp4");
+        // Legacy labels are preserved exactly.
+        assert_eq!(remote_backend_label(None, 4), "spark_tp4");
+        assert_eq!(remote_backend_label(None, 2), "spark_tp2");
+    }
+
+    #[test]
+    fn builtin_tp4_profile_never_covers_an_explicit_topology() {
+        let tp2ep2 = Some(V41SparkTopology::new(2, 2).unwrap());
+        let tp3ep2 = Some(V41SparkTopology::new(3, 2).unwrap());
+        let tp4ep1 = Some(V41SparkTopology::new(4, 1).unwrap());
+        assert!(builtin_profile_applies(1, None, 4));
+        assert!(!builtin_profile_applies(1, None, 2));
+        assert!(!builtin_profile_applies(2, None, 4));
+        // A single-RTX six-rank TP3×EP2 launch is not the legacy TP4 layout even
+        // though the RTX side is one GPU.
+        assert!(!builtin_profile_applies(1, tp3ep2, 6));
+        for topology in [tp2ep2, tp3ep2, tp4ep1] {
+            assert!(!builtin_profile_applies(1, topology, topology.unwrap().world_size()));
+        }
+        // Explicit profiles still use the truthful topology label.
+        let placement = std::array::from_fn(|_| "spark_tp2ep2_shared1".to_owned());
+        let profile = br#"{"version":1,"experts":{"spark_tp2ep2_shared1":[10,2,4,1]},"other":{"1":[100,3,7,0]}}"#;
+        let model = Model::parse(profile, &placement, 1).unwrap();
+        assert!(model.verify_us(16, 2, &[384; 40]).is_finite());
+    }
+
+    #[test]
+    fn profiles_cannot_silently_misprice_missing_backends_or_layouts() {        let mut placement = std::array::from_fn(|_| "spark_tp4_shared1".to_owned());
         assert!(Model::parse(PROFILE, &placement, 2).is_err());
         placement[20] = "spark_tp4_shared2".into();
         assert!(Model::parse(PROFILE, &placement, 1).is_err());

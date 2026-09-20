@@ -35,6 +35,7 @@ mod v41_target_embedding;
 mod v41_attention_output;
 mod v41_projection_tp2;
 mod v41_dspark_cache;
+mod v41_spark_topology;
 mod v41_tensors;
 mod v41_engram;
 

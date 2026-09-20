@@ -49,12 +49,17 @@ ARG CUDA_ARCH
 ARG DS41RT_ENGINE_COMMIT=unknown
 ARG DS41RT_SPARKINFER_COMMIT=unknown
 ARG DS41RT_RELEASE_VERSION=unknown
+# Optional replicated-group SM121 expert roles compiled into this image
+# (semicolon list `tp2`/`tp3`). Empty is the release default and keeps the
+# historical Spark TP4 shard unchanged.
+ARG DS41RT_V41_SPARK_TP_ROLES=
 
 ENV DS41RT_ROLE=${DS41RT_ROLE}
 ENV DS41RT_CUDA_ARCH=${CUDA_ARCH}
 ENV DS41RT_ENGINE_COMMIT=${DS41RT_ENGINE_COMMIT}
 ENV DS41RT_SPARKINFER_COMMIT=${DS41RT_SPARKINFER_COMMIT}
 ENV DS41RT_RELEASE_VERSION=${DS41RT_RELEASE_VERSION}
+ENV DS41RT_V41_SPARK_TP_ROLES=${DS41RT_V41_SPARK_TP_ROLES}
 
 LABEL org.opencontainers.image.title="DS41RT inference"
 LABEL org.opencontainers.image.source="https://github.com/tpurtell/ds41rt"
@@ -65,6 +70,7 @@ LABEL org.opencontainers.image.version=${DS41RT_RELEASE_VERSION}
 LABEL io.ds41rt.role=${DS41RT_ROLE}
 LABEL io.ds41rt.cuda_arch=${CUDA_ARCH}
 LABEL io.ds41rt.sparkinfer.revision=${DS41RT_SPARKINFER_COMMIT}
+LABEL io.ds41rt.v41.spark_tp_roles=${DS41RT_V41_SPARK_TP_ROLES}
 
 COPY scripts/verify-sparkinfer-source.py /opt/ds41rt/scripts/verify-sparkinfer-source.py
 COPY scripts/sparkinfer-release-provenance.py /opt/ds41rt/scripts/sparkinfer-release-provenance.py
@@ -93,6 +99,7 @@ COPY .ds41rt-release-image/ds41rt /opt/ds41rt/bin/ds41rt
 COPY .ds41rt-release-image/libds41rt_native.so /opt/ds41rt/lib/libds41rt_native.so
 COPY .ds41rt-release-image/exl3 /opt/ds41rt/lib/exl3
 COPY .ds41rt-release-image/V41_EXPERT_AOT.json /opt/ds41rt/share/V41_EXPERT_AOT.json
+COPY .ds41rt-release-image/V41_EXPERT_TP_AOT.json /opt/ds41rt/share/V41_EXPERT_TP_AOT.json
 COPY .ds41rt-release-image/V41_FP8_AOT.json /opt/ds41rt/share/V41_FP8_AOT.json
 COPY .ds41rt-release-image/THIRD_PARTY_NOTICES.md /opt/ds41rt/share/THIRD_PARTY_NOTICES.md
 COPY .ds41rt-release-image/SPARKINFER_PROVENANCE.json /opt/ds41rt/share/SPARKINFER_PROVENANCE.json

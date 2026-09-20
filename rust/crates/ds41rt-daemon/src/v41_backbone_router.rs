@@ -710,6 +710,17 @@ impl BoundExpertRequest {
         assignment.encode(&mut self.request, profile.layer(layer)?, layer)?;
         Ok(())
     }
+    /// Encode this lane's replicated-group ownership after proving the request
+    /// still describes the same layer as its block binding. The request stays
+    /// private to this owner; only the ownership encoder can rewrite route words.
+    pub(crate) fn assign_native(&mut self,
+        planner: &mut crate::v41_experts::coordinator::ReplicatedGroupPlanner) -> Result<()> {
+        ensure!(
+            self.binding.layer() == self.request.header.layer_id as usize,
+            "bound native expert request layer differs from its block binding"
+        );
+        planner.encode(&mut self.request)
+    }
 
     pub fn request(&self) -> &ds41rt_transport::ExpertProtocolV2Request {
         &self.request

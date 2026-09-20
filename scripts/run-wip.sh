@@ -140,13 +140,24 @@ if ((config_explicit == 0)); then
   config="$slot_config"
   release_load_config "$config"
 fi
-[[ "$SPARK_COUNT" != 2 ]] || release_die "legacy WIP launcher does not support Spark TP2; use run.sh or runs/v7q-a1/serve-diffbot.sh"
+[[ "$SPARK_COUNT" != 2 ]] || release_die "legacy WIP launcher does not support the EXL3 compact Spark TP2 path; use run.sh or runs/v7q-a1/serve-diffbot.sh"
+[[ "$SPARK_COUNT" == 4 ]] ||
+  release_die "legacy WIP launcher runs exactly four persistent Spark experts; SPARK_COUNT=$SPARK_COUNT requires the release launcher (run.sh)"
+# The legacy phase0 expert backend implements the fixed four-plane TP4 wire, not
+# the replicated TP×EP contract. An explicit topology must go through the
+# native path (run.sh with candidate artifacts), never this legacy launcher.
+if release_spark_topology_explicit; then
+  release_die "run-wip.sh's legacy phase0 backend does not implement the replicated TP×EP wire; launch the native path with run.sh (TP$SPARK_TP EP$SPARK_EP), not the legacy WIP launcher"
+fi
 report_wip_startup_phase bootstrap
 
 hosts_csv="$(release_hosts_csv)"
 lane_a_csv="$(release_lane_a_csv)"
 lane_b_csv="$(release_lane_b_csv)"
 expert_hosts_csv="$(release_expert_hosts_csv)"
+mapfile -t wip_hosts < <(release_spark_values HOST)
+wip_spark_tp="$(release_spark_tp)"
+wip_spark_ep="$(release_spark_ep)"
 hf_home="${HF_HOME:-$HOME/.cache/huggingface}"
 mkdir -p "$hf_home"
 release_resolve_local_model_revision "$hf_home"
@@ -286,7 +297,7 @@ validation_pids=()
 validate_local_slot >"$validation_dir/0.out" 2>"$validation_dir/0.err" &
 validation_pids+=("$!")
 validation_index=0
-for host in "$SPARK_0_HOST" "$SPARK_1_HOST" "$SPARK_2_HOST" "$SPARK_3_HOST"; do
+for host in "${wip_hosts[@]}"; do
   validation_index=$((validation_index + 1))
   validation_labels+=("$host")
   validate_remote_slot "$host" \
@@ -310,7 +321,7 @@ coordinator_slot_fingerprint="$(<"$validation_dir/0.out")"
 expert_slot_fingerprint=
 expert_model_revision=
 validation_index=0
-for host in "$SPARK_0_HOST" "$SPARK_1_HOST" "$SPARK_2_HOST" "$SPARK_3_HOST"; do
+for host in "${wip_hosts[@]}"; do
   validation_index=$((validation_index + 1))
   read -r remote_fingerprint remote_model_revision extra \
     <"$validation_dir/$validation_index.out" ||
@@ -380,6 +391,20 @@ blockers="$(jq -r '.blockers[]?' "$resolved_json")"
 [[ -z "$blockers" ]] || release_die "launch blockers:\n$blockers"
 
 config_sha256="$(sha256sum "$config" | awk '{print $1}')"
+expert_identity_settings=()
+for wip_index in "${!wip_hosts[@]}"; do
+  wip_host="${wip_hosts[$wip_index]}"
+  wip_lane_a_name="SPARK_${wip_index}_LANE_A"
+  wip_lane_b_name="SPARK_${wip_index}_LANE_B"
+  expert_identity_settings+=(
+    --setting "spark_${wip_index}=${wip_host},${!wip_lane_a_name},${!wip_lane_b_name}"
+  )
+done
+# Bind the expert identity to the resolved topology, not just the host list.
+expert_identity_settings+=(
+  --setting "spark_tp=$(release_spark_tp)"
+  --setting "spark_ep=$(release_spark_ep)"
+)
 expert_runtime_fingerprint="$(
   python3 "$repo_root/scripts/wip-expert-runtime-identity.py" \
     --resolved-settings "$resolved_json" \
@@ -394,10 +419,7 @@ expert_runtime_fingerprint="$(
     --setting "expert_image=$SPARK_EXPERT_DOCKER_DEV" \
     --setting "runtime_cache=/wip/cache" \
     --setting "transport=verbs-host" \
-    --setting "spark_0=$SPARK_0_HOST,$SPARK_0_LANE_A,$SPARK_0_LANE_B" \
-    --setting "spark_1=$SPARK_1_HOST,$SPARK_1_LANE_A,$SPARK_1_LANE_B" \
-    --setting "spark_2=$SPARK_2_HOST,$SPARK_2_LANE_A,$SPARK_2_LANE_B" \
-    --setting "spark_3=$SPARK_3_HOST,$SPARK_3_LANE_A,$SPARK_3_LANE_B"
+    "${expert_identity_settings[@]}"
 )"
 deployment_fingerprint="$({
   printf 'ds41rt-wip-deployment-v2\n'
@@ -464,7 +486,7 @@ expert_fingerprints_match=1
 service_state_dir="$(mktemp -d "$state_dir/service-state.XXXXXX")"
 service_state_hosts=()
 service_state_pids=()
-for host in "$SPARK_0_HOST" "$SPARK_1_HOST" "$SPARK_2_HOST" "$SPARK_3_HOST"; do
+for host in "${wip_hosts[@]}"; do
   inspect_remote_service_state "$host" \
     >"$service_state_dir/$host.out" 2>"$service_state_dir/$host.err" &
   service_state_hosts+=("$host")
@@ -502,7 +524,7 @@ reuse_spark_experts=0
 if ((services_active)); then
   if ((!restart)); then
     current_fingerprint="$(process_identity_local)"
-    if ((standard_services == 0 && wip_coordinator_running == 1 && wip_experts_running == 4 && expert_fingerprints_match)) &&
+    if ((standard_services == 0 && wip_coordinator_running == 1 && wip_experts_running == SPARK_COUNT && expert_fingerprints_match)) &&
       [[ "$current_fingerprint" == "$deployment_fingerprint" ]] &&
       release_api_advertises_model \
         "http://127.0.0.1:${ADDR##*:}" "$RELEASE_MODEL_ID"; then
@@ -511,7 +533,7 @@ if ((services_active)); then
     fi
     release_die "partial, standard, or configuration-mismatched service state is active; use --restart"
   fi
-  if ((standard_services == 0 && wip_experts_running == 4)); then
+  if ((standard_services == 0 && wip_experts_running == SPARK_COUNT)); then
     reuse_spark_experts="$expert_fingerprints_match"
   fi
   if ((reuse_spark_experts)); then
@@ -578,7 +600,7 @@ echo "  coordinator: RAM $((available_kib / 1024)) MiB available; GPU ${free_mib
 resource_check_dir="$(mktemp -d "$state_dir/resource-check.XXXXXX")"
 resource_check_hosts=()
 resource_check_pids=()
-for host in "$SPARK_0_HOST" "$SPARK_1_HOST" "$SPARK_2_HOST" "$SPARK_3_HOST"; do
+for host in "${wip_hosts[@]}"; do
   if ((reuse_spark_experts)); then
     echo "  $host: reusing resident fingerprint-matched expert; launch headroom check skipped"
     continue
@@ -633,6 +655,8 @@ else
   unset DS41RT_WIP_ALLOW_HISTORICAL_EXL3_CONTROL || true
 fi
 export DS41RT_SPARK_HOSTS="$hosts_csv"
+export DS41RT_SPARK_TP="$wip_spark_tp"
+export DS41RT_SPARK_EP="$wip_spark_ep"
 export DS41RT_REAL_FULL_SERVE_EXPERT_HOSTS="$expert_hosts_csv"
 export DS41RT_SPARK_IMAGE="$SPARK_EXPERT_DOCKER_DEV"
 export DS41RT_SPARK_EXISTING_CONTAINER="$spark_container"
@@ -671,6 +695,8 @@ jq -r '.environment | to_entries[] | "\(.key)=\(.value)"' "$resolved_json" >"$en
   echo "ADDR=$ADDR"
   echo "DS41RT_REAL_FULL_SERVE_EXPERT_HOSTS=$expert_hosts_csv"
   echo "DS41RT_SPARK_HOSTS=$hosts_csv"
+  echo "DS41RT_SPARK_TP=$wip_spark_tp"
+  echo "DS41RT_SPARK_EP=$wip_spark_ep"
   echo "DS41RT_SPARK_EXPERT_PORT=$EXPERT_PORT"
   echo "DS41RT_SPARKINFER_EXL3=$SPARKINFER_EXL3"
   echo "DS41RT_MODEL_REVISION=$RELEASE_MODEL_REVISION"
@@ -795,7 +821,7 @@ docker exec "$coordinator_container" \
   "$coordinator_workspace/scripts/wip-process.sh" bind-identity \
   "$coordinator_process" "$deployment_fingerprint"
 if ((!reuse_spark_experts)); then
-  for host in "$SPARK_0_HOST" "$SPARK_1_HOST" "$SPARK_2_HOST" "$SPARK_3_HOST"; do
+  for host in "${wip_hosts[@]}"; do
     ssh -o BatchMode=yes "$host" \
       "docker exec '$spark_container' '$expert_workspace/scripts/wip-process.sh' bind-identity '$expert_process' '$expert_runtime_fingerprint'"
   done
@@ -843,5 +869,5 @@ echo "  concurrency: $CONCURRENCY"
 if [[ -n "$execution_lanes_override" ]]; then
   echo "  exec lanes:  $execution_lanes_override (WIP override)"
 fi
-echo "  containers:  persistent $coordinator_container + four $spark_container"
+echo "  containers:  persistent $coordinator_container + $SPARK_COUNT $spark_container"
 echo "  Spark reuse: $([[ "$reuse_spark_experts" == 1 ]] && echo yes || echo no)"

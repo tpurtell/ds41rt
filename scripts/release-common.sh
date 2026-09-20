@@ -101,7 +101,7 @@ release_trim() {
 release_known_key() {
   case "$1" in
     EXL3_PAIRED_TP4|TP2_ATTENTION|TP2_QUERY_PROJECTION|TP2_OUTPUT_PROJECTION|TP2_DSPARK_EXPERTS) return 0 ;;
-    HTTP_QUEUE_DEPTH|HTTP_QUEUE_WAIT_MS|MODEL_ID|MODEL_VARIANT|MODEL_REVISION|EXPERT_FORMAT|DSPARK|DSPARK_DRAFT_POLICY|RTX_GPUS|RTX_EXPERT_LAYERS|COORDINATOR_GPU|COORDINATOR_GPU_UUID|COORDINATOR_GPU_PCI_BUS_ID|COORDINATOR_GPU_HEADROOM_GIB|KV_POOL_TOKENS|KV_POOL_SIZE|HOST_CACHE_BYTES|MEMORY_RESERVATION|MAX_CONTEXT_TOKENS|MAX_OUTPUT_TOKENS|CONCURRENCY|PREFIX_CACHE_ENTRIES|PREFILL_BATCH_TOKENS|SPARK_DEVICE_BUDGET_BYTES|SPARK_REDUCTION_MIN_ROWS|SPARKINFER_EXL3|SPARK_COUNT|ADDR|EXPERT_PORT|SPARK_[0-3]_HOST|SPARK_[0-3]_LANE_A|SPARK_[0-3]_LANE_B|COORDINATOR_DOCKER_DEV|COORDINATOR_DOCKER_INFERENCE|SPARK_EXPERT_DOCKER_DEV|SPARK_EXPERT_DOCKER_INFERENCE)
+    HTTP_QUEUE_DEPTH|HTTP_QUEUE_WAIT_MS|MODEL_ID|MODEL_VARIANT|MODEL_REVISION|EXPERT_FORMAT|DSPARK|DSPARK_DRAFT_POLICY|RTX_GPUS|RTX_EXPERT_LAYERS|COORDINATOR_GPU|COORDINATOR_GPU_UUID|COORDINATOR_GPU_PCI_BUS_ID|COORDINATOR_GPU_HEADROOM_GIB|KV_POOL_TOKENS|KV_POOL_SIZE|HOST_CACHE_BYTES|MEMORY_RESERVATION|MAX_CONTEXT_TOKENS|MAX_OUTPUT_TOKENS|CONCURRENCY|PREFIX_CACHE_ENTRIES|PREFILL_BATCH_TOKENS|SPARK_DEVICE_BUDGET_BYTES|SPARK_REDUCTION_MIN_ROWS|SPARKINFER_EXL3|SPARK_COUNT|SPARK_TP|SPARK_EP|ADDR|EXPERT_PORT|SPARK_[0-5]_HOST|SPARK_[0-5]_LANE_A|SPARK_[0-5]_LANE_B|COORDINATOR_DOCKER_DEV|COORDINATOR_DOCKER_INFERENCE|SPARK_EXPERT_DOCKER_DEV|SPARK_EXPERT_DOCKER_INFERENCE)
       return 0
       ;;
     *)
@@ -147,13 +147,17 @@ release_load_config() {
   SPARKINFER_EXL3=disable
   EXL3_PAIRED_TP4=off
   SPARK_COUNT=4
+  # Optional explicit replicated expert-group topology. Absent means the legacy
+  # geometry (TP = SPARK_COUNT, EP = 1). See docs/tp-ep-configuration.md.
+  SPARK_TP=
+  SPARK_EP=
   ADDR=0.0.0.0:8000
   EXPERT_PORT=19441
   COORDINATOR_DOCKER_DEV=ds41rt-coordinator-dev
   COORDINATOR_DOCKER_INFERENCE=ds41rt-coordinator
   SPARK_EXPERT_DOCKER_DEV=ds41rt-spark-expert-dev
   SPARK_EXPERT_DOCKER_INFERENCE=ds41rt-spark-expert
-  for release_i in 0 1 2 3; do
+  for release_i in 0 1 2 3 4 5; do
     printf -v "SPARK_${release_i}_HOST" '%s' ""
     printf -v "SPARK_${release_i}_LANE_A" '%s' ""
     printf -v "SPARK_${release_i}_LANE_B" '%s' ""
@@ -251,6 +255,7 @@ release_load_config() {
     release_die "MODEL_REVISION must be empty or a 40..64 lowercase hex revision"
 
   release_validate_tp2_options
+  release_validate_spark_topology
 
   case "$SPARK_COUNT" in
     0)
@@ -259,7 +264,11 @@ release_load_config() {
       ;;
     2) release_validate_compact_tp2 ;;
     4) ;;
-    *) release_die "SPARK_COUNT must be 0, 2, or 4" ;;
+    6)
+      release_spark_topology_explicit ||
+        release_die "SPARK_COUNT=6 requires explicit SPARK_TP and SPARK_EP (six Sparks are only approved as a replicated native topology)"
+      ;;
+    *) release_die "SPARK_COUNT must be 0, 2, 4, or 6" ;;
   esac
 
   local missing_b=0 present_b=0 spark_required="$SPARK_COUNT"
@@ -372,6 +381,79 @@ release_spark_values() {
     name="SPARK_${i}_${field}"
     printf '%s\n' "${!name}"
   done
+}
+
+# ---------------------------------------------------------------------------
+# Opt-in replicated expert-group topology (SPARK_TP x SPARK_EP = SPARK_COUNT).
+#
+# The default configuration sets neither key and keeps the legacy geometry:
+# every Spark rank is one TP rank of a single replicated group. Explicit keys
+# are all-or-none and only valid for the approved native official topologies.
+# The rank map is group-major: group = rank / TP and tp_rank = rank % TP.
+# ---------------------------------------------------------------------------
+
+release_spark_topology_explicit() {
+  [[ -n "$SPARK_TP" || -n "$SPARK_EP" ]]
+}
+
+release_spark_tp() {
+  if [[ -n "$SPARK_TP" ]]; then printf '%s\n' "$SPARK_TP"; else printf '%s\n' "$SPARK_COUNT"; fi
+}
+
+release_spark_ep() {
+  if [[ -n "$SPARK_EP" ]]; then printf '%s\n' "$SPARK_EP"; else printf '1\n'; fi
+}
+
+release_spark_group() {
+  local rank="$1" tp="$2"
+  [[ "$rank" =~ ^[0-9]+$ && "$tp" =~ ^[1-9][0-9]*$ ]] ||
+    release_die "invalid Spark rank/TP for group resolution: rank=$rank tp=$tp"
+  printf '%s\n' "$((rank / tp))"
+}
+
+release_spark_tp_rank() {
+  local rank="$1" tp="$2"
+  [[ "$rank" =~ ^[0-9]+$ && "$tp" =~ ^[1-9][0-9]*$ ]] ||
+    release_die "invalid Spark rank/TP for tp-rank resolution: rank=$rank tp=$tp"
+  printf '%s\n' "$((rank % tp))"
+}
+
+# Print "rank group tp_rank" for every configured physical Spark rank.
+release_spark_rank_map() {
+  local tp rank
+  tp="$(release_spark_tp)"
+  for ((rank = 0; rank < SPARK_COUNT; rank++)); do
+    printf '%s %s %s\n' "$rank" "$(release_spark_group "$rank" "$tp")" "$(release_spark_tp_rank "$rank" "$tp")"
+  done
+}
+
+release_validate_spark_topology() {
+  case "$SPARK_TP" in
+    ""|2|3|4) ;;
+    *) release_die "SPARK_TP must be 2, 3, or 4" ;;
+  esac
+  case "$SPARK_EP" in
+    ""|1|2|3) ;;
+    *) release_die "SPARK_EP must be 1, 2, or 3" ;;
+  esac
+  [[ -n "$SPARK_TP" && -n "$SPARK_EP" || -z "$SPARK_TP" && -z "$SPARK_EP" ]] ||
+    release_die "SPARK_TP and SPARK_EP must be set together or omitted together"
+  release_spark_topology_explicit || return 0
+
+  [[ "$SPARK_COUNT" == 4 || "$SPARK_COUNT" == 6 ]] ||
+    release_die "explicit SPARK_TP/SPARK_EP requires SPARK_COUNT=4 or 6"
+  [[ "$EXPERT_FORMAT" == native ]] ||
+    release_die "explicit SPARK_TP/SPARK_EP requires EXPERT_FORMAT=native"
+  [[ "$EXL3_PAIRED_TP4" == off ]] ||
+    release_die "explicit SPARK_TP/SPARK_EP is a native topology; EXL3_PAIRED_TP4 must be off"
+  [[ "$SPARKINFER_EXL3" == disable ]] ||
+    release_die "explicit SPARK_TP/SPARK_EP requires SPARKINFER_EXL3=disable"
+  ((SPARK_TP * SPARK_EP == SPARK_COUNT)) ||
+    release_die "SPARK_TP(${SPARK_TP}) * SPARK_EP(${SPARK_EP}) must equal SPARK_COUNT(${SPARK_COUNT})"
+  case "${SPARK_TP}x${SPARK_EP}" in
+    2x2|3x2|2x3|4x1) ;;
+    *) release_die "unsupported native Spark topology TP${SPARK_TP}EP${SPARK_EP}; approved: TP2EP2, TP3EP2, TP2EP3, TP4EP1" ;;
+  esac
 }
 
 release_hosts_csv() { release_spark_values HOST | paste -sd, -; }
@@ -645,8 +727,17 @@ CONTAINER
 
 # Build availability is independent of the four-rank runtime topology.
 release_select_build_hosts() {
-  local requested="${1:-}" host configured found prior
-  local -a configured_hosts=("$SPARK_0_HOST" "$SPARK_1_HOST" "$SPARK_2_HOST" "$SPARK_3_HOST")
+  local requested="${1:-}" host configured found prior name
+  local -a configured_hosts=()
+  if [[ -n "${SPARK_COUNT:-}" ]]; then
+    mapfile -t configured_hosts < <(release_spark_values HOST)
+  else
+    # Callers that have not loaded a configuration may still set the host keys
+    # directly; fall back to the bounded rank keys and keep only filled ones.
+    for name in SPARK_0_HOST SPARK_1_HOST SPARK_2_HOST SPARK_3_HOST SPARK_4_HOST SPARK_5_HOST; do
+      [[ -n "${!name:-}" ]] && configured_hosts+=("${!name}")
+    done
+  fi
   RELEASE_BUILD_HOSTS=()
   if [[ -z "$requested" ]]; then
     RELEASE_BUILD_HOSTS=("${configured_hosts[@]}")
@@ -682,6 +773,53 @@ release_spark_first_layer() {
   # routed layer is local. Keep its last layer as an unused transport endpoint.
   if [[ "$layers" == 40 ]]; then printf '39\n'; return; fi
   printf '%s\n' "$layers"
+}
+
+# Native per-TP-rank routed weight for one 40-layer backbone layer, in bytes.
+# These are the exact tensor windows from the official checkpoint geometry:
+# 1,804,861,440 B/rank at TP4 raw, padded to a 640-wide kernel extent
+# (2,005,401,600 B); TP2 (1152) and TP3 (768) need no padding. They are weight
+# arithmetic only and do not include workspace, staging or runtime headroom.
+release_spark_layer_bytes() {
+  case "$1" in
+    2) printf '%s\n' 3609722880 ;;
+    3) printf '%s\n' 2406481920 ;;
+    4) printf '%s\n' 2005401600 ;;
+    *) release_die "unsupported Spark TP degree: $1 (expected 2, 3, or 4)" ;;
+  esac
+}
+
+release_spark_remote_layers() {
+  local first_layer="$1"
+  [[ "$first_layer" =~ ^([0-9]|[1-3][0-9]|40)$ ]] ||
+    release_die "Spark first layer must be 0..40: $first_layer"
+  ((first_layer <= 39)) ||
+    release_die "Spark first layer must be 0..39: $first_layer"
+  printf '%s\n' "$((40 - first_layer))"
+}
+
+release_spark_remote_weight_bytes() {
+  local first_layer="$1" tp="$2"
+  printf '%s\n' "$(($(release_spark_remote_layers "$first_layer") * $(release_spark_layer_bytes "$tp")))"
+}
+
+# Weight-only admission for the resolved dynamic RTX/Spark boundary.
+#
+# IMPORTANT: a successful check means the *weights* fit the Spark budget. It is
+# not a launch-feasibility claim: SparkInfer workspace, load staging, replicated
+# activation buffers and runtime headroom are only known after the expert
+# service reports them at startup. run.sh prints the residual and labels it
+# explicitly. Weight-only overflow is a hard failure before any service change.
+release_validate_spark_weight_admission() {
+  local first_layer="$1" tp="$2" budget="$3" remote_layers weight margin
+  [[ "$budget" =~ ^[1-9][0-9]*$ ]] || release_die "Spark device budget must be a positive integer"
+  remote_layers="$(release_spark_remote_layers "$first_layer")"
+  weight="$(release_spark_remote_weight_bytes "$first_layer" "$tp")"
+  ((weight <= budget)) ||
+    release_die "Spark TP${tp} weight-only admission fails: ${remote_layers} remote layers need ${weight} B > ${budget} B budget (lower the RTX boundary first layer)"
+  margin=$((budget - weight))
+  printf 'remote_layers=%s per_rank_weight_bytes=%s weight_margin_bytes=%s budget_bytes=%s workspace_accounted=no\n' \
+    "$remote_layers" "$weight" "$margin" "$budget"
 }
 
 # Validate booleans independently of resolved GPU selection. Called again after

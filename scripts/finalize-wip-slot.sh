@@ -41,6 +41,9 @@ install -m 0755 \
 install -m 0644 \
   "$build_output/V41_EXPERT_AOT.json" \
   "$incoming/workspace/.ds41rt-wip/V41_EXPERT_AOT.json"
+install -m 0644 \
+  "$build_output/V41_EXPERT_TP_AOT.json" \
+  "$incoming/workspace/.ds41rt-wip/V41_EXPERT_TP_AOT.json"
 install -m 0644 "$build_output/V41_FP8_AOT.json" "$incoming/workspace/.ds41rt-wip/V41_FP8_AOT.json"
 if [[ -d "$build_output/exl3" ]]; then
   mkdir -p "$incoming/workspace/.ds41rt-wip"
@@ -62,12 +65,22 @@ sparkinfer_revision="$(
     --print-revision
 )"
 
-python3 - "$incoming/META.json" <<PY
+python3 - "$incoming/META.json" \
+  "$incoming/workspace/.ds41rt-wip/V41_EXPERT_TP_AOT.json" <<PY
+import hashlib
 import json
 import pathlib
 import time
 
 path = pathlib.Path(__import__("sys").argv[1])
+tp_manifest_path = pathlib.Path(__import__("sys").argv[2])
+# The role identity is read from the artifact that was just hash-verified by
+# ARTIFACT_SHA256SUMS; it is never passed in as an independent claim.
+tp_manifest_bytes = tp_manifest_path.read_bytes()
+tp_manifest = json.loads(tp_manifest_bytes)
+assert tp_manifest.get("schema") == 1, tp_manifest
+roles = tp_manifest.get("spark_tp_roles")
+assert isinstance(roles, list) and all(isinstance(role, str) for role in roles), roles
 metadata = {
     "schema": 1,
     "slot": ${slot@Q},
@@ -77,6 +90,8 @@ metadata = {
     "source_manifest_sha256": ${source_manifest_sha256@Q},
     "artifact_manifest_sha256": ${artifact_sha256@Q},
     "sparkinfer_revision": ${sparkinfer_revision@Q},
+    "spark_tp_roles": roles,
+    "v41_expert_tp_manifest_sha256": hashlib.sha256(tp_manifest_bytes).hexdigest(),
     "built_unix": int(time.time()),
 }
 path.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n")

@@ -20,7 +20,10 @@ impl Drop for Admission {
 }
 
 pub(super) fn run(config: NativeExpertServiceConfig, listen: &str) -> Result<()> {
-    ensure!(config.rank < 4, "native rank must be 0..3");
+    ensure!(
+        config.rank < config.world && matches!(config.world, 2 | 3 | 4 | 6),
+        "native rank must be below the launched Spark world"
+    );
     ensure!(
         matches!(config.capacity, 1 | 16 | 80 | 256 | 1024 | 4096),
         "unsupported native capacity"
@@ -34,6 +37,25 @@ pub(super) fn run(config: NativeExpertServiceConfig, listen: &str) -> Result<()>
     let mut execution = weights.execution(&library, &config, remaining)?;
     let mut exchange = HostExpertExchange::new(config.capacity)?;
     let mut row_indices = vec![0; config.capacity as usize];
+    // The mapped rings each accepted endpoint pins are bounded by the
+    // capacity-sized two-endpoint allowance that admission already reserved and
+    // proved against the device budget and actual free memory. A stale or larger
+    // peer advertisement is rejected at accept instead of overcommitting.
+    let ring_budget = match config.topology {
+        Some(_) => Some(ds41rt_transport::RingBudget::new(spark_transport_bytes(&config)?)),
+        None => None,
+    };
+    // Point-in-time ring counters for the main-thread memory milestones. The
+    // bootstrap thread keeps its own clone; the atomic peak can be raised by a
+    // concurrent admission, so these are sampled observations, not reservations.
+    let ring_budget_log = ring_budget.clone();
+    log_spark_memory_if_enabled(
+        &library,
+        &config,
+        "execution and exchange allocated",
+        None,
+        ring_budget_log.as_ref().map(|budget| (budget.used(), budget.peak())),
+    );
     let listener = TcpListener::bind(listen)?;
     listener.set_nonblocking(true)?;
     let (admit, incoming) = mpsc::sync_channel(2);
@@ -49,7 +71,20 @@ pub(super) fn run(config: NativeExpertServiceConfig, listen: &str) -> Result<()>
             while !stop.load(Ordering::Acquire) {
                 match listener.accept() {
                     Ok((stream, _)) => {
-                        match LocalVerbsExpertConnection::accept(stream, max_frame_bytes, protocol_v2_timing) {
+                        let admitted = match &ring_budget {
+                            Some(budget) => LocalVerbsExpertConnection::accept_with_budget(
+                                stream,
+                                max_frame_bytes,
+                                protocol_v2_timing,
+                                Arc::clone(budget),
+                            ),
+                            None => LocalVerbsExpertConnection::accept(
+                                stream,
+                                max_frame_bytes,
+                                protocol_v2_timing,
+                            ),
+                        };
+                        match admitted {
                             Ok(connection) => {
                                 if admit.try_send(connection).is_err() {
                                     tracing::warn!("native RoCE admission queue full or stopped");
@@ -68,7 +103,10 @@ pub(super) fn run(config: NativeExpertServiceConfig, listen: &str) -> Result<()>
                 }
             }
         })?;
-    let executor_id = ds41rt_transport::v41_expert::v41_spark_executor_id(config.world, config.rank)?;
+    let executor_id = match config.topology {
+        Some(topology) => topology.executor_id(config.rank)?,
+        None => ds41rt_transport::v41_expert::v41_spark_executor_id(config.world, config.rank)?,
+    };
     let mut connections = Vec::<LocalVerbsExpertConnection>::with_capacity(16);
     tracing::info!(
         rank = config.rank,
@@ -90,15 +128,36 @@ pub(super) fn run(config: NativeExpertServiceConfig, listen: &str) -> Result<()>
     let idle_wait = Duration::from_millis(100);
     let mut last_activity = Instant::now();
     let mut idle_cursor = 0usize;
+    // One steady-state memory observation per admission event: after the owned
+    // connection set changes, the next successful request triggers a single
+    // sample. This is "first success after the admission event", not a proof
+    // that the request arrived on the newly added connection.
+    let mut pending_steady_log = false;
     loop {
         let mut progressed = false;
         if connections.is_empty() {
             connections.push(incoming.recv().context("native RoCE admission stopped")?);
             progressed = true;
+            pending_steady_log = true;
+            log_spark_memory_if_enabled(
+                &library,
+                &config,
+                "connection owned after accept",
+                Some(connections.len()),
+                ring_budget_log.as_ref().map(|budget| (budget.used(), budget.peak())),
+            );
         } else if let Ok(connection) = incoming.try_recv() {
             progressed = true;
             if connections.len() < 16 {
                 connections.push(connection);
+                pending_steady_log = true;
+                log_spark_memory_if_enabled(
+                    &library,
+                    &config,
+                    "connection owned after accept",
+                    Some(connections.len()),
+                    ring_budget_log.as_ref().map(|budget| (budget.used(), budget.peak())),
+                );
             } else {
                 tracing::warn!("native RoCE active connection limit reached");
             }
@@ -112,10 +171,18 @@ pub(super) fn run(config: NativeExpertServiceConfig, listen: &str) -> Result<()>
             let mut execution_failed = false;
             let wait = (wait_index == Some(index)).then_some(idle_wait);
             let result = connections[index].poll(wait, |view, mapped, emit| {
-                let request = if execution.is_paired() {
-                    V41BackboneRequest::parse_paired(view.frame_bytes(), config.capacity)?
-                } else {
-                    V41BackboneRequest::parse(view.frame_bytes(), config.capacity)?
+                // A topology-bound worker admits only the ownership-aware
+                // request contract; every other family is a protocol mismatch,
+                // not a silent fallback.
+                let request = match config.topology {
+                    Some(topology) => V41BackboneRequest::parse_native_group(
+                        view.frame_bytes(),
+                        config.capacity,
+                        topology,
+                    )?,
+                    None if execution.is_paired() =>
+                        V41BackboneRequest::parse_paired(view.frame_bytes(), config.capacity)?,
+                    None => V41BackboneRequest::parse(view.frame_bytes(), config.capacity)?,
                 };
                 let layer = (request.layer() as usize).checked_sub(config.first_layer)
                     .context("requested expert layer is not resident on this Spark")?;
@@ -150,6 +217,16 @@ pub(super) fn run(config: NativeExpertServiceConfig, listen: &str) -> Result<()>
             match result {
                 Ok(processed) => {
                     progressed |= processed;
+                    if processed && pending_steady_log {
+                        log_spark_memory_if_enabled(
+                            &library,
+                            &config,
+                            "steady state sample after first post-admission request",
+                            Some(connections.len()),
+                            ring_budget_log.as_ref().map(|budget| (budget.used(), budget.peak())),
+                        );
+                        pending_steady_log = false;
+                    }
                     index += 1;
                 }
                 Err(error) => {

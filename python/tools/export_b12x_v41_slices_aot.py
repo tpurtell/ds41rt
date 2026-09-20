@@ -16,6 +16,42 @@ os.environ["B12X_COMPILE_DISK_CACHE"] = "0"
 os.environ["B12X_COMPILE_MEMORY_CACHE"] = "0"
 import _pinned_sparkinfer
 
+# Plan-time expert placement roles. Geometry, SM guard and native role id are
+# properties of the role, never of the live row count. `spark` is the historical
+# TP4 shard (576 padded to 640 storage); `spark_tp2`/`spark_tp3` are the
+# replicated-group shards and are already 128-aligned. These pure tables are the
+# authoritative source for the export geometry and are covered by a CPU-only
+# test that needs neither torch nor CUDA.
+ROLE_GEOMETRY = {
+    "coordinator": (128, 2304, 2304, 3),
+    "dspark_tp2": (128, 1152, 1152, 3),
+    "rtx_tp2": (384, 1152, 1152, 6),
+    "spark_tp2": (384, 1152, 1152, 6),
+    "spark_tp3": (384, 768, 768, 6),
+    "rtx_backbone": (384, 2304, 2304, 6),
+    "spark": (384, 576, 640, 6),
+}
+ROLE_SM = {
+    "coordinator": (12, 0),
+    "dspark_tp2": (12, 0),
+    "rtx_tp2": (12, 0),
+    "rtx_backbone": (12, 0),
+    "spark": (12, 1),
+    "spark_tp2": (12, 1),
+    "spark_tp3": (12, 1),
+}
+# Native `ds41rt_v41_expert_info_t.role` values (see native/include/ds41rt_v41_experts.h).
+ROLE_NATIVE_ID = {
+    "coordinator": 0,
+    "spark": 1,
+    "rtx_backbone": 2,
+    "rtx_tp2": 3,
+    "dspark_tp2": 4,
+    "spark_tp2": 5,
+    "spark_tp3": 6,
+}
+SPARK_TP_DEGREE = {"spark": 4, "spark_tp2": 2, "spark_tp3": 3}
+
 
 def export(output, capacities, width, atomic_min_capacity=None, role="spark", *, standard_names=False, compact_max_capacity=None, compact_live_rows=None):
     import torch
@@ -30,24 +66,25 @@ def export(output, capacities, width, atomic_min_capacity=None, role="spark", *,
     props = torch.cuda.get_device_properties(0)
     if (props.major, props.minor) not in ((12, 0), (12, 1)):
         raise ValueError("native Blackwell device required")
-    if role not in ("spark", "coordinator", "rtx_backbone", "rtx_tp2", "dspark_tp2"):
-        raise ValueError("unsupported expert placement role")
+    if role not in ROLE_GEOMETRY:
+        raise ValueError(f"unsupported expert placement role {role!r}")
     coordinator = role == "coordinator"
-    local_backbone = role == "rtx_backbone"
     tp2 = role == "rtx_tp2"
     draft_tp2 = role == "dspark_tp2"
-    if (local_backbone or tp2 or draft_tp2) and (props.major, props.minor) != (12, 0):
-        raise ValueError("RTX expert slices require SM120")
+    expected_sm = ROLE_SM[role]
+    if (props.major, props.minor) != expected_sm:
+        raise ValueError(
+            f"{role} expert slices require SM{expected_sm[0]}{expected_sm[1]}, "
+            f"got SM{props.major}{props.minor}"
+        )
     if draft_tp2 and atomic_min_capacity is not None:
         raise ValueError("dSpark TP2 uses ordered route output before rank reduction")
-    if coordinator and ((props.major, props.minor) != (12, 0) or atomic_min_capacity is not None):
-        raise ValueError("coordinator slices require SM120 and ordered route output")
-    experts, intermediate, kernel_intermediate, topk = (
-        (128, 2304, 2304, 3) if coordinator else
-        (128, 1152, 1152, 3) if draft_tp2 else
-        (384, 1152, 1152, 6) if tp2 else
-        (384, 2304, 2304, 6) if local_backbone else (384, 576, 640, 6)
-    )
+    if coordinator and atomic_min_capacity is not None:
+        raise ValueError("coordinator slices use ordered route output only")
+    # The role fixes the Spark TP degree at plan time and it is baked into this
+    # AOT artifact; live rows are never part of the compile key.
+    spark_tp_degree = SPARK_TP_DEGREE.get(role)
+    experts, intermediate, kernel_intermediate, topk = ROLE_GEOMETRY[role]
     if compact_max_capacity is not None:
         if role not in ("spark", "rtx_tp2") or compact_max_capacity < 1:
             raise ValueError("compact specialization requires Spark/TP2 and positive capacity")
@@ -62,6 +99,7 @@ def export(output, capacities, width, atomic_min_capacity=None, role="spark", *,
         schema=1,
         experimental=not standard_names,
         role=role,
+        spark_tp_degree=spark_tp_degree,
         input_format="bf16" if coordinator else "fp8_k32",
         sparkinfer_revision=_pinned_sparkinfer.REVISION,
         capability=[props.major, props.minor],
@@ -224,7 +262,7 @@ def export(output, capacities, width, atomic_min_capacity=None, role="spark", *,
         )
         info = [
             3 if atomic else 2,
-            0 if coordinator else 4 if draft_tp2 else 3 if tp2 else 2 if local_backbone else 1,
+            ROLE_NATIVE_ID[role],
             experts,
             5120,
             intermediate,
@@ -294,7 +332,7 @@ def export(output, capacities, width, atomic_min_capacity=None, role="spark", *,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--role", choices=("spark", "coordinator", "rtx_backbone", "rtx_tp2", "dspark_tp2"), default="spark")
+    parser.add_argument("--role", choices=("spark", "spark_tp2", "spark_tp3", "coordinator", "rtx_backbone", "rtx_tp2", "dspark_tp2"), default="spark")
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--rows", default="1,16,80")
     parser.add_argument(

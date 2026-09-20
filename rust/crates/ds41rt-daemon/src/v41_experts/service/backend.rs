@@ -29,7 +29,9 @@ impl<'a> Weights<'a> {
     ) -> Result<Execution<'_, 'a>> {
         Ok(match self {
             Self::Full(weights) => {
-                Execution::Full(weights[0].execution(config.capacity, remaining)?)
+                let mut execution = weights[0].execution(config.capacity, remaining)?;
+                execution.install_native_group(config.native_group()?)?;
+                Execution::Full(execution)
             }
             Self::Exl3(weights) => Execution::Exl3(Exl3Worker::new(
                 library,
@@ -132,7 +134,7 @@ pub(super) fn load_exl3<'a>(
         .map(|layer| {
             Exl3Weights::plan_with_layout(
                 catalog,
-                config.selection(layer),
+                config.selection(layer)?,
                 partition,
             )
         })
@@ -160,7 +162,7 @@ pub(super) fn load_exl3<'a>(
         let weight = Exl3Weights::load_with_layout(
             library,
             catalog,
-            config.selection(layer),
+            config.selection(layer)?,
             remaining,
             partition,
         )?;

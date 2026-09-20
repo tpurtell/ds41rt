@@ -69,6 +69,11 @@ fn layout(catalog: &OfficialV41Catalog, layer: ExpertLayer, partition: V41Exl3Pa
         ExpertLayer::BackboneTp2 { layer, rank } => (V41Exl3Layer::Backbone(layer), 2, rank),
         ExpertLayer::Dspark { stage } => (V41Exl3Layer::Dspark(stage), 1, 0),
         ExpertLayer::DsparkTp2 { .. } => anyhow::bail!("TP2 dSpark EXL3 is not implemented"),
+        // Replicated native TP×EP groups are native-checkpoint only; EXL3
+        // publications are rejected at topology admission before reaching here.
+        ExpertLayer::BackboneReplicatedTp { .. } => anyhow::bail!(
+            "replicated TP×EP expert groups require the official native checkpoint"
+        ),
     };
     catalog
         .exl3()

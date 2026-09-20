@@ -32,6 +32,7 @@ mod layerwave;
 mod model;
 mod node;
 mod placement;
+mod replicated_expert_schedule;
 mod tiny;
 mod transport_metrics;
 
@@ -129,6 +130,12 @@ pub use model::{
 pub use node::NodeRole;
 pub use placement::{
     owner_for_expert, ExpertOwnerLookup, LoadPlan, PlacementPolicy, TensorAssignment,
+};
+pub use replicated_expert_schedule::{
+    replicated_expert_tie_seed, replicated_expert_tie_seed_for, ReplicatedExpertCostModel,
+    ReplicatedExpertGroupId, ReplicatedExpertGroupLoad, ReplicatedExpertGroupPlan,
+    ReplicatedExpertScheduleConfig, ReplicatedExpertScheduler, ReplicatedExpertTieSeedMode,
+    INACTIVE_REPLICATED_EXPERT_GROUP, MAX_REPLICATED_EXPERT_GROUPS, TIE_SEED_FIXED_REQUEST_ID,
 };
 pub use tiny::deterministic_tiny_completion;
 pub use transport_metrics::{

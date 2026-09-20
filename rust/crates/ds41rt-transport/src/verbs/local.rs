@@ -1,5 +1,99 @@
 //! Persistent QP sessions polled directly by a thread-local GPU owner.
 use super::*;
+use std::sync::atomic::AtomicUsize;
+
+/// Shared byte budget for the mapped RDMA rings pinned by accepted persistent
+/// sessions. The limit is the admitted model's ring allowance, so a peer that
+/// advertises wire capacities larger than the admission planned fails closed
+/// instead of pinning more unified memory than was reserved for it.
+///
+/// The counter is atomic because the bootstrap thread may admit several
+/// connections concurrently; a reservation is charged before the native mapped
+/// allocation and released by [`RingReservation`]'s `Drop`.
+pub struct RingBudget {
+    limit: usize,
+    used: AtomicUsize,
+    peak: AtomicUsize,
+}
+
+impl RingBudget {
+    pub fn new(limit: usize) -> Arc<Self> {
+        Arc::new(Self {
+            limit,
+            used: AtomicUsize::new(0),
+            peak: AtomicUsize::new(0),
+        })
+    }
+
+    /// Total bytes this budget admits across all live and pending endpoints.
+    pub fn limit(&self) -> usize {
+        self.limit
+    }
+
+    /// Bytes currently reserved by live or pending endpoints.
+    pub fn used(&self) -> usize {
+        self.used.load(Ordering::Acquire)
+    }
+
+    /// High-water mark of concurrently reserved bytes.
+    pub fn peak(&self) -> usize {
+        self.peak.load(Ordering::Acquire)
+    }
+
+    /// Charge `bytes` to this budget, returning an RAII credit that releases
+    /// them on drop. Fails closed when the reservation would exceed the limit or
+    /// overflow; the shared counter is updated with a CAS so concurrent
+    /// admissions cannot overshoot.
+    pub fn reserve(self: &Arc<Self>, bytes: usize) -> Result<RingReservation> {
+        let mut current = self.used.load(Ordering::Acquire);
+        loop {
+            let next = current
+                .checked_add(bytes)
+                .context("mapped RDMA ring budget byte count overflow")?;
+            anyhow::ensure!(
+                next <= self.limit,
+                "mapped RDMA ring budget exceeded: {next} bytes requested in total, limit is {}",
+                self.limit
+            );
+            match self.used.compare_exchange_weak(
+                current,
+                next,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => {
+                    self.peak.fetch_max(next, Ordering::AcqRel);
+                    return Ok(RingReservation {
+                        budget: Arc::clone(self),
+                        bytes,
+                    });
+                }
+                Err(observed) => current = observed,
+            }
+        }
+    }
+}
+
+/// RAII credit for one accepted session's mapped rings. The reservation is held
+/// for the whole lifetime of [`LocalVerbsExpertConnection`], including while the
+/// connection sits in an admission channel, and is released exactly once when
+/// the connection (or a failed admission) is dropped.
+pub struct RingReservation {
+    budget: Arc<RingBudget>,
+    bytes: usize,
+}
+
+impl RingReservation {
+    pub fn bytes(&self) -> usize {
+        self.bytes
+    }
+}
+
+impl Drop for RingReservation {
+    fn drop(&mut self) {
+        self.budget.used.fetch_sub(self.bytes, Ordering::AcqRel);
+    }
+}
 
 pub struct LocalVerbsExpertConnection {
     stream: TcpStream,
@@ -19,6 +113,10 @@ pub struct LocalVerbsExpertConnection {
     last_liveness: Instant,
     /// Startup-resolved diagnostics flag; see `protocol_v2_timing_from_env`.
     timing: bool,
+    /// Mapped-ring reservation held until this connection is dropped. Declared
+    /// last so the endpoint's registered memory is destroyed before the budget
+    /// credit is returned to the shared budget.
+    ring_reservation: Option<RingReservation>,
 }
 // No operation can race: polling requires &mut self, and all registered views
 // remain owned by the endpoint. Like VerbsHostMappedRdmaRing, a session may move
@@ -31,7 +129,76 @@ impl LocalVerbsExpertConnection {
     /// the environment on the poll path.
     pub fn accept(stream: TcpStream, max_frame_bytes: usize, timing: bool) -> Result<Self> {
         verbs_host_preflight()?;
-        configure_control_stream(&stream, default_control_timeout())?;
+        let start = Self::read_persistent_start(&stream, max_frame_bytes)?;
+        let path =
+            verbs_host_native_library_path().context("native RoCE library not configured")?;
+        let library = Arc::new(unsafe { NativeLibrary::load(&path) }?);
+        Self::initialize(stream, library, start, timing)
+    }
+
+    /// Bootstrap with a shared mapped-ring byte budget. The reservation is
+    /// validated against the peer's advertised wire spans and charged **before**
+    /// the native mapped allocation, then held by the returned connection until
+    /// it is dropped. A malformed or oversized advertisement fails closed
+    /// without touching the other live peers.
+    pub fn accept_with_budget(
+        stream: TcpStream,
+        max_frame_bytes: usize,
+        timing: bool,
+        budget: Arc<RingBudget>,
+    ) -> Result<Self> {
+        verbs_host_preflight()?;
+        let start = Self::read_persistent_start(&stream, max_frame_bytes)?;
+        // Validate the wire ring geometry first so the reserved byte count is
+        // the authoritative span that the native allocation will pin.
+        let (request_ring, response_ring) = Self::validated_rings(&start)?;
+        let bytes = request_ring
+            .registered_span_bytes
+            .checked_add(response_ring.registered_span_bytes)
+            .context("mapped RDMA ring reservation byte count overflow")?;
+        let reservation = budget.reserve(bytes)?;
+        eprintln!(
+            "protocol_v2_verbs_persistent_server_ring_budget execution_lane={} request_capacity={} request_span={} response_capacity={} response_span={} depth={} reserved_bytes={} budget_limit={} budget_used={} budget_peak={}",
+            start.execution_lane,
+            start.request_capacity_wire_bytes,
+            request_ring.registered_span_bytes,
+            start.response_capacity_wire_bytes,
+            response_ring.registered_span_bytes,
+            request_ring.depth,
+            bytes,
+            budget.limit(),
+            budget.used(),
+            budget.peak()
+        );
+        let path =
+            verbs_host_native_library_path().context("native RoCE library not configured")?;
+        let library = Arc::new(unsafe { NativeLibrary::load(&path) }?);
+        let mut connection =
+            Self::initialize_with_rings(stream, library, start, request_ring, response_ring, timing)?;
+        connection.ring_reservation = Some(reservation);
+        Ok(connection)
+    }
+
+    /// Negotiated wire ring geometry from the persistent handshake, as
+    /// `(request_capacity, request_span, response_capacity, response_span, depth)`.
+    /// Read-only and side-effect free; the spans are exactly the bytes this
+    /// endpoint pinned and `RingBudget` charged. Used by the large-frame
+    /// loopback test and diagnostics so callers do not have to parse logs.
+    pub fn negotiated_ring_geometry(&self) -> (usize, usize, usize, usize, usize) {
+        (
+            self.start.request_capacity_wire_bytes,
+            self.start.request_registered_span_bytes,
+            self.start.response_capacity_wire_bytes,
+            self.start.response_registered_span_bytes,
+            self.start.ring_depth,
+        )
+    }
+
+    fn read_persistent_start(
+        stream: &TcpStream,
+        max_frame_bytes: usize,
+    ) -> Result<VerbsHostProtocolV2PersistentStart> {
+        configure_control_stream(stream, default_control_timeout())?;
         let mut reader = BufReader::new(stream.try_clone()?);
         let start: VerbsHostProtocolV2PersistentStart = read_control(&mut reader)?;
         anyhow::ensure!(
@@ -47,31 +214,69 @@ impl LocalVerbsExpertConnection {
             start.ring_depth <= 8,
             "native peer ring depth exceeds admission budget"
         );
-        let path =
-            verbs_host_native_library_path().context("native RoCE library not configured")?;
-        let library = Arc::new(unsafe { NativeLibrary::load(&path) }?);
-        Self::initialize(stream, library, start, timing)
+        Ok(start)
+    }
+
+    fn validated_rings(
+        start: &VerbsHostProtocolV2PersistentStart,
+    ) -> Result<(VerbsHostRdmaRing, VerbsHostRdmaRing)> {
+        Self::validated_ring_geometry(
+            start.request_capacity_wire_bytes,
+            start.request_slot_stride_bytes,
+            start.request_registered_span_bytes,
+            start.response_capacity_wire_bytes,
+            start.response_slot_stride_bytes,
+            start.response_registered_span_bytes,
+            start.ring_depth,
+        )
+    }
+
+    /// Validate the peer's advertised ring geometry with the transport's own
+    /// `from_wire` rules. This runs before any budget charge or native mapped
+    /// allocation, so a malformed advertisement is rejected up front.
+    fn validated_ring_geometry(
+        request_capacity_wire_bytes: usize,
+        request_slot_stride_bytes: usize,
+        request_registered_span_bytes: usize,
+        response_capacity_wire_bytes: usize,
+        response_slot_stride_bytes: usize,
+        response_registered_span_bytes: usize,
+        ring_depth: usize,
+    ) -> Result<(VerbsHostRdmaRing, VerbsHostRdmaRing)> {
+        let request_ring = VerbsHostRdmaRing::from_wire(
+            request_capacity_wire_bytes,
+            request_slot_stride_bytes,
+            ring_depth,
+            request_registered_span_bytes,
+        )?;
+        let response_ring = VerbsHostRdmaRing::from_wire(
+            response_capacity_wire_bytes,
+            response_slot_stride_bytes,
+            ring_depth,
+            response_registered_span_bytes,
+        )?;
+        Ok((request_ring, response_ring))
     }
 
     pub(super) fn initialize(
-        mut stream: TcpStream,
+        stream: TcpStream,
         library: Arc<NativeLibrary>,
         start: VerbsHostProtocolV2PersistentStart,
         timing: bool,
     ) -> Result<Self> {
+        let (request_ring, response_ring) = Self::validated_rings(&start)?;
+        Self::initialize_with_rings(stream, library, start, request_ring, response_ring, timing)
+    }
+
+    fn initialize_with_rings(
+        mut stream: TcpStream,
+        library: Arc<NativeLibrary>,
+        start: VerbsHostProtocolV2PersistentStart,
+        request_ring: VerbsHostRdmaRing,
+        response_ring: VerbsHostRdmaRing,
+        timing: bool,
+    ) -> Result<Self> {
         let rdma_device = verbs_host_rdma_device_for_stream(&stream)?;
-        let request_ring = VerbsHostRdmaRing::from_wire(
-            start.request_capacity_wire_bytes,
-            start.request_slot_stride_bytes,
-            start.ring_depth,
-            start.request_registered_span_bytes,
-        )?;
-        let response_ring = VerbsHostRdmaRing::from_wire(
-            start.response_capacity_wire_bytes,
-            start.response_slot_stride_bytes,
-            start.ring_depth,
-            start.response_registered_span_bytes,
-        )?;
         let endpoint = NativeRdmaEndpoint::create_from_wire_bytes_mapped_on_device(
             Arc::clone(&library),
             "server",
@@ -166,6 +371,7 @@ impl LocalVerbsExpertConnection {
             last_activity: Instant::now(),
             last_liveness: Instant::now(),
             timing,
+            ring_reservation: None,
         })
     }
 
@@ -454,5 +660,135 @@ impl LocalVerbsExpertConnection {
         self.response_send_sequence = response_send_sequence;
         self.response_send_in_flight = response_send_in_flight;
         result.map(|()| true)
+    }
+}
+
+#[cfg(test)]
+mod budget_tests {
+    use super::*;
+
+    #[test]
+    fn ring_budget_reserves_releases_and_tracks_peak() -> Result<()> {
+        let budget = RingBudget::new(100);
+        assert_eq!((budget.limit(), budget.used(), budget.peak()), (100, 0, 0));
+        let first = budget.reserve(60)?;
+        assert_eq!(first.bytes(), 60);
+        assert_eq!((budget.used(), budget.peak()), (60, 60));
+        let second = budget.reserve(40)?;
+        assert_eq!((budget.used(), budget.peak()), (100, 100));
+        assert!(budget.reserve(1).is_err());
+        assert_eq!(budget.used(), 100);
+        drop(first);
+        assert_eq!((budget.used(), budget.peak()), (40, 100));
+        let third = budget.reserve(60)?;
+        assert_eq!((budget.used(), budget.peak()), (100, 100));
+        drop(second);
+        drop(third);
+        assert_eq!(budget.used(), 0);
+        // A request above the limit fails without holding credit; a genuine
+        // checked_add overflow is exercised by holding one byte of a
+        // usize::MAX budget and then requesting usize::MAX.
+        assert!(budget.reserve(101).is_err());
+        assert_eq!(budget.used(), 0);
+        let huge = RingBudget::new(usize::MAX);
+        let one = huge.reserve(1)?;
+        assert!(huge.reserve(usize::MAX).is_err(), "checked_add overflow must be rejected");
+        assert_eq!(huge.used(), 1);
+        drop(one);
+        assert_eq!(huge.used(), 0);
+        Ok(())
+    }
+
+    /// Unit-level RAII contract: a rejected reservation never charges the
+    /// budget, and the credit owned by a dropped connection is returned so the
+    /// next admission can succeed. The full socket accept path additionally
+    /// requires RoCE preflight and a GPU, so it is covered by the live tests.
+    #[test]
+    fn unit_raii_credit_release_recovers_after_failure() -> Result<()> {
+        let budget = RingBudget::new(10);
+        assert!(budget.reserve(11).is_err());
+        assert_eq!(budget.used(), 0);
+        let held = budget.reserve(10)?;
+        assert!(budget.reserve(1).is_err());
+        assert_eq!(budget.used(), 10);
+        drop(held);
+        let reacquired = budget.reserve(10)?;
+        assert_eq!(budget.used(), 10);
+        drop(reacquired);
+        assert_eq!(budget.used(), 0);
+        Ok(())
+    }
+
+    /// The advertised wire geometry is validated with the transport's own
+    /// `from_wire` rules before any budget charge or native allocation.
+    #[test]
+    fn validated_ring_geometry_rejects_before_any_reservation() -> Result<()> {
+        let alignment = crate::verbs_host_capabilities().preferred_alignment;
+        let depth = 8;
+        let capacity = 1 << 20;
+        let stride = VerbsHostRdmaRing::new_with_max_depth(capacity, alignment, depth, 8)?
+            .slot_stride_bytes;
+        let span = stride * depth;
+        let (request, response) =
+            LocalVerbsExpertConnection::validated_ring_geometry(
+                capacity, stride, span, capacity, stride, span, depth,
+            )?;
+        assert_eq!(request.registered_span_bytes, span);
+        assert_eq!(response.registered_span_bytes, span);
+        assert_eq!(request.depth, depth);
+        // A mismatched stride, a mismatched span, a zero capacity and an
+        // excessive depth are all rejected by from_wire before allocation.
+        assert!(LocalVerbsExpertConnection::validated_ring_geometry(
+            capacity, stride + alignment, span, capacity, stride, span, depth,
+        )
+        .is_err());
+        assert!(LocalVerbsExpertConnection::validated_ring_geometry(
+            capacity, stride, span + alignment, capacity, stride, span, depth,
+        )
+        .is_err());
+        assert!(LocalVerbsExpertConnection::validated_ring_geometry(
+            0, stride, span, capacity, stride, span, depth,
+        )
+        .is_err());
+        assert!(LocalVerbsExpertConnection::validated_ring_geometry(
+            capacity, stride, span, capacity, stride, span, 9,
+        )
+        .is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn concurrent_reservations_never_exceed_the_limit() {
+        use std::sync::Barrier;
+        // 8 threads each want 16 bytes from a 64-byte budget: they contend for
+        // the limit, so some must be rejected and the peak can never exceed it.
+        let budget = RingBudget::new(64);
+        let barrier = Arc::new(Barrier::new(8));
+        let rejections = Arc::new(AtomicUsize::new(0));
+        let mut handles = Vec::new();
+        for _ in 0..8 {
+            let budget = Arc::clone(&budget);
+            let barrier = Arc::clone(&barrier);
+            let rejections = Arc::clone(&rejections);
+            handles.push(std::thread::spawn(move || {
+                barrier.wait();
+                let held = budget.reserve(16);
+                if held.is_err() {
+                    rejections.fetch_add(1, Ordering::AcqRel);
+                }
+                assert!(budget.used() <= budget.limit());
+                // Hold any credit until every thread has attempted its reserve,
+                // then release it so the peak is observed deterministically.
+                barrier.wait();
+                drop(held);
+            }));
+        }
+        for handle in handles {
+            handle.join().expect("budget worker");
+        }
+        assert!(budget.peak() <= budget.limit());
+        assert!(budget.peak() > 0);
+        assert!(rejections.load(Ordering::Acquire) > 0);
+        assert_eq!(budget.used(), 0);
     }
 }

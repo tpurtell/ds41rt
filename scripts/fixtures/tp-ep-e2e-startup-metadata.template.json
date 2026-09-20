@@ -1,0 +1,109 @@
+{
+  "_schema": "tp-ep-e2e-startup-metadata-v1",
+  "_instructions": [
+    "Template for --startup-metadata. Copy per arm to runs/tp-ep-e2e/startup-<arm>.json and replace every REPLACE-ME with the value actually observed.",
+    "Every field below is required. compare enforces equality on all required fields except spark_tp, spark_ep, spark_artifact_roles and release_identity_full (the intended topology differences, recorded not matched).",
+    "expert_tp_manifests is a superset rule: every baseline family must appear in the candidate with an equal native_library_sha256; the candidate may add the family its role selects.",
+    "coordinator_argv and worker_argv are the argv actually applied, and their values are compared against the metadata (not just flag presence). worker_argv is one argv per physical rank and must cover 0..spark_tp*spark_ep-1 with --world == spark_tp*spark_ep.",
+    "requested_rtx_expert_layers is 'auto' or an explicit integer; resolved_rtx_expert_layers is the ACTUAL integer plan boundary and must match across arms, with spark_first_layer == min(resolved_rtx_expert_layers, 39). The literal 'auto' is never valid in resolved_rtx_expert_layers.",
+    "worker_capacity must be one of 1/16/80/256/1024/4096, must equal every worker --capacity value, and must be >= the launcher capacity for prefill_batch_tokens (<=80->80, <=256->256, <=1024->1024, else 4096).",
+    "concurrency, max_context_tokens and max_output_tokens are matched by exact value against --concurrency / --max-context-tokens / --max-output-tokens.",
+    "host_cache_bytes, http_queue_depth and http_queue_wait_ms are recorded for manual comparison; the validator does not gate them yet.",
+    "Source fields come from real artifacts, never from a synthetic 'passed': image labels plus scripts/write-v41-expert-tp-manifest.py output."
+  ],
+  "_provenance": {
+    "source_commit": "coordinator/expert image label org.opencontainers.image.revision",
+    "source_artifact": "coordinator and expert image RepoDigests plus label io.ds41rt.source-manifest.sha256 (a full manifest string is acceptable)",
+    "source_snapshots": "the daemon and native source trees those images were built from (source identity, not artifact-role-dependent manifest hashes; equal source means the same binaries plus the candidate's family superset)",
+    "sparkinfer_revision": "image label io.ds41rt.sparkinfer.revision",
+    "expert_tp_manifests": "scripts/write-v41-expert-tp-manifest.py per-family output (native library sha256, tp_degree, intermediate); io.ds41rt.v41.spark_tp_roles names the built families",
+    "requested_rtx_expert_layers": "the requested value: 'auto' when --rtx-expert-layers is absent, else the explicit integer",
+    "resolved_rtx_expert_layers": "the ACTUAL integer boundary from the coordinator plan.json (or the single-RTX resolved value), never 'auto'",
+    "spark_first_layer": "min(resolved_rtx_expert_layers, 39), the value passed to the workers as --first-layer",
+    "spark_device_budget_bytes": "worker control --device-budget-bytes on expertd-native, not a coordinator flag",
+    "power_caps_watts": "host GPU power cap from nvidia-smi, not a CLI flag"
+  },
+  "source_commit": "REPLACE-ME 40-hex engine commit",
+  "source_artifact": "REPLACE-ME coordinator+expert image digests and source-manifest sha256",
+  "source_snapshots": {
+    "daemon": "REPLACE-ME daemon source snapshot identity",
+    "native": "REPLACE-ME native source snapshot identity"
+  },
+  "sparkinfer_revision": "REPLACE-ME 40-hex SparkInfer revision",
+  "expert_tp_manifests": {
+    "spark": {
+      "tp_degree": 4,
+      "intermediate": 576,
+      "native_library_sha256": "REPLACE-ME"
+    }
+  },
+  "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+  "revision": "REPLACE-ME pinned checkpoint revision",
+  "rtx_gpus": 2,
+  "requested_rtx_expert_layers": "auto",
+  "resolved_rtx_expert_layers": "REPLACE-ME actual integer plan boundary",
+  "spark_first_layer": "REPLACE-ME min(resolved_rtx_expert_layers, 39)",
+  "spark_count": 4,
+  "spark_tp": 4,
+  "spark_ep": 1,
+  "spark_artifact_roles": ["spark"],
+  "kv_pool": "REPLACE-ME resolved pool, or default",
+  "prefix_cache_entries": 20,
+  "prefill_batch_tokens": 2048,
+  "worker_capacity": 4096,
+  "concurrency": 16,
+  "max_context_tokens": 1048576,
+  "max_output_tokens": 393216,
+  "host_cache_bytes": "auto",
+  "http_queue_depth": 16,
+  "http_queue_wait_ms": 25000,
+  "dspark": "on",
+  "dspark_draft_limit": 7,
+  "spark_device_budget_bytes": 107374182400,
+  "power_caps_watts": 400,
+  "release_identity_full": "REPLACE-ME run.sh fingerprint (embeds the topology)",
+  "coordinator_argv": [
+    "serve-native",
+    "--snapshot", "REPLACE-ME",
+    "--native-lib", "/opt/ds41rt/lib/libds41rt_native.so",
+    "--peers", "REPLACE-ME",
+    "--rtx-gpus", "2",
+    "--listen", "0.0.0.0:8000",
+    "--prefill-batch-tokens", "2048",
+    "--concurrency", "16",
+    "--prefix-cache-entries", "20",
+    "--max-context-tokens", "1048576",
+    "--max-output-tokens", "393216",
+    "--host-cache-bytes", "auto",
+    "--http-queue-depth", "16",
+    "--http-queue-wait-ms", "25000",
+    "--spark-tp", "4",
+    "--spark-ep", "1"
+  ],
+  "worker_argv": [
+    [
+      "expertd-native", "--snapshot", "REPLACE-ME", "--native-lib", "/opt/ds41rt/lib/libds41rt_native.so",
+      "--rank", "0", "--world", "4", "--capacity", "REPLACE-ME",
+      "--device-budget-bytes", "107374182400", "--first-layer", "REPLACE-ME",
+      "--listen", "0.0.0.0:19441", "--spark-tp", "4", "--spark-ep", "1"
+    ],
+    [
+      "expertd-native", "--snapshot", "REPLACE-ME", "--native-lib", "/opt/ds41rt/lib/libds41rt_native.so",
+      "--rank", "1", "--world", "4", "--capacity", "REPLACE-ME",
+      "--device-budget-bytes", "107374182400", "--first-layer", "REPLACE-ME",
+      "--listen", "0.0.0.0:19441", "--spark-tp", "4", "--spark-ep", "1"
+    ],
+    [
+      "expertd-native", "--snapshot", "REPLACE-ME", "--native-lib", "/opt/ds41rt/lib/libds41rt_native.so",
+      "--rank", "2", "--world", "4", "--capacity", "REPLACE-ME",
+      "--device-budget-bytes", "107374182400", "--first-layer", "REPLACE-ME",
+      "--listen", "0.0.0.0:19441", "--spark-tp", "4", "--spark-ep", "1"
+    ],
+    [
+      "expertd-native", "--snapshot", "REPLACE-ME", "--native-lib", "/opt/ds41rt/lib/libds41rt_native.so",
+      "--rank", "3", "--world", "4", "--capacity", "REPLACE-ME",
+      "--device-budget-bytes", "107374182400", "--first-layer", "REPLACE-ME",
+      "--listen", "0.0.0.0:19441", "--spark-tp", "4", "--spark-ep", "1"
+    ]
+  ]
+}

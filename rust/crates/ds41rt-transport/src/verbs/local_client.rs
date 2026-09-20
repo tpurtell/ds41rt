@@ -18,6 +18,10 @@ impl LocalTp4Client {
     pub(crate) fn new_tp2(peers: [SocketAddr; 2], config: TcpTransportConfig) -> Self {
         Self::with_peers(peers.to_vec(), config)
     }
+    /// Generic peer set for the validated physical rank counts 2, 3, 4 and 6.
+    pub(crate) fn new_ranks(peers: Vec<SocketAddr>, config: TcpTransportConfig) -> Self {
+        Self::with_peers(peers, config)
+    }
     fn with_peers(peers: Vec<SocketAddr>, config: TcpTransportConfig) -> Self {
         let world = peers.len();
         Self {

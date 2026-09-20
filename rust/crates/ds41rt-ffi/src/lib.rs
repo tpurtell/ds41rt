@@ -40,6 +40,7 @@ pub use v41_exl3_wire::V41Exl3Wire;
 pub use v41_experts::{
     V41ExpertInfo, V41ExpertInputQuantizer, V41ExpertKernel, V41ExpertLaunchArgs, V41ExpertPacker, V41ExpertPointer, V41ExpertOutputKind,
     V41CompactReducer, V41LocalExpertReducer, V41Tp2ExpertReducer, V41RouteReducer, V41_EXPERT_POINTER_COUNT,
+    v41_pack_intermediate_supported, v41_rank_count_supported,
 };
 mod cuda_runtime;
 pub use cuda_runtime::{select_copy_mechanism, CopyMechanism, CudaRuntime};

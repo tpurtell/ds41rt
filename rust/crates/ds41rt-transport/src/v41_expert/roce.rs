@@ -1,7 +1,7 @@
-//! TP2/TP4 dispatch through persistent RoCE QPs; TCP is used only for bootstrap.
+//! TP2/TP3/TP4/TP6 dispatch through persistent RoCE QPs; TCP is used only for bootstrap.
 #[cfg(test)]
 use super::V41BackboneRequest;
-use super::V41Tp4ChunkReceiver;
+use super::{V41SparkTopology, V41Tp4ChunkReceiver, V41_NATIVE_GROUP_REQUEST_FLAG};
 use crate::verbs::LocalTp4Client;
 use crate::{
     ExpertProtocolV2Request, ExpertProtocolV2RowDescriptor, ExpertV2SourceKind, TcpTransportConfig,
@@ -25,6 +25,7 @@ pub struct V41Tp4Roce {
     executors: Vec<u64>,
     capacity: u32,
     max_frame_bytes: usize,
+    topology: Option<V41SparkTopology>,
 }
 impl V41Tp4Roce {
     pub fn new(
@@ -34,7 +35,7 @@ impl V41Tp4Roce {
         config: TcpTransportConfig,
     ) -> Result<Self> {
         Self::with_clients(&peers, &executors, capacity, &config,
-            LocalTp4Client::new(peers, config.clone()))
+            LocalTp4Client::new(peers, config.clone()), None)
     }
     /// Two actual Spark TP ranks; no placeholder peers or responses are used.
     pub fn new_tp2(
@@ -44,7 +45,36 @@ impl V41Tp4Roce {
         config: TcpTransportConfig,
     ) -> Result<Self> {
         Self::with_clients(&peers, &executors, capacity, &config,
-            LocalTp4Client::new_tp2(peers, config.clone()))
+            LocalTp4Client::new_tp2(peers, config.clone()), None)
+    }
+    /// Generic constructor for the validated physical rank counts 2, 3, 4 and 6
+    /// under the legacy (non-ownership) frame contract.
+    pub fn new_ranks(
+        peers: &[SocketAddr],
+        executors: &[u64],
+        capacity: u32,
+        config: TcpTransportConfig,
+    ) -> Result<Self> {
+        let clients = LocalTp4Client::new_ranks(peers.to_vec(), config.clone());
+        Self::with_clients(peers, executors, capacity, &config, clients, None)
+    }
+    /// Topology-bound constructor: canonical executor identities are derived from
+    /// `topology`, so a stale worker admitted for another `TP×EP` layout cannot
+    /// satisfy this transport's response coverage. Requests must then carry the
+    /// native group flag.
+    pub fn new_topology(
+        topology: V41SparkTopology,
+        peers: &[SocketAddr],
+        capacity: u32,
+        config: TcpTransportConfig,
+    ) -> Result<Self> {
+        ensure!(
+            peers.len() == topology.world_size(),
+            "native group topology requires exactly its physical rank count"
+        );
+        let executors = topology.executor_ids();
+        let clients = LocalTp4Client::new_ranks(peers.to_vec(), config.clone());
+        Self::with_clients(peers, &executors, capacity, &config, clients, Some(topology))
     }
     fn with_clients(
         peers: &[SocketAddr],
@@ -52,9 +82,16 @@ impl V41Tp4Roce {
         capacity: u32,
         config: &TcpTransportConfig,
         clients: LocalTp4Client,
+        topology: Option<V41SparkTopology>,
     ) -> Result<Self> {
-        ensure!(peers.len() == executors.len() && matches!(peers.len(), 2 | 4),
-            "native TP requires two or four matching peers and executors");
+        ensure!(peers.len() == executors.len() && matches!(peers.len(), 2 | 3 | 4 | 6),
+            "native TP/EP requires two, three, four or six matching peers and executors");
+        if let Some(topology) = topology {
+            ensure!(
+                peers.len() == topology.world_size(),
+                "native group topology requires exactly its physical rank count"
+            );
+        }
         ensure!(
             capacity > 0 && capacity <= 4096,
             "invalid native TP capacity"
@@ -83,6 +120,7 @@ impl V41Tp4Roce {
             executors: executors.to_vec(),
             capacity,
             max_frame_bytes: config.max_frame_bytes,
+            topology,
         })
     }
     pub fn capacity(&self) -> u32 {
@@ -90,6 +128,10 @@ impl V41Tp4Roce {
     }
     pub fn world_size(&self) -> usize {
         self.executors.len()
+    }
+    /// Topology this transport was bound to, if any.
+    pub fn topology(&self) -> Option<V41SparkTopology> {
+        self.topology
     }
     /// Reset persistent QPs before a new admission. Pending dispatches borrow this
     /// owner exclusively, so an in-flight wave cannot be reset through this API.
@@ -111,17 +153,51 @@ impl V41Tp4Roce {
 
     /// Post every active rank's request directly from the inference owner. Remote work
     /// overlaps the shared FFN; dispatch completion is not send completion.
+    ///
+    /// Flag and topology must agree: a topology-bound transport accepts only
+    /// native group requests, and a legacy transport rejects them. There is no
+    /// silent canonical fallback for an EP1 topology-bound transport; legacy EP1
+    /// uses [`Self::new`]/[`Self::new_tp2`] with canonical requests.
     pub async fn dispatch<'c, 'r>(
         &'c mut self,
         request: &'r ExpertProtocolV2Request,
     ) -> Result<V41Tp4RocePending<'c, 'r>> {
-        let receiver = if self.world_size() == 4 {
-            V41Tp4ChunkReceiver::from_owned(request, self.capacity,
-                self.executors.as_slice().try_into().expect("four executors"), self.max_frame_bytes)?
-        } else {
-            V41Tp4ChunkReceiver::from_owned_ranks(
-                request, self.capacity, &self.executors, self.max_frame_bytes,
-            )?
+        let flagged = request.header.flags & V41_NATIVE_GROUP_REQUEST_FLAG != 0;
+        let receiver = match self.topology {
+            Some(topology) => {
+                ensure!(
+                    flagged,
+                    "topology-bound native transport requires a native group request"
+                );
+                V41Tp4ChunkReceiver::from_owned_topology(
+                    request,
+                    self.capacity,
+                    &self.executors,
+                    topology,
+                    self.max_frame_bytes,
+                )?
+            }
+            None => {
+                ensure!(
+                    !flagged,
+                    "native group request requires a topology-bound transport"
+                );
+                if self.executors.len() == 4 {
+                    V41Tp4ChunkReceiver::from_owned(
+                        request,
+                        self.capacity,
+                        self.executors.as_slice().try_into().expect("four executors"),
+                        self.max_frame_bytes,
+                    )?
+                } else {
+                    V41Tp4ChunkReceiver::from_owned_ranks(
+                        request,
+                        self.capacity,
+                        &self.executors,
+                        self.max_frame_bytes,
+                    )?
+                }
+            }
         };
         self.clients.dispatch(request)?;
         Ok(V41Tp4RocePending {

@@ -22,7 +22,10 @@ pub(super) fn worker(mut args: crate::cli::NativeServeArgs, mut receive: mpsc::R
         }
     }
     let minimum_expert_layers = match args.rtx_expert_layers {
-        memory::LocalLayers::Auto => if args.placement_directory.is_some() {1} else {20},
+        // An explicit replicated topology always publishes/reads its actual
+        // boundary, so the reservation floor is dynamic rather than the legacy
+        // dual-RTX 20-layer default.
+        memory::LocalLayers::Auto => if args.placement_directory.is_some() || args.spark_tp.is_some() {1} else {20},
         memory::LocalLayers::Count(count) => {
             ensure!((1..=40).contains(&count), "dual RTX expert layers must be 1..=40");
             count as usize
@@ -43,6 +46,21 @@ pub(super) fn worker(mut args: crate::cli::NativeServeArgs, mut receive: mpsc::R
     };
     memory_checkpoint("CUDA contexts and peer access")?;
     let catalog = ds41rt_loader::read_official_v41_catalog(ds41rt_loader::OFFICIAL_V41_MODEL_ID, &args.snapshot)?;
+    let topology = crate::v41_spark_topology::resolve(
+        args.spark_tp,
+        args.spark_ep,
+        args.peers.len(),
+        "serve-native",
+    )?;
+    // Reject an explicit non-native checkpoint before any expert allocation,
+    // KV reservation or readiness publication.
+    crate::v41_spark_topology::require_native(topology, &catalog)?;
+    if let Some(topology) = topology {
+        // Fail before weights are loaded when the library cannot reduce this
+        // physical-rank count.
+        lib.v41_compact_reducer()?
+            .require_rank_count(topology.world_size() as u32)?;
+    }
     let paired_profile = crate::v41_experts::paired::PairedProfile::for_serving(&catalog, args.exl3_paired_tp4)?;
     let map = CachePlacement::encoder_decoder();
     let started = Instant::now();
@@ -308,7 +326,11 @@ pub(super) fn worker(mut args: crate::cli::NativeServeArgs, mut receive: mpsc::R
         }
         crate::v41_experts::ExpertFormat::Native => tp2_ffn::Wave::device_bytes(&lib, capacity)?,
     };
-    let transport_bytes = [2 * per_lane, 2 * per_lane + 2 * NativeTp4Wave::device_bytes(capacity)?];
+    // Both Spark transport lanes live on GPU1 and reserve one wave each; a
+    // six-rank replicated layout needs its own larger per-wave buffer count.
+    let spark_ranks = args.peers.len();
+    let wave_bytes = NativeTp4Wave::device_bytes_for(capacity, spark_ranks)?;
+    let transport_bytes = [2 * per_lane, 2 * per_lane + 2 * wave_bytes];
     let before_experts = [devices[0].run(|| lib.cuda_memory_info())?, devices[1].run(|| lib.cuda_memory_info())?];
     let mut reserved_memory = before_experts;
     for gpu in 0..2 {
@@ -330,7 +352,7 @@ pub(super) fn worker(mut args: crate::cli::NativeServeArgs, mut receive: mpsc::R
         reserved_cache_bytes=?reserved_pool.cache_bytes, transport_bytes=?transport_bytes,
         setup_headroom_bytes=memory::distributed::EXPERT_SETUP_HEADROOM, "dual RTX bottom-up expert placement");
     let placement_handoff=args.placement_directory.as_deref().map(|directory|
-        super::placement::StartupPlacement::publish(directory,expert_layers)).transpose()?;
+        super::placement::StartupPlacement::publish(directory, args.rtx_gpus, expert_layers)).transpose()?;
     eprintln!("loading bottom {expert_layers} expert layers as TP2");
     let routed = match format {
         crate::v41_experts::ExpertFormat::Exl3 => {
@@ -351,10 +373,11 @@ pub(super) fn worker(mut args: crate::cli::NativeServeArgs, mut receive: mpsc::R
         handoff.wait_ready(Duration::from_secs(900))?;
     }
     let make_transport = || {
-        let mut transport = devices[1].own(|| NativeTp4Wave::new(&lib,
-            V41Tp4Roce::new(args.peers.clone().try_into().map_err(|_| anyhow::anyhow!("four Spark peers required"))?,
-                [1, 2, 3, 4], capacity, TcpTransportConfig { timing: crate::v41_native_serve::protocol_v2_timing(), timeout: Duration::from_secs(120),
-                    max_frame_bytes: 64 << 20 })?, NativeTp4Wave::device_bytes(capacity)?))?;
+        let timing = crate::v41_native_serve::protocol_v2_timing();
+        let mut transport = devices[1].own(|| {
+            let roce = super::spark_transport(&args.peers, capacity, timing, topology)?;
+            NativeTp4Wave::new(&lib, roce, wave_bytes)
+        })?;
         if let Some(profile) = &paired_profile { transport.install_paired(profile.clone())?; }
         transport.install_tp2(tp2_ffn::Wave::new(routed.clone(), shared.clone(), expert_layers, capacity)?)?;
         Ok::<_, anyhow::Error>(transport)

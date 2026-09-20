@@ -29,13 +29,51 @@ def summarize(paths):
             histogram = re.search(r"expert_rows_histogram=\[([0-9, ]+)\]", line)
             if histogram:
                 counts = [int(v) for v in histogram[1].split(",")]
-                tail_routes = int(fields["expert_rows_tail_routes"])
-                if (len(counts) != 17 or sum(counts) != fields["active_experts"]
-                        or any(v and i+1 > fields["rows"] for i,v in enumerate(counts))
-                        or not 17*counts[-1] <= tail_routes <= fields["rows"]*counts[-1]
-                        or sum((i+1)*v for i,v in enumerate(counts[:16])) + tail_routes != fields["rows"]*6):
+                if "rows" not in fields or "active_experts" not in fields:
+                    raise ValueError(f"expert row histogram without rows/active_experts in {path}")
+                rows_value = fields["rows"]
+                active_value = fields["active_experts"]
+                # The line parser accepts any non-negative decimal; the histogram
+                # contract only makes sense for integral counts, so reject
+                # fractional or non-finite values instead of coercing them.
+                if (not math.isfinite(rows_value) or rows_value < 1
+                        or rows_value != int(rows_value)):
+                    raise ValueError(f"non-integral expert row histogram rows in {path}")
+                if (not math.isfinite(active_value) or active_value < 0
+                        or active_value != int(active_value)):
+                    raise ValueError(f"non-integral expert row histogram active_experts in {path}")
+                rows_int = int(rows_value)
+                active_int = int(active_value)
+                tail_value = fields.get("expert_rows_tail_routes")
+                if (tail_value is None or not math.isfinite(tail_value) or tail_value < 0
+                        or tail_value != int(tail_value)):
+                    raise ValueError(
+                        f"non-integral expert row histogram expert_rows_tail_routes in {path}")
+                tail_routes = int(tail_value)
+                # A replicated group owns only a subset of the canonical six
+                # routes per row: routes owned by other groups are masked to the
+                # 384 sentinel and are not counted in this histogram. The owned
+                # total is therefore inferred from the histogram and bounded by
+                # rows * 6 instead of being assumed equal to it.
+                owned_routes = sum((i+1)*v for i,v in enumerate(counts[:16])) + tail_routes
+                if (len(counts) != 17 or sum(counts) != active_int
+                        or any(v and i+1 > rows_int for i,v in enumerate(counts))
+                        or not 17*counts[-1] <= tail_routes <= rows_int*counts[-1]
+                        or owned_routes > rows_int*6
+                        or (owned_routes == 0) != (active_int == 0)):
                     raise ValueError(f"inconsistent expert row histogram in {path}")
+                # Optional future producer field: when an explicit owned-route
+                # count is present it must agree with the histogram exactly, but
+                # its absence is not an error.
+                if "owned_routes" in fields:
+                    declared = fields["owned_routes"]
+                    if (not math.isfinite(declared) or declared != int(declared)
+                            or int(declared) != owned_routes):
+                        raise ValueError(
+                            f"declared owned_routes disagrees with the histogram in {path}")
                 fields["_expert_rows_histogram"] = counts
+                fields["_owned_routes"] = owned_routes
+                fields["_total_request_routes"] = rows_int*6
             rows = int(fields["rows"])
             key = (str(path), kind, rows)
             groups.setdefault(key, []).append(fields)
@@ -60,20 +98,24 @@ def summarize(paths):
         histograms = [r for r in records if "_expert_rows_histogram" in r]
         if histograms:
             counts = [sum(r["_expert_rows_histogram"][i] for r in histograms) for i in range(17)]
-            total = sum(counts)
-            routed = sum(r["rows"]*6 for r in histograms)
+            total_experts = sum(counts)
+            owned_routes = sum(r["_owned_routes"] for r in histograms)
+            total_request_routes = sum(r["_total_request_routes"] for r in histograms)
             distribution = []
             for i, count in enumerate(counts):
                 routes = ((i+1)*count if i < 16 else
                           sum(r["expert_rows_tail_routes"] for r in histograms))
                 distribution.append({"expert_rows": i+1 if i < 16 else "17+",
                                      "experts": count, "routes": int(routes),
-                                     "expert_fraction": count/total,
-                                     "route_fraction": routes/routed})
+                                     "expert_fraction": (count/total_experts) if total_experts else None,
+                                     "route_fraction": (routes/owned_routes) if owned_routes else None})
             group["expert_row_distribution"] = distribution
             group["expert_row_distribution_samples"] = len(histograms)
+            group["owned_routes"] = int(owned_routes)
+            group["total_request_routes"] = int(total_request_routes)
+            group["route_fraction_scope"] = "owned routes inferred from histogram"
         output.append(group)
-    return {"scope": "Instrumented development workload. GPU event intervals separate expert execution and compaction; host upload/download exclude network transfer. Unique-expert packed bytes exclude repeated reads and are not measured DRAM traffic. Server callback includes staging and, for queued workers, queueing. Coordinator expert phase includes routing, shared FFN and response collection; shared FFN overlaps the dispatched remote request. Receive time includes waiting for remote compute and client handling. Coordinator upload_us measures host copy-call duration (staging/enqueue for async uploads), and reduce_us includes the final stream drain. Dispatch measures enqueue, not NIC send completion. No interval isolates pure link latency. Component medians are not additive; nested coordinator stage groups must not be summed together.",
+    return {"scope": "Instrumented development workload. GPU event intervals separate expert execution and compaction; host upload/download exclude network transfer. Unique-expert packed bytes exclude repeated reads and are not measured DRAM traffic. Server callback includes staging and, for queued workers, queueing. Coordinator expert phase includes routing, shared FFN and response collection; shared FFN overlaps the dispatched remote request. Receive time includes waiting for remote compute and client handling. Coordinator upload_us measures host copy-call duration (staging/enqueue for async uploads), and reduce_us includes the final stream drain. Dispatch measures enqueue, not NIC send completion. No interval isolates pure link latency. Component medians are not additive; nested coordinator stage groups must not be summed together. Replicated expert groups own only a subset of the canonical six routes per row, so expert-row route fractions use histogram-inferred owned routes and owned_routes can be below total_request_routes; expert_fraction and route_fraction are null when their denominator is zero (an empty group) instead of dropping the distribution metadata.",
             "groups": output}
 
 

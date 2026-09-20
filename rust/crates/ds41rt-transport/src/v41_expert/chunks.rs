@@ -1,7 +1,7 @@
 //! Bounded chunks carry compact BF16 rank partials in token order.
 use super::{
-    V41BackboneRequest, V41Tp4Planes, EXPERT_PROTOCOL_V2_FLAG_V41_COMPACT_BF16, V41_HIDDEN,
-    V41_PARTIAL_ROW_BYTES,
+    V41BackboneRequest, V41SparkTopology, V41Tp4Planes, EXPERT_PROTOCOL_V2_FLAG_V41_COMPACT_BF16,
+    V41_HIDDEN, V41_NATIVE_GROUP_REQUEST_FLAG, V41_PARTIAL_ROW_BYTES,
 };
 use crate::{
     ExpertProtocolV2ResponseHeader, ExpertProtocolV2ResponseRef, ExpertProtocolV2ResponseView,
@@ -77,7 +77,8 @@ impl V41BackboneRequest<'_> {
                 output_row_stride_bytes: V41_PARTIAL_ROW_BYTES,
                 output_payload_bytes: partials.len() as u64,
                 status: ExpertProtocolV2Status::Ok,
-                flags: (request.flags & !super::V41_EXL3_PAIRED_REQUEST_FLAG)
+                flags: (request.flags
+                    & !(super::V41_EXL3_PAIRED_REQUEST_FLAG | V41_NATIVE_GROUP_REQUEST_FLAG))
                     | EXPERT_PROTOCOL_V2_FLAG_RESPONSE_ROW_INDICES
                     | if end < self.rows() {
                         EXPERT_PROTOCOL_V2_FLAG_RESPONSE_MORE_CHUNKS
@@ -104,8 +105,8 @@ impl V41BackboneRequest<'_> {
 /// As with complete responses, request IDs must identify unique in-flight waves.
 pub struct V41Tp4ChunkReceiver {
     identity: V41Tp4Planes<'static>,
-    received: [u32; 4],
-    finished: [bool; 4],
+    received: [u32; 6],
+    finished: [bool; 6],
     max_frame_bytes: usize,
 }
 impl V41Tp4ChunkReceiver {
@@ -114,13 +115,7 @@ impl V41Tp4ChunkReceiver {
         executors: [u64; 4],
         max_frame_bytes: usize,
     ) -> Result<Self> {
-        request.response_chunk_rows(max_frame_bytes)?;
-        Ok(Self {
-            identity: V41Tp4Planes::new(request, executors)?,
-            received: [0; 4],
-            finished: [false; 4],
-            max_frame_bytes,
-        })
+        Self::new_ranks(request, &executors, max_frame_bytes)
     }
     /// Collect exactly two complete rank planes while preserving TP4 APIs.
     pub fn new_tp2(
@@ -128,12 +123,35 @@ impl V41Tp4ChunkReceiver {
         executors: [u64; 2],
         max_frame_bytes: usize,
     ) -> Result<Self> {
+        Self::new_ranks(request, &executors, max_frame_bytes)
+    }
+    /// Generic constructor for the validated physical rank counts 2, 3, 4 and 6.
+    ///
+    /// A request admitted under the native replicated-group contract must match
+    /// its topology's world size; paired EXL3 keeps its four-rank requirement.
+    pub fn new_ranks(
+        request: &V41BackboneRequest<'_>,
+        executors: &[u64],
+        max_frame_bytes: usize,
+    ) -> Result<Self> {
+        ensure!(
+            matches!(executors.len(), 2 | 3 | 4 | 6),
+            "native TP/EP requires two, three, four or six executors"
+        );
+        if request.is_paired() {
+            ensure!(executors.len() == 4, "paired EXL3 requires four ranks");
+        }
+        if let Some(topology) = request.native_topology() {
+            ensure!(
+                executors.len() == topology.world_size(),
+                "native group executor count does not match its topology"
+            );
+        }
         request.response_chunk_rows(max_frame_bytes)?;
-        ensure!(!request.is_paired(), "paired EXL3 requires four ranks");
         Ok(Self {
-            identity: V41Tp4Planes::from_header_ranks(&request.view.header, &executors)?,
-            received: [0; 4],
-            finished: [false; 4],
+            identity: V41Tp4Planes::from_header_ranks(&request.view.header, executors)?,
+            received: [0; 6],
+            finished: [false; 6],
             max_frame_bytes,
         })
     }
@@ -152,6 +170,12 @@ impl V41Tp4ChunkReceiver {
         executors: &[u64],
         max_frame_bytes: usize,
     ) -> Result<Self> {
+        // Ownership words are undecodable without the group count, so a native
+        // group request needs the topology-bound constructor below.
+        ensure!(
+            request.header.flags & V41_NATIVE_GROUP_REQUEST_FLAG == 0,
+            "native group ownership requires a topology-bound receiver"
+        );
         if request.header.flags & super::V41_EXL3_PAIRED_REQUEST_FLAG != 0 {
             ensure!(executors.len() == 4, "paired EXL3 requires four ranks");
             V41BackboneRequest::validate_owned_paired(request, max_rows)?;
@@ -169,16 +193,62 @@ impl V41Tp4ChunkReceiver {
             "response frame cannot fit one native token row");
         Ok(Self {
             identity: V41Tp4Planes::from_header_ranks(&request.header, executors)?,
-            received: [0; 4],
-            finished: [false; 4],
+            received: [0; 6],
+            finished: [false; 6],
+            max_frame_bytes,
+        })
+    }
+    /// Ownership-aware constructor for a worker bound to one native topology.
+    pub(crate) fn from_owned_topology(
+        request: &crate::ExpertProtocolV2Request,
+        max_rows: u32,
+        executors: &[u64],
+        topology: V41SparkTopology,
+        max_frame_bytes: usize,
+    ) -> Result<Self> {
+        ensure!(
+            executors.len() == topology.world_size(),
+            "native group executor count does not match its topology"
+        );
+        ensure!(
+            request.header.flags & V41_NATIVE_GROUP_REQUEST_FLAG != 0,
+            "topology-bound receiver requires a native group request"
+        );
+        V41BackboneRequest::validate_owned_native_group(request, max_rows, topology)?;
+        ensure!(
+            request.wire_stats().wire_bytes <= max_frame_bytes,
+            "native request exceeds RoCE frame budget"
+        );
+        let header_bytes = if request.header.flags & EXPERT_PROTOCOL_V2_FLAG_DEBUG_CHECKSUM != 0 {
+            EXPERT_PROTOCOL_V2_RESPONSE_DEBUG_HEADER_LEN
+        } else {
+            EXPERT_PROTOCOL_V2_RESPONSE_HEADER_LEN
+        };
+        ensure!(
+            max_frame_bytes >= header_bytes + V41_PARTIAL_ROW_BYTES as usize + 4,
+            "response frame cannot fit one native token row"
+        );
+        Ok(Self {
+            identity: V41Tp4Planes::from_header_ranks(&request.header, executors)?,
+            received: [0; 6],
+            finished: [false; 6],
             max_frame_bytes,
         })
     }
     pub fn complete(&self) -> bool {
-        self.finished[..self.identity.executors.len()].iter().all(|value| *value)
+        self.finished[..self.identity.world_size()].iter().all(|value| *value)
     }
+    /// Legacy four-rank row counters; ranks past four are always zero.
     pub fn received_rows(&self) -> [u32; 4] {
-        self.received
+        [self.received[0], self.received[1], self.received[2], self.received[3]]
+    }
+    /// Row counters for every physical rank in rank order.
+    pub fn received_rows_slice(&self) -> &[u32] {
+        &self.received[..self.identity.world_size()]
+    }
+    /// Physical ranks this receiver expects.
+    pub fn world_size(&self) -> usize {
+        self.identity.world_size()
     }
 
     /// The verbs client has already checked framing and checksum before exposing

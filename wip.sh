@@ -7,18 +7,24 @@ source "$repo_root/scripts/release-common.sh"
 usage() {
   cat <<'EOF'
 Usage: ./wip.sh [--slot NAME] [--role coordinator|expert|both]
-                [--from-slot NAME] [--config FILE] [--recreate]
+                [--from-slot NAME] [--config FILE] [--recreate] [--dry-run]
 
 Synchronizes the current checkout into persistent development containers and
 incrementally builds a named WIP slot. The coordinator container builds and
-runs coordinator slots. Ostrich builds Spark slots, which are copied directly
-and concurrently to the other persistent Spark WIP containers.
+runs coordinator slots. The first configured Spark builds Spark slots, which
+are copied directly and concurrently to the other persistent Spark WIP
+containers.
+An explicit SPARK_TP=2/3 topology builds the matching opt-in SM121 expert role;
+DS41RT_WIP_SPARK_TP_ROLES=tp2;tp3 overrides that selection. The default
+configuration builds no extra role and keeps the historical Spark TP4 shard.
+--dry-run prints the resolved hosts, role plan and build invocations without
+touching Docker, SSH or any container.
 
 --from-slot NAME first clones an existing slot, then rebuilds the selected
 role. This is useful for coordinator-only or expert-only A/B candidates.
 For a coordinator-only clone, wip.sh stops only the coordinator process and
 keeps resident Spark experts available for fingerprint-checked reuse.
---recreate discards all five WIP containers and their build caches before
+--recreate discards all WIP containers and their build caches before
 creating them again from the configured development images.
 EOF
 }
@@ -28,6 +34,7 @@ slot=current
 role=both
 from_slot=
 recreate=0
+dry_run=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --slot)
@@ -48,6 +55,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --recreate)
       recreate=1
+      shift
+      ;;
+    --dry-run)
+      dry_run=1
       shift
       ;;
     -h|--help)
@@ -75,6 +86,47 @@ release_need python3
 release_need sha256sum
 release_need install
 release_need nvidia-smi
+
+mapfile -t wip_hosts < <(release_spark_values HOST)
+((${#wip_hosts[@]})) || release_die "configuration has no active Spark hosts"
+[[ "${#wip_hosts[@]}" == "$SPARK_COUNT" ]] ||
+  release_die "SPARK_COUNT=$SPARK_COUNT does not match ${#wip_hosts[@]} configured Spark hosts"
+seed_host="${wip_hosts[0]}"
+wip_target_hosts=("${wip_hosts[@]:1}")
+
+# Opt-in replicated-group Spark expert roles for the WIP slot. The default and
+# explicit TP4xEP1 build no extra role.
+wip_spark_tp_roles="${DS41RT_WIP_SPARK_TP_ROLES:-}"
+if [[ -z "$wip_spark_tp_roles" ]] && release_spark_topology_explicit; then
+  case "$SPARK_TP" in
+    2) wip_spark_tp_roles=tp2 ;;
+    3) wip_spark_tp_roles=tp3 ;;
+    4) wip_spark_tp_roles= ;;
+  esac
+fi
+if [[ -n "$wip_spark_tp_roles" ]]; then
+  IFS=';' read -ra wip_spark_tp_role_list <<<"$wip_spark_tp_roles"
+  for wip_spark_tp_role in "${wip_spark_tp_role_list[@]}"; do
+    case "$wip_spark_tp_role" in
+      tp2|tp3) ;;
+      *) release_die "DS41RT_WIP_SPARK_TP_ROLES accepts only tp2 and tp3, got: $wip_spark_tp_role" ;;
+    esac
+  done
+  unset wip_spark_tp_role wip_spark_tp_role_list
+fi
+
+if ((dry_run)); then
+  echo "WIP dry-run passed; no container, image, SSH or build operation was performed."
+  echo "  config: $RELEASE_CONFIG"
+  echo "  slot: $slot (role $role)"
+  echo "  Spark hosts (${#wip_hosts[@]}): $(IFS=,; echo "${wip_hosts[*]}")"
+  echo "  seed host: $seed_host"
+  echo "  topology: tp=$(release_spark_tp) ep=$(release_spark_ep) explicit=$(release_spark_topology_explicit && echo 1 || echo 0)"
+  echo "  V41 Spark expert roles: ${wip_spark_tp_roles:-<legacy TP4 only>}"
+  echo "  EXL3 AOT: ${DS41RT_WIP_EXL3_AOT:-ON}; NVFP4 AOT: ${DS41RT_WIP_NVFP4_AOT:-ON}"
+  exit 0
+fi
+
 docker info >/dev/null 2>&1 || release_die "local Docker daemon is unavailable"
 release_resolve_coordinator_gpu_identity
 
@@ -125,7 +177,7 @@ distribute_spark_dev_image() {
   seed_id="$(ssh -o BatchMode=yes "$seed_host" "docker image inspect -f '{{.Id}}' '$SPARK_EXPERT_DOCKER_DEV'")"
   local -a targets=()
   local host remote_id
-  for host in "$SPARK_1_HOST" "$SPARK_2_HOST" "$SPARK_3_HOST"; do
+  for host in "${wip_target_hosts[@]}"; do
     remote_id="$(ssh -o BatchMode=yes "$host" "docker image inspect -f '{{.Id}}' '$SPARK_EXPERT_DOCKER_DEV' 2>/dev/null || true")"
     [[ "$remote_id" == "$seed_id" ]] || targets+=("$host")
   done
@@ -153,7 +205,7 @@ distribute_spark_dev_image() {
 remove_wip_containers() {
   docker rm -f "$coordinator_container" >/dev/null 2>&1 || true
   local host
-  for host in "$SPARK_0_HOST" "$SPARK_1_HOST" "$SPARK_2_HOST" "$SPARK_3_HOST"; do
+  for host in "${wip_hosts[@]}"; do
     ssh -o BatchMode=yes "$host" "docker rm -f '$spark_container' >/dev/null 2>&1 || true" &
   done
   wait
@@ -183,7 +235,7 @@ preflight_existing_container_images() {
       release_die "$coordinator_container is not bound to the configured physical GPU; rerun ./wip.sh --recreate"
   fi
   expected="$(ssh -o BatchMode=yes "$seed_host" "docker image inspect -f '{{.Id}}' '$SPARK_EXPERT_DOCKER_DEV'")"
-  for host in "$SPARK_0_HOST" "$SPARK_1_HOST" "$SPARK_2_HOST" "$SPARK_3_HOST"; do
+  for host in "${wip_hosts[@]}"; do
     actual="$(ssh -o BatchMode=yes "$host" "docker inspect -f '{{.Image}}' '$spark_container' 2>/dev/null || true")"
     [[ -z "$actual" || "$actual" == "$expected" ]] ||
       release_die "$host $spark_container uses an old development image; rerun ./wip.sh --recreate"
@@ -255,7 +307,7 @@ REMOTE
 echo "== ensuring persistent WIP development containers =="
 ensure_local_container
 remote_pids=()
-for host in "$SPARK_0_HOST" "$SPARK_1_HOST" "$SPARK_2_HOST" "$SPARK_3_HOST"; do
+for host in "${wip_hosts[@]}"; do
   ensure_remote_container "$host" &
   remote_pids+=("$!")
 done
@@ -276,7 +328,7 @@ exit 1
 
 wip_expert_processes_active() {
   local host
-  for host in "$SPARK_0_HOST" "$SPARK_1_HOST" "$SPARK_2_HOST" "$SPARK_3_HOST"; do
+  for host in "${wip_hosts[@]}"; do
     if ssh -o BatchMode=yes "$host" docker exec -i "$spark_container" bash -s <<'CONTAINER'
 for pid_file in /wip/run/*.pid; do
   [ -f "$pid_file" ] || continue
@@ -364,7 +416,10 @@ build_coordinator() {
   sync_local_source
   local image_id
   image_id="$(docker image inspect -f '{{.Id}}' "$COORDINATOR_DOCKER_DEV")"
-  docker exec "$coordinator_container" \
+  docker exec \
+    -e "DS41RT_WIP_EXL3_AOT=${DS41RT_WIP_EXL3_AOT:-ON}" \
+    -e "DS41RT_WIP_NVFP4_AOT=${DS41RT_WIP_NVFP4_AOT:-ON}" \
+    "$coordinator_container" \
     /wip/source/scripts/build-wip-artifacts.sh \
     /wip/source coordinator 120 /wip/build/coordinator /wip/output/coordinator
   docker exec "$coordinator_container" \
@@ -378,9 +433,10 @@ build_expert() {
   sync_seed_source
   local image_id
   image_id="$(ssh -o BatchMode=yes "$seed_host" "docker image inspect -f '{{.Id}}' '$SPARK_EXPERT_DOCKER_DEV'")"
-  ssh -o BatchMode=yes "$seed_host" docker exec "$spark_container" \
-    /wip/source/scripts/build-wip-artifacts.sh \
-    /wip/source expert 121 /wip/build/expert /wip/output/expert
+  # The role list and build-scope opt-ins travel inside a single quoted remote
+  # command so a `tp2;tp3` value is never split by the remote shell.
+  ssh -o BatchMode=yes "$seed_host" \
+    "docker exec -e 'DS41RT_WIP_SPARK_TP_ROLES=$wip_spark_tp_roles' -e 'DS41RT_WIP_EXL3_AOT=${DS41RT_WIP_EXL3_AOT:-ON}' -e 'DS41RT_WIP_NVFP4_AOT=${DS41RT_WIP_NVFP4_AOT:-ON}' '$spark_container' /wip/source/scripts/build-wip-artifacts.sh /wip/source expert 121 /wip/build/expert /wip/output/expert"
   ssh -o BatchMode=yes "$seed_host" docker exec "$spark_container" \
     /wip/source/scripts/finalize-wip-slot.sh \
     /wip/source spark-expert "$slot" /wip/output/expert \
@@ -448,7 +504,7 @@ distribute_expert_slot() {
   echo "== concurrently distributing Spark WIP slot $slot from $seed_host =="
   local -a pids=()
   local host
-  for host in "$SPARK_1_HOST" "$SPARK_2_HOST" "$SPARK_3_HOST"; do
+  for host in "${wip_target_hosts[@]}"; do
     (
       set -o pipefail
       ssh -o BatchMode=yes "$host" \
@@ -467,7 +523,7 @@ distribute_expert_slot() {
   ((failed == 0)) || release_die "Spark WIP slot distribution failed"
   local expected actual
   expected="$(ssh -o BatchMode=yes "$seed_host" "docker exec '$spark_container' cat '/wip/slots/$slot/spark-expert/FINGERPRINT'")"
-  for host in "$SPARK_1_HOST" "$SPARK_2_HOST" "$SPARK_3_HOST"; do
+  for host in "${wip_target_hosts[@]}"; do
     actual="$(ssh -o BatchMode=yes "$host" "docker exec '$spark_container' cat '/wip/slots/$slot/spark-expert/FINGERPRINT'")"
     [[ "$actual" == "$expected" ]] || release_die "$host received a mismatched WIP slot fingerprint"
   done

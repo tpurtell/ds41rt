@@ -228,10 +228,19 @@ def export_input_quantizer(output_dir: Path, manifest: dict) -> None:
         "abi": abi, "object_sha256": hashlib.sha256((output_dir / (label + ".o")).read_bytes()).hexdigest()}
 
 
+# Roles served by the SM121 Spark expert family. `spark` is the historical TP4
+# shard; `spark_tp2`/`spark_tp3` are the replicated-group TP shards. The degree
+# is a plan-time role property, never derived from live rows.
+SPARK_ROLES = ("spark", "spark_tp2", "spark_tp3")
+SPARK_TP_DEGREES = {"spark": 4, "spark_tp2": 2, "spark_tp3": 3}
+
+
 def export(output_dir: Path, role: str, rows: tuple[int, ...], input_format: str = "bf16", compact_live_rows: int | None = None) -> None:
-    if input_format not in ("bf16", "fp8_k32") or (role != "spark" and input_format != "bf16"):
+    if input_format not in ("bf16", "fp8_k32") or (role not in SPARK_ROLES and input_format != "bf16"):
         raise ValueError("FP8 K32 input is supported only for Spark backbone experts")
-    if compact_live_rows is not None and (role != "spark" or input_format != "fp8_k32"):
+    if role in ("spark_tp2", "spark_tp3") and input_format != "fp8_k32":
+        raise ValueError("Spark TP2/TP3 use the native FP8 K32 slice export only")
+    if compact_live_rows is not None and (role not in SPARK_ROLES or input_format != "fp8_k32"):
         raise ValueError("compact dispatch requires native FP8 Spark experts")
     if role == "coordinator":
         from b12x.moe._shared.kernels.v41_slice_pipeline import V41DraftSlicePipeline
@@ -240,16 +249,18 @@ def export(output_dir: Path, role: str, rows: tuple[int, ...], input_format: str
         export_slices(output_dir, rows, V41DraftSlicePipeline.DEFAULT_WIDTH,
                       role=role, standard_names=True)
         return
-    if role == "spark" and input_format == "fp8_k32":
+    if role in SPARK_ROLES and input_format == "fp8_k32":
         from export_b12x_v41_slices_aot import export as export_slices
 
         # Match the qualified backbone worker: narrow single-row decode,
-        # wider grouped execution, and direct token output for prefill.
+        # wider grouped execution, and direct token output for prefill. The
+        # compact specialization stays limited to the historical TP4 role.
         widths = {capacity: 64 if capacity == 1 else 192 for capacity in rows}
+        compact = role == "spark" and compact_live_rows is not None
         export_slices(output_dir, rows, widths, atomic_min_capacity=256,
                       role=role, standard_names=True,
-                      compact_max_capacity=16 if compact_live_rows is not None else None,
-                      compact_live_rows=compact_live_rows)
+                      compact_max_capacity=16 if compact else None,
+                      compact_live_rows=compact_live_rows if compact else None)
         return
     # Export requires compiler IR, which executable-only cache entries omit.
     os.environ["B12X_COMPILE_DISK_CACHE"] = "0"
@@ -261,12 +272,12 @@ def export(output_dir: Path, role: str, rows: tuple[int, ...], input_format: str
     device = torch.device("cuda", torch.cuda.current_device())
     properties = torch.cuda.get_device_properties(device)
     capability = (properties.major, properties.minor)
-    expected = (12, 1) if role == "spark" else (12, 0)
+    expected = (12, 1) if role in SPARK_ROLES else (12, 0)
     if capability != expected:
         raise ValueError(
             f"{role} exports require native SM{expected[0]}{expected[1]}, got {capability}"
         )
-    experts, intermediate, topk = (384, 576, 6) if role == "spark" else (128, 2304, 3)
+    experts, intermediate, topk = (384, 576, 6) if role in SPARK_ROLES else (128, 2304, 3)
     weight_plan = moe.plan_b12x_fp4_moe_weights(
         quant_modes="w4a8_mx",
         source_format="fp4_e8m0_k32",
@@ -282,6 +293,7 @@ def export(output_dir: Path, role: str, rows: tuple[int, ...], input_format: str
     manifest = {
         "schema": 1,
         "role": role,
+        "spark_tp_degree": SPARK_TP_DEGREES.get(role),
         "input_format": input_format,
         "sparkinfer_revision": _pinned_sparkinfer.REVISION,
         "device": properties.name,
@@ -397,7 +409,7 @@ def export(output_dir: Path, role: str, rows: tuple[int, ...], input_format: str
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--role", choices=("spark", "coordinator"), required=True)
+    parser.add_argument("--role", choices=("spark", "spark_tp2", "spark_tp3", "coordinator"), required=True)
     parser.add_argument("--rows", default="1,16,80,256,1024,4096")
     parser.add_argument("--input-format", choices=("bf16", "fp8_k32"), default="bf16")
     parser.add_argument("--compact-live-rows", type=int, help="Experimental Spark live-row compact cutoff")

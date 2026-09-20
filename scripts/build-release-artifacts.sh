@@ -36,6 +36,21 @@ case "$role" in
 esac
 exl3_paired_tp4=OFF
 exl3_residency=""
+# Opt-in replicated-group Spark expert roles. Empty is the default and keeps
+# the historical Spark TP4 shard (and every release default) byte-identical.
+spark_tp_roles="${DS41RT_RELEASE_SPARK_TP_ROLES:-}"
+spark_tp_role_list=()
+if [[ -n "$spark_tp_roles" ]]; then
+  IFS=';' read -ra spark_tp_role_list <<<"$spark_tp_roles"
+  for spark_tp_role in "${spark_tp_role_list[@]}"; do
+    case "$spark_tp_role" in
+      tp2|tp3) ;;
+      *) echo "DS41RT_RELEASE_SPARK_TP_ROLES accepts only tp2 and tp3, got: $spark_tp_role" >&2; exit 2 ;;
+    esac
+  done
+  [[ "$role" == expert ]] ||
+    { echo "DS41RT_RELEASE_SPARK_TP_ROLES is only valid for the expert role" >&2; exit 2; }
+fi
 # v7 ships both EXL3 decoder families by default: the uniform K=2 raw
 # publication family (2,3) and the staged K3.25 family (3,4). Paired TP4
 # builds remain single-family and stay on the v5 (3,4) family.
@@ -126,6 +141,7 @@ cmake \
   -DCMAKE_BUILD_TYPE=Release \
   -DDS41RT_ENABLE_CUDA=ON \
   -DDS41RT_ENABLE_V41_EXPERT_AOT=ON \
+  -DDS41RT_V41_SPARK_TP_ROLES="$spark_tp_roles" \
   -DDS41RT_ENABLE_V41_NVFP4_AOT="${DS41RT_RELEASE_NVFP4_AOT:-ON}" \
   -DDS41RT_ENABLE_V41_EXL3_AOT=ON \
   -DDS41RT_V41_EXL3_BIT_FAMILIES="$exl3_bit_families" \
@@ -170,6 +186,15 @@ for exl3_tag in "${exl3_family_tags[@]}"; do
     --package "$output_dir/exl3/exl3-$exl3_tag" --role "$role"
 done
 install -m 0644 "$build_root/native/v41_experts/v41_experts.json" "$output_dir/V41_EXPERT_AOT.json"
+# Always write the built-role manifest, including the empty-role default, so
+# the release Dockerfile can COPY it unconditionally. Every listed role is
+# derived from the AOT export manifest CMake actually produced.
+python3 "$build_root/source/scripts/write-v41-expert-tp-manifest.py" \
+  --role "$role" \
+  --requested "$spark_tp_roles" \
+  --native-build-dir "$build_root/native" \
+  --native-library "$build_root/native/libds41rt_native.so" \
+  --output "$output_dir/V41_EXPERT_TP_AOT.json"
 if [[ "$coordinator_aot" == ON ]]; then
   # Automatic RTX placement requires the full local-expert ABI in release images.
   python3 - "$output_dir/libds41rt_native.so" <<'PY_CHECK'
@@ -216,6 +241,7 @@ python3 "$build_root/source/scripts/sparkinfer-release-provenance.py" \
 )
 test -x "$output_dir/ds41rt"
 test -s "$output_dir/libds41rt_native.so"
+test -s "$output_dir/V41_EXPERT_TP_AOT.json"
 test -s "$output_dir/THIRD_PARTY_NOTICES.md"
 test -s "$output_dir/SPARKINFER_PROVENANCE.json"
 test -s "$output_dir/SPARKINFER_LICENSE"

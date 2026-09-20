@@ -54,6 +54,10 @@ TP2_ATTENTION=off
 TP2_QUERY_PROJECTION=off
 TP2_OUTPUT_PROJECTION=off
 TP2_DSPARK_EXPERTS=off
+topology_explicit=0
+spark_tp=4
+spark_ep=1
+spark_admission=not-applicable
 spark_exl3_identity=
 gpu_request=device=uuid0,uuid1
 gpu_uuid_csv=uuid0,uuid1
@@ -86,7 +90,10 @@ spark_first_layer=0
                 self.assertIn('--placement-directory',events[0][1])
                 starts=[args for tool,args in events if tool=='ssh' and '-s' in args]
                 self.assertEqual(len(starts),4)
-                self.assertTrue(all(args[-2]==str(min(layers,39)) and args[-1]=='4' for args in starts))
+                # Worker positional tail: first_layer, world, then the legacy
+                # topology tail (explicit flag, TP, EP).
+                self.assertTrue(all(args[-5]==str(min(layers,39)) and args[-4]=='4' for args in starts))
+                self.assertTrue(all(args[-3:]==['0','4','1'] for args in starts))
                 ack=[i for i,(tool,args) in enumerate(events) if tool=='docker' and args[:3]==['exec','coordinator','sh']]
                 self.assertEqual(len(ack),1)
                 ready=[i for i,(tool,args) in enumerate(events) if tool=='ssh' and any('timeout 1' in a for a in args)]
@@ -98,7 +105,9 @@ spark_first_layer=0
         self.assertEqual(result.returncode,0,result.stderr)
         starts=[args for tool,args in events if tool=='ssh' and '-s' in args]
         self.assertEqual(len(starts),2)
-        self.assertTrue(all(args[-1]=='2' for args in starts))
+        self.assertTrue(all(args[-5]=='0' and args[-4]=='2' for args in starts))
+        # Legacy topology tail: no explicit SPARK_TP/SPARK_EP flags are passed.
+        self.assertTrue(all(args[-3]=='0' for args in starts))
         coordinator=next(args for tool,args in events if tool=='docker' and args[0]=='run')
         self.assertEqual(coordinator[coordinator.index('--peers')+1], '10.55.0.1:19441,10.55.0.2:19441')
         self.assertEqual(coordinator[coordinator.index('--memory-reservation')+1], '32GiB')

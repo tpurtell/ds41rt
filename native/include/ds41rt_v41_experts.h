@@ -6,7 +6,10 @@ extern "C" {
 
 #define DS41RT_V41_EXPERT_POINTERS 44
 /* Per-expert prepared sizes in bytes: W13, W13 scales, W2, W2 scales.
- * Logical intermediate must be 2304 (full RTX), 1152 (RTX TP2), or 576 (backbone TP4).
+ * Logical intermediate must be 2304 (full RTX / coordinator), 1152 (RTX TP2 or
+ * Spark TP2), 768 (Spark TP3), or 576 (backbone TP4). Every accepted extent is
+ * a multiple of 32 so the K/32 UE8M0 scale axis is exact; storage is padded up
+ * to 128 along the packed axis (TP4 576 -> 640; the others are already aligned).
  * Sources are contiguous official bytes: W1, W3, W2, S1, S3, S2.
  * Destinations are distinct, 16-byte aligned device allocations with the sizes
  * returned below; source and destination storage must not overlap.
@@ -30,7 +33,8 @@ typedef struct ds41rt_v41_expert_launch_t {
 
 typedef struct ds41rt_v41_expert_info_t {
   uint32_t abi_version;
-  uint32_t role; /* 0: coordinator dSpark; 1: Spark TP4 shard; 2: full RTX backbone; 3: backbone TP2; 4: dSpark TP2 */
+  uint32_t role; /* 0: coordinator dSpark; 1: Spark TP4 shard; 2: full RTX backbone; 3: backbone TP2;
+                    4: dSpark TP2; 5: Spark TP2 shard (intermediate 1152); 6: Spark TP3 shard (intermediate 768) */
   uint32_t experts;
   uint32_t hidden_size;
   uint32_t logical_intermediate;
@@ -70,6 +74,29 @@ int32_t ds41rt_v41_expert_bind_scratch(void* kernel, void* storage,
     uint64_t bytes, void* tensors[DS41RT_V41_EXPERT_POINTERS]);
 int32_t ds41rt_v41_expert_initialize_scratch_async(void* kernel, void* storage,
     uint64_t bytes, void* stream);
+
+/* Replicated-group Spark TP2/TP3 shard families (native FP8 K32, SM121 only).
+ * Same per-call contract as ds41rt_v41_expert_*, but a distinct symbol family
+ * and role id per TP degree (5: TP2 logical intermediate 1152; 6: TP3 768).
+ * Both are unpadded (kernel_intermediate == logical_intermediate). Artifacts are
+ * pre-compiled per capacity; there is no runtime compilation path. */
+int32_t ds41rt_v41_spark_tp2_expert_info(int32_t capacity, ds41rt_v41_expert_info_t* out);
+int32_t ds41rt_v41_spark_tp2_expert_initialize(int32_t capacity, void** out_kernel);
+int32_t ds41rt_v41_spark_tp2_expert_launch(void* kernel, const ds41rt_v41_expert_launch_t* args);
+int32_t ds41rt_v41_spark_tp2_expert_bind_scratch(void* kernel, void* storage,
+    uint64_t bytes, void* tensors[DS41RT_V41_EXPERT_POINTERS]);
+int32_t ds41rt_v41_spark_tp2_expert_initialize_scratch_async(void* kernel, void* storage,
+    uint64_t bytes, void* stream);
+int32_t ds41rt_v41_spark_tp2_expert_output_kind(int32_t capacity, uint32_t* out);
+int32_t ds41rt_v41_spark_tp3_expert_info(int32_t capacity, ds41rt_v41_expert_info_t* out);
+int32_t ds41rt_v41_spark_tp3_expert_initialize(int32_t capacity, void** out_kernel);
+int32_t ds41rt_v41_spark_tp3_expert_launch(void* kernel, const ds41rt_v41_expert_launch_t* args);
+int32_t ds41rt_v41_spark_tp3_expert_bind_scratch(void* kernel, void* storage,
+    uint64_t bytes, void* tensors[DS41RT_V41_EXPERT_POINTERS]);
+int32_t ds41rt_v41_spark_tp3_expert_initialize_scratch_async(void* kernel, void* storage,
+    uint64_t bytes, void* stream);
+int32_t ds41rt_v41_spark_tp3_expert_output_kind(int32_t capacity, uint32_t* out);
+
 /* Reduce contiguous FP32 [rows,topk,5120] route planes into BF16 [rows,5120].
  * Supported geometries: ranks=1 or 2/topk=3 (RTX dSpark), ranks=4/topk=6 (backbone).
  * planes is a host array of device pointers; unused slots must be null.
@@ -108,6 +135,18 @@ int32_t ds41rt_v41_reduce_compact_bf16_async(const uint16_t* const planes[4],
  * Same alias/lifetime rules as TP4 above; no allocation or synchronization. */
 int32_t ds41rt_v41_reduce_tp2_compact_bf16_async(const uint16_t* const planes[2],
     const uint16_t* shared, uint16_t* output, uint32_t rows, void* stream);
+/* Replicated-group compact reduction: sum `ranks` BF16 [rows,5120] physical-rank
+ * partial planes in rank order in FP32, add optional BF16 shared exactly once,
+ * then round once to BF16. ranks must be 2, 3, 4 or 6. planes is a host array of
+ * six device pointers: entries [0,ranks) must be non-null and aligned; entries
+ * [ranks,6) must be null. No group-local reduction is performed: every physical
+ * rank contributes one plane directly. Same alias/lifetime rules as the fixed
+ * TP2/TP4 entry points (output may equal shared exactly; output must not overlap
+ * any plane). 1 <= rows <= 4096. The kernel receives the six pointers by value;
+ * no device pointer array and no per-call allocation are used. */
+int32_t ds41rt_v41_reduce_compact_bf16_planes_async(const uint16_t* const planes[6],
+    const uint16_t* shared, uint16_t* output, uint32_t rows, uint32_t ranks,
+    void* stream);
 /* Full local routed output: sum six FP32 routes (token_sums=0) or consume
  * FP32 token sums (token_sums=1), round to BF16, add optional BF16 shared and
  * round to BF16. Output may equal shared exactly; no routed/output overlap.

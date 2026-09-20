@@ -75,7 +75,7 @@ pub use synthetic::{
     SYNTHETIC_EXPERT_KERNEL,
 };
 pub use verbs::{
-    LocalVerbsExpertConnection,
+    LocalVerbsExpertConnection, RingBudget, RingReservation,
     serve_protocol_v2_verbs_host_with_executor, serve_synthetic_verbs_host,
     verbs_host_protocol_v2_endpoint_plan, verbs_host_protocol_v2_expert_request_roundtrip,
     verbs_host_protocol_v2_handshake_contract, verbs_host_protocol_v2_round_trip_plan,

@@ -6,13 +6,18 @@ source "$repo_root/scripts/release-common.sh"
 
 usage() {
   cat <<'EOF'
-Usage: ./build.sh [--config FILE] [--spark-hosts HOST,...]
+Usage: ./build.sh [--config FILE] [--spark-hosts HOST,...] [--dry-run]
 
 Builds the coordinator image locally and the Spark image natively over SSH on
 the first configured Spark. It exports both release artifact sets to dist/
 and distributes the Spark inference image to all configured Spark hosts.
 Use --spark-hosts ostrich,dodo to build and distribute only on available hosts;
-this does not change the four-rank serving topology.
+this does not change the serving topology.
+An explicit SPARK_TP=2/3 topology builds the matching opt-in SM121 expert role;
+DS41RT_RELEASE_SPARK_TP_ROLES=tp2;tp3 overrides that selection. The default
+configuration builds no extra role and keeps the historical Spark TP4 shard.
+--dry-run validates the configuration, host set and role plan without touching
+Docker, SSH, submodules or any image.
 
 Dirty checkouts get an automatic source manifest under .ds41rt-release/.
 Keep source files unchanged during the build; local and remote inventories
@@ -24,6 +29,7 @@ EOF
 
 config="$repo_root/ds41rt.config"
 build_hosts_csv=""
+dry_run=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --config)
@@ -33,6 +39,10 @@ while [[ $# -gt 0 ]]; do
     --spark-hosts)
       build_hosts_csv="${2:?--spark-hosts requires a comma-separated host list}"
       shift 2
+      ;;
+    --dry-run)
+      dry_run=1
+      shift
       ;;
     -h|--help)
       usage
@@ -60,6 +70,41 @@ spark_release_version="${SPARK_EXPERT_DOCKER_INFERENCE##*:}"
   release_die "coordinator inference image must use a valid release tag"
 [[ "$spark_release_version" == "$release_version" ]] ||
   release_die "coordinator and Spark inference image release tags must match"
+
+# Opt-in replicated-group Spark expert roles. The default configuration and an
+# explicit TP4xEP1 build no extra role; an explicit TP2/TP3 topology selects the
+# matching SM121 role. DS41RT_RELEASE_SPARK_TP_ROLES is the escape hatch for
+# building both (tp2;tp3) ahead of a topology A/B.
+spark_tp_roles="${DS41RT_RELEASE_SPARK_TP_ROLES:-}"
+if [[ -z "$spark_tp_roles" ]] && release_spark_topology_explicit; then
+  case "$SPARK_TP" in
+    2) spark_tp_roles=tp2 ;;
+    3) spark_tp_roles=tp3 ;;
+    4) spark_tp_roles= ;;
+  esac
+fi
+if [[ -n "$spark_tp_roles" ]]; then
+  IFS=';' read -ra spark_tp_role_list <<<"$spark_tp_roles"
+  for spark_tp_role in "${spark_tp_role_list[@]}"; do
+    case "$spark_tp_role" in
+      tp2|tp3) ;;
+      *) release_die "DS41RT_RELEASE_SPARK_TP_ROLES accepts only tp2 and tp3, got: $spark_tp_role" ;;
+    esac
+  done
+  unset spark_tp_role spark_tp_role_list
+fi
+
+if ((dry_run)); then
+  echo "Build dry-run passed; no image, container, SSH or submodule was touched."
+  echo "  config: $RELEASE_CONFIG"
+  echo "  build hosts (${#RELEASE_BUILD_HOSTS[@]}): $(IFS=,; echo "${RELEASE_BUILD_HOSTS[*]}")"
+  echo "  seed host: ${RELEASE_BUILD_HOSTS[0]:-}"
+  echo "  release tag: $release_version"
+  echo "  V41 Spark expert roles: ${spark_tp_roles:-<legacy TP4 only>}"
+  echo "  coordinator image: $COORDINATOR_DOCKER_INFERENCE"
+  echo "  spark image: $SPARK_EXPERT_DOCKER_INFERENCE"
+  exit 0
+fi
 
 prepare_pinned_source_dependencies() {
   local git_root=""
@@ -265,6 +310,7 @@ docker build \
   --build-arg DS41RT_ENGINE_COMMIT="$engine_commit" \
   --build-arg DS41RT_SPARKINFER_COMMIT="$sparkinfer_commit" \
   --build-arg DS41RT_RELEASE_VERSION="$release_version" \
+  --build-arg DS41RT_V41_SPARK_TP_ROLES= \
   -f "$repo_root/docker/Dockerfile.release" \
   -t "$COORDINATOR_DOCKER_INFERENCE" \
   "$repo_root"
@@ -315,7 +361,7 @@ echo "== building Spark development and inference images natively on $seed_host 
 ssh -o BatchMode=yes "$seed_host" bash -s -- \
   "$remote_dir" "$SPARK_EXPERT_DOCKER_DEV" "$SPARK_EXPERT_DOCKER_INFERENCE" \
   "$engine_commit" "$sparkinfer_commit" "$release_version" \
-  "$EXL3_PAIRED_TP4" "$source_manifest_sha256" <<'REMOTE'
+  "$EXL3_PAIRED_TP4" "${source_manifest_sha256:-__legacy__}" "${spark_tp_roles//;/,}" <<'REMOTE'
 set -euo pipefail
 remote_dir="$1"
 dev_image="$2"
@@ -324,8 +370,17 @@ engine_commit="$4"
 sparkinfer_commit="$5"
 release_version="$6"
 exl3_paired_tp4="$7"
-# SSH reconstructs a shell command and can omit an empty trailing argument.
-source_manifest_sha256="${8-}"
+# SSH reconstructs a shell command and can omit an empty argument, so every
+# optional trailing value is passed as a non-empty sentinel and decoded here.
+# Both source_manifest_sha256 and spark_tp_roles are optional: sentinels keep
+# the two from shifting into each other's position.
+source_manifest_sha256="${8-__legacy__}"
+# The role list travels as a comma list so a remote shell cannot split it at a
+# semicolon; it is restored to the CMake semicolon list here.
+spark_tp_roles="${9-__legacy__}"
+[[ "$source_manifest_sha256" != "__legacy__" ]] || source_manifest_sha256=
+[[ "$spark_tp_roles" != "__legacy__" ]] || spark_tp_roles=
+spark_tp_roles="${spark_tp_roles//,/;}"
 release_source_label_args=()
 if [[ -n "$source_manifest_sha256" ]]; then
   release_source_label_args+=(
@@ -350,6 +405,7 @@ docker run --rm \
   --ipc=host \
   --ulimit memlock=-1:-1 \
   -e "DS41RT_RELEASE_EXL3_PAIRED_TP4=$exl3_paired_tp4" \
+  -e "DS41RT_RELEASE_SPARK_TP_ROLES=$spark_tp_roles" \
   -v "$remote_dir:/source:ro" \
   -v "$remote_dir/.ds41rt-release-image:/output" \
   "$dev_image" \
@@ -361,6 +417,7 @@ docker build \
   --build-arg DS41RT_ENGINE_COMMIT="$engine_commit" \
   --build-arg DS41RT_SPARKINFER_COMMIT="$sparkinfer_commit" \
   --build-arg DS41RT_RELEASE_VERSION="$release_version" \
+  --build-arg DS41RT_V41_SPARK_TP_ROLES="$spark_tp_roles" \
   -f docker/Dockerfile.release \
   -t "$inference_image" .
 REMOTE
@@ -376,6 +433,7 @@ docker cp "$coordinator_container:/opt/ds41rt/bin/ds41rt" "$repo_root/dist/coord
 docker cp "$coordinator_container:/opt/ds41rt/lib/libds41rt_native.so" "$repo_root/dist/coordinator/libds41rt_native.so"
 docker cp "$coordinator_container:/opt/ds41rt/lib/exl3" "$repo_root/dist/coordinator/exl3"
 docker cp "$coordinator_container:/opt/ds41rt/share/V41_EXPERT_AOT.json" "$repo_root/dist/coordinator/V41_EXPERT_AOT.json"
+docker cp "$coordinator_container:/opt/ds41rt/share/V41_EXPERT_TP_AOT.json" "$repo_root/dist/coordinator/V41_EXPERT_TP_AOT.json"
 docker cp "$coordinator_container:/opt/ds41rt/share/V41_FP8_AOT.json" "$repo_root/dist/coordinator/V41_FP8_AOT.json"
 docker cp \
   "$coordinator_container:/opt/ds41rt/share/THIRD_PARTY_NOTICES.md" \
@@ -414,6 +472,7 @@ docker cp "$container:/opt/ds41rt/bin/ds41rt" "$destination/ds41rt"
 docker cp "$container:/opt/ds41rt/lib/libds41rt_native.so" "$destination/libds41rt_native.so"
 docker cp "$container:/opt/ds41rt/lib/exl3" "$destination/exl3"
 docker cp "$container:/opt/ds41rt/share/V41_EXPERT_AOT.json" "$destination/V41_EXPERT_AOT.json"
+docker cp "$container:/opt/ds41rt/share/V41_EXPERT_TP_AOT.json" "$destination/V41_EXPERT_TP_AOT.json"
 docker cp "$container:/opt/ds41rt/share/V41_FP8_AOT.json" "$destination/V41_FP8_AOT.json"
 docker cp \
   "$container:/opt/ds41rt/share/THIRD_PARTY_NOTICES.md" \
@@ -464,7 +523,7 @@ done
 (
   cd "$repo_root/dist"
   sha256sum \
-    coordinator/ds41rt coordinator/libds41rt_native.so coordinator/exl3/manifest.json coordinator/V41_EXPERT_AOT.json coordinator/V41_FP8_AOT.json \
+    coordinator/ds41rt coordinator/libds41rt_native.so coordinator/exl3/manifest.json coordinator/V41_EXPERT_AOT.json coordinator/V41_EXPERT_TP_AOT.json coordinator/V41_FP8_AOT.json \
     coordinator/THIRD_PARTY_NOTICES.md \
     coordinator/SPARKINFER_PROVENANCE.json \
     coordinator/SPARKINFER_LICENSE \
@@ -472,7 +531,7 @@ done
     coordinator/XGRAMMAR_PROVENANCE.json \
     coordinator/XGRAMMAR_LICENSE \
     coordinator/XGRAMMAR_SHA256SUMS \
-    spark-expert/ds41rt spark-expert/libds41rt_native.so spark-expert/exl3/manifest.json spark-expert/V41_EXPERT_AOT.json spark-expert/V41_FP8_AOT.json \
+    spark-expert/ds41rt spark-expert/libds41rt_native.so spark-expert/exl3/manifest.json spark-expert/V41_EXPERT_AOT.json spark-expert/V41_EXPERT_TP_AOT.json spark-expert/V41_FP8_AOT.json \
     spark-expert/THIRD_PARTY_NOTICES.md \
     spark-expert/SPARKINFER_PROVENANCE.json \
     spark-expert/SPARKINFER_LICENSE \
@@ -587,6 +646,21 @@ for host in "${RELEASE_BUILD_HOSTS[@]}"; do
     [[ "$spark_source_manifest" == "$source_manifest_sha256" ]] ||
       release_die "$host Spark image source manifest mismatch: $spark_source_manifest"
   fi
+  # The advertised role set must equal what was requested and actually built;
+  # this is the identity the release launcher verifies before an explicit
+  # topology launch, so a mismatch is a hard build failure.
+  spark_role_label="$(
+    ssh -o BatchMode=yes "$host" \
+      "docker image inspect -f '{{index .Config.Labels \"io.ds41rt.v41.spark_tp_roles\"}}' '$SPARK_EXPERT_DOCKER_INFERENCE'"
+  )"
+  [[ "$spark_role_label" != "<no value>" ]] || spark_role_label=
+  if [[ -z "$spark_tp_roles" ]]; then
+    [[ -z "$spark_role_label" ]] ||
+      release_die "$host Spark image advertises expert roles '$spark_role_label', expected none"
+  else
+    [[ ";$spark_role_label;" == *";$spark_tp_roles;"* ]] ||
+      release_die "$host Spark image advertises expert roles '$spark_role_label', expected '$spark_tp_roles'"
+  fi
 done
 
 echo "Build complete."
@@ -595,6 +669,7 @@ echo "  SparkInfer:  $sparkinfer_commit"
 if [[ -n "$source_manifest_sha256" ]]; then
   echo "  source:      $source_manifest_sha256"
 fi
+[[ -z "$spark_tp_roles" ]] || echo "  expert roles: $spark_tp_roles"
 echo "  coordinator: $COORDINATOR_DOCKER_INFERENCE"
 echo "  spark:       $SPARK_EXPERT_DOCKER_INFERENCE"
 echo "  artifacts:   $repo_root/dist"

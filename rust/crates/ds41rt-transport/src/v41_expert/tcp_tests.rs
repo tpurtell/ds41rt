@@ -1,7 +1,10 @@
-use super::{tests::request, V41BackboneRequest, V41Tp4Tcp, V41_PARTIAL_ROW_BYTES};
+use super::{
+    tests::request, V41BackboneRequest, V41SparkTopology, V41Tp4Tcp, V41_PARTIAL_ROW_BYTES,
+    V41_ROUTED_EXPERTS,
+};
 use crate::{ExpertProtocolV2Request, TcpTransportConfig, EXPERT_PROTOCOL_V2_REQUEST_HEADER_LEN};
 use anyhow::Result;
-use std::{sync::Arc, time::Duration};
+use std::{net::SocketAddr, sync::Arc, time::Duration};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
@@ -34,7 +37,7 @@ async fn respond(stream: &mut TcpStream, frame: &[u8], rank: usize) -> Result<()
     }
     Ok(())
 }
-fn config() -> TcpTransportConfig { timing: false,
+fn config() -> TcpTransportConfig {
     TcpTransportConfig { timing: false,
         timeout: Duration::from_secs(3),
         max_frame_bytes: FRAME,
@@ -235,6 +238,88 @@ async fn native_tcp_cancelled_receive_discards_partial_wave() -> Result<()> {
         })
         .await?;
     assert_eq!(chunks, 8);
+    for server in servers {
+        timeout(Duration::from_secs(3), server).await???;
+    }
+    Ok(())
+}
+
+#[test]
+fn generic_tcp_constructors_validate_world_and_topology() -> Result<()> {
+    let peers: Vec<SocketAddr> = (0..6)
+        .map(|index| format!("127.0.0.1:{}", 25_000 + index).parse())
+        .collect::<std::result::Result<_, _>>()?;
+    for topology in [
+        V41SparkTopology::NATIVE_TP2_EP1,
+        V41SparkTopology::NATIVE_TP3_EP1,
+        V41SparkTopology::NATIVE_TP4_EP1,
+        V41SparkTopology::NATIVE_TP2_EP2,
+        V41SparkTopology::NATIVE_TP3_EP2,
+        V41SparkTopology::NATIVE_TP2_EP3,
+    ] {
+        let world = topology.world_size();
+        let client = V41Tp4Tcp::new_topology(topology, &peers[..world], 80, config())?;
+        assert_eq!(client.world_size(), world);
+        assert_eq!(client.topology(), Some(topology));
+    }
+    assert!(V41Tp4Tcp::new_ranks(&peers[..5], &[1, 2, 3, 4, 5], 80, config()).is_err());
+    assert!(V41Tp4Tcp::new_ranks(&peers[..2], &[1, 2, 3], 80, config()).is_err());
+    assert!(V41Tp4Tcp::new_topology(
+        V41SparkTopology::NATIVE_TP3_EP2,
+        &peers[..4],
+        80,
+        config()
+    )
+    .is_err());
+    assert!(V41Tp4Tcp::new_ranks(&[peers[0]; 3], &[7, 8, 9], 80, config()).is_err());
+    assert!(V41Tp4Tcp::new_ranks(&peers[..3], &[7, 7, 9], 80, config()).is_err());
+    assert!(V41Tp4Tcp::new_ranks(&peers[..3], &[7, 0, 9], 80, config()).is_err());
+    assert!(V41Tp4Tcp::new_ranks(&peers[..3], &[7, 8, 9], 0, config()).is_err());
+    Ok(())
+}
+
+#[tokio::test]
+async fn six_rank_native_group_tcp_covers_every_group_and_rank() -> Result<()> {
+    let topology = V41SparkTopology::NATIVE_TP2_EP3;
+    let executors = topology.executor_ids();
+    let mut peers = Vec::new();
+    let mut servers = Vec::new();
+    for rank in 0..topology.world_size() {
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        peers.push(listener.local_addr()?);
+        let executor_id = executors[rank];
+        servers.push(tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await?;
+            let frame = read_request(&mut stream).await?;
+            let native = V41BackboneRequest::parse_native_group(&frame, 2, topology)?;
+            for row in 0..native.rows() {
+                let payload = vec![rank as u8 + 1; V41_PARTIAL_ROW_BYTES as usize];
+                let mut indices = [0u32];
+                let response =
+                    native.response_chunk(executor_id, row, &payload, &mut indices, FRAME)?;
+                stream.write_all(&response.to_owned()?.encode()?).await?;
+            }
+            Ok::<_, anyhow::Error>(())
+        }));
+    }
+    let mut request = request(2);
+    let owners: Vec<u8> = (0..V41_ROUTED_EXPERTS)
+        .map(|expert| (expert % topology.group_count() as usize) as u8)
+        .collect();
+    request.with_native_group_owners(&owners, topology)?;
+    let mut transport = V41Tp4Tcp::new_topology(topology, &peers, 2, config())?;
+    let mut chunks = 0;
+    transport
+        .execute(&request, |rank, row, bytes| {
+            assert!(rank < topology.world_size());
+            assert!(row < 2);
+            assert_eq!(bytes.len(), V41_PARTIAL_ROW_BYTES as usize);
+            assert!(bytes.iter().all(|&byte| byte == rank as u8 + 1));
+            chunks += 1;
+            Ok(())
+        })
+        .await?;
+    assert_eq!(chunks, topology.world_size() * 2);
     for server in servers {
         timeout(Duration::from_secs(3), server).await???;
     }

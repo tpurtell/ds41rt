@@ -38,10 +38,23 @@ use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, oneshot};
 
 pub(crate) async fn run(mut args: crate::cli::NativeServeArgs) -> Result<()> {
-    ensure!(matches!(args.peers.len(), 2 | 4), "two or four Spark peers required");
-    ensure!(args.peers.len() == 4 || (args.rtx_gpus == 1 && !args.exl3_paired_tp4),
-        "two Spark peers require the single-RTX, non-paired EXL3 profile");
-    if args.peers.len() == 2 {
+    let topology = crate::v41_spark_topology::resolve(
+        args.spark_tp,
+        args.spark_ep,
+        args.peers.len(),
+        "serve-native",
+    )?;
+    // The legacy compact profile is the non-topology, two-peer EXL3 path.
+    let compact = topology.is_none() && args.peers.len() == 2;
+    ensure!(
+        topology.is_some() || matches!(args.peers.len(), 2 | 4),
+        "two or four Spark peers required"
+    );
+    ensure!(
+        args.peers.len() == 4 || topology.is_some() || (args.rtx_gpus == 1 && !args.exl3_paired_tp4),
+        "two Spark peers require the single-RTX, non-paired EXL3 profile"
+    );
+    if compact {
         compact_budget(&mut args.memory_reservation, &mut args.kv_pool_size)?;
         if args.prefill_batch_tokens > 256 {
             tracing::info!(requested=args.prefill_batch_tokens, effective=256,
@@ -164,8 +177,18 @@ pub(crate) fn protocol_v2_timing() -> bool {
     ds41rt_transport::protocol_v2_timing_from_env()
 }
 
-fn spark_transport(peers: &[std::net::SocketAddr], capacity: u32, timing: bool) -> Result<V41Tp4Roce> {
+fn spark_transport(
+    peers: &[std::net::SocketAddr],
+    capacity: u32,
+    timing: bool,
+    topology: Option<ds41rt_transport::v41_expert::V41SparkTopology>,
+) -> Result<V41Tp4Roce> {
     let config = TcpTransportConfig { timing, timeout: Duration::from_secs(120), max_frame_bytes: 64 * 1024 * 1024 };
+    if let Some(topology) = topology {
+        // Topology-bound transport: canonical executor ids come from the shared
+        // topology and requests must carry the native ownership contract.
+        return V41Tp4Roce::new_topology(topology, peers, capacity, config);
+    }
     match peers.len() {
         2 => V41Tp4Roce::new_tp2(peers.try_into().expect("two peers"), [
             ds41rt_transport::v41_expert::v41_spark_executor_id(2, 0)?,
@@ -197,8 +220,25 @@ fn worker(
         ds41rt_loader::OFFICIAL_V41_MODEL_ID,
         &args.snapshot,
     )?;
-    ensure!(args.peers.len() == 4 || catalog.exl3().is_some(),
-        "two Spark peers require an EXL3 checkpoint");
+    let topology = crate::v41_spark_topology::resolve(
+        args.spark_tp,
+        args.spark_ep,
+        args.peers.len(),
+        "serve-native",
+    )?;
+    // Explicit replicated groups are native-only and are rejected here, before
+    // any expert weight is allocated or readiness published.
+    crate::v41_spark_topology::require_native(topology, &catalog)?;
+    if let Some(topology) = topology {
+        // Fail before any CUDA allocation or readiness publication when the
+        // library cannot reduce this physical-rank count.
+        lib.v41_compact_reducer()?
+            .require_rank_count(topology.world_size() as u32)?;
+    }
+    ensure!(
+        args.peers.len() == 4 || topology.is_some() || catalog.exl3().is_some(),
+        "two Spark peers require an EXL3 checkpoint or an explicit replicated topology"
+    );
     let paired_profile = crate::v41_experts::paired::PairedProfile::for_serving(&catalog, args.exl3_paired_tp4)?;
     let start = Instant::now();
     let weights = BackboneLaneWeights::load(
@@ -292,8 +332,11 @@ fn worker(
         Duration::from_secs(120),
     )?;
     let protocol_v2_timing = protocol_v2_timing();
-    let roce = spark_transport(&args.peers, capacity, protocol_v2_timing)?;
-    let mut transport = NativeTp4Wave::new(&lib, roce, NativeTp4Wave::device_bytes(capacity)?)?;
+    // Every replicated layout reserves its exact physical rank plane count; the
+    // legacy 4-rank forecast is no longer reused for six ranks.
+    let wave_bytes = NativeTp4Wave::device_bytes_for(capacity, args.peers.len())?;
+    let roce = spark_transport(&args.peers, capacity, protocol_v2_timing, topology)?;
+    let mut transport = NativeTp4Wave::new(&lib, roce, wave_bytes)?;
     if let Some(profile) = &paired_profile { transport.install_paired(profile.clone())?; }
     let mut prefill_pass = TargetPass::new(
         TargetEmbeddingWave::new(&lib, &table, rows, TargetEmbeddingWave::device_bytes(rows)?)?,
@@ -311,8 +354,8 @@ fn worker(
         pass.reserve_sparse_decode_rows(64)?;
         prefill_pass.reserve_sparse_decode_rows(64)?;
     }
-    let prefill_roce = spark_transport(&args.peers, capacity, protocol_v2_timing)?;
-    let mut prefill_transport = NativeTp4Wave::new(&lib, prefill_roce, NativeTp4Wave::device_bytes(capacity)?)?;
+    let prefill_roce = spark_transport(&args.peers, capacity, protocol_v2_timing, topology)?;
+    let mut prefill_transport = NativeTp4Wave::new(&lib, prefill_roce, wave_bytes)?;
     if let Some(profile) = &paired_profile { prefill_transport.install_paired(profile.clone())?; }
     let exl3_tiers: &[usize] = catalog.exl3().map(|m| m.decoder_tiers()).unwrap_or(&[]);
     let draft_weights = if args.dspark {
@@ -357,7 +400,10 @@ fn worker(
     let (free, total) = lib.cuda_memory_info()?;
     // A nominal 32 GiB card can expose slightly less memory to CUDA. The
     // compact ceiling may become smaller, never larger, on that hardware.
-    let reservation = if args.peers.len() == 2 {
+    // This cap belongs to the legacy two-peer EXL3 compact profile only; an
+    // explicit TP2×EP1 native topology is not compact.
+    let legacy_compact = topology.is_none() && args.peers.len() == 2;
+    let reservation = if legacy_compact {
         match args.memory_reservation {
             Some(memory::Reservation::Bytes(memory::ByteSize(bytes))) =>
                 Some(memory::Reservation::Bytes(memory::ByteSize(bytes.min(total)))),
@@ -421,12 +467,13 @@ fn worker(
     }
     let (free, total) = lib.cuda_memory_info()?;
     let occupied = total - free;
-    if args.peers.len() == 2 {
+    if legacy_compact {
         ensure!(occupied.checked_add(memory::RUNTIME_HEADROOM).is_some_and(|n| n <= pool.reservation_bytes),
             "compact residency {occupied} bytes plus runtime headroom exceeds {} byte device ceiling", pool.reservation_bytes);
     }
     tracing::info!(rtx_layers=local_layers, first_remote_dispatch_layer=local_layers,
         remote_dispatch_layers=40-local_layers, spark_world=args.peers.len(),
+        spark_topology=?topology.map(|t| (t.tp(), t.ep())),
         device_occupied_bytes=occupied, device_budget_bytes=pool.reservation_bytes,
         runtime_headroom_bytes=memory::RUNTIME_HEADROOM, "native serving residency ready");
     if let Some(draft) = &mut draft { draft.configure_cost_model(&transport, catalog.nvfp4().is_some())?; }

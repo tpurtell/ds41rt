@@ -10,6 +10,8 @@ Usage: ./run.sh [OPTIONS]
 
 Starts native DeepSeek V4.1 on the RTX coordinator and configured Spark ranks.
 SPARK_COUNT=2 requires EXL3 on one RTX, with a hard 32GiB GPU ceiling.
+An optional replicated expert-group topology is selected in the configuration
+with SPARK_TP and SPARK_EP (all-or-none); see docs/tp-ep-configuration.md.
 Command-line values override ds41rt.config for this launch.
 
   --config FILE                 alternate complete configuration
@@ -77,6 +79,22 @@ done
 release_load_config "$config"
 for name in "${!overrides[@]}"; do printf -v "$name" '%s' "${overrides[$name]}"; done
 release_validate_tp2_options
+# RTX_GPUS can be overridden above, so re-check the explicit topology layout.
+release_validate_spark_topology
+topology_explicit=0
+release_spark_topology_explicit && topology_explicit=1
+spark_tp="$(release_spark_tp)"
+spark_ep="$(release_spark_ep)"
+# Extra SM121 expert roles the image must have been built with. Legacy TP4EP1
+# and the shipped default require none, so a prebuilt v8 image without any role
+# label keeps working unchanged.
+spark_tp_roles_required=""
+if ((topology_explicit)); then
+  case "$spark_tp" in
+    2) spark_tp_roles_required=tp2 ;;
+    3) spark_tp_roles_required=tp3 ;;
+  esac
+fi
 [[ -z "$HTTP_QUEUE_DEPTH" || ( "$HTTP_QUEUE_DEPTH" =~ ^[1-9][0-9]*$ && "$HTTP_QUEUE_DEPTH" -le 4096 ) ]] || release_die "HTTP_QUEUE_DEPTH must be in 1..4096"
 [[ "$HTTP_QUEUE_WAIT_MS" =~ ^[0-9]+$ ]] || release_die "HTTP_QUEUE_WAIT_MS must be non-negative"
 [[ "$HOST_CACHE_BYTES" == auto || "$HOST_CACHE_BYTES" =~ ^[0-9]+([.][0-9]{1,6})?(B|MB|GB|MiB|GiB)?$ ]] || release_die "HOST_CACHE_BYTES must be auto, 0, or a byte size"
@@ -136,6 +154,15 @@ minimum_expert_layers=1
 expert_format=native
 model_is_nvfp4="$(jq -r '.quantization_config.moe_quant_algo // empty' "$hf_home/$snapshot_rel/config.json" 2>/dev/null || true)"
 [[ "$model_is_nvfp4" == "NVFP4" ]] && expert_format=nvfp4
+# The explicit replicated topology is approved for the official native
+# checkpoint only. Reject a routed quant before any service change; EXL3 and
+# NVFP4 keep their existing non-topology behavior.
+if ((topology_explicit)); then
+  [[ "$model_is_exl3" != true ]] ||
+    release_die "explicit SPARK_TP/SPARK_EP requires the native official checkpoint; EXL3 is not supported"
+  [[ "$model_is_nvfp4" != "NVFP4" ]] ||
+    release_die "explicit SPARK_TP/SPARK_EP requires the native official checkpoint; NVFP4 is not supported"
+fi
 if [[ "$model_is_exl3" == true ]]; then
   case "$exl3_family_tag" in
     k23) expert_format=exl3-k23 ;;
@@ -145,8 +172,21 @@ if [[ "$model_is_exl3" == true ]]; then
     *) expert_format=native ;;
   esac
 fi
+# Auto placement must not pick an RTX boundary so low that the remote Spark
+# weights cannot fit the device budget. The floor is derived from the actual
+# budget and the resolved TP degree, not a hardcoded 20.
+if ((topology_explicit)) && [[ "$RTX_EXPERT_LAYERS" == auto ]]; then
+  remote_capacity=$((SPARK_DEVICE_BUDGET_BYTES / $(release_spark_layer_bytes "$spark_tp")))
+  ((remote_capacity > 40)) && remote_capacity=40
+  topology_min_layers=$((40 - remote_capacity))
+  ((topology_min_layers < 1)) && topology_min_layers=1
+  ((minimum_expert_layers >= topology_min_layers)) || minimum_expert_layers="$topology_min_layers"
+fi
 gpu_selection_mode="$RTX_GPUS"
 # Auto must not turn the compact topology into a two-RTX launch.
+# The Spark TP/EP degree does NOT select the RTX layout: RTX_GPUS (auto or an
+# explicit 1/2) decides, and an infeasible combination is rejected below by the
+# resolved weight budget instead of a topology-to-layout hardcode.
 compact_selection_args=()
 if ((SPARK_COUNT == 2)); then
   gpu_selection_mode=1
@@ -177,6 +217,18 @@ gpu_index_csv="$(IFS=,; echo "${release_gpu_indices[*]}")"
 gpu_pci_csv="$(IFS=,; echo "${release_gpu_pci[*]}")"
 spark_first_layer="$(release_spark_first_layer "$RELEASE_RTX_GPUS" "$RTX_EXPERT_LAYERS")"
 if ((RELEASE_RTX_GPUS == 2)) && [[ "$RTX_EXPERT_LAYERS" == auto ]]; then spark_first_layer=runtime-plan; fi
+# Admission against the resolved boundary. Weight-only is all the launcher can
+# know before the expert service reports its workspace; a pass is not a
+# launch-feasibility claim. An auto dual boundary is published by the
+# coordinator and re-checked after plan.json is read below.
+spark_admission="not-applicable"
+if ((topology_explicit)); then
+  if [[ "$spark_first_layer" == runtime-plan ]]; then
+    spark_admission="PENDING (coordinator placement plan not yet published; weight-only check uses the real dynamic boundary)"
+  else
+    spark_admission="$(release_validate_spark_weight_admission "$spark_first_layer" "$spark_tp" "$SPARK_DEVICE_BUDGET_BYTES")"
+  fi
+fi
 if ((RELEASE_RTX_GPUS == 2)); then
   gpu_request="\"device=$gpu_uuid_csv\""
 else
@@ -226,6 +278,21 @@ REMOTE
   fi
 done
 
+# An explicit TP2/TP3 topology needs the matching SM121 expert roles baked into
+# the Spark image. A prebuilt legacy image carries no role label and keeps
+# working for the default TP4EP1 path; an explicit topology is refused here,
+# before any service is stopped or replaced.
+if [[ -n "$spark_tp_roles_required" ]]; then
+  for host in "${hosts[@]}"; do
+    advertised_roles="$(
+      ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" \
+        "docker image inspect -f '{{index .Config.Labels \"io.ds41rt.v41.spark_tp_roles\"}}' '$SPARK_EXPERT_DOCKER_INFERENCE'"
+    )"
+    [[ ";$advertised_roles;" == *";$spark_tp_roles_required;"* ]] ||
+      release_die "$host Spark image does not advertise required expert role $spark_tp_roles_required (rebuild with DS41RT_RELEASE_SPARK_TP_ROLES=$spark_tp_roles_required); refusing an unbuilt TP$spark_tp topology"
+  done
+fi
+
 # Zero-Spark deployments hold every routed layer on the RTX pair; the daemon
 # still requires four peer addresses but never connects to them.
 if ((SPARK_COUNT == 0)); then
@@ -235,7 +302,7 @@ else
   for lane in "${lanes[@]}"; do peer_addresses+=("$lane:$EXPERT_PORT"); done
   peers="$(IFS=,; echo "${peer_addresses[*]}")"
 fi
-fingerprint="$(printf '%s\n' "$engine_commit" "$RELEASE_MODEL_ID" "$RELEASE_MODEL_REVISION" "$ADDR" "$RELEASE_RTX_GPUS" "$gpu_uuid_csv" "$gpu_pci_csv" "$CONCURRENCY" "${HTTP_QUEUE_DEPTH:-$CONCURRENCY}" "$HTTP_QUEUE_WAIT_MS" "$HOST_CACHE_BYTES" "$RTX_EXPERT_LAYERS" "$KV_POOL_SIZE" "$MEMORY_RESERVATION" "$PREFIX_CACHE_ENTRIES" "$MAX_CONTEXT_TOKENS" "$MAX_OUTPUT_TOKENS" "$PREFILL_BATCH_TOKENS" "$DSPARK" "$TP2_ATTENTION" "$TP2_QUERY_PROJECTION" "$TP2_OUTPUT_PROJECTION" "$TP2_DSPARK_EXPERTS" "$SPARK_DEVICE_BUDGET_BYTES" "$spark_first_layer" "$SPARK_COUNT" "$(release_hosts_csv)" "$peers" "$spark_exl3_identity" | sha256sum | awk '{print $1}')"
+fingerprint="$(printf '%s\n' "$engine_commit" "$RELEASE_MODEL_ID" "$RELEASE_MODEL_REVISION" "$ADDR" "$RELEASE_RTX_GPUS" "$gpu_uuid_csv" "$gpu_pci_csv" "$CONCURRENCY" "${HTTP_QUEUE_DEPTH:-$CONCURRENCY}" "$HTTP_QUEUE_WAIT_MS" "$HOST_CACHE_BYTES" "$RTX_EXPERT_LAYERS" "$KV_POOL_SIZE" "$MEMORY_RESERVATION" "$PREFIX_CACHE_ENTRIES" "$MAX_CONTEXT_TOKENS" "$MAX_OUTPUT_TOKENS" "$PREFILL_BATCH_TOKENS" "$DSPARK" "$TP2_ATTENTION" "$TP2_QUERY_PROJECTION" "$TP2_OUTPUT_PROJECTION" "$TP2_DSPARK_EXPERTS" "$SPARK_DEVICE_BUDGET_BYTES" "$spark_first_layer" "$SPARK_COUNT" "$(release_hosts_csv)" "$peers" "$spark_exl3_identity" "spark-topology=${spark_tp}x${spark_ep}:explicit=${topology_explicit}" "v41-spark-tp-roles=${spark_tp_roles_required}" | sha256sum | awk '{print $1}')"
 spark_prefix="$RELEASE_SPARK_CONTAINER_PREFIX"
 
 if ((dry_run)); then
@@ -246,6 +313,15 @@ if ((dry_run)); then
   echo "  Spark ranks: $SPARK_COUNT; hosts: $(release_hosts_csv)"
   echo "  Spark peers: $peers"
   echo "  Spark first routed layer: $spark_first_layer"
+  if ((topology_explicit)); then
+    echo "  Spark topology: TP=$spark_tp EP=$spark_ep (group=rank/TP, tp_rank=rank%TP; no dummy ranks)"
+    while read -r global_rank group_index tp_rank; do
+      echo "    global=$global_rank group=$group_index tp_rank=$tp_rank"
+    done < <(release_spark_rank_map)
+    echo "  Spark weight admission (workspace/staging NOT accounted; not a feasibility claim): $spark_admission"
+    [[ -z "$spark_tp_roles_required" ]] ||
+      echo "  Spark image must advertise V41 expert role: $spark_tp_roles_required"
+  fi
   echo "  coordinator memory reservation: ${MEMORY_RESERVATION:-runtime default}"
   echo "  prefill batch tokens: $PREFILL_BATCH_TOKENS; expert capacity: $expert_capacity"
   echo "  release identity: $fingerprint"
@@ -277,6 +353,10 @@ cleanup() {
 trap cleanup EXIT
 
 placement_directory=
+# Only the dual-RTX path publishes a placement plan today. The daemon rejects a
+# single-RTX placement and connects workers before its local plan, so a
+# single-RTX explicit topology (TP3EP2) loads all 40 remote layers and must not
+# wait for a plan. Revisit with the coordinated boot-ordering refactor.
 ((RELEASE_RTX_GPUS != 2)) || placement_directory=/run/ds41rt-placement
 start_coordinator() {
 echo "== starting native RTX coordinator =="
@@ -292,6 +372,11 @@ args+=(--http-queue-depth "${HTTP_QUEUE_DEPTH:-$CONCURRENCY}" --http-queue-wait-
 [[ "$TP2_OUTPUT_PROJECTION" != on ]] || args+=(--tp2-output-projection)
 [[ "$TP2_DSPARK_EXPERTS" != on ]] || args+=(--tp2-dspark-experts)
 [[ "$spark_exl3_identity" != paired:* ]] || args+=(--exl3-paired-tp4)
+# Explicit replicated topology is described to the coordinator once, and each
+# worker derives group=rank/TP and tp_rank=rank%TP from the same two flags.
+if ((topology_explicit)); then
+  args+=(--spark-tp "$spark_tp" --spark-ep "$spark_ep")
+fi
 [[ -z "$placement_directory" ]] || args+=(--placement-directory "$placement_directory")
 docker run -d --name "$coordinator" --restart no --gpus "$gpu_request" --network host --ipc host --ulimit memlock=-1:-1 --device=/dev/infiniband \
   -e "CUDA_VISIBLE_DEVICES=$gpu_uuid_csv" \
@@ -299,32 +384,45 @@ docker run -d --name "$coordinator" --restart no --gpus "$gpu_request" --network
   -v "$hf_home:/root/.cache/huggingface:ro" "$COORDINATOR_DOCKER_INFERENCE" ds41rt "${args[@]}" >/dev/null
 }
 deadline=$((SECONDS + ${DS41RT_RELEASE_READY_TIMEOUT_SECONDS:-900}))
-if ((RELEASE_RTX_GPUS == 2)); then
+if [[ -n "$placement_directory" ]]; then
   start_coordinator
   until placement_plan="$(docker exec "$coordinator" cat "$placement_directory/plan.json" 2>/dev/null)"; do
     [[ "$(docker inspect -f '{{.State.Status}}' "$coordinator" 2>/dev/null)" == running ]] || { docker logs --tail 100 "$coordinator" >&2 || true; release_die "coordinator exited before placement publication"; }
     ((SECONDS < deadline)) || release_die "timed out waiting for coordinator placement"
     sleep 1
   done
-  spark_first_layer="$(jq -er '
-    select(.version == 1 and .rtx_gpus == 2)
+  # Accept the coordinator's actual RTX count (1 or 2) and require it to match
+  # the layout this launch selected.
+  spark_first_layer="$(jq -er --argjson gpus "$RELEASE_RTX_GPUS" '
+    select(.version == 1)
+    | select((.rtx_gpus | type) == "number" and .rtx_gpus == $gpus)
     | select((.nonce | type) == "string" and (.nonce | length) > 0)
     | select((.rtx_expert_layers | type) == "number")
     | select(.rtx_expert_layers == (.rtx_expert_layers | floor) and .rtx_expert_layers >= 1 and .rtx_expert_layers <= 40)
     | select(.spark_first_layer == ([.rtx_expert_layers, 39] | min))
     | .spark_first_layer' <<<"$placement_plan")" || release_die "invalid coordinator placement plan"
-  echo "  runtime placement: RTX layers $(jq -r '.rtx_expert_layers' <<<"$placement_plan"); Spark first layer $spark_first_layer"
+  echo "  runtime placement: RTX GPUs $(jq -r '.rtx_gpus' <<<"$placement_plan"), RTX layers $(jq -r '.rtx_expert_layers' <<<"$placement_plan"); Spark first layer $spark_first_layer"
+  if ((topology_explicit)); then
+    # Re-check against the boundary the coordinator actually published; this is
+    # the dynamic value, not the auto placeholder.
+    spark_admission="$(release_validate_spark_weight_admission "$spark_first_layer" "$spark_tp" "$SPARK_DEVICE_BUDGET_BYTES")"
+    echo "  runtime Spark weight admission (workspace/staging NOT accounted): $spark_admission"
+  fi
 fi
 
 echo "== starting native Spark experts =="
 pids=()
 for i in "${!hosts[@]}"; do
   host="${hosts[$i]}"; remote="${spark_prefix}-${host}-${EXPERT_PORT}"
-  ssh -o BatchMode=yes "$host" bash -s -- "$SPARK_EXPERT_DOCKER_INFERENCE" "$remote" "$i" "$expert_capacity" "$SPARK_DEVICE_BUDGET_BYTES" "$EXPERT_PORT" "$snapshot_rel" "$fingerprint" "$spark_first_layer" "$SPARK_COUNT" <<'REMOTE' &
+  ssh -o BatchMode=yes "$host" bash -s -- "$SPARK_EXPERT_DOCKER_INFERENCE" "$remote" "$i" "$expert_capacity" "$SPARK_DEVICE_BUDGET_BYTES" "$EXPERT_PORT" "$snapshot_rel" "$fingerprint" "$spark_first_layer" "$SPARK_COUNT" "$topology_explicit" "$spark_tp" "$spark_ep" <<'REMOTE' &
 set -euo pipefail
 image="$1"; name="$2"; rank="$3"; capacity="$4"; budget="$5"; port="$6"; snapshot_rel="$7"; fingerprint="$8"; first_layer="$9"; world="${10}"
+# Defaults keep a legacy invocation (ten positional arguments) valid.
+topology_explicit="${11:-0}"; topology_tp="${12:-}"; topology_ep="${13:-}"
+topology_args=()
+[[ "$topology_explicit" != 1 ]] || topology_args=(--spark-tp "$topology_tp" --spark-ep "$topology_ep")
 hf_home="${HF_HOME:-$HOME/.cache/huggingface}"
-docker run -d --name "$name" --restart no --gpus all --network host --ipc host --ulimit memlock=-1:-1 --device=/dev/infiniband -e "DS41RT_RELEASE_CONFIG_SHA256=$fingerprint" -v "$hf_home:/root/.cache/huggingface:ro" "$image" ds41rt expertd-native --snapshot "/root/.cache/huggingface/$snapshot_rel" --native-lib /opt/ds41rt/lib/libds41rt_native.so --rank "$rank" --world "$world" --capacity "$capacity" --device-budget-bytes "$budget" --first-layer "$first_layer" --listen "0.0.0.0:$port" >/dev/null
+docker run -d --name "$name" --restart no --gpus all --network host --ipc host --ulimit memlock=-1:-1 --device=/dev/infiniband -e "DS41RT_RELEASE_CONFIG_SHA256=$fingerprint" -v "$hf_home:/root/.cache/huggingface:ro" "$image" ds41rt expertd-native --snapshot "/root/.cache/huggingface/$snapshot_rel" --native-lib /opt/ds41rt/lib/libds41rt_native.so --rank "$rank" --world "$world" --capacity "$capacity" --device-budget-bytes "$budget" --first-layer "$first_layer" --listen "0.0.0.0:$port" "${topology_args[@]}" >/dev/null
 REMOTE
   pids+=("$!")
 done

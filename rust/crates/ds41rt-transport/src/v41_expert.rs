@@ -17,6 +17,12 @@ mod tcp;
 pub use tcp::{V41Tp4Pending, V41Tp4Tcp};
 mod paired;
 pub use paired::{V41PairedOwnershipBatch, V41PairedRouteWord, V41_EXL3_PAIRED_REQUEST_FLAG};
+mod native_group;
+pub use native_group::{
+    V41NativeOwnerRouteWord, V41NativeOwnershipBatch, V41SparkTopology, V41_MAX_NATIVE_GROUPS,
+    V41_NATIVE_GROUP_REQUEST_FLAG, V41_NATIVE_INACTIVE_OWNER, V41_NATIVE_UNASSIGNED_EXPERT_ID,
+    V41_ROUTED_EXPERTS,
+};
 
 pub const V41_HIDDEN: u32 = 5120;
 pub const V41_BACKBONE_TOPK: u32 = 6;
@@ -33,23 +39,12 @@ pub fn v41_spark_executor_id(world: usize, rank: usize) -> Result<u64> {
 }
 
 // Shared by wire parsing on workers and validation of owned coordinator requests.
-fn validate_canonical(
+fn validate_canonical_body(
     header: &crate::ExpertProtocolV2RequestHeader,
     max_rows: u32,
     row_at: impl Fn(usize) -> Result<crate::ExpertProtocolV2RowDescriptor>,
     mut route_at: impl FnMut(usize) -> Result<crate::ExpertProtocolV2RouteEntry>,
 ) -> Result<()> {
-    ensure!(
-        header.flags & EXPERT_PROTOCOL_V2_FLAG_V41_COMPACT_BF16 != 0,
-        "native request requires compact BF16 response agreement"
-    );
-    ensure!(
-        header.flags
-            & !(EXPERT_PROTOCOL_V2_FLAG_DEBUG_CHECKSUM
-                | EXPERT_PROTOCOL_V2_FLAG_V41_COMPACT_BF16)
-            == 0,
-        "native complete batches cannot use legacy reduction/compression or stream flags"
-    );
     ensure!(
         header.row_count > 0 && header.row_count <= max_rows,
         "native batch exceeds admitted row capacity"
@@ -100,6 +95,68 @@ fn validate_canonical(
     Ok(())
 }
 
+fn validate_canonical(
+    header: &crate::ExpertProtocolV2RequestHeader,
+    max_rows: u32,
+    row_at: impl Fn(usize) -> Result<crate::ExpertProtocolV2RowDescriptor>,
+    route_at: impl FnMut(usize) -> Result<crate::ExpertProtocolV2RouteEntry>,
+) -> Result<()> {
+    ensure!(
+        header.flags & EXPERT_PROTOCOL_V2_FLAG_V41_COMPACT_BF16 != 0,
+        "native request requires compact BF16 response agreement"
+    );
+    ensure!(
+        header.flags
+            & !(EXPERT_PROTOCOL_V2_FLAG_DEBUG_CHECKSUM
+                | EXPERT_PROTOCOL_V2_FLAG_V41_COMPACT_BF16)
+            == 0,
+        "native complete batches cannot use legacy reduction/compression or stream flags"
+    );
+    validate_canonical_body(header, max_rows, row_at, route_at)
+}
+
+/// Ownership-aware canonical admission for a worker bound to one replicated
+/// `TP×EP` topology. The flag and the topology's group count are both required,
+/// every active expert must keep one owner across the whole batch, and only a
+/// native compact batch may use the contract.
+fn validate_native_group(
+    header: &crate::ExpertProtocolV2RequestHeader,
+    max_rows: u32,
+    topology: V41SparkTopology,
+    row_at: impl Fn(usize) -> Result<crate::ExpertProtocolV2RowDescriptor>,
+    mut route_at: impl FnMut(usize) -> Result<crate::ExpertProtocolV2RouteEntry>,
+) -> Result<()> {
+    ensure!(
+        header.flags & V41_NATIVE_GROUP_REQUEST_FLAG != 0,
+        "native group worker requires the native group request flag"
+    );
+    ensure!(
+        header.flags & V41_EXL3_PAIRED_REQUEST_FLAG == 0,
+        "native group requests cannot use paired EXL3 admission"
+    );
+    ensure!(
+        header.flags & EXPERT_PROTOCOL_V2_FLAG_V41_COMPACT_BF16 != 0,
+        "native group request requires compact BF16 response agreement"
+    );
+    ensure!(
+        header.flags
+            & !(EXPERT_PROTOCOL_V2_FLAG_DEBUG_CHECKSUM
+                | EXPERT_PROTOCOL_V2_FLAG_V41_COMPACT_BF16
+                | V41_NATIVE_GROUP_REQUEST_FLAG)
+            == 0,
+        "native group requests cannot use legacy reduction/compression or stream flags"
+    );
+    let mut batch = V41NativeOwnershipBatch::default();
+    validate_canonical_body(header, max_rows, row_at, |index| {
+        let route = route_at(index)?;
+        let decoded = batch.observe(route.expert_id, topology.group_count())?;
+        Ok(crate::ExpertProtocolV2RouteEntry {
+            expert_id: decoded.expert_id,
+            ..route
+        })
+    })
+}
+
 fn validate_paired(
     header: &crate::ExpertProtocolV2RequestHeader, max_rows: u32,
     row_at: impl Fn(usize) -> Result<crate::ExpertProtocolV2RowDescriptor>,
@@ -119,24 +176,53 @@ fn validate_paired(
 /// Validated canonical row-major routing; the same request must reach every TP rank.
 pub struct V41BackboneRequest<'a> {
     view: ExpertProtocolV2RequestView<'a>,
+    /// Present only for a request admitted under the native replicated-group
+    /// contract, which binds the group count used to decode owner bits.
+    native_topology: Option<V41SparkTopology>,
 }
 impl<'a> V41BackboneRequest<'a> {
     pub fn parse(frame: &'a [u8], max_rows: u32) -> Result<Self> {
         let view = ExpertProtocolV2RequestView::parse(frame)?;
         validate_canonical(&view.header, max_rows, |i| view.row(i), |i| view.route(i))?;
-        Ok(Self { view })
+        Ok(Self { view, native_topology: None })
     }
     /// Explicit admission for a worker bound to paired EXL3 resident weights.
     pub fn parse_paired(frame: &'a [u8], max_rows: u32) -> Result<Self> {
         let view = ExpertProtocolV2RequestView::parse(frame)?;
         validate_paired(&view.header, max_rows, |i| view.row(i), |i| view.route(i))?;
-        Ok(Self { view })
+        Ok(Self { view, native_topology: None })
+    }
+    /// Explicit admission for a worker bound to one replicated `TP×EP`
+    /// topology. All ranks receive the same encoded owner assignment; each rank
+    /// unpacks only its own group's routes.
+    pub fn parse_native_group(
+        frame: &'a [u8],
+        max_rows: u32,
+        topology: V41SparkTopology,
+    ) -> Result<Self> {
+        let view = ExpertProtocolV2RequestView::parse(frame)?;
+        validate_native_group(&view.header, max_rows, topology, |i| view.row(i), |i| view.route(i))?;
+        Ok(Self { view, native_topology: Some(topology) })
     }
     pub fn is_paired(&self) -> bool { self.view.header.flags & V41_EXL3_PAIRED_REQUEST_FLAG != 0 }
+    pub fn is_native_group(&self) -> bool { self.native_topology.is_some() }
+    /// Topology this request was admitted under, if it carries native ownership.
+    pub fn native_topology(&self) -> Option<V41SparkTopology> { self.native_topology }
 
     pub fn validate_owned_paired(request: &crate::ExpertProtocolV2Request, max_rows: u32) -> Result<()> {
         request.validate()?;
         validate_paired(&request.header, max_rows,
+            |i| Ok(request.rows[i].clone()), |i| Ok(request.routes[i].clone()))
+    }
+    /// Ownership-aware check of a locally owned native group request; the caller
+    /// must supply the topology its workers are bound to.
+    pub fn validate_owned_native_group(
+        request: &crate::ExpertProtocolV2Request,
+        max_rows: u32,
+        topology: V41SparkTopology,
+    ) -> Result<()> {
+        request.validate()?;
+        validate_native_group(&request.header, max_rows, topology,
             |i| Ok(request.rows[i].clone()), |i| Ok(request.routes[i].clone()))
     }
     /// Check a locally owned request using the worker's canonical contract,
@@ -172,6 +258,7 @@ impl<'a> V41BackboneRequest<'a> {
     /// Fill caller-owned GPU-upload arrays without reordering or rounding routes.
     pub fn copy_routes_into(&self, ids: &mut [i32], weights: &mut [f32]) -> Result<()> {
         ensure!(!self.is_paired(), "paired routes require ownership-aware unpacking");
+        ensure!(!self.is_native_group(), "native group routes require ownership-aware unpacking");
         let count = self.view.header.route_count as usize;
         ensure!(
             ids.len() >= count && weights.len() >= count,
@@ -196,6 +283,43 @@ impl<'a> V41BackboneRequest<'a> {
         }
         batch.write_local_ownership(rank, ownership)
     }
+    /// Unpack one replicated group's routes for a worker bound to `topology`.
+    ///
+    /// A route owned by `group` keeps its true expert id and exact FP32 gate
+    /// weight; every other route receives [`V41_NATIVE_UNASSIGNED_EXPERT_ID`]
+    /// and a zero weight, which the existing kernel reduces to zero through its
+    /// invalid-id inverse `-1` path. The batch-wide ownership check rejects a
+    /// request whose encoded owners conflict, so a route can never be counted
+    /// twice. Buffers are reused; no allocation occurs on success.
+    pub fn copy_native_group_routes_into(
+        &self,
+        ids: &mut [i32],
+        weights: &mut [f32],
+        group: u8,
+    ) -> Result<()> {
+        let topology = self
+            .native_topology
+            .context("native group routes require a topology-admitted request")?;
+        ensure!(group < topology.group_count(), "native group index out of range");
+        let count = self.view.header.route_count as usize;
+        ensure!(
+            ids.len() >= count && weights.len() >= count,
+            "native group routing buffers are too short"
+        );
+        let mut batch = V41NativeOwnershipBatch::default();
+        for index in 0..count {
+            let route = self.view.route(index)?;
+            let decoded = batch.observe(route.expert_id, topology.group_count())?;
+            if decoded.owner == group {
+                ids[index] = decoded.expert_id as i32;
+                weights[index] = route.gate_weight;
+            } else {
+                ids[index] = V41_NATIVE_UNASSIGNED_EXPERT_ID;
+                weights[index] = 0.0;
+            }
+        }
+        Ok(())
+    }
     fn response_header(&self, executor_id: u64) -> Result<ExpertProtocolV2ResponseHeader> {
         ensure!(executor_id != 0, "native response needs an executor identity");
         let header = &self.view.header;
@@ -209,7 +333,9 @@ impl<'a> V41BackboneRequest<'a> {
                 output_row_stride_bytes: V41_PARTIAL_ROW_BYTES,
                 output_payload_bytes: self.plane_bytes()? as u64,
                 status: ExpertProtocolV2Status::Ok,
-                flags: header.flags & !V41_EXL3_PAIRED_REQUEST_FLAG,
+                // Request-only admission flags never appear in a response.
+                flags: header.flags
+                    & !(V41_EXL3_PAIRED_REQUEST_FLAG | V41_NATIVE_GROUP_REQUEST_FLAG),
                 executor_id,
             })
     }
@@ -251,35 +377,67 @@ impl<'a> V41BackboneRequest<'a> {
 // Fixed-size rank identities keep per-wave validation allocation-free.
 enum V41Executors {
     Tp2([u64; 2]),
+    Tp3([u64; 3]),
     Tp4([u64; 4]),
+    Tp6([u64; 6]),
 }
 impl V41Executors {
+    fn new(executors: &[u64]) -> Result<Self> {
+        Ok(match executors.len() {
+            2 => Self::Tp2(executors.try_into().expect("two executors")),
+            3 => Self::Tp3(executors.try_into().expect("three executors")),
+            4 => Self::Tp4(executors.try_into().expect("four executors")),
+            6 => Self::Tp6(executors.try_into().expect("six executors")),
+            other => anyhow::bail!(
+                "native TP/EP requires two, three, four or six executors, got {other}"
+            ),
+        })
+    }
     fn as_slice(&self) -> &[u64] {
-        match self { Self::Tp2(ids) => ids, Self::Tp4(ids) => ids }
+        match self {
+            Self::Tp2(ids) => ids,
+            Self::Tp3(ids) => ids,
+            Self::Tp4(ids) => ids,
+            Self::Tp6(ids) => ids,
+        }
     }
     fn len(&self) -> usize { self.as_slice().len() }
 }
 
-/// Collects complete TP4 planes in rank order, independently of arrival order.
-/// Payloads are borrowed; keep their frame storage alive until GPU copies finish.
-/// Request IDs must uniquely identify in-flight waves within a placement version.
+/// Collects complete native rank planes in rank order, independently of arrival
+/// order, for every validated world size (2, 3, 4 or 6). Payloads are borrowed;
+/// keep their frame storage alive until GPU copies finish. Request IDs must
+/// uniquely identify in-flight waves within a placement version.
 pub struct V41Tp4Planes<'a> {
     request_id: u64,
     placement_version: u64,
     layer: u32,
     rows: u32,
     executors: V41Executors,
-    planes: [Option<&'a [u8]>; 4],
+    planes: [Option<&'a [u8]>; 6],
 }
 impl<'a> V41Tp4Planes<'a> {
     pub fn new(request: &V41BackboneRequest<'_>, executors: [u64; 4]) -> Result<Self> {
         Self::from_header(&request.view.header, executors)
     }
+    /// Generic constructor for the validated physical rank counts 2, 3, 4 and 6.
+    pub fn new_ranks(request: &V41BackboneRequest<'_>, executors: &[u64]) -> Result<Self> {
+        if let Some(topology) = request.native_topology() {
+            ensure!(
+                executors.len() == topology.world_size(),
+                "native group executor count does not match its topology"
+            );
+        }
+        Self::from_header_ranks(&request.view.header, executors)
+    }
     fn from_header(h: &crate::ExpertProtocolV2RequestHeader, executors: [u64; 4]) -> Result<Self> {
         Self::from_header_ranks(h, &executors)
     }
     fn from_header_ranks(h: &crate::ExpertProtocolV2RequestHeader, executors: &[u64]) -> Result<Self> {
-        ensure!(matches!(executors.len(), 2 | 4), "native TP requires two or four executors");
+        ensure!(
+            matches!(executors.len(), 2 | 3 | 4 | 6),
+            "native TP/EP requires two, three, four or six executors"
+        );
         for (rank, id) in executors.iter().enumerate() {
             ensure!(
                 *id != 0 && !executors[..rank].contains(id),
@@ -291,12 +449,8 @@ impl<'a> V41Tp4Planes<'a> {
             placement_version: h.placement_version,
             layer: h.layer_id,
             rows: h.row_count,
-            executors: if executors.len() == 2 {
-                V41Executors::Tp2(executors.try_into().expect("two executors"))
-            } else {
-                V41Executors::Tp4(executors.try_into().expect("four executors"))
-            },
-            planes: [None; 4],
+            executors: V41Executors::new(executors)?,
+            planes: [None; 6],
         })
     }
     /// Rejections leave the collection unchanged.
@@ -346,12 +500,31 @@ impl<'a> V41Tp4Planes<'a> {
             .position(|id| *id == h.executor_id)
             .context("unknown native TP executor")
     }
-    pub fn complete(&self) -> bool {
-        self.planes.iter().all(Option::is_some)
+    /// Physical ranks represented by this collection.
+    pub fn world_size(&self) -> usize {
+        self.executors.len()
     }
+    pub fn complete(&self) -> bool {
+        self.planes[..self.executors.len()].iter().all(Option::is_some)
+    }
+    /// Legacy four-plane accessor. Worlds 2, 3 and 6 use [`Self::plane`].
     pub fn planes(&self) -> Result<[&'a [u8]; 4]> {
+        ensure!(
+            self.world_size() == 4,
+            "four-plane accessor requires exactly four executors"
+        );
         ensure!(self.complete(), "native TP response set is incomplete");
-        Ok(self.planes.map(Option::unwrap))
+        Ok([
+            self.planes[0].expect("complete native TP rank plane"),
+            self.planes[1].expect("complete native TP rank plane"),
+            self.planes[2].expect("complete native TP rank plane"),
+            self.planes[3].expect("complete native TP rank plane"),
+        ])
+    }
+    /// One complete rank plane, for any validated world size.
+    pub fn plane(&self, rank: usize) -> Result<&'a [u8]> {
+        ensure!(rank < self.world_size(), "native TP rank out of range");
+        self.planes[rank].context("native TP rank plane is not complete")
     }
 }
 

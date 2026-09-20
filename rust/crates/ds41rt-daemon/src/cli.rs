@@ -155,11 +155,17 @@ pub(crate) struct NativeExpertDaemonArgs {
     /// Override the native EXL3 rank directory containing m1, m16 and larger capacities.
     #[arg(long)]
     pub(crate) exl3_aot_dir: Option<PathBuf>,
-    #[arg(long, value_parser = clap::value_parser!(u32).range(0..4))]
+    #[arg(long, value_parser = clap::value_parser!(u32).range(0..6))]
     pub(crate) rank: u32,
     /// Spark tensor-parallel world; two ranks require an EXL3 checkpoint.
-    #[arg(long, default_value_t = 4, value_parser = clap::value_parser!(u32).range(2..=4))]
+    #[arg(long, default_value_t = 4, value_parser = clap::value_parser!(u32).range(2..=6))]
     pub(crate) world: u32,
+    /// Replicated-group tensor-parallel degree inside one group (opt-in; all-or-none with --spark-ep).
+    #[arg(long, requires = "spark_ep", value_parser = clap::value_parser!(u8).range(2..=4))]
+    pub(crate) spark_tp: Option<u8>,
+    /// Number of replicated expert groups, each holding all 384 experts (opt-in; all-or-none with --spark-tp).
+    #[arg(long, requires = "spark_tp", value_parser = clap::value_parser!(u8).range(1..=3))]
+    pub(crate) spark_ep: Option<u8>,
     #[arg(long, default_value_t = 16)]
     pub(crate) capacity: u32,
     /// Total device bytes allowed for resident weights, loading and execution.
@@ -501,8 +507,54 @@ mod tests {
     }
 
     #[test]
-    fn protocol_benchmark_names_tp4_reduction_without_expert_ownership() {
-        let cli = Cli::try_parse_from([
+    fn spark_topology_flags_are_opt_in_all_or_none_and_range_checked() {
+        use clap::Parser;
+        let serve = ["ds41rt", "serve-native", "--snapshot", "/model", "--native-lib", "/native.so",
+            "--peers", "127.0.0.1:19441"];
+        let expert = ["ds41rt", "expertd-native", "--snapshot", "/model", "--native-lib", "/native.so",
+            "--device-budget-bytes", "1000", "--rank", "0", "--world", "4"];
+        // Absent keys preserve the legacy launch vector exactly.
+        for base in [&serve[..], &expert[..]] {
+            let cli = Cli::try_parse_from(base).unwrap();
+            match cli.command {
+                Commands::ServeNative(args) => {
+                    assert_eq!((args.spark_tp, args.spark_ep), (None, None));
+                }
+                Commands::ExpertdNative(args) => {
+                    assert_eq!((args.spark_tp, args.spark_ep), (None, None));
+                }
+                other => panic!("unexpected command {other:?}"),
+            }
+        }
+        // Both keys parse for either process.
+        let cli = Cli::try_parse_from(serve.into_iter().chain(["--spark-tp", "2", "--spark-ep", "2"]))
+            .unwrap();
+        let Commands::ServeNative(args) = cli.command else { panic!("serve-native") };
+        assert_eq!((args.spark_tp, args.spark_ep), (Some(2), Some(2)));
+        let cli = Cli::try_parse_from(expert.into_iter()
+            .chain(["--spark-tp", "3", "--spark-ep", "2"])).unwrap();
+        let Commands::ExpertdNative(args) = cli.command else { panic!("expertd-native") };
+        assert_eq!((args.spark_tp, args.spark_ep), (Some(3), Some(2)));
+        // All-or-none and value ranges are enforced at parse time.
+        for flags in [vec!["--spark-tp", "2"], vec!["--spark-ep", "2"]] {
+            assert!(Cli::try_parse_from(serve.into_iter().chain(flags.clone())).is_err());
+            assert!(Cli::try_parse_from(expert.into_iter().chain(flags)).is_err());
+        }
+        for (tp, ep) in [("1", "2"), ("5", "1"), ("2", "0"), ("2", "4")] {
+            let flags = ["--spark-tp", tp, "--spark-ep", ep];
+            assert!(Cli::try_parse_from(serve.into_iter().chain(flags)).is_err(), "{tp}x{ep}");
+            assert!(Cli::try_parse_from(expert.into_iter().chain(flags)).is_err(), "{tp}x{ep}");
+        }
+        // The worker world range now admits the six-rank layouts.
+        let cli = Cli::try_parse_from(["ds41rt", "expertd-native", "--snapshot", "/model",
+            "--native-lib", "/native.so", "--device-budget-bytes", "1000",
+            "--rank", "5", "--world", "6"]).unwrap();
+        let Commands::ExpertdNative(args) = cli.command else { panic!("expertd-native") };
+        assert_eq!((args.rank, args.world), (5, 6));
+    }
+
+    #[test]
+    fn protocol_benchmark_names_tp4_reduction_without_expert_ownership() {        let cli = Cli::try_parse_from([
             "ds41rt",
             "bench-protocol-v2-tcp",
             "--addr",
@@ -653,6 +705,12 @@ pub(crate) struct NativeServeArgs {
     #[arg(long)] pub native_lib: PathBuf,
     #[arg(long,value_delimiter=',',num_args=1..)] pub peers: Vec<std::net::SocketAddr>,
     #[arg(long,default_value="127.0.0.1:8000")] pub listen: String,
+    /// Replicated-group tensor-parallel degree inside one Spark group (opt-in; all-or-none with --spark-ep).
+    #[arg(long, requires = "spark_ep", value_parser = clap::value_parser!(u8).range(2..=4))]
+    pub spark_tp: Option<u8>,
+    /// Number of replicated Spark expert groups, each holding all 384 experts (opt-in; all-or-none with --spark-tp).
+    #[arg(long, requires = "spark_tp", value_parser = clap::value_parser!(u8).range(1..=3))]
+    pub spark_ep: Option<u8>,
 }
 
 fn parse_dspark_confidence(value: &str) -> Result<f64, String> {

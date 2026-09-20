@@ -8,6 +8,12 @@
 /* W4A4 (ModelOpt NVFP4) variants carry their own bridge and consume BF16
  * hidden rows, so the FP8 input quantizer is not part of this family. */
 #include DS41RT_V41_NVFP4_VARIANTS_HEADER
+#elif defined(DS41RT_V41_SPARK_TP2_EXPERTS)
+/* Replicated-group Spark TP2 shards (native FP8 K32 family, SM121). */
+#include "v41_spark_tp2_expert_variants.h"
+#elif defined(DS41RT_V41_SPARK_TP3_EXPERTS)
+/* Replicated-group Spark TP3 shards (native FP8 K32 family, SM121). */
+#include "v41_spark_tp3_expert_variants.h"
 #elif defined(DS41RT_V41_DSPARK_TP2_EXPERTS)
 #include "v41_dspark_tp2_expert_variants.h"
 #elif defined(DS41RT_V41_TP2_EXPERTS)
@@ -235,8 +241,11 @@ extern "C" int32_t ds41rt_v41_expert_launch(void* kernel, const ds41rt_v41_exper
 }
 
 // The FP8 row quantizer belongs to the native family only: W4A4 hidden rows
-// are BF16, and every native role already defines these entry points.
-#if !defined(DS41RT_V41_LOCAL_EXPERTS) && !defined(DS41RT_V41_NVFP4_VARIANTS_HEADER)
+// are BF16, and the replicated-group Spark TP2/TP3 families share the canonical
+// quantizer compiled by the primary native expert translation unit. Every role
+// that needs it defines these entry points in exactly one member.
+#if !defined(DS41RT_V41_LOCAL_EXPERTS) && !defined(DS41RT_V41_NVFP4_VARIANTS_HEADER) && \
+    !defined(DS41RT_V41_SPARK_TP2_EXPERTS) && !defined(DS41RT_V41_SPARK_TP3_EXPERTS)
 namespace {
 struct InputQuantModule {
   cudaLibrary_t library = nullptr;

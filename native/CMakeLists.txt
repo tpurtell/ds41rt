@@ -12,6 +12,15 @@ option(DS41RT_ENABLE_V41_LOCAL_EXPERT_AOT "Build full RTX backbone expert kernel
 option(DS41RT_ENABLE_V41_TP2_EXPERT_AOT "Build dual RTX TP2 encoder expert kernels" OFF)
 option(DS41RT_V41_TP2_COMPACT_EXPERIMENT "Use experimental native compact TP2 experts at capacities 1/16" OFF)
 option(DS41RT_V41_SPARK_COMPACT_EXPERIMENT "Use experimental compact Spark experts through two live rows" OFF)
+# Opt-in replicated-group Spark TP2/TP3 expert shards. Empty (the default)
+# compiles/links no new object or symbol, so every release default behaves
+# exactly as the historical Spark TP4 shard. Set to a semicolon list of
+# `tp2`/`tp3` on the SM121 expert build to pre-compile those AOT capacity
+# variants ahead of runtime. (The exporter always adds an additive
+# `spark_tp_degree` manifest field, so byte identity of exported JSON is not
+# claimed either way.)
+set(DS41RT_V41_SPARK_TP_ROLES "" CACHE STRING
+  "Extra replicated-group Spark expert TP roles to build (tp2;tp3); empty builds only TP4")
 option(DS41RT_V41_VOCAB_ROW_EXPERIMENT "Use experimental single-row FP32 vocabulary projection" OFF)
 option(DS41RT_ENABLE_V41_EXL3_AOT "Build loadable mixed EXL3 expert modules" OFF)
 option(DS41RT_ENABLE_V41_NVFP4_AOT "Build W4A4 ModelOpt NVFP4 expert AOT kernels" OFF)
@@ -791,6 +800,9 @@ endif()
 if(DS41RT_ENABLE_V41_EXPERT_AOT)
   include(cmake/v41_experts.cmake)
 endif()
+if(NOT DS41RT_V41_SPARK_TP_ROLES STREQUAL "")
+  include(cmake/v41_spark_tp_experts.cmake)
+endif()
 if(DS41RT_ENABLE_V41_LOCAL_EXPERT_AOT)
   include(cmake/v41_local_experts.cmake)
 endif()
@@ -832,6 +844,10 @@ endif()
 if(DS41RT_ENABLE_V41_EXPERT_AOT)
   add_dependencies(ds41rt_native ds41rt_v41_experts_export)
   target_include_directories(ds41rt_native PRIVATE "${DS41RT_V41_EXPERT_DIR}")
+endif()
+if(DS41RT_V41_SPARK_TP_EXPERT_TARGETS)
+  add_dependencies(ds41rt_native ${DS41RT_V41_SPARK_TP_EXPERT_TARGETS})
+  target_include_directories(ds41rt_native PRIVATE ${DS41RT_V41_SPARK_TP_EXPERT_INCLUDE_DIRS})
 endif()
 if(DS41RT_ENABLE_V41_LOCAL_EXPERT_AOT)
   add_dependencies(ds41rt_native ds41rt_v41_local_experts_export)
@@ -982,6 +998,18 @@ if(DS41RT_ENABLE_CUDA)
   target_link_libraries(ds41rt_v41_peer_copy_selftest PRIVATE ds41rt_native CUDA::cudart)
   add_test(NAME ds41rt_v41_peer_copy_selftest COMMAND ds41rt_v41_peer_copy_selftest)
   set_tests_properties(ds41rt_v41_peer_copy_selftest PROPERTIES SKIP_RETURN_CODE 77)
+  add_executable(ds41rt_v41_route_reduce_planes_selftest
+    tests/v41_route_reduce_planes_selftest.cc)
+  target_link_libraries(ds41rt_v41_route_reduce_planes_selftest PRIVATE ds41rt_native CUDA::cudart)
+  add_test(NAME ds41rt_v41_route_reduce_planes_selftest
+    COMMAND ds41rt_v41_route_reduce_planes_selftest)
+  set_tests_properties(ds41rt_v41_route_reduce_planes_selftest PROPERTIES SKIP_RETURN_CODE 77)
+  add_executable(ds41rt_v41_expert_pack_tp3_selftest
+    tests/v41_expert_pack_tp3_selftest.cc)
+  target_link_libraries(ds41rt_v41_expert_pack_tp3_selftest PRIVATE ds41rt_native CUDA::cudart)
+  add_test(NAME ds41rt_v41_expert_pack_tp3_selftest
+    COMMAND ds41rt_v41_expert_pack_tp3_selftest)
+  set_tests_properties(ds41rt_v41_expert_pack_tp3_selftest PROPERTIES SKIP_RETURN_CODE 77)
   add_executable(ds41rt_v41_fp4_attention_selftest tests/v41_fp4_attention_selftest.cc)
   target_link_libraries(ds41rt_v41_fp4_attention_selftest PRIVATE ds41rt_native CUDA::cudart)
   if(DS41RT_ENABLE_V41_ATTENTION_AOT)
