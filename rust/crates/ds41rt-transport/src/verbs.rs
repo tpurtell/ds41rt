@@ -3558,7 +3558,7 @@ fn handle_verbs_host_protocol_v2_persistent_connection(
         crate::protocol_v2_timing_from_env(),
     )?;
     loop {
-        if !connection.poll(|request, payload, emit| {
+        if !connection.poll(None, |request, payload, emit| {
             executor.execute_streaming_device_payload_with_identity(request, payload, emit)
         })? { std::hint::spin_loop(); }
     }

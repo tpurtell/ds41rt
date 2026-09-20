@@ -171,8 +171,12 @@ impl LocalVerbsExpertConnection {
 
     /// Execute at most one request. The callback must finish all GPU access to
     /// request/response slots before returning, including on errors. Idle returns
-    /// immediately so other QPs can progress on the same GPU owner.
-    pub fn poll<F>(&mut self, mut execute: F) -> Result<bool>
+    /// immediately so other QPs can progress on the same GPU owner. With
+    /// `wait = Some(timeout)` and no completion already pending, the call first
+    /// blocks on the endpoint's completion channel (armed with
+    /// `ibv_req_notify_cq`) for up to `timeout`, so an idle peer is woken by the
+    /// QP event rather than polled.
+    pub fn poll<F>(&mut self, wait: Option<Duration>, mut execute: F) -> Result<bool>
     where
         F: FnMut(
             &ExpertProtocolV2RequestView<'_>,
@@ -183,7 +187,19 @@ impl LocalVerbsExpertConnection {
         let timing_enabled = self.timing;
         let total_started = timing_enabled.then(Instant::now);
         let poll_recv_started = timing_enabled.then(Instant::now);
-        let stats = self.endpoint.try_poll(0, 1)?;
+        let stats = match wait {
+            Some(timeout) => match self.endpoint.poll_stats(0, 1, timeout) {
+                Ok(stats) => stats,
+                // The event wait reports a window with no completion as an RDMA
+                // error; on an idle connection that is the expected outcome and
+                // not a peer failure.
+                Err(error) if is_verbs_host_rdma_poll_timeout(&error) => {
+                    Ds41rtRdmaRcCompletionStats::default()
+                }
+                Err(error) => return Err(error),
+            },
+            None => self.endpoint.try_poll(0, 1)?,
+        };
         if stats.recv_completions == 0 {
             if self.last_activity.elapsed() >= Duration::from_secs(1)
                 && self.last_liveness.elapsed() >= Duration::from_secs(1)

@@ -7,7 +7,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 struct Admission {
@@ -78,20 +78,40 @@ pub(super) fn run(config: NativeExpertServiceConfig, listen: &str) -> Result<()>
         layers = weights.len(),
         "native local RoCE expert worker ready"
     );
+    // Requests arrive back-to-back while serving, so the loop spins: it is the
+    // wakeup path and this is the GPU owner thread. A quiet connection switches
+    // to the endpoint's QP completion event wait (`ibv_req_notify_cq` +
+    // completion-channel poll, which still busy-polls briefly) with an
+    // `idle_wait` upper bound. One wait covers one endpoint, so while idle the
+    // loop blocks on one connection per pass and rotates; the pass itself still
+    // sweeps every connection with a non-blocking poll, which bounds pickup to
+    // one wait window. Any request or admission resets the idle timer.
+    let idle_spin = Duration::from_secs(30);
+    let idle_wait = Duration::from_millis(100);
+    let mut last_activity = Instant::now();
+    let mut idle_cursor = 0usize;
     loop {
+        let mut progressed = false;
         if connections.is_empty() {
             connections.push(incoming.recv().context("native RoCE admission stopped")?);
+            progressed = true;
         } else if let Ok(connection) = incoming.try_recv() {
+            progressed = true;
             if connections.len() < 16 {
                 connections.push(connection);
             } else {
                 tracing::warn!("native RoCE active connection limit reached");
             }
         }
+        let waiting = !progressed
+            && !connections.is_empty()
+            && last_activity.elapsed() >= idle_spin;
+        let wait_index = waiting.then(|| idle_cursor % connections.len());
         let mut index = 0;
         while index < connections.len() {
             let mut execution_failed = false;
-            let result = connections[index].poll(|view, mapped, emit| {
+            let wait = (wait_index == Some(index)).then_some(idle_wait);
+            let result = connections[index].poll(wait, |view, mapped, emit| {
                 let request = if execution.is_paired() {
                     V41BackboneRequest::parse_paired(view.frame_bytes(), config.capacity)?
                 } else {
@@ -128,7 +148,10 @@ pub(super) fn run(config: NativeExpertServiceConfig, listen: &str) -> Result<()>
                 result
             });
             match result {
-                Ok(_) => index += 1,
+                Ok(processed) => {
+                    progressed |= processed;
+                    index += 1;
+                }
                 Err(error) => {
                     if execution_failed {
                         return Err(error).context("native GPU execution failed");
@@ -138,6 +161,13 @@ pub(super) fn run(config: NativeExpertServiceConfig, listen: &str) -> Result<()>
                 }
             }
         }
-        std::hint::spin_loop();
+        if progressed {
+            last_activity = Instant::now();
+        }
+        if waiting {
+            idle_cursor = idle_cursor.wrapping_add(1);
+        } else {
+            std::hint::spin_loop();
+        }
     }
 }
