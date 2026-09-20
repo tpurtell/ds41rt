@@ -3551,7 +3551,12 @@ fn handle_verbs_host_protocol_v2_persistent_connection(
     library: Arc<NativeLibrary>,
     start: VerbsHostProtocolV2PersistentStart,
 ) -> Result<()> {
-    let mut connection = LocalVerbsExpertConnection::initialize(stream, library, start)?;
+    let mut connection = LocalVerbsExpertConnection::initialize(
+        stream,
+        library,
+        start,
+        crate::protocol_v2_timing_from_env(),
+    )?;
     loop {
         if !connection.poll(|request, payload, emit| {
             executor.execute_streaming_device_payload_with_identity(request, payload, emit)

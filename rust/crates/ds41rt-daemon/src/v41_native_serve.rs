@@ -161,10 +161,7 @@ fn compact_budget(reservation: &mut Option<memory::Reservation>, kv: &mut Option
 /// progress/poll path never reaches the process environment; the value is only
 /// meaningful for a launch, so a start-time read is sufficient.
 pub(crate) fn protocol_v2_timing() -> bool {
-    match std::env::var("DS41RT_PROTOCOL_V2_TCP_TIMING") {
-        Ok(value) => matches!(value.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"),
-        Err(_) => false,
-    }
+    ds41rt_transport::protocol_v2_timing_from_env()
 }
 
 fn spark_transport(peers: &[std::net::SocketAddr], capacity: u32, timing: bool) -> Result<V41Tp4Roce> {

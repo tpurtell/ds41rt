@@ -40,13 +40,16 @@ pub(super) fn run(config: NativeExpertServiceConfig, listen: &str) -> Result<()>
     let stop = Arc::new(AtomicBool::new(false));
     let _guard = Admission { stop: stop.clone() };
     let max_frame_bytes = config.max_frame_bytes;
+    // Resolved once here: the admission thread and the poll loop must not read
+    // the process environment per connection or per poll.
+    let protocol_v2_timing = ds41rt_transport::protocol_v2_timing_from_env();
     thread::Builder::new()
         .name("v41-roce-bootstrap".into())
         .spawn(move || {
             while !stop.load(Ordering::Acquire) {
                 match listener.accept() {
                     Ok((stream, _)) => {
-                        match LocalVerbsExpertConnection::accept(stream, max_frame_bytes) {
+                        match LocalVerbsExpertConnection::accept(stream, max_frame_bytes, protocol_v2_timing) {
                             Ok(connection) => {
                                 if admit.try_send(connection).is_err() {
                                     tracing::warn!("native RoCE admission queue full or stopped");

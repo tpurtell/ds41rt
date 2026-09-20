@@ -17,6 +17,8 @@ pub struct LocalVerbsExpertConnection {
     response_copy_stream: Option<VerbsHostCudaStream>,
     last_activity: Instant,
     last_liveness: Instant,
+    /// Startup-resolved diagnostics flag; see `protocol_v2_timing_from_env`.
+    timing: bool,
 }
 // No operation can race: polling requires &mut self, and all registered views
 // remain owned by the endpoint. Like VerbsHostMappedRdmaRing, a session may move
@@ -25,7 +27,9 @@ unsafe impl Send for LocalVerbsExpertConnection {}
 
 impl LocalVerbsExpertConnection {
     /// Bootstrap only; call on an admission thread, then transfer to the GPU owner.
-    pub fn accept(stream: TcpStream, max_frame_bytes: usize) -> Result<Self> {
+    /// `timing` is the startup-resolved diagnostics flag; it is not re-read from
+    /// the environment on the poll path.
+    pub fn accept(stream: TcpStream, max_frame_bytes: usize, timing: bool) -> Result<Self> {
         verbs_host_preflight()?;
         configure_control_stream(&stream, default_control_timeout())?;
         let mut reader = BufReader::new(stream.try_clone()?);
@@ -46,13 +50,14 @@ impl LocalVerbsExpertConnection {
         let path =
             verbs_host_native_library_path().context("native RoCE library not configured")?;
         let library = Arc::new(unsafe { NativeLibrary::load(&path) }?);
-        Self::initialize(stream, library, start)
+        Self::initialize(stream, library, start, timing)
     }
 
     pub(super) fn initialize(
         mut stream: TcpStream,
         library: Arc<NativeLibrary>,
         start: VerbsHostProtocolV2PersistentStart,
+        timing: bool,
     ) -> Result<Self> {
         let rdma_device = verbs_host_rdma_device_for_stream(&stream)?;
         let request_ring = VerbsHostRdmaRing::from_wire(
@@ -116,7 +121,7 @@ impl LocalVerbsExpertConnection {
                 VERBS_HOST_RECV_WR_ID + slot as u64,
             )?;
         }
-        if protocol_v2_transport_timing_enabled() {
+        if timing {
             let server_native_endpoint = endpoint.native_descriptor();
             eprintln!(
             "protocol_v2_verbs_persistent_server_connect ring_depth={} request_capacity={} request_stride={} request_span={} response_capacity={} response_stride={} response_span={} server_device={} server_gid={} server_status=\"{}\" client_device={} client_gid={} client_status=\"{}\"",
@@ -160,6 +165,7 @@ impl LocalVerbsExpertConnection {
             response_copy_stream: None,
             last_activity: Instant::now(),
             last_liveness: Instant::now(),
+            timing,
         })
     }
 
@@ -174,7 +180,7 @@ impl LocalVerbsExpertConnection {
             &mut dyn FnMut(ProtocolV2ExecutorResponseRef<'_>) -> Result<()>,
         ) -> Result<()>,
     {
-        let timing_enabled = protocol_v2_transport_timing_enabled();
+        let timing_enabled = self.timing;
         let total_started = timing_enabled.then(Instant::now);
         let poll_recv_started = timing_enabled.then(Instant::now);
         let stats = self.endpoint.try_poll(0, 1)?;

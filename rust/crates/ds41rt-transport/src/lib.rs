@@ -111,6 +111,17 @@ impl Default for TcpTransportConfig {
     }
 }
 
+/// Protocol-v2 per-chunk transport diagnostics flag, read from the process
+/// environment. Call this once at startup and thread the value (see
+/// `TcpTransportConfig::timing` and the expert connection's `timing` field):
+/// per-chunk progress and poll paths must never reach `getenv`.
+pub fn protocol_v2_timing_from_env() -> bool {
+    match std::env::var("DS41RT_PROTOCOL_V2_TCP_TIMING") {
+        Ok(value) => matches!(value.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"),
+        Err(_) => false,
+    }
+}
+
 pub async fn inproc_roundtrip(request: &ExpertRequest) -> Result<ExpertResponse> {
     synthetic_expert_response(request)
 }
