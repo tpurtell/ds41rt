@@ -615,6 +615,38 @@ def parse_retained(docs):
     return rows or None, sorted(contexts)
 
 
+def parse_retained_reuse(docs):
+    """Per-context retention-frontier diagnostics from `context_summaries`.
+
+    `prompt_prefix_reuse` is the release gate: the whole retained parent prompt
+    was skipped, so the retained base context is real. `full_turn_reuse` is the
+    generated-turn diagnostic: the child also reached the parent's committed turn
+    frontier. The API is a text interface, so generated-turn reuse is
+    opportunistic and content-dependent; a context that reuses only the prompt
+    prefix is a documented limitation, not a hidden one. Absent fields are
+    reported as None, never assumed.
+    """
+    out = {}
+    for doc in docs:
+        if not isinstance(doc, dict):
+            continue
+        for summary in doc.get("context_summaries", []) or []:
+            if not isinstance(summary, dict):
+                continue
+            context = summary.get("context_tokens")
+            if context is None:
+                continue
+            prefix = summary.get("prompt_prefix_reuse")
+            if prefix is None:
+                prefix = summary.get("cache_valid")
+            out[context] = {
+                "samples": summary.get("samples"),
+                "prompt_prefix_reuse": prefix,
+                "full_turn_reuse": summary.get("full_turn_reuse"),
+            }
+    return out
+
+
 def parse_concurrency(docs):
     """Concurrency records, with the accounting basis of the raw evidence.
 
@@ -914,6 +946,8 @@ def load_arm(package: pathlib.Path, arm: dict) -> dict:
 
     retained_summary, retained_contexts = parse_retained(retained_docs)
     control_summary, control_contexts = parse_retained(control_docs)
+    retained_reuse = parse_retained_reuse(retained_docs)
+    control_reuse = parse_retained_reuse(control_docs)
 
     return {
         "arm": arm,
@@ -925,8 +959,10 @@ def load_arm(package: pathlib.Path, arm: dict) -> dict:
         "prefill": parse_prefill(prefill_docs[0]) if prefill_docs else None,
         "retained": retained_summary,
         "retained_contexts": retained_contexts,
+        "retained_reuse": retained_reuse,
         "retained_control": control_summary,
         "control_contexts": control_contexts,
+        "control_reuse": control_reuse,
         "concurrency": concurrency_rows,
         "concurrency_levels": concurrency_levels,
         "concurrency_basis": concurrency_basis,
@@ -1319,6 +1355,35 @@ def render(manifest: dict, package: pathlib.Path) -> str:
                     if doc and context in doc:
                         value = doc[context]
                 cells.append(fmt(value))
+            add(f"| {context // 1024}K | " + " | ".join(cells) + " |")
+    else:
+        add(f"| {PENDING} | " + " | ".join(PENDING for _ in loaded) + " |")
+    add("")
+    # The API is a text interface, so the retained child only reuses the parent's
+    # committed generated turn when the re-sent turn text re-encodes to identical
+    # token ids. Report the two frontiers separately so a prompt-prefix-only
+    # context stays visible instead of being folded into the pass/fail gate.
+    add("Reuse frontier per retained base: `prefix` counts samples that skipped the "
+        "complete retained parent prompt (the release gate); `full` counts samples "
+        "that also reached the parent's committed generated-turn frontier "
+        "(opportunistic, content-dependent diagnostic).")
+    add("")
+    add("| Retained base | " + " | ".join(item["arm"]["id"] for item in loaded) + " |")
+    add("|---|" + "|".join("---:" for _ in loaded) + "|")
+    if contexts:
+        for context in contexts:
+            cells = []
+            for item in loaded:
+                reuse = None
+                for table in (item.get("retained_reuse"), item.get("control_reuse")):
+                    if table and context in table:
+                        reuse = table[context]
+                if not reuse or reuse["samples"] is None:
+                    cells.append(PENDING)
+                else:
+                    cells.append(f"{fmt(reuse['prompt_prefix_reuse'])} prefix / "
+                                 f"{fmt(reuse['full_turn_reuse'])} full "
+                                 f"of {fmt(reuse['samples'])}")
             add(f"| {context // 1024}K | " + " | ".join(cells) + " |")
     else:
         add(f"| {PENDING} | " + " | ".join(PENDING for _ in loaded) + " |")

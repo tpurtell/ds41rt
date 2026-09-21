@@ -1,5 +1,34 @@
 #!/usr/bin/env python3
-"""Measure the nine release decode categories over exact retained base contexts."""
+"""Measure the nine release decode categories over exact retained base contexts.
+
+Reuse contract (why the gate is prompt-prefix reuse, not the generated turn)
+---------------------------------------------------------------------------
+The OpenAI-shaped API is a *text* interface: a child request re-sends the parent
+assistant turn as text (`content` plus `reasoning_content`). The server re-renders
+and re-tokenizes it, and the resulting token ids are only guaranteed to match the
+parent's committed generated ids when the detokenized text re-encodes identically.
+When it does, the runtime's completed-turn snapshot is reused whole. When it does
+not, the completed turn matches only partially, and the runtime's documented
+max-computation-saved rule deliberately prefers the exact prompt ancestor: a
+partial match must replay a 128-token encoder window, so it saves
+`(lcp // 2 * 2) - 128` tokens, less than the prompt snapshot's `context` tokens
+whenever the turn is short (`ds41rt_core::prefix::Reusable::skipped`).
+
+`prompt_cache_hit_tokens` is therefore the number of prompt tokens whose
+recomputation the runtime skipped, and a retained child legitimately reports:
+  * `context`               -- the complete retained parent prompt was reused
+                               (guaranteed by retention), or
+  * a parent turn frontier  -- the full committed generated turn was reused, or
+  * an aligned partial <= the turn frontier -- more than the prompt was reused.
+
+The release measurement needs the retained base context to be genuinely reused
+(so decode is not paying for a re-prefill); that is proven by `hit >= context`
+with self-consistent accounting, and it stays a hard gate. Full generated-turn
+reuse is retained as an explicit per-sample/cell diagnostic (`full_turn_reused`),
+because it is opportunistic and content-dependent, not a promise this API can
+make. A hit below the retained prompt, inconsistent accounting, or a hit beyond
+the parent turn frontier still fails and aborts the sweep.
+"""
 
 from __future__ import annotations
 
@@ -107,14 +136,51 @@ def prime_error_diagnostics(error: BaseException, *, context: int, thinking: str
     }
 
 
-def cache_failure_diagnostics(usage: dict, *, context: int, case_id: str, repeat: int,
+def retained_cache_accounting(usage: dict, *, context: int,
                               parent_frontiers: list[int]) -> dict:
+    """Decide whether a retained child reused the parent's retained prompt.
+
+    `prompt_prefix_reused` is the release gate: the child skipped the complete
+    retained parent prompt, which is what makes the retained base context real.
+    `full_turn_reused` is the generated-turn diagnostic: the child also reached
+    the parent's committed turn frontier. It is `None` at context 0 (no parent).
+    See the module docstring for why generated-turn reuse is not guaranteed.
+    """
+    hit = usage.get("prompt_cache_hit_tokens")
+    miss = usage.get("prompt_cache_miss_tokens")
+    prompt = usage.get("prompt_tokens")
+    detailed = (usage.get("prompt_tokens_details") or {}).get("cached_tokens")
+    accounting_consistent = (
+        hit is not None and miss is not None and prompt is not None
+        and hit + miss == prompt and detailed == hit
+    )
+    if context:
+        # The parent prompt snapshot and its completed turn are both retained, so
+        # a legitimate hit is at least the prompt and never beyond the turn.
+        full_turn_reused = hit in parent_frontiers
+        prompt_prefix_reused = (
+            accounting_consistent and context <= hit <= max(parent_frontiers)
+        )
+    else:
+        full_turn_reused = None
+        prompt_prefix_reused = accounting_consistent and 0 <= hit <= 32
+    return {
+        "accounting_consistent": accounting_consistent,
+        "prompt_prefix_reused": prompt_prefix_reused,
+        "prompt_prefix_frontier": context,
+        "full_turn_reused": full_turn_reused,
+    }
+
+
+def cache_failure_diagnostics(usage: dict, *, context: int, case_id: str, repeat: int,
+                              parent_frontiers: list[int],
+                              accounting: dict | None = None) -> dict:
     """Bounded record for a child whose cached prefix is not a parent frontier.
 
     `hit + miss == prompt_tokens` is accounting self-consistency only; it does
-    NOT prove the child reused the parent turn. The observed hit, the miss and
-    the allowed frontiers are kept so the mismatch stays diagnosable without
-    loosening the identity gate.
+    NOT prove the child reused the retained prompt. The observed hit, the miss,
+    the prompt-reuse decision and the allowed frontiers are kept so the mismatch
+    stays diagnosable without loosening the gate.
     """
     hit = usage.get("prompt_cache_hit_tokens")
     miss = usage.get("prompt_cache_miss_tokens")
@@ -126,6 +192,9 @@ def cache_failure_diagnostics(usage: dict, *, context: int, case_id: str, repeat
         "prompt_tokens": usage.get("prompt_tokens"),
         "cached_tokens": hit,
         "miss_tokens": miss,
+        "prompt_prefix_frontier": context,
+        "prompt_prefix_reused": (accounting or {}).get("prompt_prefix_reused"),
+        "full_turn_reused": (accounting or {}).get("full_turn_reused"),
         "allowed_parent_frontiers": list(parent_frontiers),
         "accounting_consistent": hit is not None and miss is not None
                                  and hit + miss == usage.get("prompt_tokens"),
@@ -331,22 +400,16 @@ def main() -> None:
                     raise RuntimeError("requested reasoning was missing")
                 usage = result["usage"]
                 hit = usage["prompt_cache_hit_tokens"]
-                miss = usage["prompt_cache_miss_tokens"]
-                cache_valid = (
-                    hit + miss == usage["prompt_tokens"]
-                    and usage["prompt_tokens_details"]["cached_tokens"] == hit
-                    and (
-                        hit in parent_frontiers
-                        if context
-                        else 0 <= hit <= 32
-                    )
-                )
+                accounting = retained_cache_accounting(
+                    usage, context=context, parent_frontiers=parent_frontiers)
+                cache_valid = accounting["prompt_prefix_reused"]
                 validation = quality["check_output"](case_id, result["text"])
                 sample.update(
                     {
                         "result": result,
                         "content_sha256": sha256(result["text"].encode()),
                         "cache_valid": cache_valid,
+                        **accounting,
                         **validation,
                         "serving_completed": bool(result["text"].strip()),
                         "passed": cache_valid and bool(result["text"].strip()),
@@ -357,15 +420,19 @@ def main() -> None:
                     report.setdefault("sample_failures", []).append(
                         cache_failure_diagnostics(
                             usage, context=context, case_id=case_id, repeat=repeat,
-                            parent_frontiers=parent_frontiers))
+                            parent_frontiers=parent_frontiers, accounting=accounting))
                     report["status"] = "aborted"
                     save()
                     raise RuntimeError(
-                        f"cache accounting failed for {context}/{case_id}/{repeat}: {usage}"
+                        f"cache accounting failed for {context}/{case_id}/{repeat}: {usage} "
+                        f"(prompt_prefix_reused={accounting['prompt_prefix_reused']}, "
+                        f"full_turn_reused={accounting['full_turn_reused']})"
                     )
                 print(
                     f"measure context={context} repeat={repeat} case={case_id} "
                     f"cached={hit} tps={result['observed_decode_tokens_per_second']:.2f} "
+                    f"prompt_prefix_reused={cache_valid} "
+                    f"full_turn_reused={accounting['full_turn_reused']} "
                     f"objective_checks={validation['objective_checks_passed']}",
                     flush=True,
                 )
@@ -389,6 +456,8 @@ def main() -> None:
                     "max_observed_decode_tokens_per_second": max(values),
                     "serving_completed": sum(row["serving_completed"] for row in rows),
                     "cache_valid": sum(row["cache_valid"] for row in rows),
+                    "prompt_prefix_reuse": sum(row["cache_valid"] for row in rows),
+                    "full_turn_reuse": sum(bool(row["full_turn_reused"]) for row in rows),
                 }
             )
     report["context_summaries"] = []
@@ -413,11 +482,21 @@ def main() -> None:
                 "weighted_observed_decode_tokens_per_second": timed_tokens / timed_seconds,
                 "serving_completed": sum(row["serving_completed"] for row in rows),
                 "cache_valid": sum(row["cache_valid"] for row in rows),
+                "prompt_prefix_reuse": sum(row["cache_valid"] for row in rows),
+                "full_turn_reuse": sum(bool(row["full_turn_reused"]) for row in rows),
             }
         )
     report["completed_ns"] = time.time_ns()
     report["status"] = "complete"
     report["passed"] = all(row["passed"] for row in report["samples"])
+    # `passed`/`cache_valid` mean the retained parent prompt was reused (the
+    # gate). Full generated-turn reuse is a separate diagnostic: True only when
+    # every context>0 sample reached the parent's committed turn frontier.
+    report["prompt_prefix_reuse_all"] = all(
+        row["cache_valid"] for row in report["samples"])
+    report["full_turn_reuse_all"] = all(
+        bool(row["full_turn_reused"])
+        for row in report["samples"] if row["context_tokens"])
     report["objective_checks_passed"] = all(
         row["objective_checks_passed"] is not False for row in report["samples"]
     )

@@ -371,6 +371,64 @@ mod tests {
         assert!(disabled.lookup_reusable(&[1]).is_none());
     }
 
+    /// Contract pin: generated-turn retention is opportunistic, prompt-prefix
+    /// reuse is the guarantee. A child that re-renders a completed turn from text
+    /// may re-tokenize it differently; the completed turn then matches only
+    /// partially and, because a partial match replays a 128-token encoder window,
+    /// it saves less computation than the exact prompt ancestor. The reuse rule
+    /// therefore selects the prompt snapshot and the reported frontier is the
+    /// prompt length, not the completed turn. This is the v10 65536/262144 shape
+    /// (`hit == context`) and the reason it is not a runtime publication fault.
+    #[test]
+    fn short_partial_completed_turn_defers_to_the_exact_prompt_snapshot() {
+        let context = 4096usize;
+        let prompt: Vec<u32> = (1..=context as u32).collect();
+        let mut turn = prompt.clone();
+        turn.extend(10_000..10_079); // 79-token completed turn (v10 65536 shape)
+        let mut retained = Retention::new(8);
+        retained.bank_mut(SnapshotKind::Prompt).insert(&prompt, "prompt");
+        retained.bank_mut(SnapshotKind::Turn).insert(&turn, "turn");
+        // The child re-sends the prompt, a turn that re-encodes with one token
+        // different before the end, and then its own instruction.
+        let mut divergent = turn.clone();
+        divergent[context + 78] = 77_777;
+        divergent.extend(20_000..20_044);
+        assert_eq!(
+            retained.lookup_reusable(&divergent),
+            Some((context, context, &"prompt"))
+        );
+        // The same child whose turn round-trips exactly reuses the whole turn.
+        let mut exact = turn.clone();
+        exact.extend(20_000..20_044);
+        assert_eq!(
+            retained.lookup_reusable(&exact),
+            Some((context + 79, context + 79, &"turn"))
+        );
+    }
+
+    /// A partial completed turn longer than the 128-token replay window can still
+    /// save more than the prompt ancestor; the reported frontier is then the
+    /// aligned LCP minus the replay window. That is the v9 262144 shape
+    /// (`hit = 262158 = 262144 + 14` for a 147-token turn matching 142 tokens).
+    #[test]
+    fn partial_completed_turn_that_saves_more_than_the_prompt_is_reused_from_its_window() {
+        let context = 4096usize;
+        let prompt: Vec<u32> = (1..=context as u32).collect();
+        let mut turn = prompt.clone();
+        turn.extend(10_000..10_147); // 147-token completed turn (v9 262144 shape)
+        let mut retained = Retention::new(8);
+        retained.bank_mut(SnapshotKind::Prompt).insert(&prompt, "prompt");
+        retained.bank_mut(SnapshotKind::Turn).insert(&turn, "turn");
+        let mut divergent = turn.clone();
+        divergent[context + 142] = 77_777; // matches 142 of 147 generated tokens
+        divergent.extend(20_000..20_044);
+        let (common, frontier, value) = retained.lookup_reusable(&divergent).unwrap();
+        assert_eq!((common, frontier, value), (context + 142, context + 147, &"turn"));
+        // `v41_native_serve::prefix::restore` reports the replay start for a
+        // partial match: `(common / 2 * 2) - 128`.
+        assert_eq!((common / 2 * 2) - 128, context + 14);
+    }
+
     #[test]
     fn partial_radix_match_accounts_for_alignment_replay_and_exact_ancestors() {
         let tokens: Vec<u32> = (1..=512).collect();

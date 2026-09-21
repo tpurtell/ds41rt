@@ -99,25 +99,107 @@ def test_prime_diagnostics_are_bounded_and_complete():
     assert len(error["error"]) == q.PRIME_ERROR_CHARS == 400
 
 
-def test_child_cache_frontier_verification_is_untouched():
-    # Guard: the fix must not relax or bypass the child-side frontier check.
-    assert "hit in parent_frontiers" in SOURCE
+def test_child_cache_frontier_gate_is_prompt_prefix_not_the_generated_turn():
+    """The gate proves the retained parent prompt was reused.
+
+    A text chat API re-renders the parent assistant turn from text, so the
+    committed generated turn only round-trips token-exactly when the detokenized
+    text re-encodes identically. `hit >= context` with self-consistent accounting
+    is the real gate; the generated-turn frontier is a diagnostic.
+    """
+    q = _load()
+    assert "retained_cache_accounting" in SOURCE
+    assert "prompt_prefix_reused" in SOURCE
+    assert "full_turn_reused" in SOURCE
+    # The release gate must be the prompt-prefix decision, not the turn frontier.
+    assert 'cache_valid = accounting["prompt_prefix_reused"]' in SOURCE
+    assert "context <= hit <= max(parent_frontiers)" in SOURCE
     assert "raise RuntimeError(\"retained parent did not finish its answer\")" not in SOURCE
 
 
+def test_prompt_prefix_reuse_passes_when_the_generated_turn_does_not_round_trip():
+    """v10 65536/262144 and v9 262144: prompt reused, generated turn not."""
+    q = _load()
+    # 65536/code-reasoning/repeat1: hit == context, well below the turn frontiers.
+    v10 = q.retained_cache_accounting(
+        {"prompt_tokens": 65659, "prompt_cache_hit_tokens": 65536,
+         "prompt_cache_miss_tokens": 123,
+         "prompt_tokens_details": {"cached_tokens": 65536}},
+        context=65536, parent_frontiers=[65614, 65615])
+    assert v10["accounting_consistent"] is True
+    assert v10["prompt_prefix_reused"] is True
+    assert v10["full_turn_reused"] is False
+    assert v10["prompt_prefix_frontier"] == 65536
+    # v9 262144: the 147-token turn partially matched, hit == context + 14.
+    v9 = q.retained_cache_accounting(
+        {"prompt_tokens": 262335, "prompt_cache_hit_tokens": 262158,
+         "prompt_cache_miss_tokens": 177,
+         "prompt_tokens_details": {"cached_tokens": 262158}},
+        context=262144, parent_frontiers=[262290, 262291])
+    assert v9["prompt_prefix_reused"] is True
+    assert v9["full_turn_reused"] is False
+    # 32768 and the 2K control reached the full turn frontier.
+    for context, prompt, hit, frontier in ((32768, 32841, 32797, [32796, 32797]),
+                                           (2048, 2118, 2074, [2073, 2074])):
+        ok = q.retained_cache_accounting(
+            {"prompt_tokens": prompt, "prompt_cache_hit_tokens": hit,
+             "prompt_cache_miss_tokens": prompt - hit,
+             "prompt_tokens_details": {"cached_tokens": hit}},
+            context=context, parent_frontiers=frontier)
+        assert ok["prompt_prefix_reused"] is True
+        assert ok["full_turn_reused"] is True
+
+
+def test_cache_gate_still_fails_below_the_prompt_and_on_bad_accounting():
+    q = _load()
+    base = {"prompt_tokens": 65659, "prompt_cache_hit_tokens": 65000,
+            "prompt_cache_miss_tokens": 659,
+            "prompt_tokens_details": {"cached_tokens": 65000}}
+    below = q.retained_cache_accounting(base, context=65536,
+                                        parent_frontiers=[65614, 65615])
+    assert below["prompt_prefix_reused"] is False
+    # A hit beyond the parent turn frontier is not a legitimate reuse either.
+    beyond = q.retained_cache_accounting(
+        dict(base, prompt_cache_hit_tokens=65616, prompt_cache_miss_tokens=43,
+             prompt_tokens_details={"cached_tokens": 65616}),
+        context=65536, parent_frontiers=[65614, 65615])
+    assert beyond["prompt_prefix_reused"] is False
+    # cached_tokens disagreeing with prompt_cache_hit_tokens is not consistent.
+    inconsistent = q.retained_cache_accounting(
+        dict(base, prompt_cache_hit_tokens=65536, prompt_cache_miss_tokens=123,
+             prompt_tokens_details={"cached_tokens": 65535}),
+        context=65536, parent_frontiers=[65614, 65615])
+    assert inconsistent["accounting_consistent"] is False
+    assert inconsistent["prompt_prefix_reused"] is False
+    # Context 0 keeps its small accidental-hit allowance.
+    assert q.retained_cache_accounting(
+        {"prompt_tokens": 45, "prompt_cache_hit_tokens": 0,
+         "prompt_cache_miss_tokens": 45,
+         "prompt_tokens_details": {"cached_tokens": 0}},
+        context=0, parent_frontiers=[])["prompt_prefix_reused"] is True
+    assert q.retained_cache_accounting(
+        {"prompt_tokens": 45, "prompt_cache_hit_tokens": 40,
+         "prompt_cache_miss_tokens": 5,
+         "prompt_tokens_details": {"cached_tokens": 40}},
+        context=0, parent_frontiers=[])["prompt_prefix_reused"] is False
+
+
 def test_cache_failure_diagnostics_keep_the_262k_identity_mismatch():
-    """hit+miss==prompt is accounting, not proof of parent reuse."""
+    """hit+miss==prompt is accounting, not proof of parent-turn reuse."""
     q = _load()
     usage = {"prompt_tokens": 262335, "prompt_cache_hit_tokens": 262158,
              "prompt_cache_miss_tokens": 177,
              "prompt_tokens_details": {"cached_tokens": 262158}}
+    accounting = q.retained_cache_accounting(
+        usage, context=262144, parent_frontiers=[262290, 262291])
     record = q.cache_failure_diagnostics(
         usage, context=262144, case_id="code-reasoning", repeat=1,
-        parent_frontiers=[262290, 262291])
+        parent_frontiers=[262290, 262291], accounting=accounting)
     assert record["accounting_consistent"] is True
     assert record["cached_tokens"] == 262158
     assert record["allowed_parent_frontiers"] == [262290, 262291]
     assert record["cached_tokens"] not in record["allowed_parent_frontiers"]
+    assert record["prompt_prefix_frontier"] == 262144
     # The disabled sibling DOES land on its frontier; the gate is not simply too strict.
     disabled = {"prompt_tokens": 262190, "prompt_cache_hit_tokens": 262146,
                 "prompt_cache_miss_tokens": 44}
@@ -171,3 +253,12 @@ def test_262k_serialized_token_trace_if_local_evidence_present():
     assert hit not in enabled["allowed_parent_frontiers"]
     assert enabled["result"]["usage"]["total_tokens"] == 262291
     assert hit < enabled["allowed_parent_frontiers"][0]
+    # Under the retained contract this cell is prompt-prefix reuse: the whole
+    # 262144-token parent prompt was skipped, so the retained base context is
+    # real; only the committed generated turn was not reused whole.
+    accounting = q.retained_cache_accounting(
+        reasoning_child["result"]["usage"], context=262144,
+        parent_frontiers=enabled["allowed_parent_frontiers"])
+    assert accounting["prompt_prefix_reused"] is True
+    assert accounting["full_turn_reused"] is False
+    assert hit >= 262144
