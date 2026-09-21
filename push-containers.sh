@@ -6,7 +6,7 @@ source "$repo_root/scripts/release-common.sh"
 
 usage() {
   cat <<'EOF'
-Usage: ./push-containers.sh TAG
+Usage: ./push-containers.sh [--config FILE] TAG
 
 Tags and pushes the current coordinator and Spark inference images to GHCR.
 The supplied release tag and latest are published for both images. The
@@ -14,8 +14,18 @@ coordinator image is local; the Spark image is published from SPARK_0_HOST.
 The Spark image must advertise the V41 expert roles it carries (./build.sh bakes
 the universal tp2;tp3;tp6 set by default); a role-less legacy build is rejected.
 
-Example:
-  ./push-containers.sh v4
+--config FILE selects the configuration that names the local image pair to
+publish (default: ./ds41rt.config). It is how the v10 release is published from
+its BUILD target without retargeting the runtime default:
+  ./push-containers.sh --config ds41rt.build-v10.config v10
+The tag argument is unchanged and is still what both images are published as;
+the two GHCR repositories are fixed. ds41rt.config keeps naming the published
+v9 pair until release promotion edits it, so a runtime default is never mutated
+just to publish a build.
+
+Examples:
+  ./push-containers.sh v9
+  ./push-containers.sh --config ds41rt.build-v10.config v10
 
 Every remote step shares one SSH option set with ./build.sh and ./run.sh:
   DS41RT_RELEASE_SSH_CONFIG       ssh config file to use (default empty: stock
@@ -27,22 +37,43 @@ Every remote step shares one SSH option set with ./build.sh and ./run.sh:
 EOF
 }
 
-if [[ $# -eq 1 && ("$1" == -h || "$1" == --help) ]]; then
-  usage
-  exit 0
-fi
-[[ $# -eq 1 ]] || {
+config="$repo_root/ds41rt.config"
+tag=
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --config)
+      [[ $# -ge 2 && -n "$2" ]] || release_die "--config requires a configuration file"
+      config="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    -*)
+      release_die "unknown push argument: $1"
+      ;;
+    *)
+      [[ -z "$tag" ]] || {
+        usage >&2
+        exit 2
+      }
+      tag="$1"
+      shift
+      ;;
+  esac
+done
+[[ -n "$tag" ]] || {
   usage >&2
   exit 2
 }
 
-tag="$1"
 [[ "$tag" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]] ||
   release_die "invalid Docker tag: $tag"
 [[ "$tag" != latest ]] ||
   release_die "provide a version tag; latest is published automatically"
 
-release_load_config "$repo_root/ds41rt.config"
+release_load_config "$config"
 release_need docker
 release_need ssh
 

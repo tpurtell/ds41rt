@@ -491,7 +491,7 @@ class TestPushContainersConsumer:
     def test_transport_is_resolved_after_validation_and_before_any_host(self):
         text = push_text()
         configure = text.index("release_configure_ssh_transport\n")
-        assert configure > text.index('release_load_config "$repo_root/ds41rt.config"')
+        assert configure > text.index('release_load_config "$config"')
         assert configure > text.index("release_need ssh")
         assert configure < text.index("docker info"), (
             "the daemon probe is the first thing a bad transport setting should not"
