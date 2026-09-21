@@ -38,7 +38,7 @@ Approved native official layouts:
 | --- | --- | --- | --- | --- |
 | `tp4ep1-explicit-native.config` | 2 RTX + 4 Spark | TP4 x EP1 = 4 | none (legacy shard) | explicit form of the default; control arm |
 | `tp2ep2-native.config` | 2 RTX + 4 Spark | TP2 x EP2 = 4 | `tp2` | experiment completed; quality not accepted; release not qualified |
-| `tp3ep1-native.config` | 1 RTX + 3 Spark | TP3 x EP1 = 3 | `tp3` | v10 candidate; daemon support shipped since v9; this layout never qualified — see below |
+| `tp3ep1-native.config` | 1 RTX + 3 Spark | TP3 x EP1 = 3 | `tp3` | v10 candidate; 5 RTX-local / 35 remote via the explicit-topology placement handoff; daemon support shipped since v9; this layout never qualified — see below |
 | `tp3ep2-native.config` | 1 RTX + 6 Spark | TP3 x EP2 = 6 | `tp3` | experiment completed (all 40 remote); quality not accepted; release not qualified |
 | `tp2ep3-native.config` | 2 RTX + 6 Spark | TP2 x EP3 = 6 | `tp2` | experiment completed; quality not accepted; release not qualified |
 | `tp6ep1-native.config` | 2 RTX + 6 Spark | TP6 x EP1 = 6 | `tp6` | packaged; bounded final-image functional checks passed on 1 and 2 RTX; canonical six-rank qualifier not run |
@@ -65,6 +65,17 @@ until the v10 release promotion they are deliberately exempt from the
 published-pair equality below — their own test requires both names to be a
 coherent `ghcr.io/tpurtell/...:v10` pair. Packaging is not qualification:
 neither file carries a memory, correctness, performance or readiness claim.
+
+The native profile pins `RTX_EXPERT_LAYERS=5`: the RTX holds the first five
+routed layers and each Spark starts at layer 5 to hold the other 35. Because
+that is an explicit local count on an explicit topology, the launcher takes the
+single-RTX placement handoff (the coordinator publishes the boundary, workers
+start at `--first-layer 5`) instead of the all-remote no-handoff shape. The
+5-local / 35-remote single-RTX placement has prior TP6xEP1 functional evidence
+on the final v9 images and matched the measured v8 baseline dispatch; that is
+TP6 placement evidence, not TP3 qualification. Remote TP3 weight is
+`35 * 2,406,481,920 = 84,226,867,200 B`, leaving `24,892,452,864 B` under the
+`109,119,320,064 B` floor — admission arithmetic only, not a runtime fit.
 
 The `v10` pair is built with the explicit build config `ds41rt.build-v10.config`
 (`./build.sh --config ds41rt.build-v10.config`), which is `ds41rt.config` with

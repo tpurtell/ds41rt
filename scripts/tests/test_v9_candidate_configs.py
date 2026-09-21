@@ -113,8 +113,16 @@ def test_active_configs_use_matching_isolated_rails(config):
         if line and not line.startswith("#") and "=" in line
     )
     ranks = range(6) if config.name == "ds41rt.config" else range(int(values["SPARK_COUNT"]))
+    # `release-common.sh` requires the secondary rail all-or-none
+    # (`secondary Spark rail must provide all N active LANE_B values or none`).
+    # The v10 three-rank candidate profiles are documented single-rail A-only and
+    # name no LANE_B, so an absent rail is valid; a present one must be complete
+    # and address each rank on the matching isolated subnet.
+    lane_b = [values.get(f"SPARK_{rank}_LANE_B", "") for rank in ranks]
+    assert all(lane_b) or not any(lane_b), (config.name, lane_b)
     for rank in ranks:
         assert values[f"SPARK_{rank}_LANE_A"] == f"10.55.0.{rank + 1}"
-        assert values[f"SPARK_{rank}_LANE_B"] == f"10.55.1.{rank + 1}"
+        if any(lane_b):
+            assert lane_b[rank] == f"10.55.1.{rank + 1}"
     # Exercise the real parser as well as the address inventory.
     resolve(config)

@@ -208,6 +208,20 @@ explicit `SPARK_TP=3 SPARK_EP=1` is the native `TP3EP1` expert-group topology
 the v10 pair and carry examples-only status; this paragraph records launcher
 selectability and nothing about qualification.
 
+The native three-rank profile also pins `RTX_EXPERT_LAYERS=5`: the one RTX holds
+the first five routed layers and every Spark starts at layer 5 to hold the other
+35, so this file exercises the single-RTX placement handoff above instead of the
+all-remote `0` shape. Remote TP3 weight is
+`35 * 2,406,481,920 = 84,226,867,200 B`, leaving
+`109,119,320,064 - 84,226,867,200 = 24,892,452,864 B` of weight-only margin.
+The 5-local / 35-remote single-RTX placement has TP6xEP1 functional precedent on
+the final v9 images
+([release-v9-tp6-1rtx-official.md](release-v9-tp6-1rtx-official.md)) and matched
+the measured v8 1-RTX baseline dispatch
+([tp6-candidate-flags.md](../scripts/bench/tp6-candidate-flags.md)); that is
+placement evidence from a different topology. It neither qualifies this TP3
+layout nor converts the weight-only margin into a runtime fit.
+
 ## 4. Identity
 
 The release fingerprint now includes `spark-topology=<TP>x<EP>:explicit=<0|1>`

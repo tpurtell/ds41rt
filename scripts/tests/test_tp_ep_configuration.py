@@ -277,6 +277,25 @@ class ExampleConfigTest(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(tuple(result.stdout.splitlines()), geometry)
 
+    def test_v10_native_tp3_profile_reserves_five_local_layers(self) -> None:
+        # The v10 native TP3xEP1 profile pins an explicit single-RTX local count,
+        # so the launcher takes the placement handoff instead of the all-remote
+        # no-handoff shape. Pin the shape and its weight-only arithmetic.
+        result = load_file(
+            EXAMPLES / "tp3ep1-native.config",
+            'printf "%s\\n" "$RTX_GPUS" "$RTX_EXPERT_LAYERS" "$SPARK_COUNT" '
+            '"$SPARK_TP" "$SPARK_EP" "$SPARK_DEVICE_BUDGET_BYTES" '
+            '"$(release_spark_layer_bytes "$SPARK_TP")"',
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        gpus, layers, count, tp, ep, budget, layer_bytes = result.stdout.splitlines()
+        self.assertEqual((gpus, layers, count, tp, ep), ("1", "5", "3", "3", "1"))
+        self.assertEqual(int(layer_bytes), 2406481920)
+        self.assertEqual(40 - int(layers), 35)
+        self.assertEqual(40 * int(layer_bytes), 96259276800)
+        self.assertEqual(35 * int(layer_bytes), 84226867200)
+        self.assertEqual(int(budget) - 35 * int(layer_bytes), 24892452864)
+
     def test_six_host_examples_use_the_connected_fifth_and_sixth_sparks(self) -> None:
         for name in ("tp3ep2-native.config", "tp2ep3-native.config", "tp6ep1-native.config"):
             text = (EXAMPLES / name).read_text()
@@ -492,6 +511,35 @@ SPARK_COUNT={spark_count}
             self.assertEqual(args[-7], "6")
             self.assertEqual(args[-6:-3], ["1", "6", "1"])
         # The boundary is acknowledged after the workers start.
+        acks = [args for tool, args in events if tool == "docker" and args[0] == "exec"]
+        self.assertTrue(any("ready.json" in " ".join(a) for a in acks), acks)
+
+    def test_single_rtx_tp3_local_five_publishes_and_hands_off(self) -> None:
+        # The v10 native TP3xEP1 profile: one RTX with 5 local routed layers and
+        # three Spark ranks. The handoff is topology-independent, so the same
+        # publication/acknowledgement path must carry TP=3.
+        result, events = self.run_startup(
+            gpus=1,
+            plan=dict(version=1, rtx_gpus=1, nonce="fresh", rtx_expert_layers=5, spark_first_layer=5),
+            topology_explicit=1,
+            spark_tp=3,
+            spark_ep=1,
+            spark_count=3,
+            hosts=["ostrich", "dodo", "emu"],
+            extra_setup="RTX_EXPERT_LAYERS=5\n",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        coordinator = next(args for tool, args in events if tool == "docker" and args[0] == "run")
+        self.assertIn("--placement-directory", coordinator)
+        self.assertEqual(coordinator[coordinator.index("--rtx-expert-layers") + 1], "5")
+        self.assertEqual(coordinator[coordinator.index("--spark-tp") + 1], "3")
+        self.assertEqual(coordinator[coordinator.index("--spark-ep") + 1], "1")
+        starts = [args for tool, args in events if tool == "ssh" and "-s" in args]
+        self.assertEqual(len(starts), 3)
+        for args in starts:
+            self.assertEqual(args[-8], "5", args)
+            self.assertEqual(args[-7], "3")
+            self.assertEqual(args[-6:-3], ["1", "3", "1"])
         acks = [args for tool, args in events if tool == "docker" and args[0] == "exec"]
         self.assertTrue(any("ready.json" in " ".join(a) for a in acks), acks)
 
