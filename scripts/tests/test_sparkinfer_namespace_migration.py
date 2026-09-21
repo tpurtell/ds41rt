@@ -505,8 +505,11 @@ def test_release_preflight_requires_matching_engine_revisions() -> None:
         in release
     )
     assert "coordinator image has no engine revision" in release
-    assert 'test "$(docker image inspect -f' in release
-    assert '"$image")" = "$engine"' in release
+    # The per-host preflight compares the Spark image's engine-revision label to
+    # the coordinator's, and each failure names the host it ran on.
+    assert """[[ "$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image")" == "$engine" ]]""" in release
+    assert 'spark preflight on $host' in release
+    assert 'Spark host preflight failed on $host' in release
     fingerprint = release.split('fingerprint="$(', maxsplit=1)[1].split(
         'coordinator="$RELEASE_COORDINATOR_CONTAINER_NAME"', maxsplit=1
     )[0]
