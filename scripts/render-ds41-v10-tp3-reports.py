@@ -98,6 +98,21 @@ def resolve(package: pathlib.Path, relative) -> pathlib.Path:
     return (package / candidate).expanduser().absolute()
 
 
+def arm_package(package: pathlib.Path, arm: dict) -> pathlib.Path:
+    """The directory one arm's relative raw paths resolve against.
+
+    A campaign manifest mixes arms whose evidence lives in different lane
+    directories, so an arm that declares `evidence_package` resolves against
+    that lane when it exists and only falls back to the shared --package when
+    the lane directory is not present in this checkout.
+    """
+    declared = arm.get("evidence_package")
+    if not declared:
+        return package
+    candidate = (REPO / str(declared)).expanduser().absolute()
+    return candidate if candidate.is_dir() else package
+
+
 def sha256(path: pathlib.Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -185,8 +200,14 @@ def tool_eval_scenarios(path: pathlib.Path) -> int:
     return int(match.group(1)) if match else TOOL_EVAL_FALLBACK_SCENARIOS
 
 
-def derive_expectation(repeats: int, prefill_warmups: int, tool_eval_runs: int) -> dict:
-    """Derive every expected count from the live scripts, not from prose."""
+def derive_expectation(repeats: int, prefill_warmups: int, tool_eval_runs: int,
+                       source_digests: dict | None = None) -> dict:
+    """Derive every expected count from the live scripts, not from prose.
+
+    ``source_digests`` pins the harness/corpus SHA-256 values captured with the
+    measurement. When a source file has changed since the run, the measured
+    digest is what describes the raw records; the live digest is kept separately
+    so the report can name exactly which source moved."""
     prefill = SCRIPTS / "bench-ds41-release-prefill-matrix.py"
     retained = SCRIPTS / "bench-ds41-release-retained-decode.py"
     decode = SCRIPTS / "bench-ds41-release-decode.py"
@@ -277,6 +298,15 @@ def derive_expectation(repeats: int, prefill_warmups: int, tool_eval_runs: int) 
             "counted": False,
         },
     }
+    live_sources = {
+        str(p.relative_to(REPO)): sha256(p)
+        for p in (prefill, retained, decode, concurrent, mixed, tool_eval, CORPUS)
+    }
+    effective_sources = dict(live_sources)
+    if source_digests:
+        for path, digest in source_digests.items():
+            if path in effective_sources:
+                effective_sources[path] = digest
     total = sum(f["expected"] for f in families.values() if f["counted"])
     return {
         "families": families,
@@ -294,11 +324,17 @@ def derive_expectation(repeats: int, prefill_warmups: int, tool_eval_runs: int) 
                         f"{prime_contexts + control_only} x {len(weighted_cases)} cases "
                         f"x {repeats} repeats"),
         },
-        "sources": {
-            str(p.relative_to(REPO)): sha256(p)
-            for p in (prefill, retained, decode, concurrent, mixed, tool_eval, CORPUS)
-        },
+        "sources": effective_sources,
+        "sources_live": live_sources,
+        "source_digests_pinned": bool(source_digests),
     }
+
+
+def manifest_source_digests(manifest: dict) -> dict | None:
+    """Measured-time harness/corpus digests pinned by the manifest, if any."""
+    provenance = manifest.get("harness_provenance") or {}
+    digests = provenance.get("digests")
+    return digests if isinstance(digests, dict) and digests else None
 
 
 # Shape names used by the sibling `expected-counts.json` documents
@@ -886,6 +922,7 @@ def require_provenance(manifest: dict):
 # --------------------------------------------------------------------------
 
 def load_arm(package: pathlib.Path, arm: dict) -> dict:
+    package = arm_package(package, arm)
     raw = arm.get("raw") or {}
     declared = {name: as_paths(raw.get(name)) for name in
                 ("decode", "prefill", "retained", "retained_control_2k",
@@ -1079,7 +1116,8 @@ def render(manifest: dict, package: pathlib.Path) -> str:
     repeats = accounting.get("repeats") or 3
     prefill_warmups = accounting.get("prefill_warmups") or 1
     tool_eval_runs = accounting.get("tool_eval_runs") or 3
-    expectation = derive_expectation(repeats, prefill_warmups, tool_eval_runs)
+    expectation = derive_expectation(repeats, prefill_warmups, tool_eval_runs,
+                                     source_digests=manifest_source_digests(manifest))
 
     arms = manifest["arms"]
     loaded = [load_arm(package, arm) for arm in arms]
@@ -1111,6 +1149,11 @@ def render(manifest: dict, package: pathlib.Path) -> str:
     if checkpoint.get("bits"):
         lines[-1] += f", bits `{checkpoint['bits']}`"
     lines[-1] += ")"
+    if manifest.get("report_class"):
+        report_class = str(manifest["report_class"])
+        add(f"- Report class: `{report_class}`"
+            + (" - published for information only; this is not a formal release "
+               "qualification" if report_class == "informational" else ""))
     if images:
         for role in ("coordinator", "spark_expert"):
             image = images.get(role) or {}
@@ -1136,6 +1179,60 @@ def render(manifest: dict, package: pathlib.Path) -> str:
     else:
         add(f"- Change thresholds: {PENDING} {DASH} no per-campaign spread basis recorded.")
     add("")
+
+    # ---- measurement provenance and limitations ---------------------------
+    provenance_blocks = []
+    for item in loaded:
+        arm = item["arm"]
+        measured = arm.get("measurement_provenance")
+        limitations = arm.get("limitations") or []
+        if not measured and not limitations:
+            continue
+        provenance_blocks.append(f"### {arm['id']}")
+        provenance_blocks.append("")
+        if measured:
+            measured_sha = measured.get("measured_config_sha256") or DASH
+            published_sha = measured.get("published_profile_config_sha256") or DASH
+            provenance_blocks.append(
+                f"- Measured profile: config sha256 `{measured_sha}`, "
+                f"KV pool **{measured.get('measured_kv_pool_size') or DASH}**.")
+            if measured.get("measured_kv_pool_note"):
+                provenance_blocks.append(f"  - {measured['measured_kv_pool_note']}")
+            provenance_blocks.append(
+                f"- Published profile: commit `{measured.get('published_profile_commit') or DASH}` "
+                f"(config sha256 `{published_sha}`), KV pool "
+                f"**{measured.get('published_profile_kv_pool_size') or DASH}**.")
+            if measured.get("pin_commit"):
+                provenance_blocks.append(
+                    f"  - KV pool pin introduced at commit `{measured['pin_commit']}` "
+                    f"(config sha256 `{measured.get('pin_config_sha256') or DASH}`); "
+                    "later profile edits do not change it.")
+            provenance_blocks.append(
+                "- Remeasured on the published profile: "
+                f"**{'yes' if measured.get('remeasured') else 'no'}**.")
+            if measured.get("note"):
+                provenance_blocks.append(f"  - {measured['note']}")
+            provenance_blocks.append("")
+        if limitations:
+            provenance_blocks.append("Limitations, read before the numbers:")
+            provenance_blocks.append("")
+            for limitation in limitations:
+                provenance_blocks.append(
+                    f"- **{limitation.get('id') or DASH}** {DASH} "
+                    f"{limitation.get('summary') or DASH}")
+                if limitation.get("detail"):
+                    provenance_blocks.append(f"  - {limitation['detail']}")
+                if limitation.get("evidence"):
+                    provenance_blocks.append(f"  - evidence: {limitation['evidence']}")
+            provenance_blocks.append("")
+    if provenance_blocks:
+        add("## Measurement provenance and limitations")
+        add("")
+        add("These limitations qualify every measured number below. Nothing here "
+            "changes a recorded value: the measurements stand exactly as taken, and "
+            "the caveats travel with them.")
+        add("")
+        lines.extend(provenance_blocks)
 
     # ---- status ------------------------------------------------------------
     add("## Campaign status")
@@ -1647,11 +1744,36 @@ def render(manifest: dict, package: pathlib.Path) -> str:
     add(f"| **Total (performance)** | **{expectation['total']}** | "
         f"{' + '.join(str(expectation['families'][k]['expected']) for k, _ in PERFORMANCE_FAMILIES)} | |")
     add("")
-    add("| Source script / corpus | SHA-256 |")
+    pinned = bool(expectation.get("source_digests_pinned"))
+    add("| Source script / corpus | SHA-256" + (" (as measured)" if pinned else "") + " |")
     add("|---|---|")
     for path, digest in sorted(expectation["sources"].items()):
         add(f"| `{path}` | `{digest}` |")
     add("")
+    live_sources = expectation.get("sources_live") or {}
+    drifted = [
+        (path, digest, live_sources[path])
+        for path, digest in sorted(expectation["sources"].items())
+        if live_sources.get(path) and live_sources[path] != digest
+    ]
+    if drifted:
+        add("The measured digests above are pinned by the manifest and describe the "
+            "files that produced the raw records. These source files changed after "
+            "the measurement, so the current file digest is not the measured one; "
+            "the raw records are not retroactively attributed to the newer file:")
+        add("")
+        for path, measured, current in drifted:
+            add(f"- `{path}`: measured `{measured}`, current `{current}`")
+        add("")
+    corrections = (manifest.get("harness_provenance") or {}).get("corrections") or []
+    for correction in corrections:
+        if correction.get("note"):
+            add(f"- {correction['note']}")
+        if correction.get("path"):
+            add(f"  - `{correction['path']}`"
+                + (f" (commit `{correction['commit']}`)" if correction.get("commit") else ""))
+    if corrections:
+        add("")
 
     # ---- reconciliation against the campaign's expected-counts document ----
     external = manifest.get("expected_counts")
@@ -1702,23 +1824,25 @@ def check(manifest: dict, package: pathlib.Path) -> list:
     expectation = derive_expectation(
         accounting.get("repeats") or 3,
         accounting.get("prefill_warmups") or 1,
-        accounting.get("tool_eval_runs") or 3)
+        accounting.get("tool_eval_runs") or 3,
+        source_digests=manifest_source_digests(manifest))
 
     problems = []
     for arm in manifest["arms"]:
         ident = arm["id"]
+        arm_dir = arm_package(package, arm)
         raw = arm.get("raw") or {}
         for name, paths in sorted(raw.items()):
             if not as_paths(paths):
                 continue
             for relative in as_paths(paths):
-                path = resolve(package, relative)
+                path = resolve(arm_dir, relative)
                 if not path.is_file():
                     problems.append(f"{ident}: {name} missing at {relative}")
                 elif load_json(path) is None and path.suffix == ".json":
                     problems.append(f"{ident}: {name} unparseable at {relative}")
         if (arm.get("tool_eval") or {}).get("summaries"):
-            path = resolve(package, arm["tool_eval"]["summaries"])
+            path = resolve(arm_dir, arm["tool_eval"]["summaries"])
             if not path.is_file():
                 problems.append(f"{ident}: tool_eval summaries missing at "
                                 f"{arm['tool_eval']['summaries']}")
@@ -1795,7 +1919,8 @@ def main(argv=None):
     expectation = derive_expectation(
         accounting.get("repeats") or 3,
         accounting.get("prefill_warmups") or 1,
-        accounting.get("tool_eval_runs") or 3)
+        accounting.get("tool_eval_runs") or 3,
+        source_digests=manifest_source_digests(manifest))
 
     if args.write_expected_counts is not None:
         document = expected_counts_document(expectation)

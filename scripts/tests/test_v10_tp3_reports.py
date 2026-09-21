@@ -975,6 +975,14 @@ def test_schema_is_valid_and_v10_specific():
                    "mixed", "target_only", "startup_memory", "kernel_tiling"):
         assert family in raw, family
     assert "tool_eval" in arm["properties"]
+    # Provenance/limitation fields are schema-valid so a measured manifest can
+    # carry its caveats without failing validation.
+    assert "report_class" in schema["properties"]
+    assert "harness_provenance" in schema["properties"]
+    assert {"evidence_package", "measurement_provenance", "limitations",
+            "bootstrap_only", "bootstrap_note"} <= set(arm["properties"])
+    assert {"harness_provenance", "measurement_provenance", "limitation",
+            "correction"} <= set(schema["$defs"])
 
 
 def test_campaign_runner_plan_mentions_both_arms_and_gate():
@@ -1008,13 +1016,27 @@ MANIFESTS = (
     REPO / "runs" / "v10-tp3" / "v10-exl3-compact-tp3-manifest.json",
     REPO / "runs" / "v10-tp3" / "campaign-manifest.json",
 )
+NATIVE_DOC = DOCS[0]
+EXL3_DOC = DOCS[1]
+CAMPAIGN_DOC = DOCS[2]
+NATIVE_MANIFEST = MANIFESTS[0]
+EXL3_MANIFEST = MANIFESTS[1]
+CAMPAIGN_MANIFEST = MANIFESTS[2]
 
 
-@pytest.mark.parametrize("path", DOCS, ids=lambda p: Path(p).name)
-def test_committed_docs_exist_and_are_pending_not_fabricated(path):
-    if not path.is_file():
-        pytest.skip(f"{path.name} not present in this checkout")
-    text = path.read_text()
+def load_generator():
+    spec = importlib.util.spec_from_file_location("v10_generate_docs", GENERATOR)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+
+def test_exl3_committed_doc_is_pending_not_fabricated():
+    if not EXL3_DOC.is_file():
+        pytest.skip(f"{EXL3_DOC.name} not present in this checkout")
+    text = EXL3_DOC.read_text()
     assert "**Status: NOT EXECUTED" in text
     assert "PENDING" in text
     # No measured-looking numbers may be smuggled into a pending report: the
@@ -1023,15 +1045,125 @@ def test_committed_docs_exist_and_are_pending_not_fabricated(path):
     assert "| code | " + DASH + " |" in headline
 
 
-@pytest.mark.parametrize("path", MANIFESTS, ids=lambda p: Path(p).name)
-def test_committed_manifests_declare_no_raw_evidence(path):
-    if not path.is_file():
-        pytest.skip(f"{path.name} not present in this checkout")
-    document = json.loads(path.read_text())
+def test_native_committed_doc_is_informational_and_incomplete():
+    if not NATIVE_DOC.is_file():
+        pytest.skip("native report not present in this checkout")
+    text = NATIVE_DOC.read_text()
+    assert "**Status: INCOMPLETE / INFORMATIONAL" in text
+    assert "Report class: `informational`" in text
+    assert "not a formal release qualification" in text
+    # The limitations travel with the report and name the post-run changes.
+    assert "## Measurement provenance and limitations" in text
+    assert "config-not-remeasured" in text
+    assert "retained-harness-corrected-post-run" in text
+    assert "KV_POOL_SIZE=12GiB" in text
+    assert "a057296" in text
+    assert "2f8208b" in text
+    # Measured values are published unchanged, not rounded or promoted.
+    assert "| **Weighted (excl. counting)** | 82.94 |" in text
+    assert "309 / 359" in text
+    assert "88 / 264" in text
+
+
+def test_campaign_committed_doc_separates_measured_from_pending():
+    if not CAMPAIGN_DOC.is_file():
+        pytest.skip("campaign status report not present in this checkout")
+    text = CAMPAIGN_DOC.read_text()
+    assert "INCOMPLETE / INFORMATIONAL" in text
+    assert ("| v10-native-tp3ep1 | official | TP3xEP1 | 1 | 3 | 359 | 309 | "
+            "incomplete |") in text
+    assert ("| v10-exl3-compact-tp3 | exl3 | TP3 | 1 | 3 | 359 | 0 | "
+            "NOT EXECUTED (pending raw manifests) |") in text
+    assert "config-not-remeasured" in text
+
+
+def test_exl3_manifest_declares_no_raw_evidence():
+    if not EXL3_MANIFEST.is_file():
+        pytest.skip("EXL3 manifest not present in this checkout")
+    document = json.loads(EXL3_MANIFEST.read_text())
     assert document["release"] == "v10"
     for arm in document["arms"]:
         assert arm["raw"] == {}
         assert "tool_eval" not in arm
+
+
+def test_native_manifest_declares_measured_evidence_and_limitations():
+    if not NATIVE_MANIFEST.is_file():
+        pytest.skip("native manifest not present in this checkout")
+    document = json.loads(NATIVE_MANIFEST.read_text())
+    assert document["report_class"] == "informational"
+    assert "INCOMPLETE / INFORMATIONAL" in document["report_status"]
+    arm = document["arms"][0]
+    assert arm["raw"], "the measured native arm must name its raw evidence"
+    assert arm["tool_eval"]["summaries"]
+    assert arm["evidence_package"] == "runs/v10-native-tp3ep1"
+    # The measured config identity survives: this is the pre-KV-pin hash.
+    assert arm["config_sha256"] == \
+        "9e738e727a088a2d047402af51c4a8b7444bf12be6b44d87ea954de7c60de4eb"
+    ids = {limitation["id"] for limitation in arm["limitations"]}
+    assert {"config-not-remeasured", "retained-harness-corrected-post-run",
+            "tool-eval-capacity-gated", "informational-not-qualification"} <= ids
+    provenance = arm["measurement_provenance"]
+    assert provenance["remeasured"] is False
+    assert provenance["published_profile_kv_pool_size"] == "12GiB"
+    assert provenance["pin_commit"].startswith("a057296")
+    assert provenance["published_profile_config_sha256"] != \
+        provenance["measured_config_sha256"]
+    harness = document["harness_provenance"]
+    assert harness["digests"]["scripts/bench-ds41-release-retained-decode.py"] \
+        .startswith("180d0a6b")
+    assert harness["corrections"][0]["commit"].startswith("2f8208b")
+
+
+def test_campaign_manifest_keeps_exl3_pending_and_native_measured():
+    if not CAMPAIGN_MANIFEST.is_file():
+        pytest.skip("campaign manifest not present in this checkout")
+    document = json.loads(CAMPAIGN_MANIFEST.read_text())
+    assert document["report_class"] == "informational"
+    assert "INCOMPLETE / INFORMATIONAL" in document["report_status"]
+    arms = {arm["id"]: arm for arm in document["arms"]}
+    assert arms["v10-native-tp3ep1"]["raw"]
+    assert arms["v10-exl3-compact-tp3"]["raw"] == {}
+    assert "tool_eval" not in arms["v10-exl3-compact-tp3"]
+
+
+def test_limitations_render_without_changing_measured_values(module, tmp_path):
+    manifest = complete_manifest(tmp_path)
+    manifest["report_class"] = "informational"
+    manifest["report_status"] = "INCOMPLETE / INFORMATIONAL - fixture"
+    measured = "1" * 64
+    manifest["harness_provenance"] = {
+        "digests": {"scripts/bench-ds41-release-retained-decode.py": measured},
+        "corrections": [{
+            "path": "scripts/bench-ds41-release-retained-decode.py",
+            "commit": "2f8208ba65ee1450d9e331ff52dd0b0fec01b33f",
+            "measured_sha256": measured,
+            "note": "fixture correction",
+        }],
+    }
+    manifest["arms"][0]["measurement_provenance"] = {
+        "measured_config_sha256": "2" * 64,
+        "measured_kv_pool_size": "unset / daemon auto (~16.7 GB)",
+        "published_profile_commit": "a057296d121651f80070d81b2d7c8e862146d9d1",
+        "published_profile_config_sha256": "3" * 64,
+        "published_profile_kv_pool_size": "12GiB",
+        "remeasured": False,
+    }
+    manifest["arms"][0]["limitations"] = [{
+        "id": "config-not-remeasured",
+        "summary": "fixture summary",
+        "detail": "fixture detail",
+        "evidence": "fixture evidence",
+    }]
+    text = render(module, manifest, tmp_path)
+    assert "Report class: `informational`" in text
+    assert "## Measurement provenance and limitations" in text
+    assert "**config-not-remeasured**" in text
+    assert "Remeasured on the published profile: **no**" in text
+    assert "fixture correction" in text
+    # The caveats do not move a single measured value.
+    assert "Derived total, both arms: **359** performance records" in text
+    assert "359 | 359 | complete" in text
 
 
 def test_generator_reports_committed_docs_as_current():
@@ -1040,6 +1172,75 @@ def test_generator_reports_committed_docs_as_current():
     result = subprocess.run([sys.executable, str(GENERATOR), "--check"],
                             capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_generator_check_never_modifies_a_committed_artifact():
+    """A --check run must not reset a measured manifest or report."""
+    if not GENERATOR.is_file():
+        pytest.skip("v10-tp3 generator not present in this checkout")
+    tracked = [path for path in
+               (NATIVE_MANIFEST, EXL3_MANIFEST, CAMPAIGN_MANIFEST,
+                NATIVE_DOC, EXL3_DOC, CAMPAIGN_DOC) if path.is_file()]
+    before = {path: path.read_bytes() for path in tracked}
+    subprocess.run([sys.executable, str(GENERATOR), "--check"],
+                   capture_output=True, text=True)
+    after = {path: path.read_bytes() for path in tracked}
+    assert before == after
+
+
+def test_generator_bootstrap_is_labelled_when_nothing_is_measured(monkeypatch, tmp_path):
+    module = load_generator()
+    # Pretend neither the lane manifest nor a tracked canonical manifest exists.
+    monkeypatch.setattr(module, "HERE", tmp_path)
+    monkeypatch.setattr(module, "LANE_MANIFESTS", {})
+    document, _package, origin = module.canonical_for(module.ARMS[0])
+    assert origin == "bootstrap"
+    arm = document["arms"][0]
+    assert arm["bootstrap_only"] is True
+    assert arm["raw"] == {}
+    assert "PRE-MEASUREMENT BOOTSTRAP" in arm["bootstrap_note"]
+    assert document["report_status"].startswith("NOT EXECUTED")
+
+
+def test_generator_preserves_a_tracked_measured_manifest(monkeypatch):
+    """With no lane manifest, the tracked measured copy is loaded, not reset."""
+    if not NATIVE_MANIFEST.is_file():
+        pytest.skip("native manifest not present in this checkout")
+    module = load_generator()
+    monkeypatch.setattr(module, "LANE_MANIFESTS", {})
+    document, package, origin = module.canonical_for(module.ARMS[0])
+    assert origin == "canonical"
+    assert document["arms"][0]["raw"]
+    assert package == "runs/v10-native-tp3ep1"
+    assert module.evidence_available(document) is True
+
+
+def test_generator_overlays_publication_metadata_onto_lane_manifest(monkeypatch, tmp_path):
+    """A lane regeneration that drops the caveats cannot erase them."""
+    if not NATIVE_MANIFEST.is_file():
+        pytest.skip("native manifest not present in this checkout")
+    module = load_generator()
+    lane = tmp_path / "lane-manifest.json"
+    lane.write_text(json.dumps({
+        "release": "v10",
+        "arms": [{"id": "v10-native-tp3ep1", "raw": {"decode": "raw/lane.json"}}],
+    }))
+    (tmp_path / "v10-native-tp3ep1-manifest.json").write_text(
+        NATIVE_MANIFEST.read_text())
+    monkeypatch.setattr(module, "HERE", tmp_path)
+    monkeypatch.setattr(module, "LANE_MANIFESTS",
+                        {"v10-native-tp3ep1": (lane, "runs/lane")})
+    document, _package, origin = module.canonical_for(module.ARMS[0])
+    assert origin == "measured"
+    # the lane's measured evidence wins ...
+    assert document["arms"][0]["raw"] == {"decode": "raw/lane.json"}
+    # ... while the publication caveats are restored from the canonical record.
+    assert document["report_class"] == "informational"
+    assert document["report_status"].startswith("INCOMPLETE / INFORMATIONAL")
+    assert document["arms"][0]["limitations"]
+    assert document["arms"][0]["measurement_provenance"]["remeasured"] is False
+
+
 
 
 def test_exl3_manifest_declares_the_ceiling():

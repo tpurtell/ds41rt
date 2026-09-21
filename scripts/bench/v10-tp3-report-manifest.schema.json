@@ -10,6 +10,15 @@
     "release": {"const": "v10", "description": "This schema is v10-specific."},
     "report_title": {"type": "string", "description": "Optional H1 title for the rendered report."},
     "report_status": {"type": "string", "description": "Optional status banner, e.g. 'NOT EXECUTED - pending raw manifests'. Not a substitute for the per-family accounting table."},
+    "report_class": {
+      "type": ["string", "null"],
+      "enum": ["qualification", "informational", null],
+      "description": "Publication class. 'informational' means the report is published for information and is not a formal release qualification."
+    },
+    "harness_provenance": {
+      "description": "Measured-time harness/corpus digests and any post-run harness corrections, so raw records are attributed to the file that produced them.",
+      "oneOf": [{"$ref": "#/$defs/harness_provenance"}, {"type": "null"}]
+    },
     "checkpoint": {"$ref": "#/$defs/checkpoint"},
     "images": {
       "description": "Optional at campaign start: the v10 pair is not published yet, and a manifest must be able to describe an unmeasured campaign. When present, both roles are required.",
@@ -150,6 +159,24 @@
         },
         "raw": {"$ref": "#/$defs/raw"},
         "tool_eval": {"$ref": "#/$defs/tool_eval"},
+        "evidence_package": {
+          "type": ["string", "null"],
+          "description": "Directory that this arm's relative raw paths resolve against (the lane directory that holds the evidence)."
+        },
+        "measurement_provenance": {
+          "description": "The measured config identity and the current published profile, so a reader can see when the numbers predate a profile change.",
+          "oneOf": [{"$ref": "#/$defs/measurement_provenance"}, {"type": "null"}]
+        },
+        "limitations": {
+          "type": ["array", "null"],
+          "description": "Caveats that qualify the measured numbers. Reported alongside the values, never used to change them.",
+          "items": {"$ref": "#/$defs/limitation"}
+        },
+        "bootstrap_only": {
+          "type": ["boolean", "null"],
+          "description": "True for a pre-measurement placeholder manifest. A bootstrap-only manifest carries no measured value and must never replace one that does."
+        },
+        "bootstrap_note": {"type": ["string", "null"]},
         "warmup": {"type": ["string", "null"], "description": "Warmup policy actually used."},
         "repeats": {"type": ["integer", "null"], "minimum": 1},
         "notes": {"type": ["string", "null"]},
@@ -168,6 +195,75 @@
             }
           }
         }
+      }
+    },
+    "harness_provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Harness/corpus digests captured with the measurement plus any post-run source corrections.",
+      "required": ["digests"],
+      "properties": {
+        "note": {"type": ["string", "null"]},
+        "digests": {
+          "type": "object",
+          "description": "Repo-relative source path -> SHA-256 as measured.",
+          "additionalProperties": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        },
+        "corrections": {
+          "type": ["array", "null"],
+          "items": {"$ref": "#/$defs/correction"}
+        }
+      }
+    },
+    "correction": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A harness change made after the run, recorded so raw records are not retroactively attributed to the newer file.",
+      "required": ["path", "measured_sha256"],
+      "properties": {
+        "path": {"type": "string"},
+        "commit": {"type": ["string", "null"]},
+        "measured_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "note": {"type": ["string", "null"]}
+      }
+    },
+    "measurement_provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The config identity actually measured versus the current published profile.",
+      "required": ["measured_config_sha256", "remeasured"],
+      "properties": {
+        "measured_config_path": {"type": ["string", "null"]},
+        "measured_config_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "measured_kv_pool_size": {"type": ["string", "null"]},
+        "measured_kv_pool_note": {"type": ["string", "null"]},
+        "published_profile_commit": {"type": ["string", "null"]},
+        "published_profile_config_sha256": {
+          "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"
+        },
+        "published_profile_kv_pool_size": {"type": ["string", "null"]},
+        "pin_commit": {
+          "type": ["string", "null"],
+          "description": "Commit that introduced the KV_POOL_SIZE pin, when the current profile commit only carries later edits."
+        },
+        "pin_config_sha256": {
+          "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"
+        },
+        "remeasured": {"type": "boolean"},
+        "note": {"type": ["string", "null"]}
+      }
+    },
+    "limitation": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A caveat attached to a measured arm. It qualifies the values and never changes them.",
+      "required": ["id", "summary"],
+      "properties": {
+        "id": {"type": "string"},
+        "summary": {"type": "string"},
+        "detail": {"type": ["string", "null"]},
+        "evidence": {"type": ["string", "null"]},
+        "affects": {"type": ["string", "null"]}
       }
     },
     "raw": {

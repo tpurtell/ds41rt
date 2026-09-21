@@ -11,7 +11,7 @@
     "tool_eval_runs": 3,
     "note": "One shape warmup then three timed samples per cell; retained uses three repeats per isolated context. Expected counts are re-derived from the live harness scripts at check/render time."
   },
-  "report_status": "NOT EXECUTED - pending raw manifests; no performance, memory, quality or readiness claim",
+  "report_status": "INCOMPLETE / INFORMATIONAL - measured arm(s): v10-native-tp3ep1; every number is conditional on that arm's attached limitations and none of it is a formal qualification",
   "arms": [
     {
       "id": "v10-native-tp3ep1",
@@ -24,7 +24,7 @@
       "comparison_group": "v10-1rtx-3spark",
       "resident_bytes_per_rank": 2406481920,
       "remote_layers": 35,
-      "worker_allocated_layers": null,
+      "worker_allocated_layers": 35,
       "weight_note": "TP3 per-rank shard is the exact 2304/3 = 768-column slice, 2,406,481,920 B. Five RTX-local layers leave 35 remote: 35 x 2,406,481,920 = 84,226,867,200 B, inside the 109,119,320,064 B tested fleet floor by 24,892,452,864 B. Admission arithmetic only, not a runtime-fit claim.",
       "ceiling": {
         "memory_reservation": null,
@@ -41,12 +41,83 @@
         "expert_format": "native",
         "dspark": "on"
       },
-      "raw": {},
+      "raw": {
+        "decode": "raw/decode.json",
+        "prefill": "raw/prefill.json",
+        "retained": [
+          "raw/retained-ctx-0.json",
+          "raw/retained-ctx-32768.json",
+          "raw/retained-ctx-65536.json",
+          "raw/retained-ctx-131072.json",
+          "raw/retained-ctx-262144.json"
+        ],
+        "retained_control_2k": "raw/retained-control-2k.json",
+        "concurrency_counting": "raw/concurrency-counting.json",
+        "concurrency_code": "raw/concurrency-code.json",
+        "concurrency_topic": "raw/concurrency-topic.json",
+        "mixed": "raw/mixed.json",
+        "target_only": "raw/target-only.json",
+        "startup_memory": "raw/memory.json",
+        "kernel_tiling": "raw/kernel-tp3.json"
+      },
       "warmup": "one shape warmup, excluded from the ledger",
       "repeats": 3,
-      "notes": "Not launched: the v10 image pair is not published, so no raw evidence exists and every family is PENDING.",
+      "notes": "Executed on the v10 image pair: 309 / 359 performance records; tool-eval 88 / 264 scenario-runs. Retained context 65536 and 262144 failed the strict full-parent-reuse gate and tool-eval runs 2-3 were OOM capacity-gated; see runs/v10-native-tp3ep1/retained-65536-failure/ and tool-eval-short-oom/. runs/v10-tp3/generate-docs.py is a PRE-MEASUREMENT BOOTSTRAP generator only and must not be re-run after measurement: its hardcoded raw:{} would reset the measured manifest. The measured manifest is runs/v10-native-tp3ep1/manifest.json.",
       "failures": [],
-      "config_sha256": "9e738e727a088a2d047402af51c4a8b7444bf12be6b44d87ea954de7c60de4eb"
+      "config_sha256": "9e738e727a088a2d047402af51c4a8b7444bf12be6b44d87ea954de7c60de4eb",
+      "tool_eval": {
+        "summaries": "raw/tool-eval/summaries.json",
+        "dir": "raw/tool-eval",
+        "runs": [
+          "raw/tool-eval/run-01",
+          "raw/tool-eval/run-02",
+          "raw/tool-eval/run-03"
+        ]
+      },
+      "evidence_package": "runs/v10-native-tp3ep1",
+      "measurement_provenance": {
+        "measured_config_path": "examples/configs/tp3ep1-native.config",
+        "measured_config_sha256": "9e738e727a088a2d047402af51c4a8b7444bf12be6b44d87ea954de7c60de4eb",
+        "measured_kv_pool_size": "unset / daemon auto (~16.7 GB)",
+        "measured_kv_pool_note": "KV_POOL_SIZE was unset, so the daemon auto-sized the pool to global_bytes=16,700,672,000 (36,650 page groups; cache_bytes=16,745,176,576, about 16.7 GB) with device_occupied_bytes=99,091,742,720 of device_budget_bytes=101,973,491,712.",
+        "published_profile_commit": "928720345ac102c4f96036e8bbd587173db60079",
+        "published_profile_config_sha256": "f682aa1f4d282a7ab05c127460dc9244b5aec0d1ec8d870bfdad5c9180be7af9",
+        "published_profile_kv_pool_size": "12GiB",
+        "pin_commit": "a057296d121651f80070d81b2d7c8e862146d9d1",
+        "pin_config_sha256": "a8d3d284b6905e549d483cdd9273248ca8049c37366edf0c4489af152cdb2068",
+        "remeasured": false,
+        "note": "The KV pool was pinned to 12GiB in a057296 (12,884,807,680 B of pool; 28,276 whole 455,680-byte page groups) to return roughly 3.8 GB of device headroom. Later profile edits (through 9287203) are comment-only and keep the pin. The pinned profile has not been remeasured, so every measured number in this report belongs to the pre-pin profile."
+      },
+      "limitations": [
+        {
+          "id": "config-not-remeasured",
+          "summary": "Every performance number was measured on the config before the KV_POOL_SIZE pin and does not describe the current published profile.",
+          "detail": "The measured profile left KV_POOL_SIZE unset; the daemon auto policy filled the device to global_bytes=16,700,672,000 (36,650 page groups; cache_bytes=16,745,176,576, about 16.7 GB). The pin was introduced at commit a057296 and stands at the current published profile commit 9287203: KV_POOL_SIZE=12GiB (12,884,807,680 B of pool; 28,276 groups; config sha256 f682aa1f4d282a7ab05c127460dc9244b5aec0d1ec8d870bfdad5c9180be7af9). The pinned profile has NOT been remeasured, so these numbers are informational for the pre-pin config only.",
+          "evidence": "examples/configs/tp3ep1-native.config; commit a057296d121651f80070d81b2d7c8e862146d9d1",
+          "affects": "all measured throughput, memory and tool-eval numbers in this report"
+        },
+        {
+          "id": "retained-harness-corrected-post-run",
+          "summary": "The retained gate expectation was corrected after the run (2f8208b); the recorded retained non-pass cells are retained as raw and not retroactively rewritten.",
+          "detail": "The two retained non-pass records (contexts 65536 and 262144, case code-reasoning, repeat 1) were produced under the pre-2f8208b strict full-parent-turn-reuse expectation. Commit 2f8208b corrected the harness gate to accept prompt-prefix reuse (context <= prompt_cache_hit_tokens <= parent turn frontier with self-consistent accounting) and to record full generated-turn reuse separately. Under the corrected contract those cells are understood as prompt-prefix reuse successes, but the raw records, the recorded failure verdict and the strict record-accounting outcome are left exactly as measured.",
+          "evidence": "runs/v10-native-tp3ep1/retained-65536-failure/README.md; raw/retained-ctx-65536.json; commit 2f8208ba65ee1450d9e331ff52dd0b0fec01b33f",
+          "affects": "retained decode contexts 65536 and 262144"
+        },
+        {
+          "id": "tool-eval-capacity-gated",
+          "summary": "Tool-eval is 88 / 264 scenario-runs; runs 2-3 did not start (OOM capacity-gated) under the pre-pin auto KV pool.",
+          "detail": "Run 1 completed 88 scenario-runs (131/144 points; 18 fail / 9 partial / 61 pass). Runs 2-3 failed request admission with cudaGraphInstantiate / cudaMalloc 'out of memory' at --parallel 16 under the auto-sized pool. The a057296 pin targets that headroom but has not been remeasured.",
+          "evidence": "runs/v10-native-tp3ep1/tool-eval-short-oom/README.md; docs/v10-native-tp3ep1-tool-eval-oom.md",
+          "affects": "tool-call evaluation"
+        },
+        {
+          "id": "informational-not-qualification",
+          "summary": "This is an incomplete, informational performance report, not a formal release qualification.",
+          "detail": "309 / 359 expected performance records are present; 50 retained records did not complete. The strict record-accounting gate does not pass. Publication may cite these numbers only as measured, incomplete, informational results for the pre-pin config; they do not establish quality, memory, performance or readiness for the native arm or for the published profile.",
+          "evidence": "runs/v10-native-tp3ep1/ledger.json",
+          "affects": "publication status"
+        }
+      ]
     },
     {
       "id": "v10-exl3-compact-tp3",
@@ -89,5 +160,26 @@
       "config_sha256": "087e3498307bffbe97dcb0e333240884f5fddbe3563adb0d492e6d54908984cf"
     }
   ],
+  "report_class": "informational",
+  "harness_provenance": {
+    "note": "Harness and corpus digests as measured. scripts/bench-ds41-release-retained-decode.py was corrected after the run in 2f8208b; its measured digest is pinned here so the raw records are not retroactively attributed to the corrected harness.",
+    "digests": {
+      "scripts/bench-ds41-adaptive-mixed.py": "228d134e8fbb5f5ec39ffe25b64b35d96634613cc8e712be3feadf866a50d511",
+      "scripts/bench-ds41-concurrent-api.py": "c84fee3d1994410f2d5f6f1dd05fcc1ab31fa6942a2a413b9905be5a94b839a4",
+      "scripts/bench-ds41-release-decode.py": "3c0a9b937779565bdcdd9c0de89e50d247651db3eae999974b5071c0f05015de",
+      "scripts/bench-ds41-release-prefill-matrix.py": "24d697db6211204fdbde24e57fa8d2f538a3f690fc6559da7748f0156d2cf5a6",
+      "scripts/bench-ds41-release-retained-decode.py": "180d0a6b4dcb053c8e4ad21773336788c21cd205ed8cafc9ff3e558ea3cf168e",
+      "scripts/fixtures/release-semantic-corpus.json": "1972e572fbf9d468cd86c2db5d3d3de60641329edca152fe013a179eb55001de",
+      "scripts/qualify-ds41-tool-eval.py": "2781bb949bc7d0abe5b32b4a9dc2102ba81809cd9355c7ecc87aff3c76df5333"
+    },
+    "corrections": [
+      {
+        "path": "scripts/bench-ds41-release-retained-decode.py",
+        "commit": "2f8208ba65ee1450d9e331ff52dd0b0fec01b33f",
+        "measured_sha256": "180d0a6b4dcb053c8e4ad21773336788c21cd205ed8cafc9ff3e558ea3cf168e",
+        "note": "The retained gate was corrected after the run: 2f8208b accepts prompt-prefix reuse (context <= prompt_cache_hit_tokens <= parent turn frontier) and records full generated-turn reuse separately. This raw package was produced by the pre-correction harness; the strict failures it records are retained as raw and not rewritten."
+      }
+    ]
+  },
   "report_title": "DS41RT v10 TP3 campaign status: native TP3EP1 and compact EXL3 TP3"
 }
