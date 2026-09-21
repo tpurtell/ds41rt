@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/tpurtell/ds41rt/scripts/bench/v10-tp3-report-manifest.schema.json",
+  "title": "DS41RT v10 / TP3 report manifest",
+  "description": "Binds every rendered v10 TP3 table to raw bench output and the exact artifact identity it was measured on. Covers both three-rank arms: the explicit native TP3xEP1 arm and the implicit compact EXL3 TP3 arm. A renderer must never invent a value: any arm/family/field that is absent or null renders as an em dash or an explicit PENDING cell.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["release", "checkpoint", "arms"],
+  "properties": {
+    "release": {"const": "v10", "description": "This schema is v10-specific."},
+    "report_title": {"type": "string", "description": "Optional H1 title for the rendered report."},
+    "report_status": {"type": "string", "description": "Optional status banner, e.g. 'NOT EXECUTED - pending raw manifests'. Not a substitute for the per-family accounting table."},
+    "checkpoint": {"$ref": "#/$defs/checkpoint"},
+    "images": {
+      "description": "Optional at campaign start: the v10 pair is not published yet, and a manifest must be able to describe an unmeasured campaign. When present, both roles are required.",
+      "oneOf": [{"$ref": "#/$defs/images"}, {"type": "null"}]
+    },
+    "network": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["spark_link_mbps", "rails", "evidence"],
+      "properties": {
+        "spark_link_mbps": {"type": "integer", "minimum": 1, "description": "Negotiated per-rail link speed observed live, not advertised."},
+        "rails": {"enum": ["A-only", "A+B"]},
+        "evidence": {"type": "string", "description": "Path to the captured link/route evidence."},
+        "dual_lane_note": {"type": ["string", "null"]}
+      }
+    },
+    "thresholds": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["noise_percent", "weak_percent", "credible_percent", "basis"],
+      "properties": {
+        "noise_percent": {"type": "number"},
+        "weak_percent": {"type": "number"},
+        "credible_percent": {"type": "number"},
+        "basis": {"type": "string", "description": "Where the thresholds come from (observed historical repeat spread)."}
+      }
+    },
+    "accounting": {"$ref": "#/$defs/accounting"},
+    "arms": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/arm"}
+    }
+  },
+  "$defs": {
+    "checkpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model_id", "revision", "quant"],
+      "properties": {
+        "model_id": {"type": "string"},
+        "revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "quant": {"enum": ["official", "exl3", "nvfp4"]},
+        "family": {"type": ["string", "null"], "description": "EXL3 family tag, e.g. k34. Null for the official checkpoint."},
+        "bits": {
+          "type": ["array", "null"],
+          "items": {"type": "integer"},
+          "description": "Declared bit family for a mixed-projection EXL3 checkpoint, e.g. [3, 4]."
+        }
+      }
+    },
+    "images": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["coordinator", "spark_expert"],
+      "properties": {
+        "coordinator": {"$ref": "#/$defs/image"},
+        "spark_expert": {"$ref": "#/$defs/image"},
+        "exl3_family_manifest": {
+          "type": ["string", "null"],
+          "description": "In-image EXL3 family manifest path required by the compact arm (run.sh refuses a launch whose selected family manifest is absent)."
+        }
+      }
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tag", "digest", "revision"],
+      "properties": {
+        "tag": {"type": "string"},
+        "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
+      }
+    },
+    "accounting": {
+      "type": ["object", "null"],
+      "description": "Protocol values the expected record counts are derived from. The renderer re-derives the per-family expectations from the live harness scripts and this protocol, so the expectation is reproducible and never a hand-asserted total.",
+      "additionalProperties": false,
+      "properties": {
+        "repeats": {"type": "integer", "minimum": 1, "description": "Timed samples per cell (protocol: warmup + three matched runs)."},
+        "prefill_warmups": {"type": "integer", "minimum": 0},
+        "tool_eval_runs": {"type": "integer", "minimum": 1},
+        "note": {"type": ["string", "null"]}
+      }
+    },
+    "arm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "quant", "topology", "rtx", "sparks", "config_sha256", "raw"],
+      "properties": {
+        "id": {"type": "string"},
+        "quant": {"enum": ["official", "exl3", "nvfp4"]},
+        "topology": {"type": "string", "enum": ["TP3xEP1", "TP3"], "description": "TP3xEP1 for the explicit native arm; TP3 for the implicit compact EXL3 TP3 layout."},
+        "topology_form": {"type": ["string", "null"], "enum": ["explicit", "implicit", null], "description": "The native arm names SPARK_TP=3/SPARK_EP=1; the compact EXL3 arm is implicit SPARK_COUNT=3 with no TP/EP keys."},
+        "rtx": {"type": "integer", "minimum": 0, "maximum": 2},
+        "sparks": {"type": "integer", "minimum": 0, "maximum": 6},
+        "config_path": {"type": ["string", "null"], "description": "Path to the captured launch config."},
+        "config_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "comparison_group": {"type": ["string", "null"]},
+        "images": {
+          "description": "Optional per-arm image override.",
+          "oneOf": [{"$ref": "#/$defs/images"}, {"type": "null"}]
+        },
+        "resident_bytes_per_rank": {"type": ["integer", "null"], "description": "Routed weight bytes resident per Spark rank for this arm."},
+        "remote_layers": {"type": ["integer", "null"], "description": "Layers the coordinator dispatches to the Sparks."},
+        "worker_allocated_layers": {"type": ["integer", "null"], "description": "Layers the worker actually allocated/loaded; may exceed the dispatched count."},
+        "weight_note": {"type": ["string", "null"]},
+        "ceiling": {
+          "type": ["object", "null"],
+          "description": "Memory-reservation ceiling fields. Required for the compact EXL3 arm's 32 GiB simulation; the native arm may carry null.",
+          "additionalProperties": false,
+          "required": ["memory_reservation", "kv_pool_size", "prefill_batch_tokens"],
+          "properties": {
+            "memory_reservation": {"type": ["string", "null"], "description": "Declared MEMORY_RESERVATION ceiling, e.g. 32GiB."},
+            "memory_reservation_bytes": {"type": ["integer", "null"], "minimum": 1, "description": "Ceiling in bytes, as resolved at launch."},
+            "kv_pool_size": {"type": ["string", "null"], "description": "Declared KV_POOL_SIZE, e.g. 2GiB."},
+            "kv_pool_size_bytes": {"type": ["integer", "null"], "minimum": 1},
+            "prefill_batch_tokens": {"type": ["integer", "null"], "minimum": 1, "description": "Clamped PREFILL_BATCH_TOKENS under the ceiling."},
+            "evidence": {"type": ["string", "null"], "description": "Captured log/reservation line proving the resolved ceiling."},
+            "note": {"type": ["string", "null"]}
+          }
+        },
+        "cost_policy": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["default_mode", "legacy_mode", "evidence"],
+          "properties": {
+            "default_mode": {"type": ["string", "null"]},
+            "legacy_mode": {"type": ["string", "null"]},
+            "adaptive_mode_env": {"type": ["string", "null"]},
+            "evidence": {"type": ["string", "null"]}
+          }
+        },
+        "runtime_flags": {
+          "type": "object",
+          "description": "Actual resolved launch flags/geometry recorded from argv+log, not the intended config.",
+          "additionalProperties": true
+        },
+        "raw": {"$ref": "#/$defs/raw"},
+        "tool_eval": {"$ref": "#/$defs/tool_eval"},
+        "warmup": {"type": ["string", "null"], "description": "Warmup policy actually used."},
+        "repeats": {"type": ["integer", "null"], "minimum": 1},
+        "notes": {"type": ["string", "null"]},
+        "failures": {
+          "type": "array",
+          "description": "Retained negative results; a failure is reported, never silently dropped.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["what", "observed"],
+            "properties": {
+              "what": {"type": "string"},
+              "observed": {"type": "string"},
+              "scope": {"type": ["string", "null"]},
+              "evidence": {"type": ["string", "null"]}
+            }
+          }
+        }
+      }
+    },
+    "raw": {
+      "type": "object",
+      "description": "Raw bench outputs per measured family. A path may be relative to --package or absolute/~-prefixed. Absent/null => an explicit PENDING cell in the report, never a number.",
+      "additionalProperties": false,
+      "properties": {
+        "decode": {"$ref": "#/$defs/paths"},
+        "prefill": {"$ref": "#/$defs/paths"},
+        "retained": {"$ref": "#/$defs/paths"},
+        "retained_control_2k": {"$ref": "#/$defs/paths"},
+        "concurrency_counting": {"$ref": "#/$defs/paths"},
+        "concurrency_code": {"$ref": "#/$defs/paths"},
+        "concurrency_topic": {"$ref": "#/$defs/paths"},
+        "mixed": {"$ref": "#/$defs/paths"},
+        "target_only": {"$ref": "#/$defs/paths"},
+        "startup_memory": {"$ref": "#/$defs/paths"},
+        "kernel_tiling": {"$ref": "#/$defs/paths"}
+      }
+    },
+    "paths": {
+      "description": "One raw path, a list of raw paths, or null.",
+      "oneOf": [
+        {"type": "string"},
+        {"type": "array", "items": {"type": "string"}},
+        {"type": "null"}
+      ]
+    },
+    "tool_eval": {
+      "description": "Tool-call evaluation evidence. `summaries` is the qualify-ds41-tool-eval.py summaries.json (one entry per run, each carrying its own per-run score and its failures list). `dir`/`runs` name the per-run directories so non-pass scenario detail can be read from the raw run artifacts.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["summaries"],
+          "properties": {
+            "summaries": {"type": "string"},
+            "dir": {"type": ["string", "null"]},
+            "runs": {"type": ["array", "null"], "items": {"type": "string"}, "description": "Per-run directories, e.g. run-01/run-02/run-03."}
+          }
+        },
+        {"type": "null"}
+      ]
+    }
+  }
+}

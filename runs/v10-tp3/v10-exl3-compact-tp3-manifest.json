@@ -1,0 +1,58 @@
+{
+  "release": "v10",
+  "checkpoint": {
+    "model_id": "deepseek-ai/DeepSeek-V4.1-Flash",
+    "revision": "dba1be0a40aa45a94ad051997016db3960a90277",
+    "quant": "official"
+  },
+  "accounting": {
+    "repeats": 3,
+    "prefill_warmups": 1,
+    "tool_eval_runs": 3,
+    "note": "One shape warmup then three timed samples per cell; retained uses three repeats per isolated context. Expected counts are re-derived from the live harness scripts at check/render time."
+  },
+  "report_status": "NOT EXECUTED - pending raw manifests; no performance, memory, quality or readiness claim",
+  "arms": [
+    {
+      "id": "v10-exl3-compact-tp3",
+      "quant": "exl3",
+      "topology": "TP3",
+      "topology_form": "implicit",
+      "rtx": 1,
+      "sparks": 3,
+      "config_path": "examples/configs/exl3-compact-tp3.config",
+      "comparison_group": "v10-1rtx-3spark",
+      "resident_bytes_per_rank": null,
+      "remote_layers": null,
+      "worker_allocated_layers": null,
+      "weight_note": "Compact EXL3 TP3 is the implicit layout (SPARK_COUNT=3 with no SPARK_TP/SPARK_EP); each rank serves the 2304/3 = 768-column shard from non-paired disjoint k34-family packages. Resident bytes are not yet captured and are not inferred from the native arm.",
+      "ceiling": {
+        "memory_reservation": "32GiB",
+        "memory_reservation_bytes": 34359738368,
+        "kv_pool_size": "2GiB",
+        "kv_pool_size_bytes": 2147483648,
+        "prefill_batch_tokens": 256,
+        "evidence": null,
+        "note": "Declared ceiling from examples/configs/exl3-compact-tp3.config. The resolved reservation, occupancy and KV figures must be captured from the service at launch; the declared values are not a proven fit."
+      },
+      "runtime_flags": {
+        "spark_count": 3,
+        "spark_tp": "implicit (count = TP)",
+        "spark_ep": 1,
+        "expert_format": "exl3",
+        "exl3_family": "k34",
+        "memory_reservation": "32GiB",
+        "kv_pool_size": "2GiB",
+        "prefill_batch_tokens": 256,
+        "dspark": "on"
+      },
+      "raw": {},
+      "warmup": "one shape warmup, excluded from the ledger",
+      "repeats": 3,
+      "notes": "Not launched: the v10 image pair is not published and the k34 tp3-rank{0,1,2} packages must be present in the Spark image. Every family is PENDING. config_sha256 is the current committed hash of examples/configs/exl3-compact-tp3.config (re-verify at freeze).",
+      "failures": [],
+      "config_sha256": "087e3498307bffbe97dcb0e333240884f5fddbe3563adb0d492e6d54908984cf"
+    }
+  ],
+  "report_title": "DS41RT v10 compact EXL3 TP3 1x / 3-Spark: performance and qualification"
+}

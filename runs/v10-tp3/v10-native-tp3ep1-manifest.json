@@ -1,0 +1,53 @@
+{
+  "release": "v10",
+  "checkpoint": {
+    "model_id": "deepseek-ai/DeepSeek-V4.1-Flash",
+    "revision": "dba1be0a40aa45a94ad051997016db3960a90277",
+    "quant": "official"
+  },
+  "accounting": {
+    "repeats": 3,
+    "prefill_warmups": 1,
+    "tool_eval_runs": 3,
+    "note": "One shape warmup then three timed samples per cell; retained uses three repeats per isolated context. Expected counts are re-derived from the live harness scripts at check/render time."
+  },
+  "report_status": "NOT EXECUTED - pending raw manifests; no performance, memory, quality or readiness claim",
+  "arms": [
+    {
+      "id": "v10-native-tp3ep1",
+      "quant": "official",
+      "topology": "TP3xEP1",
+      "topology_form": "explicit",
+      "rtx": 1,
+      "sparks": 3,
+      "config_path": "examples/configs/tp3ep1-native.config",
+      "comparison_group": "v10-1rtx-3spark",
+      "resident_bytes_per_rank": 2406481920,
+      "remote_layers": 35,
+      "worker_allocated_layers": null,
+      "weight_note": "TP3 per-rank shard is the exact 2304/3 = 768-column slice, 2,406,481,920 B. Five RTX-local layers leave 35 remote: 35 x 2,406,481,920 = 84,226,867,200 B, inside the 109,119,320,064 B tested fleet floor by 24,892,452,864 B. Admission arithmetic only, not a runtime-fit claim.",
+      "ceiling": {
+        "memory_reservation": null,
+        "kv_pool_size": null,
+        "prefill_batch_tokens": null,
+        "note": "Uncapped native arm; no 32 GiB simulation applies."
+      },
+      "runtime_flags": {
+        "spark_count": 3,
+        "spark_tp": 3,
+        "spark_ep": 1,
+        "rtx_expert_layers": 5,
+        "remote_dispatch_layers": 35,
+        "expert_format": "native",
+        "dspark": "on"
+      },
+      "raw": {},
+      "warmup": "one shape warmup, excluded from the ledger",
+      "repeats": 3,
+      "notes": "Not launched: the v10 image pair is not published, so no raw evidence exists and every family is PENDING. config_sha256 is the current committed hash of examples/configs/tp3ep1-native.config (re-verify at freeze).",
+      "failures": [],
+      "config_sha256": "9e738e727a088a2d047402af51c4a8b7444bf12be6b44d87ea954de7c60de4eb"
+    }
+  ],
+  "report_title": "DS41RT v10 TP3 official native 1x / 3-Spark: performance and qualification"
+}
