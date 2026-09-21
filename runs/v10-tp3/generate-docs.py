@@ -70,6 +70,28 @@ EXPECTED_COUNTS_BY_ARM = {
     "v10-exl3-compact-tp3": EXPECTED_COUNTS,
 }
 
+# A lane may name its arm after the measured layout (the EXL3 lane writes
+# `exl3-k34-1x32g-3spark`, its evidence directory name) while the published
+# campaign, the report URL and the checklist all name the arm after its
+# topology (`v10-exl3-compact-tp3`). The published id wins in every committed
+# document so one arm never appears under two names; the alias is applied when
+# the canonical document is loaded, so the lane manifest itself is untouched.
+ARM_ID_ALIAS = {
+    "exl3-k34-1x32g-3spark": "v10-exl3-compact-tp3",
+}
+
+
+def canonical_arm_id(arm_id: str) -> str:
+    return ARM_ID_ALIAS.get(arm_id, arm_id)
+
+
+def apply_arm_id_alias(document: dict) -> dict:
+    for arm in document.get("arms") or []:
+        if arm.get("id"):
+            arm["id"] = canonical_arm_id(arm["id"])
+    return document
+
+
 ARMS = (
     {
         "id": "v10-native-tp3ep1",
@@ -256,10 +278,11 @@ def canonical_for(entry: dict) -> tuple[dict, str, str]:
         document = json.loads(lane[0].read_text())
         if tracked.is_file():
             document = overlay_publication(document, json.loads(tracked.read_text()))
-        return document, lane[1], "measured"
+        return apply_arm_id_alias(document), lane[1], "measured"
     if tracked.is_file():
         document = json.loads(tracked.read_text())
-        return document, evidence_package(document) or "runs/v10-tp3", "canonical"
+        return (apply_arm_id_alias(document),
+                evidence_package(document) or "runs/v10-tp3", "canonical")
     return bootstrap_manifest(entry), "runs/v10-tp3", "bootstrap"
 
 

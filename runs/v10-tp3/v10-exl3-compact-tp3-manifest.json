@@ -1,17 +1,38 @@
 {
   "release": "v10",
+  "report_title": "DS41RT v10 compact EXL3 TP3 1x / 3-Spark: performance and qualification",
+  "report_status": "MEASURED \u2014 PASS; 0 retained non-capacity failure(s), 0 capacity-gated failure(s); no release-readiness claim beyond the recorded evidence",
   "checkpoint": {
-    "model_id": "deepseek-ai/DeepSeek-V4.1-Flash",
-    "revision": "dba1be0a40aa45a94ad051997016db3960a90277",
-    "quant": "official"
+    "model_id": "wrldsuksgo2mars/DeepSeek-V4.1-EXL3-K3.25-v1",
+    "revision": "cfd4ca1d1934a8e81dd2d7515598d4ce288e8b88",
+    "quant": "exl3",
+    "family": "k34",
+    "bits": [
+      3,
+      4
+    ]
   },
+  "images": {
+    "coordinator": {
+      "tag": "ghcr.io/tpurtell/ds41rt-coordinator:v10",
+      "digest": "sha256:2236d94317eb393cd78940efb117bcca14ae06e6d1113c6aeb188b0b22424689",
+      "revision": "3dd9a4ac2be9fd17ecf4cb8b7746efdc900d38f0"
+    },
+    "spark_expert": {
+      "tag": "ghcr.io/tpurtell/ds41rt-spark-expert:v10",
+      "digest": "sha256:d1b668cd7e87079b5b57e381bdd45dfb4858646533611f18f22061f58ae18dec",
+      "revision": "3dd9a4ac2be9fd17ecf4cb8b7746efdc900d38f0"
+    },
+    "exl3_family_manifest": "/opt/ds41rt/lib/exl3/exl3-k34/manifest.json"
+  },
+  "network": null,
+  "thresholds": null,
   "accounting": {
     "repeats": 3,
     "prefill_warmups": 1,
     "tool_eval_runs": 3,
-    "note": "One shape warmup then three timed samples per cell; retained uses three repeats per isolated context. Expected counts are re-derived from the live harness scripts at check/render time."
+    "note": "warmup then three matched runs per cell; expectation re-derived in expected-counts.json"
   },
-  "report_status": "NOT EXECUTED - pending raw manifests; no performance, memory, quality or readiness claim",
   "arms": [
     {
       "id": "v10-exl3-compact-tp3",
@@ -20,39 +41,97 @@
       "topology_form": "implicit",
       "rtx": 1,
       "sparks": 3,
-      "config_path": "examples/configs/exl3-compact-tp3.config",
-      "comparison_group": "v10-1rtx-3spark",
+      "config_path": "/home/tj/Developer/ds41rt/examples/configs/exl3-compact-tp3.config",
+      "config_sha256": "087e3498307bffbe97dcb0e333240884f5fddbe3563adb0d492e6d54908984cf",
+      "comparison_group": null,
+      "images": null,
       "resident_bytes_per_rank": null,
       "remote_layers": null,
       "worker_allocated_layers": null,
-      "weight_note": "Compact EXL3 TP3 is the implicit layout (SPARK_COUNT=3 with no SPARK_TP/SPARK_EP); each rank serves the 2304/3 = 768-column shard from non-paired disjoint k34-family packages. Resident bytes are not yet captured and are not inferred from the native arm.",
+      "weight_note": "derived from the daemon placement/residency log; null when not observable",
       "ceiling": {
         "memory_reservation": "32GiB",
         "memory_reservation_bytes": 34359738368,
         "kv_pool_size": "2GiB",
         "kv_pool_size_bytes": 2147483648,
         "prefill_batch_tokens": 256,
-        "evidence": null,
-        "note": "Declared ceiling from examples/configs/exl3-compact-tp3.config. The resolved reservation, occupancy and KV figures must be captured from the service at launch; the declared values are not a proven fit."
+        "evidence": "fit-residency.log (reservation_bytes=34359738368, global_bytes=2147164160, device_budget_bytes=34359738368); prefill_batch_tokens declared by examples/configs/exl3-compact-tp3.config",
+        "note": null
       },
+      "cost_policy": null,
       "runtime_flags": {
-        "spark_count": 3,
-        "spark_tp": "implicit (count = TP)",
-        "spark_ep": 1,
-        "expert_format": "exl3",
-        "exl3_family": "k34",
-        "memory_reservation": "32GiB",
-        "kv_pool_size": "2GiB",
-        "prefill_batch_tokens": 256,
-        "dspark": "on"
+        "rtx_layout": "1 GPU(s), host indices 0 (GPU-fe5b6dd0-a77c-c8fb-6360-e1b9d9918ac0)",
+        "spark_ranks": null,
+        "spark_first_layer": null,
+        "memory_reservation": null,
+        "prefill_batch_tokens": null,
+        "expert_capacity": null,
+        "release_identity": null,
+        "spark_exl3_package": null,
+        "dspark": "on for the main battery; off for the target-only relaunch",
+        "prefill_measurement": "30 isolated base x suffix process invocations",
+        "prefill_isolated_invocations": [
+          "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/prefill-0-1024.json",
+          "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/prefill-0-16384.json",
+          "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/prefill-0-2048.json",
+          "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/prefill-0-32768.json",
+          "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/prefill-0-4096.json",
+          "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/prefill-0-8192.json",
+          "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/prefill-131072-1024.json",
+          "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/prefill-131072-16384.json",
+          "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/prefill-131072-2048.json",
+          "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/prefill-131072-32768.json",
+          "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/prefill-131072-4096.json",
+          "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/prefill-131072-8192.json",
+          "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/prefill-262144-1024.json",
+          "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/prefill-262144-16384.json",
+          "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/prefill-262144-2048.json",
+          "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/prefill-262144-32768.json",
+          "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/prefill-262144-4096.json",
+          "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/prefill-262144-8192.json",
+          "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/prefill-32768-1024.json",
+          "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/prefill-32768-16384.json",
+          "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/prefill-32768-2048.json",
+          "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/prefill-32768-32768.json",
+          "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/prefill-32768-4096.json",
+          "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/prefill-32768-8192.json",
+          "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/prefill-65536-1024.json",
+          "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/prefill-65536-16384.json",
+          "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/prefill-65536-2048.json",
+          "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/prefill-65536-32768.json",
+          "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/prefill-65536-4096.json",
+          "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/prefill-65536-8192.json"
+        ],
+        "prefill_merged_view": "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/prefill-merged.json",
+        "cache_drop_evidence": "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/cache-drop",
+        "cache_drop_helper": "/usr/local/libexec/ds41rt-bench/drop-page-cache"
       },
-      "raw": {},
-      "warmup": "one shape warmup, excluded from the ledger",
+      "raw": {
+        "decode": "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/decode.json",
+        "prefill": [
+          "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/prefill-merged.json"
+        ],
+        "retained": "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/retained.json",
+        "retained_control_2k": "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/retained-control-2k.json",
+        "concurrency_counting": "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/concurrency-counting.json",
+        "concurrency_code": "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/concurrency-code.json",
+        "concurrency_topic": "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/concurrency-topic.json",
+        "mixed": "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/mixed.json",
+        "target_only": "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/raw/target-only.json"
+      },
+      "tool_eval": {
+        "summaries": "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/tool-eval/exl3-k34-1x32g-3spark/summaries.json",
+        "dir": "/home/tj/Developer/ds41rt/runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/tool-eval/exl3-k34-1x32g-3spark",
+        "runs": [
+          "run-01",
+          "run-02",
+          "run-03"
+        ]
+      },
+      "warmup": "one shape warmup per prefill cell and the harness warmups in decode/retained",
       "repeats": 3,
-      "notes": "Not launched: the v10 image pair is not published and the k34 tp3-rank{0,1,2} packages must be present in the Spark image. Every family is PENDING. config_sha256 is the current committed hash of examples/configs/exl3-compact-tp3.config (re-verify at freeze).",
-      "failures": [],
-      "config_sha256": "087e3498307bffbe97dcb0e333240884f5fddbe3563adb0d492e6d54908984cf"
+      "notes": "compact EXL3 TP3: SPARK_COUNT=3 with no SPARK_TP/SPARK_EP keys; non-paired disjoint packages; production tile planner retained",
+      "failures": []
     }
-  ],
-  "report_title": "DS41RT v10 compact EXL3 TP3 1x / 3-Spark: performance and qualification"
+  ]
 }

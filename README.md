@@ -32,7 +32,7 @@ each report states its own observed repeat spread.
 
 New-quant reports: [NVFP4 W4A4 (v8)](docs/release-v8-nvfp4-performance.md) · [EXL3 K2 (including the 5090+2-spark compact profile)](docs/release-v7-exl3-k2-performance.md).
 Official TP6 reports: [1 RTX TP6](docs/release-v9-tp6-1rtx-official.md) · [2 RTX TP6](docs/release-v9-tp6-2rtx-official.md) · [campaign status](docs/release-v9-tp6-campaign-status.md). These are validated warm-candidate performance, measured on the candidate binaries rather than the final images; the final v9 images have passed bounded functional checks, and no final-image performance numbers are claimed.
-V10 TP3 reports: [official native 1x/3-Spark](docs/release-v10-tp3-official-1x-3spark.md) · [compact EXL3 TP3 1x/3-Spark](docs/release-v10-tp3-exl3-compact-1x-3spark.md) · [campaign status](docs/release-v10-tp3-campaign-status.md) — **PENDING**: the v10 image pair is not published, no arm has been measured, and every family is explicitly pending rather than zero.
+V10 TP3 reports: [official native 1x/3-Spark](docs/release-v10-tp3-official-1x-3spark.md) · [compact EXL3 TP3 1x/3-Spark](docs/release-v10-tp3-exl3-compact-1x-3spark.md) · [campaign status](docs/release-v10-tp3-campaign-status.md) — **INFORMATIONAL**: the official native arm records **309 / 359** performance records and **88 / 264** tool-eval scenario-runs and is published as measured, incomplete and informational, not a qualification; the compact EXL3 TP3 arm is **complete at 359 / 359** performance records and **264 / 264** tool-eval scenario-runs with a strict **PASS**, and its remaining network/threshold PENDING cells stay explicitly pending rather than zero.
 
 **EXL3 5090+2-spark** uses one RTX PRO 6000 with a **32 GiB total budget
 including headroom** and **two TP2 Sparks**; **EXL3 2x6000 0-spark** uses two
@@ -58,9 +58,10 @@ See [compact setup and residency](docs/release-v7-exl3-compact.md)
 and the [configuration accounting chart](docs/release-v7-configurations.svg).
 No physical RTX 5090 has been tested; the same-capability grid checks used RTX PRO 6000.
 The release pair named by `ds41rt.config` is `ghcr.io/tpurtell/ds41rt-coordinator:v10`
-and `ghcr.io/tpurtell/ds41rt-spark-expert:v10` ([notes, roles and pending registry
-digests](docs/release-v10-notes.md)); the v10 registry push is not yet performed, so
-no v10 registry digest is claimed. The v10 Spark image is **universal**: it advertises
+and `ghcr.io/tpurtell/ds41rt-spark-expert:v10` ([notes, roles and the registry
+digests captured at publication](docs/release-v10-notes.md)); the push and its
+anonymous fresh-pull verification are recorded there as they complete. The v10
+Spark image is **universal**: it advertises
 `io.ds41rt.v41.spark_tp_roles=tp2;tp3;tp6` on top of the default TP4 shard, so one
 pair serves every approved native topology and `./run.sh` selects the role
 from `SPARK_TP`. V9 release images remain published as

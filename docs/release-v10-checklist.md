@@ -1,16 +1,16 @@
 # DS41RT v10 release checklist
 
-**STATUS: PREPARED — NOT PUBLISHED.** This is the publication skeleton for v10.
-No v10 image has been pushed and no registry digest below is real. A box is
-checked only from recorded evidence; the two checked entries in §4 are the
-committed runtime-promotion change.
+**STATUS: PUBLICATION IN PROGRESS.** The pre-push rollback baseline is recorded and
+the push/anonymous-verification boxes below are checked only from recorded
+evidence (`runs/v10-release/publication/`, repo-ignored). Registry digests are
+transcribed into `docs/release-v10-notes.md` from the registry's own responses,
+never from a local image id.
 
 This checklist covers publication mechanics. The runtime promotion is committed
 in its own change: `ds41rt.config`, the five older `examples/configs/*` native
 files and the `README.md` pull/pair lines now name `:v10`, and the two v10 TP3
 profiles were re-added to published-pair equality (see
-`docs/release-v10-notes.md`). The registry still has no `v10`, so every
-publication box below is unchecked and no digest is claimed.
+`docs/release-v10-notes.md`).
 
 `ds41rt.build-v10.config` is retained as the explicit release **build** target.
 After promotion it is identical to `ds41rt.config` including the
@@ -44,18 +44,24 @@ images, and `latest` has no separate rollback boundary. Record the digests
 `latest` resolves to **before** pushing, from the registry's own response:
 
 ```bash
-EVIDENCE=/path/to/v10-evidence        # outside the repository
-scripts/release-digests.sh capture --config ds41rt.config --tag latest \
+EVIDENCE=runs/v10-release/publication   # repo-ignored evidence tree
+scripts/release-digests.sh capture --config ds41rt.build-v10.config --tag latest \
   --evidence "$EVIDENCE/pre-push-latest.env"
 ```
 
-- [ ] Pre-push `latest` digests recorded: coordinator index `<captured>`,
-      Spark manifest `<captured>` (values come from the capture above; do not
-      transcribe a local image id or a config digest).
-- [ ] Pre-push `latest` is confirmed to be the v9 predecessor the rollback in
-      §4 assumes; if it is not, stop and re-derive the rollback plan.
-- [ ] v10 is confirmed absent from the registry (anonymous `:v10` returns 404)
-      so the push below creates the tag rather than moving it.
+- [x] Pre-push `latest` digests recorded: coordinator index
+      `sha256:786d1d6704e4cdaaf12ae59f5324bb1a43ce2238c9ec79ff7884fd3c83e8eb7f`,
+      Spark manifest
+      `sha256:f0c67407adb4228200c1fcb97e3f7210501db120d1e1ee11697f66cfb1ca4ea9`
+      (`runs/v10-release/publication/pre-push-latest.env`; values come from the
+      capture, not from a local image id or a config digest).
+- [x] Pre-push `latest` is confirmed to be the v9 predecessor the rollback in §4
+      assumes: both digests equal the published v9 pair recorded in
+      `docs/release-v9-notes.md`.
+- [x] v10 is confirmed absent from the registry (anonymous `:v10` returns 404 in
+      both repositories) so the push below creates the tag rather than moving it:
+      `runs/v10-release/publication/v10-absence.txt` records the 404 for both
+      repositories.
 
 ## 2. Publication ordering
 
@@ -126,11 +132,11 @@ scripts/release-digests.sh verify --config ds41rt.config --tag latest \
 ### 2.4 Evidence record
 
 - [ ] `v10-digests.env`, `pre-push-latest.env` and the push log are archived with
-      a `SHA256SUMS` file; the archive path and its digest replace the pending
-      placeholders in `docs/release-v10-notes.md`.
-- [ ] `docs/release-v9-checklist.md`-style publication summary written with the
-      real digests (never a placeholder; `release-v10-notes.md` currently carries
-      explicit `PENDING` placeholders for exactly this reason).
+      a `SHA256SUMS` file under `runs/v10-release/publication/`; the recorded
+      values are transcribed into `docs/release-v10-notes.md`.
+- [ ] The publication summary in `docs/release-v10-notes.md` carries the real
+      registry digests and the anonymous-verification result (never a
+      placeholder).
 
 ## 3. Rollback
 
@@ -152,11 +158,11 @@ pushing and keep the §1 baseline.
 - [ ] Rollback rehearsal recorded: the exact commands run, their output, and the
       digest each repository ended at.
 
-## 4. Promotion (landed; publication still pending)
+## 4. Promotion (landed; publication follows)
 
 The promotion change landed before publication, so a v10 server cannot be served
-from an unretargeted default. The publication steps above (§2.3) and the runtime
-smoke remain open:
+from an unretargeted default. The runtime smoke and the promotion rollback record
+remain open:
 
 - [x] `ds41rt.config` coordinator/Spark inference lines switched to `:v10` and
       committed (its only diff is the release pair).

@@ -1,13 +1,17 @@
 # DS41RT v10 release notes
 
-**STATUS: PREPARED - RUNTIME DEFAULT PROMOTED; REGISTRY PUBLICATION PENDING.** The
-v10 images are built and locally verified from the frozen source commit below, and
-`ds41rt.config` now names the `:v10` pair. **Nothing has been pushed.** No v10
-registry digest exists yet, every registry value in this file is an explicit
-placeholder, and no v10 performance number is claimed. Publication order, evidence
-and rollback live in [release-v10-checklist.md](release-v10-checklist.md); the
-publication summary and the real digests replace the placeholders here at that
-point.
+**STATUS: MEASURED TP3 REPORTS PUBLISHED; REGISTRY PUBLICATION IN PROGRESS.** The
+v10 images are built from the frozen source commit below and `ds41rt.config` names
+the `:v10` pair. The registry push and its anonymous fresh-pull verification are
+recorded in the publication section as they complete; until those boxes are
+checked, this file carries no registry digest for `v10`. The release carries
+measured TP3 reports, not a performance qualification: the official native arm is
+incomplete and informational (**309 / 359** performance records, **88 / 264**
+tool-eval scenario-runs), the compact EXL3 TP3 arm is complete and strict-**PASS**
+(**359 / 359** performance records, **264 / 264** tool-eval scenario-runs), and the
+EXL3 report's remaining network and change-threshold cells stay explicitly
+pending. Publication ordering and rollback live in
+[release-v10-checklist.md](release-v10-checklist.md).
 
 ## What v10 changes
 
@@ -53,22 +57,51 @@ point.
   `10-local-coordinator-image.txt`, `10-fleet-spark-images.txt`,
   `10-exl3-tp3-verification.txt` and `11-supplementary-verification.txt`.
 
-### Registry publication: PENDING (placeholders, not values)
+### Registry publication
 
-No push, tag or publish has been performed. The coordinator's local repo digest is
-its locally built manifest digest, and **no registry digest exists**.
+The pre-push rollback baseline was captured from the registry before the push
+(`runs/v10-release/publication/pre-push-latest.env`, repo-ignored evidence). At
+capture time `latest` was still the v9 pair and `v10` returned 404 in both
+repositories, so the push below creates the tag rather than moving it.
 
-- coordinator `ghcr.io/tpurtell/ds41rt-coordinator` index:
-  `<PENDING: coordinator OCI index digest at v10 push>`
-- spark-expert `ghcr.io/tpurtell/ds41rt-spark-expert` manifest:
-  `<PENDING: spark manifest digest at v10 push>`
-- pre-push `latest` rollback baseline: `<PENDING: latest coordinator index digest>`
-  and `<PENDING: latest spark manifest digest>`
-- anonymous fresh-pull verification: **NOT RUN**.
+- pre-push `latest` rollback baseline — coordinator index
+  `sha256:786d1d6704e4cdaaf12ae59f5324bb1a43ce2238c9ec79ff7884fd3c83e8eb7f`,
+  spark-expert manifest
+  `sha256:f0c67407adb4228200c1fcb97e3f7210501db120d1e1ee11697f66cfb1ca4ea9`
+  (identical to the published v9 pair in [release-v9-notes.md](release-v9-notes.md)).
+- v10 registry digests and the anonymous fresh-pull result are added here at the
+  §2.2/§2.3 capture and verification steps; neither exists yet, so **no v10
+  registry digest is claimed by this revision**.
 
-`v10` and `latest` are expected to resolve to the same digest per role once pushed
-(both tags are published from the same local image). Do not transcribe a local
-image id or a config digest into the registry fields above.
+`v10` and `latest` resolve to the same digest per role once pushed (both tags are
+published from the same local image). Do not transcribe the local image id below,
+or a config digest, into a registry field.
+
+### Image identity as measured
+
+The measured campaigns identify the image pair by its **local** image identity at
+source commit `3dd9a4ac2be9fd17ecf4cb8b7746efdc900d38f0`; this is build-artifact
+identity, not a registry digest:
+
+- coordinator `ghcr.io/tpurtell/ds41rt-coordinator:v10`
+  `sha256:2236d94317eb393cd78940efb117bcca14ae06e6d1113c6aeb188b0b22424689`
+  (`runs/v10-release/build/10-local-coordinator-image.txt`,
+  `runs/v10-exl3-tp3/evidence/20260921T1400Z-raptor/identity/coordinator-image.json`);
+- Spark expert `ghcr.io/tpurtell/ds41rt-spark-expert:v10`
+  `sha256:d1b668cd7e87079b5b57e381bdd45dfb4858646533611f18f22061f58ae18dec`
+  on all four workers, with empty `repo_digests` because nothing was pushed
+  (`runs/v10-release/build/10-fleet-spark-images.txt`); as in v9 this local id is
+  the image config digest while the registry reports the manifest digest, so the
+  Spark id and the post-push registry digest are not expected to be equal;
+- both revisions are `3dd9a4ac2be9fd17ecf4cb8b7746efdc900d38f0`, and the Spark
+  role label is `io.ds41rt.v41.spark_tp_roles=tp2;tp3;tp6`
+  (`runs/v10-release/build/10-label-assertions.txt`).
+
+A container `Id` captured from `docker inspect` is **not** an image identity: the
+EXL3 lane's post-launch capture records the running container
+`e7626ab1d9749709a5a241d87eedcbe94714face353e87c136d37c195a7c70e5`, whose own
+`Image` field is the coordinator image id above. The published EXL3 report carries
+the image id, not the container id.
 
 ## v10 TP3 profiles
 
@@ -84,7 +117,10 @@ image id or a config digest into the registry fields above.
   `wrldsuksgo2mars/DeepSeek-V4.1-EXL3-K3.25-v1` (bit family `[3,4]`, launcher tag
   `k34`) on one RTX under the hard 32 GiB ceiling. Report:
   [release-v10-tp3-exl3-compact-1x-3spark.md](release-v10-tp3-exl3-compact-1x-3spark.md);
-  the report's own status banner governs.
+  its battery is complete (**359 / 359** performance records, **264 / 264**
+  tool-eval scenario-runs) and the report's strict accounting gate is a **PASS**.
+  Pass is not a release-readiness claim: the report's own status banner and
+  limitations govern, and its network and change-threshold cells stay pending.
 - The native KV-pool sizing and the tool-eval admission failure that motivated it
   are recorded in
   [v10-native-tp3ep1-tool-eval-oom.md](v10-native-tp3ep1-tool-eval-oom.md).
@@ -108,15 +144,18 @@ image id or a config digest into the registry fields above.
 
 ## Known limitations
 
-- **Registry publication pending.** Until the v10 push and anonymous verification
-  complete, the runtime default names a tag that no registry serves. Do not treat
-  this file as a publication record.
-- **The v10 TP3 arms are informational.** The two profile files are packaging
-  support only; each report's own status banner governs whether any result may be
-  used, and the compact EXL3 TP3 arm may still be pending.
-- **No v10 performance campaign.** The headline numbers in `README.md` remain the
-  historical v6/v7/v8/v9 campaigns; v10 does not re-campaign the official
-  default.
+- **The v10 TP3 reports are measured, not a qualification.** The official native
+  arm is incomplete and informational (**309 / 359** performance records,
+  **88 / 264** tool-eval scenario-runs, measured on the pre-`KV_POOL_SIZE`-pin
+  profile) and the compact EXL3 TP3 arm is complete and strict-**PASS**
+  (**359 / 359** performance records, **264 / 264** tool-eval scenario-runs). Each
+  report's own status banner and limitations travel with its numbers; the EXL3
+  report's unresolved network and change-threshold cells remain **PENDING**. The
+  two v10 TP3 profile files remain packaging support only.
+- **No v10 performance campaign for the promoted default.** The headline table in
+  `README.md` keeps the historical v6/v7/v8/v9 columns unchanged; v10 does not
+  re-campaign the official default, and the TP3 numbers are a separate topology
+  under its own ceiling rather than a replacement for any headline column.
 
 ## Provenance requirements for every number
 

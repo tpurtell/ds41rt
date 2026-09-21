@@ -1033,16 +1033,60 @@ def load_generator():
 
 
 
-def test_exl3_committed_doc_is_pending_not_fabricated():
+def test_exl3_committed_doc_is_measured_and_strictly_passing():
+    """The published EXL3 report is the renderer's measured output, not a stub.
+
+    The renderer owns this document: it is regenerated from the tracked EXL3
+    manifest and must carry the strict accounting outcome (359/359 performance
+    records, 264/264 tool-eval scenario-runs) instead of the pre-measurement
+    placeholder the arm carried before the campaign ran.
+    """
     if not EXL3_DOC.is_file():
         pytest.skip(f"{EXL3_DOC.name} not present in this checkout")
     text = EXL3_DOC.read_text()
-    assert "**Status: NOT EXECUTED" in text
-    assert "PENDING" in text
-    # No measured-looking numbers may be smuggled into a pending report: the
-    # headline decode table must be all em dashes.
+    assert "**Status: MEASURED — PASS" in text
+    assert "**Status: NOT EXECUTED" not in text
+    assert "359 / 359 expected performance records match exactly" in text
+    assert "264 / 264" in text
+    assert ("| v10-exl3-compact-tp3 | exl3 | TP3 | 1 | 3 | 359 | 359 | "
+            "complete |") in text
+    # One arm, one published name: the report does not expose the lane's
+    # internal evidence-directory id.
+    assert "exl3-k34-1x32g-3spark" not in text
+    # Honest pending cells stay pending: publication does not invent the
+    # network link evidence or a change-threshold basis.
+    assert "Network: PENDING" in text
+    assert "Change thresholds: PENDING" in text
+    # The headline decode table carries measured medians, and the weighted
+    # median is the recorded one rather than a rounded or promoted value.
     headline = text.split("## Headline decode", 1)[1].split("##", 1)[0]
-    assert "| code | " + DASH + " |" in headline
+    assert "| code | 124.16 |" in headline
+    assert "| **Weighted (excl. counting)** | 88.92 |" in headline
+
+
+def test_exl3_report_identity_is_an_image_not_a_container():
+    """The report must name the coordinator image id, never a container id.
+
+    The lane's post-launch `docker inspect` captured the running container
+    `e7626ab1...` whose own `Image` field is the coordinator image
+    `2236d943...`; publishing the container id as an image identity made the
+    tracked EXL3 and native manifests disagree about the same tag.
+    """
+    if not EXL3_DOC.is_file():
+        pytest.skip(f"{EXL3_DOC.name} not present in this checkout")
+    coordinator_image = \
+        "sha256:2236d94317eb393cd78940efb117bcca14ae06e6d1113c6aeb188b0b22424689"
+    container_id = \
+        "sha256:e7626ab1d9749709a5a241d87eedcbe94714face353e87c136d37c195a7c70e5"
+    text = EXL3_DOC.read_text()
+    assert (f"- Coordinator image: `ghcr.io/tpurtell/ds41rt-coordinator:v10` "
+            f"`{coordinator_image}`") in text
+    assert container_id not in text
+    # It agrees with the native arm's manifest about the same tag.
+    native = json.loads(NATIVE_MANIFEST.read_text())
+    assert native["images"]["coordinator"]["digest"] == coordinator_image
+    exl3 = json.loads(EXL3_MANIFEST.read_text())
+    assert exl3["images"]["coordinator"]["digest"] == coordinator_image
 
 
 def test_native_committed_doc_is_informational_and_incomplete():
@@ -1072,19 +1116,35 @@ def test_campaign_committed_doc_separates_measured_from_pending():
     assert "INCOMPLETE / INFORMATIONAL" in text
     assert ("| v10-native-tp3ep1 | official | TP3xEP1 | 1 | 3 | 359 | 309 | "
             "incomplete |") in text
-    assert ("| v10-exl3-compact-tp3 | exl3 | TP3 | 1 | 3 | 359 | 0 | "
-            "NOT EXECUTED (pending raw manifests) |") in text
+    # The EXL3 arm is measured and complete in the same campaign document, and
+    # appears under the same published id the top-level status line names.
+    assert ("| v10-exl3-compact-tp3 | exl3 | TP3 | 1 | 3 | 359 | 359 | "
+            "complete |") in text
+    assert "v10-exl3-compact-tp3" in text.split("\n")[4]
     assert "config-not-remeasured" in text
+    assert "309 / 359" in text
+    assert "264 / 264" in text
 
 
-def test_exl3_manifest_declares_no_raw_evidence():
+def test_exl3_manifest_declares_measured_evidence():
     if not EXL3_MANIFEST.is_file():
         pytest.skip("EXL3 manifest not present in this checkout")
     document = json.loads(EXL3_MANIFEST.read_text())
     assert document["release"] == "v10"
-    for arm in document["arms"]:
-        assert arm["raw"] == {}
-        assert "tool_eval" not in arm
+    assert "MEASURED" in document["report_status"]
+    assert "PASS" in document["report_status"]
+    arm = document["arms"][0]
+    assert arm["raw"], "the measured EXL3 arm must name its raw evidence"
+    assert arm["tool_eval"]["summaries"]
+    assert arm["tool_eval"]["runs"] == ["run-01", "run-02", "run-03"]
+    # The image identity is the promoted release pair, not a placeholder.
+    assert document["images"]["coordinator"]["tag"].endswith(":v10")
+    assert document["images"]["spark_expert"]["tag"].endswith(":v10")
+    assert arm["config_sha256"] == \
+        "087e3498307bffbe97dcb0e333240884f5fddbe3563adb0d492e6d54908984cf"
+    # The report is honest about what was not captured.
+    assert document["network"] is None
+    assert document["thresholds"] is None
 
 
 def test_native_manifest_declares_measured_evidence_and_limitations():
@@ -1115,7 +1175,7 @@ def test_native_manifest_declares_measured_evidence_and_limitations():
     assert harness["corrections"][0]["commit"].startswith("2f8208b")
 
 
-def test_campaign_manifest_keeps_exl3_pending_and_native_measured():
+def test_campaign_manifest_keeps_both_measured_arms():
     if not CAMPAIGN_MANIFEST.is_file():
         pytest.skip("campaign manifest not present in this checkout")
     document = json.loads(CAMPAIGN_MANIFEST.read_text())
@@ -1123,8 +1183,41 @@ def test_campaign_manifest_keeps_exl3_pending_and_native_measured():
     assert "INCOMPLETE / INFORMATIONAL" in document["report_status"]
     arms = {arm["id"]: arm for arm in document["arms"]}
     assert arms["v10-native-tp3ep1"]["raw"]
-    assert arms["v10-exl3-compact-tp3"]["raw"] == {}
-    assert "tool_eval" not in arms["v10-exl3-compact-tp3"]
+    assert arms["v10-native-tp3ep1"]["limitations"]
+    # The measured EXL3 arm is carried through under the published id, with its
+    # own evidence; the lane's internal id never reaches a committed document.
+    assert "exl3-k34-1x32g-3spark" not in arms
+    exl3 = arms["v10-exl3-compact-tp3"]
+    assert exl3["raw"]
+    assert exl3["tool_eval"]["summaries"]
+    assert exl3["config_sha256"] == \
+        "087e3498307bffbe97dcb0e333240884f5fddbe3563adb0d492e6d54908984cf"
+
+
+def test_published_arm_id_alias_is_applied_to_every_committed_document():
+    """The lane id and the published arm id are reconciled by the generator."""
+    if not all(path.is_file() for path in DOCS + MANIFESTS):
+        pytest.skip("v10-tp3 documents not present in this checkout")
+    module = load_generator()
+    assert module.canonical_arm_id("exl3-k34-1x32g-3spark") == \
+        "v10-exl3-compact-tp3"
+    assert module.canonical_arm_id("v10-native-tp3ep1") == "v10-native-tp3ep1"
+    aliased = module.apply_arm_id_alias(
+        {"arms": [{"id": "exl3-k34-1x32g-3spark"}, {"id": "v10-native-tp3ep1"}]})
+    assert [arm["id"] for arm in aliased["arms"]] == \
+        ["v10-exl3-compact-tp3", "v10-native-tp3ep1"]
+    for path in DOCS:
+        assert "exl3-k34-1x32g-3spark" not in path.read_text(), \
+            f"{path} still uses the unpublished lane id"
+    # In the manifests the lane id survives only as the raw evidence directory
+    # name it actually is, never as an arm identity.
+    exl3 = json.loads(EXL3_MANIFEST.read_text())
+    assert exl3["arms"][0]["id"] == "v10-exl3-compact-tp3"
+    campaign = json.loads(CAMPAIGN_MANIFEST.read_text())
+    assert [arm["id"] for arm in campaign["arms"]] == \
+        ["v10-native-tp3ep1", "v10-exl3-compact-tp3"]
+    assert "tool-eval/exl3-k34-1x32g-3spark/" in \
+        exl3["arms"][0]["tool_eval"]["summaries"]
 
 
 def test_limitations_render_without_changing_measured_values(module, tmp_path):
