@@ -14,23 +14,24 @@ The official full checkpoint remains the default. Its measurements are the histo
 
 The release protocol uses **400 W per RTX card and standard memory speed, without a memory overclock**. Reported throughput cells use three samples. Reasoning code uses high-effort thinking and counts reasoning plus final-answer tokens; other throughput cases disable thinking. The official v6 campaign kept the experimental TP2 switches off.
 
-**Headlines.** Tokens/s across all six configurations. Prefill is the best cell median
+**Headlines.** Tokens/s across all configurations. Prefill is the best cell median
 from a completed, passing matrix; decode is C1 dSpark, with a weighted nine-category
-score excluding counting. `Δ` compares two RTX cards with one for the official and
-NVFP4 pairs; the EXL3 columns are different deployment profiles rather than one
-topology at two widths, so they carry no change column. Each column pair comes
-from its own campaign: the official columns are the historical v6 measurements,
-NVFP4 is the [v8 campaign](docs/release-v8-notes.md) on the published v8 images,
-and EXL3 is the v7 campaign. They are not a single co-measured run.
+score excluding counting. Each column pair comes from its own campaign: the official
+columns are the historical v6 measurements, NVFP4 is the
+[v8 campaign](docs/release-v8-notes.md) on the published v8 images, EXL3 is the v7
+campaign, and the Official TP6 columns are the validated **warm-candidate** v9
+campaign. They are not a single co-measured run, so no change column is tabulated;
+each report states its own observed repeat spread.
 
-| Measurement | Official 1x | Official 2x | Δ | NVFP4 1x | NVFP4 2x | Δ | EXL3 5090+2-spark | EXL3 2x6000 0-spark |
+| Measurement | Official 1x | Official 2x | NVFP4 1x | NVFP4 2x | EXL3 5090+2-spark | EXL3 2x6000 0-spark | Official TP6 1x | Official TP6 2x |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Prefill | 7,824 | 8,355 | +6.8% | 5,237 | 7,371 | +40.7% | 2,013 | 5,597 |
-| Counting decode | 161.58 | 221.64 | +37.2% | 144.66 | 192.42 | +33.0% | 161.98 | 337.00 |
-| Weighted decode | 92.00 | 109.44 | +19.0% | 81.74 | 100.78 | +23.3% | 88.20 | 146.24 |
-| C1 code decode | 130.41 | 155.70 | +19.4% | 112.55 | 145.96 | +29.7% | 122.50 | 225.20 |
+| Prefill | 7,824 | 8,355 | 5,237 | 7,371 | 2,013 | 5,597 | 7,131 | 8,577 |
+| Counting decode | 161.58 | 221.64 | 144.66 | 192.42 | 161.98 | 337.00 | 174.54 | 231.51 |
+| Weighted decode | 92.00 | 109.44 | 81.74 | 100.78 | 88.20 | 146.24 | 96.83 | 110.19 |
+| C1 code decode | 130.41 | 155.70 | 112.55 | 145.96 | 122.50 | 225.20 | 139.56 | 159.34 |
 
 New-quant reports: [NVFP4 W4A4 (v8)](docs/release-v8-nvfp4-performance.md) · [EXL3 K2 (including the 5090+2-spark compact profile)](docs/release-v7-exl3-k2-performance.md).
+Official TP6 reports: [1 RTX TP6](docs/release-v9-tp6-1rtx-official.md) · [2 RTX TP6](docs/release-v9-tp6-2rtx-official.md) · [campaign status](docs/release-v9-tp6-campaign-status.md). These are validated warm-candidate performance, measured on the candidate binaries rather than the final images; the final v9 images have passed bounded functional checks, and no final-image performance numbers are claimed.
 
 **EXL3 5090+2-spark** uses one RTX PRO 6000 with a **32 GiB total budget
 including headroom** and **two TP2 Sparks**; **EXL3 2x6000 0-spark** uses two
@@ -104,14 +105,14 @@ from the EXL3 5090+2-spark runs above, none qualifies either new quant.
 
 **Decode over retained context.** Weighted nine-category dSpark tokens/s with verified prefix reuse.
 
-| Retained base | 1 RTX | 2 RTX | Change |
-|---|---:|---:|---:|
-| 0K | 86.85 | 104.21 | +20.0% |
-| 2K | 85.97 | 103.81 | +20.7% |
-| 32K | 83.28 | 100.72 | +20.9% |
-| 64K | 82.64 | 102.15 | +23.6% |
-| 128K | 86.67 | 98.40 | +13.5% |
-| 256K | 80.02 | 92.78 | +15.9% |
+| Retained base | 1 RTX | 2 RTX |
+|---|---:|---:|
+| 0K | 86.85 | 104.21 |
+| 2K | 85.97 | 103.81 |
+| 32K | 83.28 | 100.72 |
+| 64K | 82.64 | 102.15 |
+| 128K | 86.67 | 98.40 |
+| 256K | 80.02 | 92.78 |
 
 **Concurrency scaling.** Median aggregate tokens/s from earliest first output to final completion, including admission gaps.
 
