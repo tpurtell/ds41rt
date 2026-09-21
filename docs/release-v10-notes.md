@@ -1,17 +1,16 @@
 # DS41RT v10 release notes
 
-**STATUS: MEASURED TP3 REPORTS PUBLISHED; REGISTRY PUBLICATION IN PROGRESS.** The
-v10 images are built from the frozen source commit below and `ds41rt.config` names
-the `:v10` pair. The registry push and its anonymous fresh-pull verification are
-recorded in the publication section as they complete; until those boxes are
-checked, this file carries no registry digest for `v10`. The release carries
-measured TP3 reports, not a performance qualification: the official native arm is
-incomplete and informational (**309 / 359** performance records, **88 / 264**
-tool-eval scenario-runs), the compact EXL3 TP3 arm is complete and strict-**PASS**
-(**359 / 359** performance records, **264 / 264** tool-eval scenario-runs), and the
-EXL3 report's remaining network and change-threshold cells stay explicitly
-pending. Publication ordering and rollback live in
-[release-v10-checklist.md](release-v10-checklist.md).
+**STATUS: PUBLISHED - v10 tag and image pair live; anonymous fresh-pull verified.**
+The v10 images are built from the frozen source commit below and `ds41rt.config`
+names the `:v10` pair. Both registry digests below are the registry's own
+responses, and each was re-checked by an anonymous fresh pull with a throwaway
+`DOCKER_CONFIG`. The release carries measured TP3 reports, not a performance
+qualification: the official native arm is incomplete and informational
+(**309 / 359** performance records, **88 / 264** tool-eval scenario-runs), the
+compact EXL3 TP3 arm is complete and strict-**PASS** (**359 / 359** performance
+records, **264 / 264** tool-eval scenario-runs), and the EXL3 report's remaining
+network and change-threshold cells stay explicitly pending. Publication ordering
+and rollback live in [release-v10-checklist.md](release-v10-checklist.md).
 
 ## What v10 changes
 
@@ -59,23 +58,43 @@ pending. Publication ordering and rollback live in
 
 ### Registry publication
 
-The pre-push rollback baseline was captured from the registry before the push
-(`runs/v10-release/publication/pre-push-latest.env`, repo-ignored evidence). At
+**PUBLISHED and anonymous-verified.** `./push-containers.sh --config
+ds41rt.build-v10.config v10` published exactly the `v10` and `latest` tags for the
+two fixed repositories (exit 0; log
+`runs/v10-release/publication/push-v10.log`), and `v10` and `latest` resolve to
+the same digest per role. Both digests were captured from the registry's own
+`Docker-Content-Digest` response and re-checked by an anonymous fresh pull with a
+throwaway empty `DOCKER_CONFIG` (`runs/v10-release/publication/v10-digests.env`,
+`post-push-latest.env`, `anonymous-verify-*.log`; all files covered by
+`runs/v10-release/publication/SHA256SUMS`):
+
+- coordinator `ghcr.io/tpurtell/ds41rt-coordinator:v10` (OCI index, linux/amd64)
+  `sha256:2236d94317eb393cd78940efb117bcca14ae06e6d1113c6aeb188b0b22424689`
+  — anonymous pull verified on `raptor`;
+- spark-expert `ghcr.io/tpurtell/ds41rt-spark-expert:v10` (single manifest,
+  linux/arm64) `sha256:98ddf9cd83626d92297169b04561b722d136de27ac8213a1a9f5702ebe40ec30`
+  — anonymous pull verified on the arm64 worker `kiwi`.
+
+Each role is verified on a host of its own architecture: the Spark image is an
+arm64 manifest, so an amd64 host cannot pull it, and the coordinator's amd64
+blob set is not pulled onto the arm64 workers (the same constraint recorded for
+v9). Verification used `scripts/release-digests.sh verify` unchanged, staged on
+`kiwi` with the config and evidence file; no host credential was consulted and
+the workers' cached release images were not touched.
+
+The pre-push rollback baseline was captured from the registry before the push. At
 capture time `latest` was still the v9 pair and `v10` returned 404 in both
-repositories, so the push below creates the tag rather than moving it.
+repositories (`v10-absence.txt`), so the push created the tag rather than moving
+it:
 
 - pre-push `latest` rollback baseline — coordinator index
   `sha256:786d1d6704e4cdaaf12ae59f5324bb1a43ce2238c9ec79ff7884fd3c83e8eb7f`,
   spark-expert manifest
   `sha256:f0c67407adb4228200c1fcb97e3f7210501db120d1e1ee11697f66cfb1ca4ea9`
   (identical to the published v9 pair in [release-v9-notes.md](release-v9-notes.md)).
-- v10 registry digests and the anonymous fresh-pull result are added here at the
-  §2.2/§2.3 capture and verification steps; neither exists yet, so **no v10
-  registry digest is claimed by this revision**.
 
-`v10` and `latest` resolve to the same digest per role once pushed (both tags are
-published from the same local image). Do not transcribe the local image id below,
-or a config digest, into a registry field.
+Do not transcribe the local image id below, or a config digest, into a registry
+field.
 
 ### Image identity as measured
 

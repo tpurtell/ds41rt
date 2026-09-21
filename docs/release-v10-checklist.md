@@ -1,10 +1,11 @@
 # DS41RT v10 release checklist
 
-**STATUS: PUBLICATION IN PROGRESS.** The pre-push rollback baseline is recorded and
-the push/anonymous-verification boxes below are checked only from recorded
-evidence (`runs/v10-release/publication/`, repo-ignored). Registry digests are
-transcribed into `docs/release-v10-notes.md` from the registry's own responses,
-never from a local image id.
+**STATUS: PUBLISHED AND ANONYMOUS-VERIFIED.** The pre-push rollback baseline, the
+push, the post-push digest captures and the anonymous fresh pulls are recorded
+under `runs/v10-release/publication/`, and every box below is checked only from
+that evidence. Registry digests are transcribed into
+`docs/release-v10-notes.md` from the registry's own responses, never from a local
+image id.
 
 This checklist covers publication mechanics. The runtime promotion is committed
 in its own change: `ds41rt.config`, the five older `examples/configs/*` native
@@ -21,21 +22,26 @@ evidence (repo-ignored).
 
 ## 0. Preconditions
 
-- [ ] Release executor and hardware owner named; the build window is closed to
-      other writers.
-- [ ] v10 build evidence is complete and archived outside the repository:
-      clean-build log, engine revision label, `dist/SHA256SUMS` verified, role
-      label `io.ds41rt.v41.spark_tp_roles=tp2;tp3;tp6`.
-- [ ] Both local images exist under the names `ds41rt.build-v10.config` names:
+- [x] Release executor and hardware owner named; the build window is closed to
+      other writers. Build run summary:
+      `runs/v10-release/build/RUN-SUMMARY.md` (coordinator `raptor`, workers
+      `ostrich`, `dodo`, `emu`, `kiwi`).
+- [x] v10 build evidence is complete and archived: clean-build log, engine
+      revision label, `dist/SHA256SUMS` verified (`sha256sum -c` clean over 28
+      entries), role label `io.ds41rt.v41.spark_tp_roles=tp2;tp3;tp6`
+      (`runs/v10-release/build/10-label-assertions.txt`,
+      `10-dist-artifact-verification.txt`).
+- [x] Both local images exist under the names `ds41rt.build-v10.config` names:
       `ghcr.io/tpurtell/ds41rt-coordinator:v10` on the coordinator host and
       `ghcr.io/tpurtell/ds41rt-spark-expert:v10` on `SPARK_0_HOST`.
-- [ ] `./build.sh --config ds41rt.build-v10.config --dry-run` passes and reports
+- [x] `./build.sh --config ds41rt.build-v10.config --dry-run` passes and reports
       release tag `v10`; the default `./build.sh --dry-run` now also reports
       `v10` because `ds41rt.config` names the promoted pair.
-- [ ] Evidence directory created outside the repository, with its own
-      `SHA256SUMS`; every file written below goes there.
-- [ ] `git status --porcelain` empty in the publishing tree; `main`/`dev`
-      ancestry recorded (no force, no rebase).
+- [x] Evidence directory created, with its own `SHA256SUMS`; every file written
+      below lives under `runs/v10-release/publication/` (repo-ignored) and is
+      covered by that file.
+- [x] `git status --porcelain` empty in the publishing tree; `main`/`dev`
+      ancestry recorded (`main` is an ancestor of `dev`; no force, no rebase).
 
 ## 1. Pre-push baseline (rollback reference)
 
@@ -84,12 +90,13 @@ Order matters and is not interchangeable. Run the steps in this order only:
 ./push-containers.sh --config ds41rt.build-v10.config v10
 ```
 
-- [ ] Push exited 0 and published exactly `v10` and `latest` for both roles; no
-      other project, tag or repository was touched.
-- [ ] The command printed the same revision for both images and the universal
-      role set `tp2;tp3;tp6`; a role-less or subset build is refused by the
-      publisher and must not be worked around.
-- [ ] Push output/log archived (sanitized; no credential values).
+- [x] Push exited 0 and published exactly `v10` and `latest` for both roles; no
+      other project, tag or repository was touched
+      (`runs/v10-release/publication/push-v10.log`).
+- [x] The command printed the same revision for both images
+      (`3dd9a4ac2be9fd17ecf4cb8b7746efdc900d38f0`) and the universal role set
+      `tp2;tp3;tp6`; the publisher's role guard ran and did not refuse.
+- [x] Push output/log archived (sanitized; no credential values).
 
 ### 2.2 Capture the registry digests
 
@@ -103,11 +110,14 @@ and records the registry's `Docker-Content-Digest` for the coordinator (an OCI
 image index) and the Spark expert (a single manifest). It never tags, pushes or
 edits a configuration.
 
-- [ ] `coordinator.digest` recorded: `<captured>`.
-- [ ] `spark.digest` recorded: `<captured>`.
-- [ ] `v10` and `latest` digests are confirmed equal per role (the push publishes
-      both from the same local image); if they differ, stop and explain why.
-- [ ] Evidence file copied into the archive and covered by its `SHA256SUMS`.
+- [x] `coordinator.digest` recorded:
+      `sha256:2236d94317eb393cd78940efb117bcca14ae06e6d1113c6aeb188b0b22424689`.
+- [x] `spark.digest` recorded:
+      `sha256:98ddf9cd83626d92297169b04561b722d136de27ac8213a1a9f5702ebe40ec30`.
+- [x] `v10` and `latest` digests are confirmed equal per role (the push publishes
+      both from the same local image); the post-push `latest` capture agrees with
+      the `v10` capture for both roles.
+- [x] Evidence file copied into the archive and covered by its `SHA256SUMS`.
 
 ### 2.3 Anonymous fresh-pull verification
 
@@ -123,18 +133,23 @@ scripts/release-digests.sh verify --config ds41rt.config --tag latest \
   --evidence "$EVIDENCE/pre-push-latest.env"
 ```
 
-- [ ] Both roles verified: anonymous pull rc=0 and the pull's digest equals the
-      captured coordinator index / Spark manifest digest.
-- [ ] No credential file was created in the throwaway `DOCKER_CONFIG` (the
-      helper fails the verification if one appears).
-- [ ] The validating host's own cached image was not wiped.
+- [x] Both roles verified: anonymous pull rc=0 and the pull's digest equals the
+      captured coordinator index / Spark manifest digest. The coordinator (amd64
+      OCI index) was verified on `raptor`; the Spark image is a single arm64
+      manifest, so it was verified on the arm64 worker `kiwi` with the same
+      read-only helper, config and evidence file (`anonymous-verify-*.log`).
+- [x] No credential file was created in the throwaway `DOCKER_CONFIG` (the
+      helper fails the verification if one appears; no failure was reported).
+- [x] The validating hosts' own cached images were not wiped; `kiwi` still
+      carries the tagged `v10` and `v9` Spark images.
 
 ### 2.4 Evidence record
 
-- [ ] `v10-digests.env`, `pre-push-latest.env` and the push log are archived with
-      a `SHA256SUMS` file under `runs/v10-release/publication/`; the recorded
-      values are transcribed into `docs/release-v10-notes.md`.
-- [ ] The publication summary in `docs/release-v10-notes.md` carries the real
+- [x] `v10-digests.env`, `pre-push-latest.env`, `post-push-latest.env`,
+      `v10-absence.txt` and the push log are archived with a `SHA256SUMS` file
+      under `runs/v10-release/publication/`; the recorded values are transcribed
+      into `docs/release-v10-notes.md`.
+- [x] The publication summary in `docs/release-v10-notes.md` carries the real
       registry digests and the anonymous-verification result (never a
       placeholder).
 
@@ -174,16 +189,28 @@ remain open:
 - [ ] Rollback of the promotion is the same commit reverted plus the §3 `latest`
       re-point; record both.
 
-## 5. CPU/source gates for this preparation
+## 5. CPU/source gates for this release
 
-- [ ] `bash -n push-containers.sh scripts/release-digests.sh scripts/release-common.sh`.
-- [ ] `.venv/bin/python -m pytest -q scripts/tests` (includes
-      `test_push_containers_config.py` and `test_release_digests.py`).
-- [ ] `scripts/release-digests.sh --help` and `./push-containers.sh --help`
-      describe `--config` and the shared `DS41RT_RELEASE_SSH_CONFIG`.
-- [ ] `git diff --check`.
-- [ ] The promotion change touches only its intended paths: `ds41rt.config`,
-      `ds41rt.build-v10.config` (comment), the five older
-      `examples/configs/*-native.config`, `README.md`, `docs/release-v10-notes.md`,
-      the adjacent docs and the promotion tests. No measured report, manifest or
-      generated campaign document is included.
+- [x] `bash -n push-containers.sh scripts/release-digests.sh scripts/release-common.sh`
+      — clean.
+- [x] Canonical CPU suite, run as the justfile does from `python/` with the
+      repository Python environment
+      (`run-with-python-env.sh .venv/bin/python -m pytest -q
+      --continue-on-collection-errors reference/tests ../scripts/tests`):
+      **971 passed, 22 skipped, 26 failed, 221 subtests**. The 26 failures are
+      reproduced unchanged at the pre-publication commit `c6871f6` and are not
+      caused by the release reports: 25 are the SparkInfer `capture` contract
+      tests (`b12x.attention.dsa_indexer` has no `SOURCE_LAYOUT_PAGED` /
+      `ImportError` in the checked-out `third_party/sparkinfer`) and one is the
+      known six-rank readiness mismatch (`assert '10.55.0.6' == '10.55.0.12'`).
+      The report renderer suite is green: 65 passed.
+- [x] `scripts/release-digests.sh --help` and `./push-containers.sh --help`
+      describe `--config`; `push-containers.sh --help` documents the shared
+      `DS41RT_RELEASE_SSH_CONFIG`.
+- [x] `git diff --check` — clean.
+- [x] The promotion change (`9287203`) touches only its intended paths:
+      `ds41rt.config`, `ds41rt.build-v10.config` (comment), the five older
+      `examples/configs/*-native.config`, `README.md`,
+      `docs/release-v10-notes.md`, the adjacent docs and the promotion tests.
+      The measured-report change is the separate
+      `Publish v10 TP3 benchmark reports` commit.

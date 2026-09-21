@@ -58,9 +58,10 @@ See [compact setup and residency](docs/release-v7-exl3-compact.md)
 and the [configuration accounting chart](docs/release-v7-configurations.svg).
 No physical RTX 5090 has been tested; the same-capability grid checks used RTX PRO 6000.
 The release pair named by `ds41rt.config` is `ghcr.io/tpurtell/ds41rt-coordinator:v10`
-and `ghcr.io/tpurtell/ds41rt-spark-expert:v10` ([notes, roles and the registry
-digests captured at publication](docs/release-v10-notes.md)); the push and its
-anonymous fresh-pull verification are recorded there as they complete. The v10
+and `ghcr.io/tpurtell/ds41rt-spark-expert:v10` ([notes, roles and the published
+registry digests](docs/release-v10-notes.md)); `v10` and `latest` are published
+and each role was anonymous-verified, on an amd64 host for the coordinator and an
+arm64 worker for the Spark image. The v10
 Spark image is **universal**: it advertises
 `io.ds41rt.v41.spark_tp_roles=tp2;tp3;tp6` on top of the default TP4 shard, so one
 pair serves every approved native topology and `./run.sh` selects the role
