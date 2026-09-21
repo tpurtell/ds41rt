@@ -57,12 +57,15 @@ to be redone.
 See [compact setup and residency](docs/release-v7-exl3-compact.md)
 and the [configuration accounting chart](docs/release-v7-configurations.svg).
 No physical RTX 5090 has been tested; the same-capability grid checks used RTX PRO 6000.
-The current published release pair is `ghcr.io/tpurtell/ds41rt-coordinator:v9` and
-`ghcr.io/tpurtell/ds41rt-spark-expert:v9` ([digests and roles](docs/release-v9-notes.md)).
-The v9 Spark image is **universal**: it advertises
+The release pair named by `ds41rt.config` is `ghcr.io/tpurtell/ds41rt-coordinator:v10`
+and `ghcr.io/tpurtell/ds41rt-spark-expert:v10` ([notes, roles and pending registry
+digests](docs/release-v10-notes.md)); the v10 registry push is not yet performed, so
+no v10 registry digest is claimed. The v10 Spark image is **universal**: it advertises
 `io.ds41rt.v41.spark_tp_roles=tp2;tp3;tp6` on top of the default TP4 shard, so one
-published pair serves every approved native topology and `./run.sh` selects the role
-from `SPARK_TP`. V8 release images remain published as
+pair serves every approved native topology and `./run.sh` selects the role
+from `SPARK_TP`. V9 release images remain published as
+`ghcr.io/tpurtell/ds41rt-coordinator:v9` and `ghcr.io/tpurtell/ds41rt-spark-expert:v9`
+([digests and roles](docs/release-v9-notes.md)). V8 release images remain published as
 `ghcr.io/tpurtell/ds41rt-coordinator:v8` and `ghcr.io/tpurtell/ds41rt-spark-expert:v8`
 ([digests](docs/release-v8-notes.md)).
 These four new-quant campaigns were re-run against the **published release images**,
@@ -246,9 +249,9 @@ MODEL_REVISION=3431dde3247c13b5957f682b1e3c6fcae2566079
 To use the published images, pull the coordinator image locally and the Spark image on each worker:
 
 ```bash
-docker pull ghcr.io/tpurtell/ds41rt-coordinator:v9
+docker pull ghcr.io/tpurtell/ds41rt-coordinator:v10
 for host in ostrich dodo emu kiwi; do
-  ssh "$host" docker pull ghcr.io/tpurtell/ds41rt-spark-expert:v9
+  ssh "$host" docker pull ghcr.io/tpurtell/ds41rt-spark-expert:v10
 done
 ./run.sh --dry-run
 ./run.sh

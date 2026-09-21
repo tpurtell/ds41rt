@@ -293,7 +293,8 @@ def test_verify_rejects_a_pull_that_wrote_a_credential_file(harness):
 def test_verify_refuses_evidence_for_another_tag(harness):
     evidence = _captured_evidence(harness)
     result = harness.run(
-        "verify", "--config", str(DEFAULT_CONFIG), "--evidence", str(evidence)
+        "verify", "--config", str(DEFAULT_CONFIG), "--tag", "v9",
+        "--evidence", str(evidence)
     )
     assert result.returncode == 2, result.stdout + result.stderr
     assert "was requested" in result.stderr

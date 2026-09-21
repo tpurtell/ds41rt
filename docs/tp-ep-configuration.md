@@ -6,9 +6,10 @@ hardware: the manual G1 flow (four Sparks, N20 boundary) and two completed
 six-rank dual arms (`2rtx6-tp3ep2`, `2rtx6-tp2ep3`) that an independent audit
 accepted for the canonical 372-row scope **with strict quality FAIL** (known
 greedy-drift class; see §3a). Packaging and qualification are separate claims:
-the published v9 Spark image is **universal** and advertises
+the published v9 Spark image and the promoted `:v10` pair now named by
+`ds41rt.config` are **universal** and advertise
 `io.ds41rt.v41.spark_tp_roles=tp2;tp3;tp6` alongside the default TP4 shard
-([release-v9-notes.md](release-v9-notes.md)), so one published pair serves every
+([release-v10-notes.md](release-v10-notes.md)), so one pair serves every
 approved topology and `run.sh` selects the role from `SPARK_TP`. Bounded
 final-image functional checks passed for TP6 and the implicit TP4 layout on one
 and two RTX; that is **not** coverage of all five topologies, the canonical
@@ -94,8 +95,8 @@ them, matching the other topology-shaping keys.
 > reduction and six-rank EP assembly have **landed** and been exercised on real
 > hardware. Do not convert that into release support or a qualification claim:
 > the completed replicated-group runs are audited experiments with a strict
-> quality FAIL. Packaging is a separate claim from qualification: the published
-> universal v9 Spark image carries the `tp2`/`tp3`/`tp6` roles (§1), so these
+> quality FAIL. Packaging is a separate claim from qualification: the universal
+> Spark image carries the `tp2`/`tp3`/`tp6` roles (§1), so these
 > layouts are launchable from the published pair, and only TP6 and the implicit
 > TP4 layout have bounded final-image functional checks.
 >
@@ -438,7 +439,7 @@ requires explicit `SPARK_TP`/`SPARK_EP`.
 | Daemon `--spark-tp` / `--spark-ep` parsing and wire geometry | daemon `6ba87` | landed and exercised on hardware (G1 N20; six-rank dual arms) |
 | Candidate budget | memory `885b` / integration `91570601` | used: `109,119,320,064 B` in all five tested configs; serve gate is CUDA-free based |
 | Single-RTX placement boot-ordering (then re-enable the release 1-RTX handoff) | daemon/integration | **landed**: `run.sh` opens the handoff on one RTX for an explicit local count in 1..=39 (§3); `auto`/`0` keep the historical no-handoff launch, which is how the candidate 1-RTX arm ran |
-| Release pair that serves every approved topology | build/publish | **landed in v9**: the published Spark image is universal (`io.ds41rt.v41.spark_tp_roles=tp2;tp3;tp6`) and `run.sh` selects/verifies the role per topology; see [release-v9-notes.md](release-v9-notes.md) |
+| Release pair that serves every approved topology | build/publish | **landed in v9, carried into v10**: the Spark image is universal (`io.ds41rt.v41.spark_tp_roles=tp2;tp3;tp6`) and `run.sh` selects/verifies the role per topology; see [release-v10-notes.md](release-v10-notes.md) |
 | Matched TP4 vs TP2×EP2 decode/prefill campaign | performance | PENDING |
 | Six-rank RDMA GID/interface selection (rhea/moa multi-homing) | integration | exercised in the six-rank runs; explicit per-rail selection still required |
 | Independent audit of the completed six-rank dual arms | review | done — accept for the canonical 372-row scope, strict quality FAIL preserved |

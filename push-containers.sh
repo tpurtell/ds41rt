@@ -15,16 +15,15 @@ The Spark image must advertise the V41 expert roles it carries (./build.sh bakes
 the universal tp2;tp3;tp6 set by default); a role-less legacy build is rejected.
 
 --config FILE selects the configuration that names the local image pair to
-publish (default: ./ds41rt.config). It is how the v10 release is published from
-its BUILD target without retargeting the runtime default:
+publish (default: ./ds41rt.config, which after the v10 runtime promotion names
+the v10 pair). The explicit v10 BUILD target is retained and is now identical
+to the runtime default:
   ./push-containers.sh --config ds41rt.build-v10.config v10
 The tag argument is unchanged and is still what both images are published as;
-the two GHCR repositories are fixed. ds41rt.config keeps naming the published
-v9 pair until release promotion edits it, so a runtime default is never mutated
-just to publish a build.
+the two GHCR repositories are fixed.
 
 Examples:
-  ./push-containers.sh v9
+  ./push-containers.sh v10
   ./push-containers.sh --config ds41rt.build-v10.config v10
 
 Every remote step shares one SSH option set with ./build.sh and ./run.sh:

@@ -38,7 +38,7 @@ Approved native official layouts:
 | --- | --- | --- | --- | --- |
 | `tp4ep1-explicit-native.config` | 2 RTX + 4 Spark | TP4 x EP1 = 4 | none (legacy shard) | explicit form of the default; control arm |
 | `tp2ep2-native.config` | 2 RTX + 4 Spark | TP2 x EP2 = 4 | `tp2` | experiment completed; quality not accepted; release not qualified |
-| `tp3ep1-native.config` | 1 RTX + 3 Spark | TP3 x EP1 = 3 | `tp3` | v10 candidate; 5 RTX-local / 35 remote via the explicit-topology placement handoff; daemon support shipped since v9; this layout never qualified — see below |
+| `tp3ep1-native.config` | 1 RTX + 3 Spark | TP3 x EP1 = 3 | `tp3` | v10 TP3 profile; 5 RTX-local / 35 remote via the explicit-topology placement handoff; daemon support shipped since v9; this layout never qualified — see below |
 | `tp3ep2-native.config` | 1 RTX + 6 Spark | TP3 x EP2 = 6 | `tp3` | experiment completed (all 40 remote); quality not accepted; release not qualified |
 | `tp2ep3-native.config` | 2 RTX + 6 Spark | TP2 x EP3 = 6 | `tp2` | experiment completed; quality not accepted; release not qualified |
 | `tp6ep1-native.config` | 2 RTX + 6 Spark | TP6 x EP1 = 6 | `tp6` | packaged; bounded final-image functional checks passed on 1 and 2 RTX; canonical six-rank qualifier not run |
@@ -52,19 +52,22 @@ for the current results and the launcher limits (entry points differ; the
 candidate launcher requires explicit topology and is single-rail A-only). No
 release-support promise is made.
 
-## v10 candidate profiles
+## v10 TP3 profiles
 
 `tp3ep1-native.config` (explicit native `TP3xEP1`, one unreplicated group of
 three ranks) and `exl3-compact-tp3.config` (implicit compact EXL3 TP3:
 `SPARK_COUNT=3` with **no** `SPARK_TP`/`SPARK_EP` keys, the checkpoint-native
 `wrldsuksgo2mars/DeepSeek-V4.1-EXL3-K3.25-v1` mixed-projection staged-trellis
 checkpoint — bit family `[3,4]`, launcher tag `k34` — on one RTX under the hard
-32 GiB ceiling, non-paired disjoint packages, KV 2 GiB and prefill 256) are
-**v10 candidate profiles**. They pin the not-yet-published `v10` pair, so
-until the v10 release promotion they are deliberately exempt from the
-published-pair equality below — their own test requires both names to be a
-coherent `ghcr.io/tpurtell/...:v10` pair. Packaging is not qualification:
-neither file carries a memory, correctness, performance or readiness claim.
+32 GiB ceiling, non-paired disjoint packages, KV 2 GiB and prefill 256) are the
+**v10 TP3 profiles**. The v10 promotion retargeted every example, these two
+included, onto the promoted `:v10` pair, so all of them are checked against
+`ds41rt.config` by the same published-pair equality. Packaging is not
+qualification: neither file carries a memory, correctness, performance or
+readiness claim — see the
+[native TP3 status report](../../docs/release-v10-tp3-official-1x-3spark.md)
+(its own banner governs) and the
+[compact EXL3 TP3 report](../../docs/release-v10-tp3-exl3-compact-1x-3spark.md).
 
 The native profile pins `RTX_EXPERT_LAYERS=5`: the RTX holds the first five
 routed layers and each Spark starts at layer 5 to hold the other 35. Because
@@ -77,13 +80,12 @@ TP6 placement evidence, not TP3 qualification. Remote TP3 weight is
 `35 * 2,406,481,920 = 84,226,867,200 B`, leaving `24,892,452,864 B` under the
 `109,119,320,064 B` floor — admission arithmetic only, not a runtime fit.
 
-The `v10` pair is built with the explicit build config `ds41rt.build-v10.config`
-(`./build.sh --config ds41rt.build-v10.config`), which is `ds41rt.config` with
-**only** the release image pair retagged to `v10`. It is a build-time target
-override, not a runtime change: the runtime default `ds41rt.config` still names
-the published `v9` pair and keeps serving it until promotion. A plain
-`./build.sh` would otherwise derive the `v9` tag from `ds41rt.config` and
-overwrite the live release.
+The `v10` pair is named by `ds41rt.config`, so a plain `./build.sh` now derives
+the `v10` tag from it. The explicit build config `ds41rt.build-v10.config`
+(`./build.sh --config ds41rt.build-v10.config`) is retained as the release
+**build** target and, after promotion, is identical to `ds41rt.config` including
+the release image pair. See
+[docs/release-v10-notes.md](../../docs/release-v10-notes.md).
 
 Explicit topologies require the official native checkpoint. EXL3 and NVFP4
 checkpoints are rejected before any service change; their existing non-topology
@@ -91,13 +93,11 @@ paths are unchanged.
 
 ## Images and roles
 
-Every example other than the two v10 candidate profiles above names the **same
-published release pair** that `ds41rt.config` names; the candidates pin the
-coherent `v10` pair and are re-added to published-pair equality at release
-promotion. The Spark image is universal: it carries the default TP4 shard plus
+Every example names the **same promoted release pair** that `ds41rt.config`
+names. The Spark image is universal: it carries the default TP4 shard plus
 the `tp2`, `tp3` and `tp6` expert TP roles and advertises them as
 `io.ds41rt.v41.spark_tp_roles=tp2;tp3;tp6` (see
-[docs/release-v9-notes.md](../../docs/release-v9-notes.md)). One published pair
+[docs/release-v10-notes.md](../../docs/release-v10-notes.md)). One published pair
 therefore serves every approved topology, and `run.sh` is what selects the mode:
 it derives the needed role from `SPARK_TP`, requires that role in the image label
 of **every** rank, and refuses before any service is stopped or replaced. A

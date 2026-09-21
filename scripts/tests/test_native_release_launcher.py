@@ -266,33 +266,15 @@ printf '%s\n' "$MODEL_ID" "$MODEL_REVISION" "$EXPERT_FORMAT" "$SPARKINFER_EXL3" 
         self.assertTrue(coordinator.startswith("ghcr.io/"), coordinator)
         self.assertTrue(spark.startswith("ghcr.io/"), spark)
         self.assertEqual(coordinator.rsplit(":", 1)[1], spark.rsplit(":", 1)[1])
-        # Every example config must name this same published pair. An example
+        # Every example config must name this same promoted pair. An example
         # that pins a per-topology local tag (a `*-candidate` reference built
         # only by that exact config) fails `run.sh`'s image check on a host that
-        # only has the published release, which is what it is documenting.
-        # Temporary exemption (delete at v10 release promotion, when these two
-        # files are retargeted to whatever pair is then published): the two v10
-        # candidate profiles intentionally pin the not-yet-published v10 pair.
-        # Each name must be the actual baseline role repository retagged to
-        # v10 — a prefix/suffix check would let two coordinators through, this
-        # one does not.
-        v10_candidates = {"tp3ep1-native.config", "exl3-compact-tp3.config"}
-        v10_coordinator = coordinator.rsplit(":", 1)[0] + ":v10"
-        v10_spark = spark.rsplit(":", 1)[0] + ":v10"
+        # only has the promoted release, which is what it is documenting.
         examples = sorted((ROOT / "examples" / "configs").glob("*.config"))
         self.assertTrue(examples, "the example directory must not be empty")
-        self.assertEqual(
-            v10_candidates,
-            {path.name for path in examples} & v10_candidates,
-            "the v10 candidate exemption names files that must exist",
-        )
         for path in examples:
             with self.subTest(example=path.name):
                 text = path.read_text()
-                if path.name in v10_candidates:
-                    self.assertIn(f"COORDINATOR_DOCKER_INFERENCE={v10_coordinator}", text)
-                    self.assertIn(f"SPARK_EXPERT_DOCKER_INFERENCE={v10_spark}", text)
-                    continue
                 self.assertIn(f"COORDINATOR_DOCKER_INFERENCE={coordinator}", text)
                 self.assertIn(f"SPARK_EXPERT_DOCKER_INFERENCE={spark}", text)
         # The documented pull commands must name the release the launcher uses.
@@ -342,18 +324,15 @@ printf '%s\n' "$MODEL_ID" "$MODEL_REVISION" "$EXPERT_FORMAT" "$SPARKINFER_EXL3" 
 
 
 class V10BuildTargetTest(unittest.TestCase):
-    """The canonical v10 build tag comes from the explicit build config.
+    """The canonical v10 build tag comes from the runtime default config.
 
-    `ds41rt.build-v10.config` is the release BUILD target (build.sh derives
-    `release_version` from its coordinator tag). It must be identical to
-    `ds41rt.config` except for the two release-pair lines, and the runtime
-    default must stay on the published v9 pair until release promotion.
+    `ds41rt.build-v10.config` is retained as the explicit release BUILD target
+    (build.sh derives `release_version` from its coordinator tag). After the v10
+    runtime promotion it is identical to `ds41rt.config`, so a plain
+    `./build.sh` derives the same `v10` tag.
     """
 
     BUILD_CONFIG = ROOT / "ds41rt.build-v10.config"
-    V9_EXAMPLES = ("tp4ep1-explicit-native.config", "tp2ep2-native.config",
-                   "tp3ep2-native.config", "tp2ep3-native.config", "tp6ep1-native.config")
-    V10_CANDIDATES = ("tp3ep1-native.config", "exl3-compact-tp3.config")
 
     def dry_run(self, config: Path | None) -> str:
         args = ["bash", "build.sh"]
@@ -368,39 +347,30 @@ class V10BuildTargetTest(unittest.TestCase):
         return [line for line in path.read_text().splitlines()
                 if "=" in line and not line.lstrip().startswith("#")]
 
-    def test_build_config_retags_only_the_release_pair(self) -> None:
+    def test_build_config_matches_the_runtime_default(self) -> None:
         base = self.assignments(ROOT / "ds41rt.config")
         target = self.assignments(self.BUILD_CONFIG)
         self.assertEqual(len(base), len(target))
-        differing = [(a, b) for a, b in zip(base, target) if a != b]
-        self.assertEqual(differing, [
-            ("COORDINATOR_DOCKER_INFERENCE=ghcr.io/tpurtell/ds41rt-coordinator:v9",
-             "COORDINATOR_DOCKER_INFERENCE=ghcr.io/tpurtell/ds41rt-coordinator:v10"),
-            ("SPARK_EXPERT_DOCKER_INFERENCE=ghcr.io/tpurtell/ds41rt-spark-expert:v9",
-             "SPARK_EXPERT_DOCKER_INFERENCE=ghcr.io/tpurtell/ds41rt-spark-expert:v10"),
-        ])
+        self.assertEqual(base, target)
 
-    def test_default_build_tags_v9_and_explicit_config_tags_v10(self) -> None:
+    def test_default_and_explicit_build_tags_are_v10(self) -> None:
         # CPU-only: --dry-run validates without touching Docker, SSH or images.
         default = self.dry_run(None)
-        self.assertIn("release tag: v9", default)
-        self.assertIn("coordinator image: ghcr.io/tpurtell/ds41rt-coordinator:v9", default)
+        self.assertIn("release tag: v10", default)
+        self.assertIn("coordinator image: ghcr.io/tpurtell/ds41rt-coordinator:v10", default)
         v10 = self.dry_run(self.BUILD_CONFIG)
         self.assertIn("release tag: v10", v10)
         self.assertIn("coordinator image: ghcr.io/tpurtell/ds41rt-coordinator:v10", v10)
         self.assertIn("spark image: ghcr.io/tpurtell/ds41rt-spark-expert:v10", v10)
-        # Same universal role set as the v9 default pair.
-        self.assertIn("tp2;tp3;tp6", v10)
+        # The promoted default carries the same universal role set.
+        self.assertIn("tp2;tp3;tp6", default)
 
-    def test_existing_examples_stay_v9_and_candidates_v10(self) -> None:
-        for name in self.V9_EXAMPLES:
-            with self.subTest(example=name):
-                text = (ROOT / "examples" / "configs" / name).read_text()
-                self.assertIn("COORDINATOR_DOCKER_INFERENCE=ghcr.io/tpurtell/ds41rt-coordinator:v9", text)
-                self.assertIn("SPARK_EXPERT_DOCKER_INFERENCE=ghcr.io/tpurtell/ds41rt-spark-expert:v9", text)
-        for name in self.V10_CANDIDATES:
-            with self.subTest(example=name):
-                text = (ROOT / "examples" / "configs" / name).read_text()
+    def test_all_examples_use_the_promoted_pair(self) -> None:
+        examples = sorted((ROOT / "examples" / "configs").glob("*.config"))
+        self.assertTrue(examples, "the example directory must not be empty")
+        for path in examples:
+            with self.subTest(example=path.name):
+                text = path.read_text()
                 self.assertIn("COORDINATOR_DOCKER_INFERENCE=ghcr.io/tpurtell/ds41rt-coordinator:v10", text)
                 self.assertIn("SPARK_EXPERT_DOCKER_INFERENCE=ghcr.io/tpurtell/ds41rt-spark-expert:v10", text)
 

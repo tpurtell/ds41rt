@@ -1350,13 +1350,8 @@ class PublishedImageReferenceTest(unittest.TestCase):
     images serve that topology.
     """
 
-    # Temporary exemption: the two v10 candidate profiles intentionally pin the
-    # not-yet-published v10 pair. They must still name one coherent public
-    # registry pair on the v10 tag. Delete both names from this set when the
-    # v10 release promotion retargets them onto the published pair; the
-    # published-pair equality below then applies to them unchanged.
-    V10_CANDIDATE_EXAMPLES = {"tp3ep1-native.config", "exl3-compact-tp3.config"}
-
+    # The v10 promotion retargeted every example onto the promoted pair, so no
+    # exemption remains: all of them are checked against `ds41rt.config`.
     def published_pair(self) -> tuple[str, str]:
         values = {}
         for line in CONFIG.read_text().splitlines():
@@ -1382,19 +1377,6 @@ class PublishedImageReferenceTest(unittest.TestCase):
                     if line.startswith(("COORDINATOR_DOCKER_INFERENCE=",
                                         "SPARK_EXPERT_DOCKER_INFERENCE="))
                 )
-                if path.name in self.V10_CANDIDATE_EXAMPLES:
-                    # v10 candidates: each name must be the actual baseline
-                    # role repository retagged to v10 (a pair of coordinators
-                    # would satisfy a prefix/suffix check but not this one).
-                    # The exemption is deleted at release promotion, when the
-                    # files are retargeted to whatever pair is then published.
-                    v10_coordinator = coordinator.rsplit(":", 1)[0] + ":v10"
-                    v10_spark = spark.rsplit(":", 1)[0] + ":v10"
-                    self.assertEqual(values.get("COORDINATOR_DOCKER_INFERENCE"), v10_coordinator,
-                                     path.name)
-                    self.assertEqual(values.get("SPARK_EXPERT_DOCKER_INFERENCE"), v10_spark,
-                                     path.name)
-                    continue
                 self.assertEqual(values.get("COORDINATOR_DOCKER_INFERENCE"), coordinator)
                 self.assertEqual(values.get("SPARK_EXPERT_DOCKER_INFERENCE"), spark)
                 # One release, one tag: a mixed pair fails the launcher's engine

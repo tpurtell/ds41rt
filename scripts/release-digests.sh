@@ -34,11 +34,11 @@ verify   Pull the same references with a throwaway empty DOCKER_CONFIG, so no
          another tag.
 
 The two GHCR repositories are the ones ./push-containers.sh publishes to. The
-tag comes from the configuration, so the v10 release is recorded from its BUILD
-target while ds41rt.config keeps naming the published v9 pair:
-  scripts/release-digests.sh capture --config ds41rt.build-v10.config \
+tag comes from the configuration; after the v10 runtime promotion ds41rt.config
+itself names the v10 pair, and the explicit build target is identical:
+  scripts/release-digests.sh capture --config ds41rt.config \
       --evidence /path/to/v10-evidence/digests.env
-  scripts/release-digests.sh verify  --config ds41rt.build-v10.config \
+  scripts/release-digests.sh verify  --config ds41rt.config \
       --evidence /path/to/v10-evidence/digests.env
 EOF
 }
