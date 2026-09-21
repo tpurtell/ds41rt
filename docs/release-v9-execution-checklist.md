@@ -24,7 +24,7 @@ Companion documents: `docs/release-v9-notes.md` (final release notes) and
   matching digests (coordinator index `sha256:786d1d67…`, spark-expert manifest
   `sha256:f0c67407…`; `v9-build/PUBLICATION-EVIDENCE.txt`). `ds41rt.config` already
   points at `:v9`.
-- **Remaining:** the GitHub release (separate step) and, separately, the
+- **Published:** the GitHub release is at https://github.com/tpurtell/ds41rt/releases/tag/v9. **Remaining:** the
   experimental canonical six-rank qualifier, which is out of scope and not run. No
   final-image performance campaign was made; the report numbers are validated
   warm-candidate measurements.

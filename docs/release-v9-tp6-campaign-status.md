@@ -1,6 +1,6 @@
 # v9 pure-TP6 campaign — status and pending-data index
 
-**STATUS: RELEASE CANDIDATE. Final v9 images built and functionally validated; the performance numbers are validated warm-candidate measurements and registry publication is awaiting push.**
+**STATUS: PUBLISHED.** Final v9 images built, functionally validated and published to GHCR as `v9` and `latest`; the performance numbers are validated warm-candidate measurements. The source release is published at https://github.com/tpurtell/ds41rt/releases/tag/v9.
 
 This is the index for the two reports (`docs/release-v9-tp6-1rtx-official.md`, `docs/release-v9-tp6-2rtx-official.md`). It records what is measured, what is retained as invalid/failed, and the exact data still missing. It is not a release note.
 
@@ -53,4 +53,4 @@ The real harness (`bench-real-full-mixed-concurrency.py`, scenario staggered-dra
 
 ## Release status
 
-The clean build ran rc0 after the Docker-wide local wipe, and the bounded **content-type functional checks** passed on all four production deployments. The images are **published** to `ghcr.io/tpurtell/ds41rt-{coordinator,spark-expert}` as `v9` and `latest` (same digest per role) and were **anonymous-pull verified** (fresh `DOCKER_CONFIG`, rc=0, matching digests). Coordinator index `sha256:786d1d67...` (linux/amd64 child `sha256:649e5c84...`); spark-expert manifest `sha256:f0c67407...`. Candidate performance is validated and labelled as candidate performance; the experimental canonical six-rank qualifier is out of scope and was not run. The GitHub release remains pending as a separate step.
+The clean build ran rc0 after the Docker-wide local wipe, and the bounded **content-type functional checks** passed on all four production deployments. The images are **published** to `ghcr.io/tpurtell/ds41rt-{coordinator,spark-expert}` as `v9` and `latest` (same digest per role) and were **anonymous-pull verified** (fresh `DOCKER_CONFIG`, rc=0, matching digests). Coordinator index `sha256:786d1d67...` (linux/amd64 child `sha256:649e5c84...`); spark-expert manifest `sha256:f0c67407...`. Candidate performance is validated and labelled as candidate performance; the experimental canonical six-rank qualifier is out of scope and was not run. The GitHub release is published at https://github.com/tpurtell/ds41rt/releases/tag/v9.

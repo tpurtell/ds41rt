@@ -67,7 +67,7 @@ Executed by the owner with the production `./run.sh` from the clean build tree (
 - Platform/labels verified from the registry: architecture=amd64 os=linux revision=5d0d2095 version=v9; architecture=arm64 os=linux revision=5d0d2095 version=v9 io.ds41rt.v41.spark_tp_roles=tp2;tp3;tp6.
 - The coordinator local .Id equals its index digest (buildkit stores the index+attestation locally); the Spark local .Id is its config digest while the registry reports the manifest digest. The fetched config labels are the proof the content is right; not a discrepancy.
 - Anonymous verification: Fresh DOCKER_CONFIG with no host credentials: raptor `docker pull ds41rt-coordinator:v9` rc=0 with Digest 786d1d67 (matches), ostrich `docker pull ds41rt-spark-expert:v9` rc=0 with Digest f0c67407 (matches); no auth file created, temp config removed. Layers reused from cache.
-- GitHub release: **pending** (separate step). Rollback reference (pre-push `latest` = v8): coordinator `sha256:08c2d6df9a0a6a365eff2c014172478b40d9f39d06437a1c9244c566181b9e40`, spark-expert `sha256:9907983992916bb8e0f35ab869e12706cfe4613cc6dcd93f4ff53796c2d80bf6`.
+- GitHub release: **published** at https://github.com/tpurtell/ds41rt/releases/tag/v9. Rollback reference (pre-push `latest` = v8): coordinator `sha256:08c2d6df9a0a6a365eff2c014172478b40d9f39d06437a1c9244c566181b9e40`, spark-expert `sha256:9907983992916bb8e0f35ab869e12706cfe4613cc6dcd93f4ff53796c2d80bf6`.
 
 - Final-image performance: **NO FINAL-IMAGE PERFORMANCE CAMPAIGN. A final-image 1 RTX headline-shaped functional run (30 samples) exists and is preserved, but it is not used as a performance replacement and is not paired against any other arm; no final-image performance number is claimed**.
 - Candidate performance: VALIDATED warm-candidate performance with precise provenance; it belongs to the candidate, not to the final images. No causal speedup or qualification claim is made: the candidate TPS stand as measured candidate performance, and "no speedup" refers to causality, not to the validity of these measurements.
@@ -260,7 +260,7 @@ A `profile=None` input path is not evidence of the resolved mode; the `cost_mode
 |---|---|---|
 | Final-image functional validation (all four deployments) | PASS (owner-executed, 2026-09-21T03:21Z) | Bounded content-type functional checks passed for 1x/2x TP4 and 1x/2x TP6: api-smoke rc=0 and constrained rc=0 on every geometry, strict-schema 400 genuinely exercised. Functional only, not a performance claim. Evidence: `~/.cache/ds41rt-v9-archive/v9-20260921T003834Z/RELEASE-GATE-CHECKLIST-ACTUAL.md`. |
 | 2x run-time config SHA-256 | OWNER-ONLY PROVENANCE LOOKUP | Seek an archived pre-renumber copy of `candidate-tp6-2x-official-match.config` (`SPARK_5_LANE_A=10.55.0.252`); the on-disk file was rewritten in the renumber. This does NOT require re-running the headline. |
-| Registry publication | **PUBLISHED and anonymous-verified (2026-09-21)** | As 1x: `v9` and `latest` pushed with the same digest; anonymous fresh-`DOCKER_CONFIG` pull rc=0 with a matching digest. GitHub release remains pending (separate step). |
+| Registry publication | **PUBLISHED and anonymous-verified (2026-09-21)** | As 1x: `v9` and `latest` pushed with the same digest; anonymous fresh-`DOCKER_CONFIG` pull rc=0 with a matching digest. GitHub release published at https://github.com/tpurtell/ds41rt/releases/tag/v9. |
 | Renderer manifest | OPTIONAL WORKING NOTE (not a release gate) | As 1x. |
 
 ## Raw record digests

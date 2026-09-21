@@ -1,9 +1,9 @@
 # DS41RT v9 release notes
 
-**STATUS: RELEASE CANDIDATE. Images built and functionally validated; container
-publication awaits the registry push.** No v9 container has been pushed yet, so
-the pull-manifest digests are not known and are deliberately not stated. Model
-weights are host-mounted and are never in the images.
+**STATUS: PUBLISHED.** The v9 images are built, functionally validated and published to
+GHCR as `v9` and `latest`, each pulled anonymously with a fresh `DOCKER_CONFIG` and no
+host credentials, returning the digests stated below. The source release is published at
+https://github.com/tpurtell/ds41rt/releases/tag/v9. Model weights are host-mounted and are never in the images.
 
 ## What v9 changes
 
@@ -57,7 +57,7 @@ weights are host-mounted and are never in the images.
   index+attestation locally); the Spark local `.Id` is its config digest while the
   registry reports the manifest digest — this is not a discrepancy. Both images were
   pulled anonymously with a fresh `DOCKER_CONFIG` and no host credentials (rc=0,
-  matching digests). The GitHub release is a separate step and remains pending.
+  matching digests). The GitHub release is published at https://github.com/tpurtell/ds41rt/releases/tag/v9.
 
 ## Official quantization vs container distinction
 
@@ -187,8 +187,7 @@ transfer as final-image proof.
    ostrich both returned rc=0 with matching digests, created no auth file, and
    reused cached layers.
 
-`ds41rt.config` is already at `:v9` (committed). The GitHub release remains pending
-as a separate step. Rollback reference: the pre-push `latest` (v8) was coordinator
+`ds41rt.config` is already at `:v9` (committed). The GitHub release is published at https://github.com/tpurtell/ds41rt/releases/tag/v9. Rollback reference: the pre-push `latest` (v8) was coordinator
 `sha256:08c2d6df9a0a6a365eff2c014172478b40d9f39d06437a1c9244c566181b9e40` and
 spark-expert `sha256:9907983992916bb8e0f35ab869e12706cfe4613cc6dcd93f4ff53796c2d80bf6`.
 Evidence: `v9-build/PUBLICATION-EVIDENCE.txt`.

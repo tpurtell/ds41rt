@@ -28,8 +28,7 @@ Publication done: `./push-containers.sh v9` published `v9` and `latest` (same
 digest per role) and anonymous fresh-`DOCKER_CONFIG` pulls returned rc=0 with
 matching digests. Coordinator index `sha256:786d1d67…` (linux/amd64 child
 `sha256:649e5c84…`); spark-expert manifest `sha256:f0c67407…`
-(`v9-build/PUBLICATION-EVIDENCE.txt`). The GitHub release is a separate step and
-remains pending.
+(`v9-build/PUBLICATION-EVIDENCE.txt`). The GitHub release is published at https://github.com/tpurtell/ds41rt/releases/tag/v9.
 
 Not done: no final-image performance campaign; reference equivalence not
 performed; canonical six-rank qualifier not run and out of scope. The performance
@@ -222,10 +221,9 @@ CPU/source gates:
 - [x] Package visibility is already public for the existing packages; no owner
       visibility action was needed.
 - [x] `ds41rt.config` updated to `:v9` and committed.
-- [ ] GitHub release published (separate step, pending).
-- [ ] `main` fast-forwarded to the qualified `dev` head (`git merge --ff-only`)
-      and `release/v9` created at the qualified commit, only after publication
-      and hardware validation.
+- [x] GitHub release published: https://github.com/tpurtell/ds41rt/releases/tag/v9 (asset `SHA256SUMS`, sha256 `d25065eb368ca27e8984c8578a58703cb1db1cf5528022f2518ddd612a5f51b0`).
+- [x] `main` fast-forwarded to the qualified `dev` head (`git merge --ff-only`, no force,
+      `3295598..da0dce0`) and `release/v9` created at the qualified commit (`da0dce0`).
 - [ ] `latest` consumers considered: the tag now points at v9 and has no
       separate rollback boundary (pre-push rollback reference is recorded in the
       publication evidence).
