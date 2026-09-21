@@ -207,6 +207,8 @@ class FakeTorch:
     mutation-sensitive function of the routed inputs."""
 
     def __init__(self):
+        self.corrupt_tiles = set()
+        self.corrupt_tiles_at_cases = {}
         self.bfloat16 = 'bfloat16'
         self.int32 = 'int32'
         self.int16 = 'int16'
@@ -459,6 +461,12 @@ class FakeTorch:
                 view = buffers.output.np[:rows]
                 value = ((x.np[:rows].mean(axis=1) + ids.np[:rows].sum(axis=1) * 1e-6
                           + weights.np[:rows].sum(axis=1)) * 0.5)[:, None]
+                if (binding.launch.fc1_tile_k, binding.launch.fc1_tile_n) in torch.corrupt_tiles:
+                    value = value * 1.02        # 2% skew: over the .004 gate, deterministic
+                if ((binding.launch.fc1_tile_k, binding.launch.fc1_tile_n)
+                        in torch.corrupt_tiles_at_cases.get(
+                            (rows, len(np.unique(ids.np[:rows]))), ())):
+                    value = value * 1.02        # case-selective skew: one live case only
                 np.copyto(view, np.broadcast_to(value, view.shape))
             capturing = torch.cuda._capturing
             if capturing is not None:
@@ -575,11 +583,14 @@ def fake_safe_open(bits_for=None, magic=None, layer_bits=None):
 
 class WiredRunCase(unittest.TestCase):
     def run_main(self, start=768, width=768, capacity=16, extra_argv=(),
-                 bits_for=None, layer_bits=None, magic=None, expect_error=None):
+                 bits_for=None, layer_bits=None, magic=None, expect_error=None, corrupt=(),
+                 corrupt_at_cases=None):
         if PURE is None:
             self.skipTest('pinned b12x pure planner functions are unavailable')
         bits_for = bits_for or default_bits
         fake = FakeTorch()
+        fake.corrupt_tiles = set(corrupt)
+        fake.corrupt_tiles_at_cases = dict(corrupt_at_cases or {})
         modules = fake.make_b12x_modules(
             PURE, {'start': start, 'width': width, 'bits_for': bits_for})
         safetensors = _mod('safetensors',
@@ -602,7 +613,8 @@ class WiredRunCase(unittest.TestCase):
                 if expect_error is not None:
                     with self.assertRaises(expect_error):
                         harness.main(argv)
-                    return None, fake
+                    return (json.loads(out.read_text())
+                            if out.exists() else None), fake
                 harness.main(argv)
             return json.loads(out.read_text()), fake
 
@@ -759,6 +771,103 @@ class Tp3WiringTests(WiredRunCase):
         # The passed argv, not the pytest process argv: pytest never sees
         # '--output' for this invocation.
         self.assertIn('--output', command)
+
+
+
+class TimingPolicyTests(WiredRunCase):
+    """Two-phase lane policy: candidate numerics are CLASSIFIED, baseline or
+    invariant failures withhold ALL timing, and the reported metrics carry
+    max-relative plus relative-L2 plus cosine on every comparison."""
+
+    def test_metric_battery_reports_all_three_measures(self):
+        record, _ = self.run_main()
+        for result in record['results']:
+            for check in result['checks']:
+                for key in ('relative_max_error', 'relative_l2_error', 'cosine_similarity'):
+                    self.assertIn(key, check)
+                if result['rows'] > 1:
+                    for entry in result['row_consistency']:
+                        for key in ('rows_1_vs_full_max_error', 'relative_l2_error',
+                                    'cosine_similarity'):
+                            self.assertIn(key, entry)
+
+    def test_candidate_numeric_failure_is_classified_not_lane_poisoning(self):
+        record, _ = self.run_main(corrupt=((64, 256),))     # k64-n256 only
+        rejected = {v['name'] for v in record['variants']
+                    if v['status'] == 'rejected-numerics'}
+        self.assertEqual(rejected, {'k64-n256'})
+        self.assertGreater(record['numerics_rejected']['k64-n256'][0]['worst_relative_max_error'], .004)
+        for result in record['results']:
+            self.assertIsNotNone(result['timings'])
+            names = {t['variant'] for t in result['timings']}
+            self.assertNotIn('k64-n256', names)
+            self.assertIn('baseline', names)
+        self.assertTrue(record['passed'])
+        self.assertTrue(all(check['passed'] for result in record['results']
+                            for check in result['checks']
+                            if check['variant'] != 'k64-n256'))
+        self.assertTrue(any(not check['passed'] for result in record['results']
+                            for check in result['checks']
+                            if check['variant'] == 'k64-n256'))
+
+    def test_rejection_of_a_candidate_failing_only_one_case_is_all_or_nothing(self):
+        # k64-n256 misses the .004 gate at rows=8 only and agrees everywhere
+        # else.  Rejection is all-or-nothing: the candidate must be absent from
+        # EVERY timing case (and the lane must not crash looking up its tile),
+        # while the surviving variants stay timed.
+        record, _ = self.run_main(corrupt_at_cases={(8, 16): ((64, 256),)})
+        rejected = {v['name'] for v in record['variants']
+                    if v['status'] == 'rejected-numerics'}
+        self.assertEqual(rejected, {'k64-n256'})
+        self.assertEqual([r['case'] for r in record['numerics_rejected']['k64-n256']], [[8, 16]])
+        for variant in record['variants']:
+            if variant['name'] == 'k64-n256':
+                self.assertEqual(variant['tile'], [64, 256, 64, 256])
+        self.assertTrue(any(not check['passed'] for result in record['results']
+                            if (result['rows'], result['distinct_experts']) == (8, 16)
+                            for check in result['checks']
+                            if check['variant'] == 'k64-n256'))
+        for result in record['results']:
+            self.assertIsNotNone(result['timings'],
+                                 'a controlled rejection must not withhold timing')
+            names = {t['variant'] for t in result['timings']}
+            self.assertNotIn('k64-n256', names)
+            self.assertEqual(names, {'baseline', 'k64-n128'})
+            for timing in result['timings']:
+                self.assertEqual(timing['tile'],
+                                 [128, 128, 128, 128] if timing['variant'] == 'baseline'
+                                 else [64, 128, 64, 128])
+        self.assertNotIn('failure', record)
+        self.assertTrue(record['passed'])
+        self.assertTrue(all(check['passed'] for result in record['results']
+                            for check in result['checks']
+                            if check['variant'] != 'k64-n256'))
+
+    def test_all_candidates_disagreeing_with_the_baseline_withholds_every_window(self):
+        # Both controlled candidates skewed in the same one case: the shared
+        # reference (the production baseline) is the suspect, so the lane fails
+        # closed instead of rejecting the whole candidate set.
+        record, _ = self.run_main(corrupt_at_cases={(8, 16): ((64, 256), (64, 128))},
+                                  expect_error=SystemExit)
+        self.assertIn('baseline numerics', record['failure'])
+        self.assertFalse(record['numerics_rejected'])
+        self.assertTrue(all(result['timings'] is None for result in record['results']),
+                        'phase A must not time any case after an all-disagree failure')
+        self.assertFalse(record['passed'])
+
+    def test_baseline_numeric_failure_withholds_every_timing_window(self):
+        record, _ = self.run_main(corrupt=((128, 128),), expect_error=SystemExit)
+        # production baseline tile is (128,128,128,128): corrupting it must
+        # kill the whole timing phase, not just the failing case...
+        self.assertIn('baseline numerics', record['failure'])
+        self.assertTrue(all(result['timings'] is None for result in record['results']),
+                        'phase A must not time the later passing cases either')
+        self.assertFalse(record['passed'])
+
+    def test_device_record_names_the_queried_nvidia_smi_selector(self):
+        record, _ = self.run_main()
+        self.assertEqual(record['device']['uuid'], 'GPU-fake-uuid')
+        self.assertEqual(record['device']['nvidia_smi_selector'], 'GPU-fake-uuid')
 
 
 if __name__ == '__main__':

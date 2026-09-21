@@ -424,13 +424,43 @@ def unique_storage_bytes(tensors):
     return total
 
 
+def nvidia_smi_selector(value):
+    """Normalize a torch device UUID to a valid nvidia-smi ``--id`` selector.
+
+    torch's ``props.uuid`` renders as a bare UUID (no ``GPU-`` prefix) while
+    nvidia-smi wants ``GPU-<uuid>``; numeric indices and already-prefixed
+    (GPU-/MIG-/UUID-) strings pass through untouched.  An empty value has no
+    selector at all.
+    """
+    text = str(value).strip() if value is not None else ''
+    if not text or text == 'None':
+        return None
+    if text.isdigit():
+        return text
+    if text.upper().startswith(('GPU-', 'MIG-', 'UUID-')):
+        return text
+    if re.fullmatch(r'[0-9a-fA-F][0-9a-fA-F-]{7,}', text):
+        return 'GPU-' + text
+    return text
+
+
+def numeric_similarity(candidate, reference):
+    """Reported-always, gated-never (max-relative stays the only gate):
+    relative-L2 error and cosine similarity between two output tensors."""
+    c, r = candidate.float(), reference.float()
+    return dict(
+        relative_l2_error=float((c - r).norm() / r.norm()),
+        cosine_similarity=float((c * r).sum() / (c.norm() * r.norm())))
+
+
 def gpu_identity_snapshot(uuid):
     """Raw per-GPU mode sample; purely audit data, never a timing gate here."""
-    if not uuid:
+    selector = nvidia_smi_selector(uuid)
+    if not selector:
         return None
     try:
         completed = subprocess.run(
-            ['nvidia-smi', '--id', str(uuid),
+            ['nvidia-smi', '--id', str(selector),
              '--query-gpu=uuid,pstate,power.limit,power.draw,clocks.sm,clocks.mem,'
              'clocks_event_reasons.active', '--format=csv,noheader'],
             capture_output=True, text=True, timeout=10, check=False)
@@ -544,6 +574,15 @@ def parse_args(argv=None):
     return parser.parse_args(argv)
 
 
+def variant_tile(record, name, fallback):
+    """Reported tile for `name`: its own record when present (compiled, legal
+    but untimed, or rejected-numerics), else the requested tile."""
+    for variant in record['variants']:
+        if variant.get('name') == name and 'tile' in variant:
+            return variant['tile']
+    return fallback
+
+
 def main(argv=None):
     args = parse_args(argv)
     try:
@@ -613,6 +652,8 @@ def main(argv=None):
                   tier_family=tier_family,
                   gpu=props.name, sm_count=props.multi_processor_count,
                   device=dict(name=props.name, uuid=str(getattr(props, 'uuid', '')),
+                              nvidia_smi_selector=nvidia_smi_selector(
+                                  getattr(props, 'uuid', '')),
                               compute=[props.major, props.minor],
                               sm_count=props.multi_processor_count,
                               shared_memory_per_block_optin=int(props.shared_memory_per_block_optin),
@@ -712,6 +753,17 @@ def main(argv=None):
     cases = [(1, 6), (8, 16), (8, 30), (16, 30)]
     if args.capacity == 80:
         cases += [(24, 30), (64, 30)]
+    # Formal policy: correctness precedes performance GLOBALLY.  Phase A runs
+    # every case's capture/invariants/numerics battery and opens NO timing
+    # windows; any structural or baseline failure withholds the whole timing
+    # phase.  A CONTROLLED candidate's own numerical failure does not poison
+    # the lane — it is classified ('rejected-numerics') and excluded from
+    # every timing case (all-or-nothing, never only the failing cases) — the
+    # gate itself stays max-relative <= .004, never loosened, with relative-L2
+    # and cosine reported alongside.
+    numerics_rejected: dict = {}
+    global_failures: list = []
+    timing_queue: list = []
     for rows, unique in cases:
         torch.manual_seed(410917 + rows + unique)
         x = torch.randn(rows, 5120, device='cuda', dtype=torch.bfloat16)
@@ -749,7 +801,6 @@ def main(argv=None):
                 workspace_addresses_stable=bool(pointers == workspace_pointers[name])))
         case_passed = invariants_gate_passed(invariants)
         checks = []
-        eligible = True
         anchor_eager = {}
         anchor_inputs = None
         for mutation in range(2):
@@ -772,14 +823,13 @@ def main(argv=None):
             for (name, kind, binding, buffers), output in zip(plans, outputs):
                 assert torch.isfinite(output).all() and output.abs().max() > 0
                 error = float((output.float() - reference.float()).abs().max() / reference.float().abs().max())
-                eligible &= error <= .004
                 copied = output.clone()
                 eager = run_bound_mixed_trellis(x, weights, ids, binding, buffers)
                 torch.cuda.synchronize()
                 assert torch.equal(copied, eager), (name, 'graph differs from eager')
                 check = dict(variant=name, mutation=mutation, relative_max_error=error,
                              passed=error <= .004,
-                             relative_l2_error=float((copied.float() - reference.float()).norm() / reference.float().norm()))
+                             **numeric_similarity(copied, reference))
                 if error > .004:
                     indices = (copied.float() - reference.float()).abs().flatten().topk(8).indices
                     check['largest_differences'] = dict(indices=indices.tolist(),
@@ -801,23 +851,73 @@ def main(argv=None):
                 error = float((one.float() - full_row.float()).abs().max()
                               / full_row.float().abs().max().clamp_min(1e-12))
                 row_consistency.append(dict(variant=name, rows_1_vs_full_max_error=error,
-                                            passed=error <= .004))
-            eligible &= all(entry['passed'] for entry in row_consistency)
-        if not (oracle_gate_passed(checks) and eligible and case_passed):
-            record['results'].append(dict(rows=rows, distinct_experts=unique, checks=checks,
-                                          invariants=invariants,
-                                          row_consistency=row_consistency,
-                                          same_tile_residency_bitwise=(
-                                              True if len(residency_pair) == 2 else None),
-                                          timings=None))
-            print('correctness/invariant gate failed', rows, unique, flush=True)
-            save()
-            del graphs, outputs
-            continue
+                                            passed=error <= .004,
+                                            **numeric_similarity(one, full_row)))
+        # Classify per-variant numeric failures; a controlled candidate's own
+        # miss is a rejection, never a lane-wide timing veto.  Rejection is
+        # all-or-nothing: a candidate that fails ANY case is excluded from
+        # EVERY timing case.  The gate stays max-relative <= .004.
+        failed_variants = ({c['variant'] for c in checks if not c['passed']}
+                           | {e['variant'] for e in row_consistency if not e['passed']})
+        if not case_passed:
+            global_failures.append(f'invariant failure in case {rows}x{unique}')
+        candidate_names = {p[0] for p in plans} - {plans[0][0]}
+        if candidate_names and candidate_names <= failed_variants:
+            # EVERY controlled candidate disagrees with the production
+            # baseline: the shared reference (the baseline) is the suspect,
+            # not the whole candidate set.  Treat as a global failure.
+            global_failures.append(f'baseline numerics failed in case {rows}x{unique}')
+        else:
+            # A baseline failure is either the all-disagree branch above or a
+            # genuine baseline-only miss; both fail closed.
+            for name in sorted(failed_variants):
+                if name == plans[0][0]:
+                    global_failures.append(f'baseline numerics failed in case {rows}x{unique}')
+                else:
+                    worst = max((c['relative_max_error'] for c in checks
+                                 if c['variant'] == name), default=None)
+                    numerics_rejected.setdefault(name, []).append(dict(
+                        case=[rows, unique], worst_relative_max_error=worst))
+        record['results'].append(dict(rows=rows, distinct_experts=unique, checks=checks,
+                                      invariants=invariants, row_consistency=row_consistency,
+                                      same_tile_residency_bitwise=(
+                                          True if len(residency_pair) == 2 else None),
+                                      timings=None))
+        timing_queue.append(dict(rows=rows, unique=unique, graphs=graphs, outputs=outputs,
+                                 result=record['results'][-1]))
+        print('case correctness done', rows, unique, 'global_failures', len(global_failures),
+              'rejected', sorted(numerics_rejected), flush=True)
+        save()
+    if numerics_rejected:
+        for variant in record['variants']:
+            if variant.get('name') in numerics_rejected and variant.get('status') == 'compiled':
+                variant['status'] = 'rejected-numerics'
+                variant['numerics_rejections'] = numerics_rejected[variant['name']]
+    record['numerics_rejected'] = {name: reasons for name, reasons in sorted(numerics_rejected.items())}
+    timed_plans = [p for p in plans if p[0] not in numerics_rejected]
+    if global_failures:
+        record['failure'] = ('global correctness failure; timing withheld for every case: '
+                             + '; '.join(global_failures))
+        save()
+        raise SystemExit(record['failure'])
+    if not timed_plans:
+        record['failure'] = 'no timing-eligible variant survived the numerical gate'
+        save()
+        raise SystemExit(record['failure'])
+    # Phase B: the whole battery passed, now open the timing windows only.
+    # Rejection is all-or-nothing per candidate: one numerical failure anywhere
+    # means the candidate is never timed in any case, so `timed_plans` (and the
+    # samples/orders sized beside it) must be keyed off `numerics_rejected`, not
+    # off which individual cases happened to fail.
+    for context in timing_queue:
+        graphs, outputs, result = context['graphs'], context['outputs'], context['result']
+        rows, unique = context['rows'], context['unique']
         # Balanced forward/reverse order; raw samples are retained. Stable graphs
         # replay repeatedly without resolving kernels or allocating workspaces.
-        samples = [[] for _ in plans]
-        orders = [list(range(len(plans))), list(range(len(plans)-1, -1, -1))] * 3
+        timed_graphs = [context['graphs'][i] for i, p in enumerate(plans)
+                        if p[0] not in numerics_rejected]
+        samples = [[] for _ in timed_plans]
+        orders = [list(range(len(timed_plans))), list(range(len(timed_plans)-1, -1, -1))] * 3
         # Bracket the actual timing window: clocks_before is sampled immediately
         # before any replay and clocks_after immediately after the last sample, so
         # the pair describes the machine state the numbers were taken in.
@@ -826,39 +926,36 @@ def main(argv=None):
         for order in orders:
             for index in order:
                 for _ in range(5):
-                    graphs[index].replay()
+                    timed_graphs[index].replay()
                 begin, end = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
                 begin.record()
                 for _ in range(100):
-                    graphs[index].replay()
+                    timed_graphs[index].replay()
                 end.record()
                 end.synchronize()
                 samples[index].append(begin.elapsed_time(end) * 10)
         timing_allocations = int(
             torch.cuda.memory_stats(0)['allocation.all.allocated'] - timing_begin)
         clocks_after = gpu_identity_snapshot(record['device']['uuid'])
-        result = dict(rows=rows, distinct_experts=unique, checks=checks,
-                      invariants=invariants, row_consistency=row_consistency,
-                      same_tile_residency_bitwise=(True if len(residency_pair) == 2 else None),
-                      clocks_before=clocks_before,
-                      timing_order=[[plans[index][0] for index in order] for order in orders],
+        result.update(clocks_before=clocks_before,
+                      timing_order=[[timed_plans[index][0] for index in order] for order in orders],
                       timing_iterations=100,
                       timing_allocations=timing_allocations,
                       clocks_after=clocks_after,
-                      timings=[dict(variant=p[0], tile=next(
-                                   v['tile'] for v in record['variants']
-                                   if v.get('name') == p[0] and v['status'] == 'compiled'),
-                               samples_us=s, median_us=statistics.median(s),
-                               min_us=min(s), max_us=max(s))
-                               for p, s in zip(plans, samples)])
-        record['results'].append(result)
+                      timings=[dict(variant=p[0], tile=variant_tile(record, p[0], p[1]),
+                                    samples_us=s, median_us=statistics.median(s),
+                                    min_us=min(s), max_us=max(s))
+                               for p, s in zip(timed_plans, samples)])
         print(json.dumps({k: v for k, v in result.items() if k not in ('checks', 'invariants')}), flush=True)
         save()
         del graphs, outputs
-    record['passed'] = (all(check['passed'] for result in record['results']
-                            for check in result['checks'])
+    record['passed'] = (not global_failures
+                        and all(check['passed'] for result in record['results']
+                                for check in result['checks']
+                                if check['variant'] not in numerics_rejected)
                         and all(entry['passed'] for result in record['results']
-                                for entry in result.get('row_consistency', []))
+                                for entry in result.get('row_consistency', [])
+                                if entry['variant'] not in numerics_rejected)
                         and all(result['invariants'] and invariants_gate_passed(result['invariants'])
                                 for result in record['results'])
                         and all(result['timings'] is not None for result in record['results']))

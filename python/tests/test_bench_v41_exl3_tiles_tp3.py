@@ -621,5 +621,42 @@ class FamilyLoaderFailureTests(unittest.TestCase):
         self._exercise(oracle, 'qualify_v41_exl3_aot.py')
 
 
+
+class NvidiaSmiSelectorTests(unittest.TestCase):
+    """torch renders props.uuid bare; nvidia-smi --id wants GPU-<uuid> (the
+    GB10 lane defect).  Normalization must be exact and never double-prefix."""
+
+    GB10_UUID = '3740a9fc-56c0-4a6f-8d2e-9f1b4c7d0a11'
+
+    def test_bare_uuid_gets_the_gpu_prefix(self):
+        self.assertEqual(harness.nvidia_smi_selector(self.GB10_UUID),
+                         'GPU-' + self.GB10_UUID)
+
+    def test_prefixed_and_index_selectors_pass_through(self):
+        for value in ('GPU-' + self.GB10_UUID, 'MIG-GPU-abc/1/2', '0', '12',
+                      'GPU-abc', 'uuid-abc'):
+            with self.subTest(value=value):
+                self.assertEqual(harness.nvidia_smi_selector(value), value)
+
+    def test_empty_value_has_no_selector(self):
+        for value in ('', None, '   '):
+            with self.subTest(value=value):
+                self.assertIsNone(harness.nvidia_smi_selector(value))
+
+    def test_gb10_snapshot_queries_the_prefixed_selector_and_round_trips(self):
+        line = (f'GPU-{self.GB10_UUID}, P0, N/A, 11.57 W, 2235 MHz, N/A, 0x0')
+        seen = {}
+
+        def fake_run(argv, **kw):
+            seen['argv'] = argv
+            return types.SimpleNamespace(returncode=0, stdout=line + '\n')
+
+        with patch('subprocess.run', fake_run):
+            out = harness.gpu_identity_snapshot(self.GB10_UUID)
+        self.assertEqual(out.strip(), line)
+        self.assertEqual(seen['argv'][seen['argv'].index('--id') + 1],
+                         'GPU-' + self.GB10_UUID)
+
+
 if __name__ == '__main__':
     unittest.main()
