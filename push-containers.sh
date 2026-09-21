@@ -16,6 +16,14 @@ the universal tp2;tp3;tp6 set by default); a role-less legacy build is rejected.
 
 Example:
   ./push-containers.sh v4
+
+Every remote step shares one SSH option set with ./build.sh and ./run.sh:
+  DS41RT_RELEASE_SSH_CONFIG       ssh config file to use (default empty: stock
+                                  OpenSSH resolution; BatchMode is always forced so
+                                  a publish can never wait on a prompt).
+                                  /dev/null discards a broken system include but
+                                  also drops your ~/.ssh/config host aliases, so
+                                  prefer a file containing 'Include ~/.ssh/config'.
 EOF
 }
 
@@ -37,6 +45,13 @@ tag="$1"
 release_load_config "$repo_root/ds41rt.config"
 release_need docker
 release_need ssh
+
+# One SSH option set for the whole release pipeline: scripts/release-common.sh owns
+# it. Resolved here, after the tag and configuration validation, so a mistyped
+# DS41RT_RELEASE_SSH_CONFIG is reported as itself before the daemon is queried and
+# before any Spark is contacted. The Spark image was placed on $SPARK_0_HOST through
+# that same transport, so publishing it from that host has to use it as well.
+release_configure_ssh_transport
 
 coordinator_repository="ghcr.io/tpurtell/ds41rt-coordinator"
 spark_repository="ghcr.io/tpurtell/ds41rt-spark-expert"
@@ -61,7 +76,7 @@ docker info >/dev/null 2>&1 ||
 docker image inspect "$COORDINATOR_DOCKER_INFERENCE" >/dev/null 2>&1 ||
   release_die "coordinator image is missing: $COORDINATOR_DOCKER_INFERENCE"
 
-ssh -o BatchMode=yes -o ConnectTimeout=10 "$spark_host" bash -s -- \
+release_ssh -o ConnectTimeout=10 "$spark_host" bash -s -- \
   "$SPARK_EXPERT_DOCKER_INFERENCE" <<'REMOTE'
 set -euo pipefail
 image="$1"
@@ -75,7 +90,7 @@ coordinator_revision="$(
     "$COORDINATOR_DOCKER_INFERENCE"
 )"
 spark_revision="$(
-  ssh -o BatchMode=yes "$spark_host" bash -s -- \
+  release_ssh "$spark_host" bash -s -- \
     "$SPARK_EXPERT_DOCKER_INFERENCE" <<'REMOTE'
 set -euo pipefail
 docker image inspect \
@@ -88,7 +103,7 @@ coordinator_source="$(
     "$COORDINATOR_DOCKER_INFERENCE"
 )"
 spark_source="$(
-  ssh -o BatchMode=yes "$spark_host" bash -s -- \
+  release_ssh "$spark_host" bash -s -- \
     "$SPARK_EXPERT_DOCKER_INFERENCE" <<'REMOTE'
 set -euo pipefail
 docker image inspect \
@@ -107,7 +122,7 @@ REMOTE
   release_die "$spark_host image is not linked to the release repository: $spark_source"
 
 spark_roles="$(
-  ssh -o BatchMode=yes "$spark_host" bash -s -- \
+  release_ssh "$spark_host" bash -s -- \
     "$SPARK_EXPERT_DOCKER_INFERENCE" <<'REMOTE'
 set -euo pipefail
 docker image inspect \
@@ -124,24 +139,24 @@ echo "  coordinator: $coordinator_repository:$tag"
 echo "  spark:       $spark_repository:$tag (from $spark_host)"
 
 docker tag "$COORDINATOR_DOCKER_INFERENCE" "$coordinator_repository:$tag"
-ssh -o BatchMode=yes "$spark_host" bash -s -- \
+release_ssh "$spark_host" bash -s -- \
   "$SPARK_EXPERT_DOCKER_INFERENCE" "$spark_repository:$tag" <<'REMOTE'
 set -euo pipefail
 docker tag "$1" "$2"
 REMOTE
 
 docker push "$coordinator_repository:$tag"
-ssh -o BatchMode=yes "$spark_host" docker push "$spark_repository:$tag"
+release_ssh "$spark_host" docker push "$spark_repository:$tag"
 
 docker tag "$COORDINATOR_DOCKER_INFERENCE" "$coordinator_repository:latest"
-ssh -o BatchMode=yes "$spark_host" bash -s -- \
+release_ssh "$spark_host" bash -s -- \
   "$SPARK_EXPERT_DOCKER_INFERENCE" "$spark_repository:latest" <<'REMOTE'
 set -euo pipefail
 docker tag "$1" "$2"
 REMOTE
 
 docker push "$coordinator_repository:latest"
-ssh -o BatchMode=yes "$spark_host" docker push "$spark_repository:latest"
+release_ssh "$spark_host" docker push "$spark_repository:latest"
 
 echo "Published both $tag and latest:"
 echo "  docker pull $coordinator_repository:$tag"

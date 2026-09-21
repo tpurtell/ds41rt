@@ -33,6 +33,7 @@ class PlacementHandoffTest(unittest.TestCase):
             env=dict(os.environ,PATH=str(root)+os.pathsep+os.environ['PATH'],EVENTS=str(root/'events'),PLAN=str(root/'plan'))
             setup=r'''
 set -euo pipefail
+source scripts/release-common.sh
 release_die() { echo "$*" >&2; exit 1; }
 RELEASE_RTX_GPUS="$1"
 coordinator=coordinator

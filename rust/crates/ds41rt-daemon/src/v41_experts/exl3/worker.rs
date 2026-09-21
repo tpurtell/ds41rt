@@ -85,8 +85,8 @@ impl<'a> Exl3Worker<'a> {
         };
         let rank = first.layout.rank;
         ensure!(
-            matches!(first.layout.world, 2 | 4) && rank < first.layout.world,
-            "EXL3 worker requires Spark TP2 or TP4 weights"
+            matches!(first.layout.world, 2 | 3 | 4) && rank < first.layout.world,
+            "EXL3 worker requires implicit Spark TP2, TP3 or TP4 weights"
         );
         for (index, weight) in weights.iter().enumerate() {
             ensure!(

@@ -4,6 +4,14 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
+# One SSH option set, shared with the release build: scripts/release-common.sh only
+# declares it, so sourcing has no effect until release_ssh is called below. Stock
+# resolution stays the default; DS41RT_RELEASE_SSH_CONFIG names a config file for a
+# host whose system ssh_config OpenSSH refuses to read, and BatchMode is always
+# forced because readiness polling runs unattended.
+# shellcheck source=release-common.sh
+source "$repo_root/scripts/release-common.sh"
+
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   cat <<'EOF'
 Usage: scripts/phase0-spark-tcp-bench.sh
@@ -14,6 +22,12 @@ Spark targets and an expected ProtocolV2 executor id.
 
 Environment:
   DS41RT_SPARK_HOSTS                 default: ostrich,dodo,emu,kiwi
+  DS41RT_RELEASE_SSH_CONFIG            ssh config file for every internal call;
+                                      default empty: stock OpenSSH resolution
+                                      (BatchMode is always forced). A /dev/null
+                                      value also drops your ~/.ssh/config aliases,
+                                      so prefer a file containing
+                                      'Include ~/.ssh/config'.
   DS41RT_PHASE0_SPARK_EXPERT_MODE    real or synthetic; default: real
   DS41RT_SPARK_IMAGE                 default: ds41rt-spark-expert-dev
   DS41RT_SPARK_IMAGE_COPY_METHOD     spark-netcat, ssh-relay, or none; default: spark-netcat
@@ -119,6 +133,11 @@ Environment:
 EOF
   exit 0
 fi
+
+# Resolve the transport before any work, so a mistyped config file fails here
+# rather than halfway through an image copy. After --help above, which must keep
+# printing usage regardless of the environment.
+release_configure_ssh_transport
 
 hosts_csv="${DS41RT_SPARK_HOSTS:-ostrich,dodo,emu,kiwi}"
 model_id="${DS41RT_MODEL_ID:-deepseek-ai/DeepSeek-V4.1-Flash}"
@@ -659,7 +678,7 @@ need rsync
 need ssh
 if [ -z "$remote_dir" ]; then
   remote_dir="$(
-    ssh -o BatchMode=yes "${hosts[0]}" \
+    release_ssh "${hosts[0]}" \
       'printf "%s/ds41rt-phase0-spark-bench" "$HOME"'
   )"
 fi
@@ -693,12 +712,12 @@ cleanup() {
     local container
     container="$(container_name_for_host "$host")"
     if [ -n "$existing_container" ]; then
-      ssh -o BatchMode=yes "$host" \
+      release_ssh "$host" \
         "docker exec '$container' '$remote_dir/scripts/wip-process.sh' stop 'expert-$port'" \
         >/dev/null 2>&1 || true
       continue
     fi
-    ssh -o BatchMode=yes "$host" bash -s -- "$container" "$remote_dir" <<'REMOTE' >/dev/null 2>&1 || true
+    release_ssh "$host" bash -s -- "$container" "$remote_dir" <<'REMOTE' >/dev/null 2>&1 || true
 set -euo pipefail
 container="$1"
 remote_dir="$2"
@@ -714,7 +733,7 @@ trap cleanup EXIT
 stage_repo() {
   local host="$1"
   echo "== staging repo on $host:$remote_dir =="
-  ssh -o BatchMode=yes "$host" "mkdir -p '$remote_dir'"
+  release_ssh "$host" "mkdir -p '$remote_dir'"
   rsync -az --delete \
     --exclude '.git' \
     --exclude '.venv/' \
@@ -752,14 +771,14 @@ stage_repo() {
     --exclude '*.pyo' \
     "$repo_root/third_party/sparkinfer/" \
     "$host:$remote_dir/third_party/sparkinfer/"
-  ssh -o BatchMode=yes "$host" \
+  release_ssh "$host" \
     "python3 '$remote_dir/scripts/verify-sparkinfer-source.py' \
       --source '$remote_dir/third_party/sparkinfer' \
       --lock '$remote_dir/third_party/sparkinfer.lock.json' \
       --require-no-python-cache"
   if [ "$use_diagnostic_placement" = "1" ] \
     && { [[ "$catalog" == .ds41rt-cache/* ]] || [[ "$loadplan_dir" == .ds41rt-cache/* ]]; }; then
-    ssh -o BatchMode=yes "$host" \
+    release_ssh "$host" \
       "mkdir -p '$remote_dir/$(dirname "$catalog")' '$remote_dir/$loadplan_dir'"
     rsync -az "$repo_root/$catalog" "$host:$remote_dir/$catalog"
     rsync -az "$repo_root/$loadplan_dir/" "$host:$remote_dir/$loadplan_dir/"
@@ -789,10 +808,10 @@ sync_model_cache_to_host() {
   fi
 
   remote_hf_home="$(
-    ssh -o BatchMode=yes "$host" \
+    release_ssh "$host" \
       'printf "%s" "${HF_HOME:-$HOME/.cache/huggingface}"'
   )"
-  if ssh -o BatchMode=yes "$host" bash -s -- \
+  if release_ssh "$host" bash -s -- \
     "$remote_hf_home/hub/$model_cache_key" "$revision" <<'REMOTE'
 set -euo pipefail
 model_root="$1"
@@ -810,14 +829,14 @@ REMOTE
   fi
 
   echo "== syncing model cache to $host: $model_id@$revision =="
-  ssh -o BatchMode=yes "$host" "mkdir -p '$remote_hf_home/hub/$model_cache_key'"
+  release_ssh "$host" "mkdir -p '$remote_hf_home/hub/$model_cache_key'"
   rsync -a --partial \
     "$local_model_root/" "$host:$remote_hf_home/hub/$model_cache_key/"
 }
 
 image_exists() {
   local host="$1"
-  ssh -o BatchMode=yes "$host" "docker image inspect '$image' >/dev/null 2>&1"
+  release_ssh "$host" "docker image inspect '$image' >/dev/null 2>&1"
 }
 
 select_image_seed() {
@@ -844,7 +863,7 @@ wait_for_remote_listen() {
   local listen_port="$2"
   local deadline=$((SECONDS + 30))
   while [ "$SECONDS" -lt "$deadline" ]; do
-    if ssh -o BatchMode=yes "$host" "ss -ltn sport = :$listen_port 2>/dev/null | tail -n +2 | grep -q ." >/dev/null 2>&1; then
+    if release_ssh "$host" "ss -ltn sport = :$listen_port 2>/dev/null | tail -n +2 | grep -q ." >/dev/null 2>&1; then
       return 0
     fi
     sleep 1
@@ -859,7 +878,7 @@ copy_image_spark_netcat() {
   local dest_link="${dest}${image_link_suffix}"
   local state_dir="/tmp/ds41rt-image-copy-${USER:-tj}-${dest}-${image_copy_port}"
   echo "== copying $image from $src to $dest over ${dest_link}:${image_copy_port} =="
-  ssh -o BatchMode=yes "$dest" bash -s -- "$image_copy_port" "$state_dir" <<'REMOTE'
+  release_ssh "$dest" bash -s -- "$image_copy_port" "$state_dir" <<'REMOTE'
 set -euo pipefail
 listen_port="$1"
 state_dir="$2"
@@ -880,7 +899,7 @@ fi
 echo $! >"$state_dir/pid"
 REMOTE
   wait_for_remote_listen "$dest" "$image_copy_port"
-  if ! ssh -o BatchMode=yes "$src" bash -s -- "$image" "$dest_link" "$image_copy_port" <<'REMOTE'
+  if ! release_ssh "$src" bash -s -- "$image" "$dest_link" "$image_copy_port" <<'REMOTE'
 set -euo pipefail
 image="$1"
 dest_link="$2"
@@ -888,10 +907,10 @@ dest_port="$3"
 docker save "$image" | nc -N "$dest_link" "$dest_port"
 REMOTE
   then
-    ssh -o BatchMode=yes "$dest" "test -f '$state_dir/pid' && kill \"\$(cat '$state_dir/pid')\" >/dev/null 2>&1 || true" || true
+    release_ssh "$dest" "test -f '$state_dir/pid' && kill \"\$(cat '$state_dir/pid')\" >/dev/null 2>&1 || true" || true
     return 1
   fi
-  ssh -o BatchMode=yes "$dest" bash -s -- "$state_dir" "$image" <<'REMOTE'
+  release_ssh "$dest" bash -s -- "$state_dir" "$image" <<'REMOTE'
 set -euo pipefail
 state_dir="$1"
 image="$2"
@@ -919,7 +938,7 @@ copy_image_ssh_relay() {
   local src="$1"
   local dest="$2"
   echo "== copying $image from $src to $dest through local SSH relay =="
-  ssh -o BatchMode=yes "$src" "docker save '$image'" | ssh -o BatchMode=yes "$dest" "docker load"
+  release_ssh "$src" "docker save '$image'" | release_ssh "$dest" "docker load"
 }
 
 copy_image() {
@@ -971,7 +990,7 @@ EOF
     exit 2
   fi
   echo "== building $image on $host =="
-  ssh -o BatchMode=yes "$host" bash -s -- "$remote_dir" "$image" <<'REMOTE'
+  release_ssh "$host" bash -s -- "$remote_dir" "$image" <<'REMOTE'
 set -euo pipefail
 remote_dir="$1"
 image="$2"
@@ -1036,7 +1055,7 @@ start_expertd() {
   local existing_container_arg="${existing_container:-__unset__}"
   local runtime_cache_dir_arg="${runtime_cache_dir:-__unset__}"
   echo "== starting $mode ProtocolV2 expertd on $host:$port transport=$expert_transport real_layer=${expert_real_layer:-all} intermediate_shard=${intermediate_shard_rank}/${intermediate_shards} intermediate_reduction=$intermediate_reduction reduction_dtype=$intermediate_reduction_dtype owner_reduction_dtype=$intermediate_owner_reduction_dtype fused_fp8_reduction=$fused_fp8_reduction protocol_v2_execution_lanes=$protocol_v2_verbs_host_execution_lanes packed_direct_max_rows=$protocol_v2_packed_direct_max_rows managed_route_projections=${managed_route_projections:-0} grouped_multirow=${grouped_multirow:-0} route_cuda_graphs=${route_cuda_graphs:-0} b12x_spark_aot=${b12x_spark_aot:-0} ds4_flash_spark_aot=${ds4_flash_spark_aot:-0} b12x_route_lanes=$b12x_route_lanes b12x_grouped_decode=$b12x_grouped_decode b12x_w4a16_device_weights=$b12x_w4a16_device_weights b12x_w4a16_m1_fused_sum=$b12x_w4a16_m1_fused_sum b12x_w4a16_small_m_mode=$b12x_w4a16_small_m_mode nccl_ib_hca=$nccl_ib_hca nccl_cross_nic=$nccl_cross_nic nccl_netdevs_policy=$nccl_netdevs_policy nccl_ib_merge_nics=$nccl_ib_merge_nics nccl_p2p_net_chunksize=$nccl_p2p_net_chunksize nccl_launch_order_implicit=$nccl_launch_order_implicit route_cuda_event_timing=${route_cuda_event_timing:-0} route_timing=${route_timing:-0} build_profile=$build_profile gpu_runtime=$gpu_runtime =="
-  ssh -o BatchMode=yes "$host" bash -s -- \
+  release_ssh "$host" bash -s -- \
     "$remote_dir" "$image" "$container" "$mode" "$port" "$catalog_arg" "$loadplan_arg" "$host" "$layer_id" "$expert_real_layer" "$managed_route_projections" "$build_profile" "$gpu_runtime" "${DS41RT_PROTOCOL_V2_TCP_TIMING:-0}" "${DS41RT_REAL_FULL_PROTOCOL_V2_EXECUTOR_TIMING:-0}" "$grouped_multirow" "$route_cuda_graphs" "$route_timing" "$expert_transport" "$verbs_ib_port_num_arg" "$route_cuda_event_timing" "$b12x_spark_aot" "$route_validate" "$b12x_route_lanes" "$intermediate_shards" "$intermediate_shard_rank" "$intermediate_reduction" "$intermediate_reduction_dtype" "$intermediate_reduction_root" "$intermediate_reduction_port" "$intermediate_reduction_min_rows" "$nccl_socket_ifname" "$nccl_ib_hca" "$nccl_debug" "$b12x_grouped_decode" "$intermediate_owner_max_rows" "$intermediate_owner_port" "$intermediate_owner_peers_arg" "$fused_fp8_reduction" "$nccl_bf16_reduce" "$b12x_w4a16_decode_grid_x_arg" "$b12x_w4a16_device_weights" "$intermediate_row_sharded_reduction" "$nccl_launch_order_implicit" "$protocol_v2_verbs_host_execution_lanes" "$intermediate_rdma_peers" "$intermediate_rdma_port" "$intermediate_rdma_slot_bytes" "$intermediate_rdma_ring_depth" "$intermediate_owner_reduction_dtype" "$nccl_cross_nic" "$intermediate_rdma_additional_peers_arg" "$intermediate_rdma_devices_arg" "$intermediate_rdma_stripe_min_bytes" "$nccl_netdevs_policy" "$nccl_ib_merge_nics" "$nccl_p2p_net_chunksize" "$protocol_v2_packed_direct_max_rows" "$b12x_w4a16_m1_fused_sum" "$b12x_w4a16_small_m_mode" "$model_id" "$release_config_sha256_arg" "$prebuilt" "$route_preload_io_workers" "$weight_preload_nccl_port" "$route_preload_cooperative" "$existing_container_arg" "$prebuilt_bin" "$prebuilt_native_lib" "$runtime_cache_dir_arg" "$ds4_flash_spark_aot" "$model_revision" "$wip_allow_historical_exl3_control" <<'REMOTE'
 set -euo pipefail
 remote_dir="$1"
@@ -1475,7 +1494,7 @@ wait_for_port() {
   local host="$1"
   local check_host
   check_host="$(
-    ssh -G "$host" 2>/dev/null \
+    release_ssh -G "$host" 2>/dev/null \
       | awk '$1 == "hostname" { print $2; exit }'
   )"
   check_host="${check_host:-$host}"
@@ -1496,11 +1515,11 @@ wait_for_port() {
   done
   echo "expert daemon on ${host}:${port} did not become ready within ${timeout_s}s" >&2
   if [ -n "$existing_container" ]; then
-    ssh -o BatchMode=yes "$host" \
+    release_ssh "$host" \
       "docker exec '$existing_container' '$remote_dir/scripts/wip-process.sh' log 'expert-$port' 120" \
       >&2 || true
   else
-    ssh -o BatchMode=yes "$host" "docker logs '$(container_name_for_host "$host")' 2>&1 | tail -120" >&2 || true
+    release_ssh "$host" "docker logs '$(container_name_for_host "$host")' 2>&1 | tail -120" >&2 || true
   fi
   exit 1
 }

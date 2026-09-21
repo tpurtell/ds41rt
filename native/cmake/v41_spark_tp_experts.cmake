@@ -102,6 +102,7 @@ foreach(tp IN LISTS DS41RT_V41_SPARK_TP_SELECTED)
       "${dir}/v41_expert_variants.h" "${dir}/${variant_header}"
     DEPENDS
       "${CMAKE_CURRENT_SOURCE_DIR}/../python/tools/export_b12x_v41_slices_aot.py"
+      "${CMAKE_CURRENT_SOURCE_DIR}/../python/tools/v41_spark_tp3_launch_geometry.py"
       "${CMAKE_CURRENT_SOURCE_DIR}/../python/tools/export_b12x_v41_experts_aot.py"
       "${CMAKE_CURRENT_SOURCE_DIR}/${wrapper_src}"
       "${width_stamp}"

@@ -115,11 +115,19 @@ def write_bridge(output: Path, manifest: dict) -> None:
 
 def export(output: Path, intermediate: int, experts: int, capacity: int,
            bits: tuple[int, ...], routing: str, topk: int = 6, output_dtype: str = "bf16",
-           blocks_per_sm: int | None = None, paired_boundary: str | None = None) -> dict:
+           blocks_per_sm: int | None = None, paired_boundary: str | None = None,
+           tile: tuple[int, ...] | None = None) -> dict:
     if paired_boundary not in (None, "first", "last"):
         raise ValueError("paired boundary must be first, last, or None")
     if paired_boundary is not None and (intermediate != 640 or len(bits) != 2 or topk != 6):
         raise ValueError("paired export requires width 640, two tiers and top-k 6")
+    if paired_boundary is not None and tile is not None:
+        raise ValueError("paired exports keep the qualified tile policy; the offline "
+                         "tile override is for disjoint layouts only")
+    # The (fc1_tile_k, fc1_tile_n, fc2_tile_k, fc2_tile_n) tuple is b12x's own
+    # geometry vocabulary: _projection_mixed_tile_config()/the compile path reject a
+    # thread-count mismatch or a tile that does not fit the problem, so the pinned
+    # planner stays the single authority on what a legal tile is.
     if output_dtype not in ("bf16", "fp32"):
         raise ValueError("EXL3 output must be bf16 or fp32")
     # Disk-loaded B12x executors omit the compiler IR required by export_to_c.
@@ -155,7 +163,7 @@ def export(output: Path, intermediate: int, experts: int, capacity: int,
         tier0_num_experts=experts, tier1_num_experts=experts, top_k=topk,
         route_num_experts=experts, max_m_blocks=route_blocks,
         sms=props.multi_processor_count, max_shared_mem=props.shared_memory_per_block_optin,
-        force_tile_config=_projection_mixed_tile_config(None, hidden_size=5120,
+        force_tile_config=_projection_mixed_tile_config(tile, hidden_size=5120,
             intermediate_size=intermediate, token_count=capacity, direct_topk_routes=direct),
         tier0_bits=bits[0], tier1_bits=bits[1], trellis_codebook="mcg", swiglu_limit=10.0,
         moe_block_size=block_m, rotation_input_dtype="bf16", full_rotation_output_dtype=output_dtype,
@@ -241,7 +249,7 @@ def export(output: Path, intermediate: int, experts: int, capacity: int,
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--intermediate", type=int, choices=(512, 640, 1152, 2304), required=True)
+    parser.add_argument("--intermediate", type=int, choices=(512, 640, 768, 1152, 2304), required=True)
     parser.add_argument("--experts", type=int, default=384)
     parser.add_argument("--capacity", type=int, default=16)
     parser.add_argument("--bits", type=int, nargs="+", default=[3, 4])
@@ -250,8 +258,12 @@ def main() -> None:
     parser.add_argument("--output-dtype", choices=("bf16", "fp32"), default="bf16")
     parser.add_argument("--blocks-per-sm", type=int, choices=(1, 2), help="Offline residency override; default uses B12x policy")
     parser.add_argument("--paired-boundary", choices=("first", "last"), help="Candidate TP4 ownership-aware layout")
+    parser.add_argument("--tile", help="Offline disjoint-layout tile override fc1_k,fc1_n,fc2_k,fc2_n "
+                                       "(for example 64,256,64,256 or 128,128,128,128); default is the "
+                                       "B12x per-capacity policy")
     args = parser.parse_args()
-    export(args.output, args.intermediate, args.experts, args.capacity, tuple(args.bits), args.routing, args.topk, args.output_dtype, args.blocks_per_sm, args.paired_boundary)
+    export(args.output, args.intermediate, args.experts, args.capacity, tuple(args.bits), args.routing, args.topk, args.output_dtype, args.blocks_per_sm, args.paired_boundary,
+           tile=None if args.tile is None else tuple(args.tile.split(",")))
 
 
 if __name__ == "__main__":

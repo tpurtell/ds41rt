@@ -23,6 +23,7 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import textwrap
@@ -167,8 +168,28 @@ def _fake_source(root: Path) -> Path:
     return src
 
 
-def test_relocated_cargo_target_is_where_the_daemon_is_installed(tmp_path):
+@pytest.fixture
+def scratch():
+    """A probeable working directory for a real build-filesystem guard run.
+
+    The guard resolves each path's mount through findmnt, and a sandboxed or
+    private /tmp has no resolvable filesystem entry, so pytest's default temporary
+    directory makes the real `assert-build-filesystem.py` call fail closed before
+    the behaviour under test is reached. This checkout's cache directory is on the
+    root filesystem and is ignored by the release source inventory.
+    """
+    root = REPO / ".ds41rt-cache" / "test-release-artifact-build-paths"
+    shutil.rmtree(root, ignore_errors=True)
+    root.mkdir(parents=True, exist_ok=True)
+    try:
+        yield root
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_relocated_cargo_target_is_where_the_daemon_is_installed(scratch):
     """Behavioural proof that build and install follow one selected target."""
+    tmp_path = scratch
     src = _fake_source(tmp_path)
     output = tmp_path / "output"
     relocated = tmp_path / "relocated-target"
@@ -233,6 +254,16 @@ def test_relocated_cargo_target_is_where_the_daemon_is_installed(tmp_path):
     env["PATH"] = f"{shims}:{env['PATH']}"
     env["CARGO_TARGET_DIR"] = str(relocated)
     env.pop("DS41RT_RELEASE_SPARK_TP_ROLES", None)
+    # The build root parent is relocated to the same probeable filesystem: with the
+    # hook unset the script guards its literal /tmp default, which a private or
+    # sandboxed /tmp cannot resolve, and that would mask the target-directory
+    # behaviour this test exists to prove.
+    build_root = tmp_path / "build-root"
+    build_root.mkdir(parents=True, exist_ok=True)
+    env["DS41RT_RELEASE_BUILD_ROOT"] = str(build_root)
+    # The script guards CARGO_HOME too, and a user's default may sit on a
+    # read-only mount in a sandboxed runner.
+    env["CARGO_HOME"] = str(tmp_path / "cargo-home")
 
     result = subprocess.run(
         ["bash", str(SCRIPT), str(src), "coordinator", "120", str(output)],

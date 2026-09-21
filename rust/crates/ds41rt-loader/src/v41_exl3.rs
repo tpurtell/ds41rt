@@ -92,6 +92,8 @@ impl V41Exl3Projection {
 
     /// Partition complete H128 rotation blocks. Equal TP4 slices of 2304
     /// channels would split blocks, so the first two ranks own one extra block.
+    /// TP2 (9 blocks) and TP3 (6 blocks) divide 18 exactly, so they carry no
+    /// padding and no duplicated boundary block.
     pub fn intermediate_partition(&self, world: usize, rank: usize) -> Result<Range<usize>> {
         self.intermediate_partition_with_layout(world, rank, V41Exl3Partition::Disjoint)
     }
@@ -102,8 +104,11 @@ impl V41Exl3Projection {
         rank: usize,
         layout: V41Exl3Partition,
     ) -> Result<Range<usize>> {
+        // Six-rank EXL3 partitioning is deliberately not admitted: the approved
+        // Spark six-rank layouts are native (`TP6EP1`) or replicated, and no
+        // EXL3 TP6 artifact family exists.
         ensure!(
-            matches!(world, 1 | 2 | 4) && rank < world,
+            matches!(world, 1 | 2 | 3 | 4) && rank < world,
             "invalid EXL3 TP rank/world"
         );
         let intermediate = match self.kind {
@@ -699,6 +704,9 @@ mod tests {
             for (world, widths) in [
                 (1, vec![2304]),
                 (2, vec![1152, 1152]),
+                // TP3 divides the 18 H128 blocks exactly, so every rank owns
+                // six whole blocks with no padding or duplicated boundary.
+                (3, vec![768, 768, 768]),
                 (4, vec![640, 640, 512, 512]),
             ] {
                 let mut cursor = 0;
@@ -710,6 +718,14 @@ mod tests {
                 }
                 assert_eq!(cursor, 2304);
                 assert!(p.intermediate_partition(world, world).is_err());
+            }
+            // Only the admitted EXL3 worlds partition; six-rank Spark layouts
+            // stay native, and an empty shard is never produced.
+            for world in [5usize, 6, 8, 19] {
+                assert!(
+                    p.intermediate_partition(world, 0).is_err(),
+                    "EXL3 world {world} must stay unadmitted"
+                );
             }
         }
     }

@@ -138,7 +138,7 @@ pub(super) fn load_exl3<'a>(
     let exl3_directory = config.exl3_directory_for(exl3_tiers);
     let partition = Exl3Worker::partition(&exl3_directory, config.capacity, config.rank)?;
     ensure!(config.world == 4 || partition == ds41rt_loader::V41Exl3Partition::Disjoint,
-        "Spark TP2 cannot use paired TP4 artifacts");
+        "an implicit Spark TP2/TP3 group cannot use paired TP4 artifacts");
     let workspace = Exl3Worker::plan(&exl3_directory, config.capacity)
         .context("EXL3 checkpoint requires matching native AOT artifacts; set --exl3-aot-dir for a custom export")?;
     let plans = (config.first_layer..40)

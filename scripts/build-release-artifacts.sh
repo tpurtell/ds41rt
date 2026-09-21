@@ -11,13 +11,38 @@ source_dir="$(realpath "$1")"
 role="$2"
 cuda_arch="$3"
 output_dir="$(realpath -m "$4")"
+# Where the writable build root is created. Unset keeps the historical in-container
+# /tmp scratch; build.sh relocates it to a unique per-task path on the host, mounted
+# at the identical path in the container, so a release build never depends on how
+# large a container's default /tmp happens to be. mktemp is given an absolute
+# template, so honoring this variable is what makes the relocation real: a mere
+# TMPDIR export would be ignored by the template.
+build_root_parent="${DS41RT_RELEASE_BUILD_ROOT:-/tmp}"
 # Reject unsafe output/cache filesystems before staging or invoking Cargo.
 # SOURCE_DIR is a read-only input: the release container mounts it `/source:ro`
 # and this script stages a writable copy into the build root below, so probing
 # the source here would only trip the guard's fail-closed read-only rule. The
-# selected cargo target is guarded because it is where the daemon is written.
+# cargo target is guarded because it is where the daemon is written, and the build
+# root parent because the default target lives beneath it. Each filesystem is
+# probed once: with no target override the parent already covers it, and the parent
+# is added separately only when a relocated target points elsewhere. With the hook
+# unset this is the historical output, /tmp, cargo-home probe.
+build_root_probe=()
+if [[ -n "${CARGO_TARGET_DIR:-}" && "$CARGO_TARGET_DIR" != "$build_root_parent" ]]; then
+  build_root_probe=("$build_root_parent")
+fi
 python3 "$(dirname "$0")/assert-build-filesystem.py" \
-  "$output_dir" "${CARGO_TARGET_DIR:-/tmp}" "${CARGO_HOME:-$HOME/.cargo}" /tmp
+  "$output_dir" "${CARGO_TARGET_DIR:-$build_root_parent}" "${CARGO_HOME:-$HOME/.cargo}" \
+  ${build_root_probe[@]+"${build_root_probe[@]}"}
+
+# Report the real cause here instead of an opaque mktemp failure: a requested build
+# root the container cannot write means the bind mount is missing, or it exists on
+# the host as a user the container does not run as.
+if ! test -w "$build_root_parent"; then
+  echo "release build root is not writable inside this container: $build_root_parent" >&2
+  echo "it must exist on the host and be bind-mounted at the identical path (see build.sh --help)" >&2
+  exit 2
+fi
 
 case "$role" in
   coordinator)
@@ -91,7 +116,7 @@ if [[ "$xgrammar" == ON ]]; then
     --lock "$source_dir/third_party/xgrammar.lock.json"
 fi
 
-build_root="$(mktemp -d /tmp/ds41rt-release-build.XXXXXX)"
+build_root="$(mktemp -d "$build_root_parent/ds41rt-release-build.XXXXXX")"
 trap 'rm -rf "$build_root"' EXIT
 mkdir -p "$build_root/source"
 # The cargo target and the install source must agree. Default to the writable

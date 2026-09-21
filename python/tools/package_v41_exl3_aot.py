@@ -74,6 +74,21 @@ def verify(package: Path, revision: str | None = None, runtime: Path | None = No
                 raise ValueError(f'EXL3 variant metadata mismatch: {directory}/{key}')
         if 'blocks_per_sm' in variant and variant['blocks_per_sm'] != meta.get('blocks_per_sm'):
             raise ValueError('EXL3 variant residency metadata mismatch')
+        # A variant's tile is a claim about the geometry that was compiled, not a
+        # build-argument echo, so it is checked against the export's own record.
+        # Conditional on the variant carrying the key: v9 manifests predate it and
+        # must keep verifying byte-for-byte unchanged.
+        for field in ('tile', 'tile_requested'):
+            value = variant.get(field)
+            if field in variant and (not isinstance(value, list) or len(value) != 4
+                    # bool is an int subclass; a True/False tile is a broken record.
+                    or not all(isinstance(n, int) and not isinstance(n, bool) and n > 0
+                               for n in value)):
+                raise ValueError(f'EXL3 variant {field} must be four positive integers: {directory}')
+        if 'tile' in variant and variant['tile'] != meta.get('tile'):
+            raise ValueError(f'EXL3 variant tile mismatch: {directory}')
+        if 'tile_requested' in variant and variant['tile_requested'] != meta.get('tile'):
+            raise ValueError(f'EXL3 tile override was not applied as requested: {directory}')
         if meta['capacity'] in overrides and meta.get('blocks_per_sm') != overrides[meta['capacity']]:
             raise ValueError('EXL3 compiled residency differs from requested override')
         boundary = meta.get('paired_boundary')
@@ -98,6 +113,20 @@ def verify(package: Path, revision: str | None = None, runtime: Path | None = No
                 raise ValueError('EXL3 route manifest mismatch')
     if not seen or not required.issubset(expected):
         raise ValueError('incomplete EXL3 package')
+    # `requested_layouts` records what the build was asked to contain, so a partial
+    # Spark export cannot be published as a full contract. Packages built before
+    # this existed (v9 and earlier) carry no key and verify exactly as before. The
+    # check is a minimum, not an exact set: a package may legitimately carry more
+    # layouts than one consumer asked about.
+    # The capacity set comes from the contract, not from the variants that happen to
+    # exist: otherwise dropping one capacity for every rank would still verify.
+    # Older packages record no capacities, so they keep the previous behaviour.
+    requested_capacities = manifest.get('requested_capacities') or sorted(
+        {v['capacity'] for v in manifest['variants']})
+    for layout in manifest.get('requested_layouts') or []:
+        for capacity in requested_capacities:
+            if not any(v['directory'] == f'{layout}/m{capacity}' for v in manifest['variants']):
+                raise ValueError(f'EXL3 package is missing requested layout {layout}/m{capacity}')
     return manifest
 
 
@@ -173,6 +202,98 @@ def install_package(source: Path, output: Path) -> None:
     verify(output)
 
 
+def profiles_for_role(role: str) -> list[tuple]:
+    """(profile, width, experts, top-k, dtype, [layout destinations]) per role.
+
+    TP4 keeps the padded 640/512 pair-split because I=2304/4 is not a whole number
+    of 128-wide Trellis blocks; TP2 (9+9) and TP3 (6+6+6) split exactly, so each of
+    those compiles one export per capacity that its ranks share byte-for-byte.
+    """
+    if role == 'spark':
+        return [('tp4-width640', 640, 384, 6, 'bf16', ['tp4-rank0', 'tp4-rank1']),
+                ('tp4-width512', 512, 384, 6, 'bf16', ['tp4-rank2', 'tp4-rank3']),
+                ('tp2-width1152', 1152, 384, 6, 'bf16', ['tp2-rank0', 'tp2-rank1']),
+                ('tp3-width768', 768, 384, 6, 'bf16',
+                 ['tp3-rank0', 'tp3-rank1', 'tp3-rank2'])]
+    return [('rtx-tp1', 2304, 384, 6, 'fp32', ['rtx-tp1']),
+            ('rtx-tp2', 1152, 384, 6, 'fp32', ['rtx-tp2']),
+            ('dspark', 2304, 128, 3, 'bf16', ['dspark'])]
+
+
+def parse_requested_layouts(values: list[str], role: str) -> list[str]:
+    """`--require-layout tp3-rank0,tp3-rank1` (repeatable): layouts the package needs.
+
+    Scoped to the role being built: a coordinator cannot produce Spark ranks, so
+    asking for one must fail during argument validation instead of after a full
+    GPU compile.
+    """
+    requested: list[str] = []
+    known = {layout for _, _, _, _, _, destinations in profiles_for_role(role)
+             for layout in destinations}
+    for value in values:
+        for name in (part.strip() for part in value.split(',')):
+            if not name:
+                raise ValueError('EXL3 requested layout list has an empty entry')
+            if name not in known:
+                raise ValueError(f'unknown EXL3 layout requested: {name}')
+            if name in requested:
+                raise ValueError(f'duplicate EXL3 requested layout: {name}')
+            requested.append(name)
+    return sorted(requested)
+
+
+def tile_overrides(values: list[str], capacities: list[int], role: str, paired: bool) -> dict[str, dict[int, tuple]]:
+    """Parse repeatable `--tile PROFILE=CAPACITIES:FC1_K,FC1_N,FC2_K,FC2_N`.
+
+    Capacity scoping is the point: the pinned B12x policy already picks a wider
+    tile only at m16 (verified against `_projection_mixed_tile_config`), so an A/B
+    must be able to retarget one capacity without silently flattening the others.
+    `CAPACITIES` is `all` or a `+`-joined list of already-selected capacities. The
+    tile itself is b12x's own `(fc1_k, fc1_n, fc2_k, fc2_n)` vocabulary and is only
+    shape-checked (four integers); the pinned planner decides whether a geometry is
+    legal, so its rules are not restated here.
+    """
+    if values and paired:
+        raise ValueError('EXL3 tile overrides are not supported for paired TP4 packages')
+    # Role-scoped for the same reason as --require-layout: an override naming a
+    # profile this role does not build would otherwise be accepted and silently
+    # ignored, which is a knob that ships looking effective.
+    widths = {profile: width for profile, width, *_ in profiles_for_role(role)}
+    result: dict[str, dict[int, tuple]] = {}
+    for value in values:
+        profile, sep, rest = value.partition('=')
+        targets, sep2, tiles = rest.partition(':')
+        if not sep or not sep2 or profile not in widths:
+            raise ValueError(
+                f'EXL3 tile override must name a {role} profile as '
+                f'PROFILE=CAPACITIES:FC1_K,FC1_N,FC2_K,FC2_N, got: {value} '
+                f'(available: {sorted(widths)})')
+        if targets == 'all':
+            selected = list(capacities)
+        else:
+            try:
+                selected = sorted({int(part) for part in targets.split('+')})
+            except ValueError:
+                raise ValueError(f'EXL3 tile override capacities must be integers or all: {targets}') from None
+            unknown = [c for c in selected if c not in capacities]
+            if unknown:
+                raise ValueError(
+                    f'EXL3 tile override targets capacities that are not packaged: {unknown} '
+                    f'(selected: {capacities})')
+        try:
+            tile = tuple(int(part) for part in tiles.split(','))
+        except ValueError:
+            raise ValueError(f'EXL3 tile override needs four integers: {tiles}') from None
+        if len(tile) != 4 or any(part < 1 for part in tile):
+            raise ValueError(f'EXL3 tile override needs four positive tiles: {tiles}')
+        overlap = set(result.get(profile, {})) & set(selected)
+        if overlap:
+            raise ValueError(f'duplicate EXL3 tile override for {profile} at {sorted(overlap)}')
+        per_capacity = result.setdefault(profile, {})
+        per_capacity.update({capacity: tile for capacity in selected})
+    return result
+
+
 def build(args: argparse.Namespace) -> None:
     validate_destination(args.output)
     paired = getattr(args, 'paired_tp4', False)
@@ -182,6 +303,9 @@ def build(args: argparse.Namespace) -> None:
     if not capacities or any(v < 1 or v > 4096 for v in capacities):
         raise ValueError('EXL3 capacities must be in 1..4096')
     overrides = residency_overrides(getattr(args, 'residency', []), capacities, paired)
+    profiles = profiles_for_role(args.role)
+    requested_layouts = parse_requested_layouts(getattr(args, 'require_layout', []), args.role)
+    tiles = tile_overrides(getattr(args, 'tile', []), capacities, args.role, paired)
     # Import the source-pinned compiler only for builds, never package checks.
     import _pinned_sparkinfer
     from export_b12x_v41_exl3_aot import export
@@ -191,16 +315,6 @@ def build(args: argparse.Namespace) -> None:
     expected_compute = (12, 1) if args.role == 'spark' else (12, 0)
     if (props.major, props.minor) != expected_compute:
         raise ValueError(f'{args.role} package requires GPU {expected_compute}')
-    profiles = (
-        [('tp4-width640', 640, 384, 6, 'bf16', ['tp4-rank0', 'tp4-rank1']),
-         ('tp4-width512', 512, 384, 6, 'bf16', ['tp4-rank2', 'tp4-rank3']),
-         # Equal TP2 shards share one export, independently of TP4 ownership.
-         ('tp2-width1152', 1152, 384, 6, 'bf16', ['tp2-rank0', 'tp2-rank1'])]
-        if args.role == 'spark' else
-        [('rtx-tp1', 2304, 384, 6, 'fp32', ['rtx-tp1']),
-         ('rtx-tp2', 1152, 384, 6, 'fp32', ['rtx-tp2']),
-         ('dspark', 2304, 128, 3, 'bf16', ['dspark'])]
-    )
     if paired:
         profiles = [('paired-last', 640, 384, 6, 'bf16', ['tp4-rank0', 'tp4-rank2']),
                     ('paired-first', 640, 384, 6, 'bf16', ['tp4-rank1', 'tp4-rank3'])]
@@ -211,10 +325,18 @@ def build(args: argparse.Namespace) -> None:
         variants = []
         for profile, width, experts, topk, dtype, destinations in profiles:
             for capacity in capacities:
-                raw = args.build_dir / profile / f'm{capacity}'
+                tile = tiles.get(profile, {}).get(capacity)
+                # Content-keyed: an override changes the compiled geometry, so it
+                # must never land in (or be read from) the policy-keyed export.
+                # Without an override the path is what every existing build used.
+                profile_dir = (args.build_dir / profile if tile is None else
+                               args.build_dir / f"{profile}+tile{'-'.join(map(str, tile))}")
+                raw = profile_dir / f'm{capacity}'  # one capacity, one directory
                 options = {'paired_boundary': profile.removeprefix('paired-')} if paired else {}
                 if capacity in overrides:
                     options['blocks_per_sm'] = overrides[capacity]
+                if tile is not None:
+                    options['tile'] = tile
                 meta = export(raw, width, experts, capacity, tuple(args.bits), 'auto', topk, dtype, **options)
                 core = raw / 'libds41rt_exl3.so'
                 subprocess.run([args.cxx, '-shared', '-fPIC', '-std=c++17',
@@ -237,8 +359,16 @@ def build(args: argparse.Namespace) -> None:
                         target = stage / directory / name
                         target.parent.mkdir(parents=True, exist_ok=True)
                         shutil.copy2(raw / name, target)
-                    variants.append({'directory': directory, **{key: meta[key] for key in
-                        ('capacity', 'intermediate', 'experts', 'top_k', 'output_dtype', 'bits', 'blocks_per_sm')}})
+                    variant = {'directory': directory, **{key: meta[key] for key in
+                        ('capacity', 'intermediate', 'experts', 'top_k', 'output_dtype', 'bits', 'blocks_per_sm')}}
+                    if 'tile' in meta:
+                        # What the compiler actually resolved, always: the pinned
+                        # policy varies per capacity (m16 is the known special case),
+                        # so a build without an override still has a real tile.
+                        variant['tile'] = meta['tile']
+                    if tile is not None:
+                        variant['tile_requested'] = list(tile)
+                    variants.append(variant)
                     if paired:
                         variants[-1]['paired_boundary'] = meta['paired_boundary']
                 # Large prefill exports must not retain another capacity's arenas.
@@ -256,6 +386,17 @@ def build(args: argparse.Namespace) -> None:
             manifest['paired_tp4'] = True
         if overrides:
             manifest['residency_overrides'] = [f'{capacity}={blocks}' for capacity, blocks in sorted(overrides.items())]
+        if requested_layouts:
+            present = {v['directory'].split('/')[0] for v in variants}
+            missing = sorted(set(requested_layouts) - present)
+            if missing:
+                raise ValueError(
+                    f'EXL3 package did not produce requested layouts: {missing}')
+            manifest['requested_layouts'] = requested_layouts
+            manifest['requested_capacities'] = capacities
+        # Per-variant `tile` already records what each capacity compiled with; the
+        # B12x policy legitimately picks a wider tile only at m16, so a package may
+        # mix tile values across capacities and that is not an error.
         (stage / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
         verify(stage, _pinned_sparkinfer.REVISION)
         install_package(stage, args.output)
@@ -270,6 +411,14 @@ def main() -> None:
     create.add_argument('--paired-tp4', action='store_true', help='Export explicit paired H128 ownership kernels for all four Spark ranks')
     create.add_argument('--residency', action='append', default=[], metavar='CAPACITY=BLOCKS',
                         help='Explicit paired-package blocks/SM override; repeat per capacity (for example 80=2). B12X validates resources.')
+    create.add_argument('--require-layout', action='append', default=[],
+                        help='Layouts this package must contain (comma list, repeatable). '
+                             'Recorded in the manifest and re-checked on verify, so a '
+                             'partial build cannot be published as a full contract.')
+    create.add_argument('--tile', action='append', default=[],
+                        help='Opt-in tile override PROFILE=CAPACITIES:FC1_K,FC1_N,FC2_K,FC2_N '
+                             '(CAPACITIES is all or 16+80) for a controlled A/B, for example '
+                             'tp3-width768=16:64,256,64,256; default is the B12x per-capacity policy')
     create.add_argument('--capacities', default='1,16,80,256,1024,4096')
     create.add_argument('--bits', type=int, nargs='+', default=[3, 4])
     create.add_argument('--build-dir', type=Path, required=True)

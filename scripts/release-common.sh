@@ -15,6 +15,112 @@ release_need() {
   command -v "$1" >/dev/null 2>&1 || release_die "required command not found: $1"
 }
 
+# --------------------------------------------------------------------------- #
+# One SSH option set for the scripted calls to a Spark made by the production
+# release paths.
+#
+# A wrong-owner or world-writable drop-in under /etc/ssh/ssh_config.d/ makes
+# OpenSSH abort with "Bad owner or permissions" before any host is contacted, and
+# an operator cannot fix that by wrapping only their own interactive ssh: the
+# internal calls are made by these scripts. DS41RT_RELEASE_SSH_CONFIG therefore
+# resolves one option set that every site shares. Stock resolution is the default
+# because a build or serving host's ~/.ssh/config legitimately carries the host
+# aliases and identity files that reach the Sparks; BatchMode is always forced so a
+# prompt can never stall an unattended build or a readiness poll.
+#
+# The contract covers the release pipeline end to end, so that one setting cannot
+# be honored on the way in and ignored on the way out:
+#   ./build.sh                        build, sync and the remote expert legs
+#   ./run.sh                          preflight, launch, readiness, EXIT teardown
+#   ./stop.sh, release_stop_*         container teardown
+#   ./push-containers.sh              publishing the Spark image from SPARK_0_HOST
+#   scripts/phase0-spark-tcp-bench.sh release benchmark driver
+# The standalone NOT-LAUNCH-READY harnesses - scripts/run-tp-ep-native-candidate.sh,
+# wip.sh and scripts/run-wip.sh - are deliberately outside this contract. They keep
+# their own ssh forms (per-host bind addresses, argv rendered into a command string)
+# and are not release-pipeline-verified; they join when integrated, not before.
+#
+# These are declarations only: nothing here changes behavior until a script calls
+# release_configure_ssh_transport or release_ssh, so a script that keeps its own
+# ssh calls is untouched by sourcing this file.
+# --------------------------------------------------------------------------- #
+
+# A setting that reaches a remote shell command string, a Docker bind source or an
+# rsync `host:path` spec is accepted only as a canonical absolute path over this
+# small conservative alphabet: a whitelist rather than a metacharacter blacklist, so
+# a quote, backslash, tilde, colon or brace is refused outright instead of being
+# trusted to survive one more layer of quoting. Colon matters twice - it also
+# splits an rsync remote spec, so allowing it would let a value name another host.
+# Dot segments are rejected separately, because the alphabet allows dots and
+# `/a/../b` is a traversal. Values are refused, never rewritten: the path a build
+# reports must be the path it mounts.
+release_canonical_path='^/[A-Za-z0-9._+-]+(/[A-Za-z0-9._+-]+)*$'
+
+release_path_has_no_dot_segment() {
+  local segment
+  local -a parts
+  IFS='/' read -ra parts <<<"$1"
+  for segment in ${parts[@]+"${parts[@]}"}; do
+    [[ "$segment" != "." && "$segment" != ".." ]] || return 1
+  done
+  return 0
+}
+
+# Validate one setting. NAME is the variable as the operator wrote it. An empty
+# value is always acceptable: each caller decides what its own default is.
+release_validate_path_setting() {
+  local name="$1" value="$2"
+  [[ -n "$value" ]] || return 0
+  if [[ ! "$value" =~ $release_canonical_path ]] || ! release_path_has_no_dot_segment "$value"; then
+    release_die "$name must be a canonical absolute path over letters, digits, dot, underscore, plus and minus - no spaces, dot segments, trailing slashes, . or .. segments or shell metacharacters - got: $value"
+  fi
+}
+
+# True when CHILD is `path` itself or below it, compared a component at a time.
+release_path_within() {
+  local child="$1" parent="$2"
+  [[ "$child" == "$parent" || "$child" == "$parent"/* ]]
+}
+
+# Declared empty up front so a `set -u` caller can read them while building its own
+# rsync or docker arguments; they only carry real values after
+# release_configure_ssh_transport has run. Sourcing this file still changes no
+# behavior: nothing is resolved and nothing is exported here.
+release_ssh_config=''
+release_rsh=''
+release_ssh_opts=()
+_release_ssh_transport_configured=''
+
+# Resolve the transport once per process. Idempotent, because a script may call it
+# at start-up to fail early on a bad value and still be reached through a helper
+# that guards itself. The first resolution wins on purpose: switching option sets
+# halfway through a build or a readiness poll would send later calls somewhere else.
+release_configure_ssh_transport() {
+  [[ -z "$_release_ssh_transport_configured" ]] || return 0
+  release_ssh_config="${DS41RT_RELEASE_SSH_CONFIG-}"
+  release_validate_path_setting DS41RT_RELEASE_SSH_CONFIG "$release_ssh_config"
+  release_ssh_opts=(-o BatchMode=yes)
+  if [[ -n "$release_ssh_config" ]]; then
+    release_ssh_opts+=(-F "$release_ssh_config")
+    release_rsh="ssh -o BatchMode=yes -F $release_ssh_config"
+  else
+    release_rsh='ssh -o BatchMode=yes'
+  fi
+  # rsync and rdmasync read this natively, so child scripts inherit the transport
+  # without being rewritten. Note that "-F" inside an rsh string is an ssh option:
+  # as a bare rsync argument it would mean --filter=dir-merge instead.
+  export RSYNC_RSH="$release_rsh"
+  _release_ssh_transport_configured=1
+}
+
+release_ssh() {
+  release_configure_ssh_transport
+  # The guarded expansion is deliberate: on bash 4.2 an empty "${array[@]}" aborts
+  # under `set -u`, and this function is reached from EXIT traps and readiness polls
+  # where dying silently would hide a real failure.
+  ssh ${release_ssh_opts[@]+"${release_ssh_opts[@]}"} "$@"
+}
+
 # Inference images verify package payload hashes when built. Compare their
 # immutable manifests before changing services so all peers select one layout.
 release_exl3_package_identity() {
@@ -31,20 +137,32 @@ release_exl3_package_identity() {
   printf '%s:%s\n' "$layout" "$digest"
 }
 
-release_validate_exl3_tp2_variants() {
-  local capacity="$1" family="$2"
+# Compact Spark EXL3 package admission. Every physical rank r needs its
+# tp<degree>-rank<r>/m<capacity> package for every worker capacity up to the
+# launch capacity, with the exact shard width 2304/degree (1152 at TP2, 768 at
+# TP3). This runs in the per-host preflight loop, so a missing package fails
+# before any service change. TP2 is the default degree.
+release_validate_exl3_compact_variants() {
+  local capacity="$1" family="$2" tp="${3:-2}"
+  [[ "$tp" == 2 || "$tp" == 3 ]] || release_die "compact EXL3 variant admission supports TP2 or TP3, got TP$tp"
+  local width=$((2304 / tp))
   [[ "$family" =~ ^k([23])([34])$ && ( "$family" == k23 || "$family" == k34 ) ]] || release_die "cannot resolve compact EXL3 package bit tiers"
   local low="${BASH_REMATCH[1]}" high="${BASH_REMATCH[2]}"
-  jq -e --argjson capacity "$capacity" --argjson low "$low" --argjson high "$high" '
+  jq -e --argjson capacity "$capacity" --argjson low "$low" --argjson high "$high" --argjson tp "$tp" --argjson width "$width" '
     . as $manifest | .compute == [12,1] and
     all([1,16,80,256,1024,4096][] | select(. <= $capacity); . as $m |
-      all([0,1][]; . as $rank |
+      all(range(0; $tp); . as $rank |
         [$manifest.variants[]? |
-          select(.directory == ("tp2-rank" + ($rank|tostring) + "/m" + ($m|tostring))) |
-          select(.capacity == $m and .intermediate == 1152 and .experts == 384
+          select(.directory == ("tp" + ($tp|tostring) + "-rank" + ($rank|tostring) + "/m" + ($m|tostring))) |
+          select(.capacity == $m and .intermediate == $width and .experts == 384
                  and .top_k == 6 and .output_dtype == "bf16"
                  and .bits == [$low,$high])] | length == 1))
-  ' >/dev/null || release_die "Spark EXL3 package lacks required TP2 rank/capacity/shape/bit variants"
+  ' >/dev/null || release_die "Spark EXL3 package lacks required TP$tp rank/capacity/shape/bit variants"
+}
+
+# Historical name: the TP2-degree call keeps working for older harnesses.
+release_validate_exl3_tp2_variants() {
+  release_validate_exl3_compact_variants "$1" "$2" 2
 }
 
 release_model_list_matches() {
@@ -281,13 +399,28 @@ release_load_config() {
         [[ "$RTX_EXPERT_LAYERS" == 40 ]] || release_die "SPARK_COUNT=0 requires RTX_EXPERT_LAYERS=40 (every routed layer must fit the RTX layout)"
         [[ "$RTX_GPUS" != 1 ]] || release_die "SPARK_COUNT=0 requires two RTX GPUs"
         ;;
-      2) release_validate_compact_tp2 ;;
+      2) release_validate_compact_spark ;;
+      3)
+        # Three ranks are either the implicit compact EXL3 TP3 layout (no
+        # SPARK_TP/SPARK_EP keys) or the explicit native TP3EP1 topology (both
+        # keys, one unreplicated group of three ranks; geometry already
+        # validated by release_validate_spark_topology). A native checkpoint
+        # without explicit keys is never compact.
+        if release_spark_compact_active; then
+          release_validate_compact_spark
+        elif [[ "$EXPERT_FORMAT" == exl3 ]]; then
+          release_die "SPARK_COUNT=3 with EXPERT_FORMAT=exl3 is the implicit compact TP3 layout and takes no SPARK_TP/SPARK_EP keys"
+        else
+          release_spark_topology_explicit ||
+            release_die "SPARK_COUNT=3 requires EXPERT_FORMAT=exl3 (implicit compact TP3) or explicit SPARK_TP=3 and SPARK_EP=1 (native TP3EP1)"
+        fi
+        ;;
       4) ;;
       6)
         release_spark_topology_explicit ||
           release_die "SPARK_COUNT=6 requires explicit SPARK_TP and SPARK_EP (six Sparks are approved only as a pure TP6=6x1 or replicated native topology)"
         ;;
-      *) release_die "SPARK_COUNT must be 0, 2, 4, or 6" ;;
+      *) release_die "SPARK_COUNT must be 0, 2, 3, 4, or 6" ;;
     esac
 
     local missing_b=0 present_b=0 spark_required="$SPARK_COUNT"
@@ -400,13 +533,24 @@ release_resolve_local_model_revision() {
     release_die "model snapshot is missing: $RELEASE_MODEL_ID@$RELEASE_MODEL_REVISION"
 }
 
-# Two Spark ranks are an opt-in compact EXL3 topology, not RTX tensor
-# parallelism. Keep the coordinator ceiling explicit; never raise it to fit.
-release_validate_compact_tp2() {
-  [[ "$SPARK_COUNT" == 2 ]] || return 0
-  [[ "$EXPERT_FORMAT" == exl3 ]] || release_die "SPARK_COUNT=2 requires EXPERT_FORMAT=exl3"
-  [[ "$RTX_GPUS" != 2 ]] || release_die "SPARK_COUNT=2 requires a single RTX GPU"
-  [[ "$EXL3_PAIRED_TP4" == off ]] || release_die "SPARK_COUNT=2 is incompatible with EXL3_PAIRED_TP4"
+# Two or three Spark ranks without explicit SPARK_TP/SPARK_EP keys form the
+# opt-in compact EXL3 topology (TP2 or TP3), not RTX tensor parallelism. Keep
+# the coordinator ceiling explicit; never raise it to fit. An explicit native
+# replicated topology is never compact and bypasses these rules at every call
+# site through this predicate.
+release_spark_compact_active() {
+  case "$SPARK_COUNT" in
+    2) return 0 ;;
+    3) [[ -z "$SPARK_TP" && -z "$SPARK_EP" ]] ;;
+    *) return 1 ;;
+  esac
+}
+
+release_validate_compact_spark() {
+  release_spark_compact_active || return 0
+  [[ "$EXPERT_FORMAT" == exl3 ]] || release_die "SPARK_COUNT=$SPARK_COUNT requires EXPERT_FORMAT=exl3"
+  [[ "$RTX_GPUS" != 2 ]] || release_die "SPARK_COUNT=$SPARK_COUNT requires a single RTX GPU"
+  [[ "$EXL3_PAIRED_TP4" == off ]] || release_die "SPARK_COUNT=$SPARK_COUNT is incompatible with EXL3_PAIRED_TP4"
   MEMORY_RESERVATION="${MEMORY_RESERVATION:-32GiB}"
   KV_POOL_SIZE="${KV_POOL_SIZE:-2GiB}"
   PREFILL_BATCH_TOKENS="${PREFILL_BATCH_TOKENS:-256}"
@@ -414,10 +558,10 @@ release_validate_compact_tp2() {
     ((PREFILL_BATCH_TOKENS >= 80 && PREFILL_BATCH_TOKENS <= 4096)) ||
     release_die "PREFILL_BATCH_TOKENS must be in 80..4096"
   if ((PREFILL_BATCH_TOKENS > 256)); then
-    echo "ds41rt release: compact Spark TP2 caps PREFILL_BATCH_TOKENS=$PREFILL_BATCH_TOKENS to 256 to fit the 32GiB ceiling" >&2
+    echo "ds41rt release: compact Spark TP$SPARK_COUNT caps PREFILL_BATCH_TOKENS=$PREFILL_BATCH_TOKENS to 256 to fit the 32GiB ceiling" >&2
     PREFILL_BATCH_TOKENS=256
   fi
-  python3 - "$MEMORY_RESERVATION" <<'PY' || release_die "SPARK_COUNT=2 requires a positive absolute MEMORY_RESERVATION no greater than 32GiB (percentages are not allowed)"
+  python3 - "$MEMORY_RESERVATION" <<'PY' || release_die "SPARK_COUNT=$SPARK_COUNT requires a positive absolute MEMORY_RESERVATION no greater than 32GiB (percentages are not allowed)"
 import re
 import sys
 from decimal import Decimal
@@ -428,6 +572,14 @@ scale = {'B': 1, 'MB': 10**6, 'GB': 10**9, 'MiB': 2**20, 'GiB': 2**30}
 size = Decimal(match[1]) * scale[match[2]]
 sys.exit(0 if 1 <= size <= 32 * 2**30 else 1)
 PY
+}
+
+# Historical name kept for the ignored runs/ harnesses: it delegates to the
+# generic validator, so under this alias a SPARK_COUNT=3 launch with no
+# SPARK_TP/SPARK_EP keys is compact TP3, and an explicit native TP3EP1 launch
+# bypasses the compact rules entirely (release_spark_compact_active is false).
+release_validate_compact_tp2() {
+  release_validate_compact_spark
 }
 
 release_spark_values() {
@@ -442,9 +594,12 @@ release_spark_values() {
 # Opt-in replicated expert-group topology (SPARK_TP x SPARK_EP = SPARK_COUNT).
 #
 # The default configuration sets neither key and keeps the legacy geometry:
-# every Spark rank is one TP rank of a single replicated group. Explicit keys
-# are all-or-none and only valid for the approved native official topologies.
-# The rank map is group-major: group = rank / TP and tp_rank = rank % TP.
+# every Spark rank is one TP rank of a single replicated group (counts 0/2/4;
+# count 2 without keys is the compact EXL3 TP2 layout, count 3 without keys is
+# the compact EXL3 TP3 layout, and native count 3 requires both keys). Explicit
+# keys are all-or-none and only valid for the approved native official
+# topologies. The rank map is group-major: group = rank / TP and
+# tp_rank = rank % TP.
 # ---------------------------------------------------------------------------
 
 release_spark_topology_explicit() {
@@ -495,8 +650,8 @@ release_validate_spark_topology() {
     release_die "SPARK_TP and SPARK_EP must be set together or omitted together"
   release_spark_topology_explicit || return 0
 
-  [[ "$SPARK_COUNT" == 4 || "$SPARK_COUNT" == 6 ]] ||
-    release_die "explicit SPARK_TP/SPARK_EP requires SPARK_COUNT=4 or 6"
+  [[ "$SPARK_COUNT" == 3 || "$SPARK_COUNT" == 4 || "$SPARK_COUNT" == 6 ]] ||
+    release_die "explicit SPARK_TP/SPARK_EP requires SPARK_COUNT=3, 4 or 6"
   [[ "$EXPERT_FORMAT" == native ]] ||
     release_die "explicit SPARK_TP/SPARK_EP requires EXPERT_FORMAT=native"
   [[ "$EXL3_PAIRED_TP4" == off ]] ||
@@ -506,8 +661,8 @@ release_validate_spark_topology() {
   ((SPARK_TP * SPARK_EP == SPARK_COUNT)) ||
     release_die "SPARK_TP(${SPARK_TP}) * SPARK_EP(${SPARK_EP}) must equal SPARK_COUNT(${SPARK_COUNT})"
   case "${SPARK_TP}x${SPARK_EP}" in
-    2x2|3x2|2x3|4x1|6x1) ;;
-    *) release_die "unsupported native Spark topology TP${SPARK_TP}EP${SPARK_EP}; approved: TP2EP2, TP3EP2, TP2EP3, TP4EP1, TP6EP1" ;;
+    3x1|2x2|3x2|2x3|4x1|6x1) ;;
+    *) release_die "unsupported native Spark topology TP${SPARK_TP}EP${SPARK_EP}; approved: TP3EP1, TP2EP2, TP3EP2, TP2EP3, TP4EP1, TP6EP1" ;;
   esac
 }
 
@@ -651,7 +806,7 @@ release_stop_remote_containers() {
   local host="$1"
   local release_container="$2"
   local legacy_container="$3"
-  ssh -o BatchMode=yes "$host" bash -s -- \
+  release_ssh "$host" bash -s -- \
     "$host" "$release_container" "$legacy_container" <<'REMOTE'
 set -euo pipefail
 host="$1"
@@ -718,7 +873,7 @@ release_stop_persistent_local_container() {
 release_stop_persistent_remote_container() {
   local host="$1"
   local container="$2"
-  ssh -o BatchMode=yes "$host" bash -s -- "$host" "$container" <<'REMOTE'
+  release_ssh "$host" bash -s -- "$host" "$container" <<'REMOTE'
 set -euo pipefail
 host="$1"
 container="$2"
@@ -822,11 +977,11 @@ release_stop_wip_services() {
       # WIP container. The remote command always exits 0 because of `|| true`,
       # so a nonzero ssh status is a transport/remote-shell failure that must
       # be reported instead of being swallowed as "nothing to stop".
-      state="$(ssh -o BatchMode=yes "$host" \
+      state="$(release_ssh "$host" \
         "docker inspect -f '{{.State.Running}}' '$spark_container' 2>/dev/null || true")" ||
         exit 1
       [[ "$state" == true ]] || exit 0
-      ssh -o BatchMode=yes "$host" docker exec -i "$spark_container" \
+      release_ssh "$host" docker exec -i "$spark_container" \
         bash -s -- "$expert_process" <<'CONTAINER'
 set -euo pipefail
 name="$1"

@@ -21,6 +21,27 @@ Set DS41RT_RELEASE_SPARK_TP_ROLES to an explicit subset (for example tp6, or emp
 for the historical TP4-only shard) for a bounded topology A/B or a legacy rebuild.
 --dry-run validates the configuration, host set and role plan without touching
 Docker, SSH, submodules or any image.
+Set DS41RT_RELEASE_SSH_CONFIG to an ssh config file that every remote step should
+use (default empty: stock OpenSSH resolution, so a build host's ~/.ssh/config keeps
+working, with BatchMode forced either way). Pass /dev/null to discard a system
+ssh_config that OpenSSH refuses to read - but -F replaces the whole config chain, so
+that also drops your own host aliases; prefer a file containing just
+    Include ~/.ssh/config
+and pass that instead. The setting reaches ssh, rsync and rdmasync alike, and is
+exported to child build scripts.
+Set DS41RT_RELEASE_BUILD_ROOT to one unique absolute path, on a real writable
+filesystem with room for a source copy plus objects, to hold the container build
+roots of both roles instead of their default /tmp scratch. The same path is bound
+into each container, created and filesystem-guarded on the coordinator host and the
+seed Spark before any compile, and it is per-task: never share one between builds.
+DS41RT_RELEASE_REMOTE_BUILD_DIR selects where the Spark seed host stages the source
+tree and builds the expert images (default: a ds41rt-release-build directory in the
+seed host's own home). Use a fresh one per release so a previous staging tree cannot
+be reused.
+DS41RT_RELEASE_SSH_CONFIG, DS41RT_RELEASE_BUILD_ROOT and
+DS41RT_RELEASE_REMOTE_BUILD_DIR must each be a canonical absolute path built from
+letters, digits, dot, underscore, plus and minus - no spaces, dot segments, trailing
+slashes or shell metacharacters - because they reach remote shells and bind mounts.
 
 Dirty checkouts get an automatic source manifest under .ds41rt-release/.
 Keep source files unchanged during the build; local and remote inventories
@@ -122,6 +143,57 @@ spark_tp_roles_note='universal, covers every approved native topology'
   spark_tp_roles_note='explicit subset, not universal'
 # release-spark-tp-roles:end
 
+# release-build-transport:start
+# The SSH option set and the canonical-path validator live in
+# scripts/release-common.sh, so a release build and the Spark-facing helpers cannot
+# drift apart: stock resolution unless DS41RT_RELEASE_SSH_CONFIG names a config file,
+# BatchMode forced always, and a bad value refused here before any host is reached.
+# What stays here is the release-only setting: where a container leg keeps its
+# writable build root.
+release_configure_ssh_transport
+
+# Optional unique writable build root for the release container legs. Unset keeps
+# the historical in-container /tmp scratch; a set value must be the identical path
+# inside the container and on the host, because the artifact compiler guards the
+# path it writes and that guard resolves the filesystem behind the string it is
+# given. It is per-task: two concurrent builds must never share one root.
+release_build_root="${DS41RT_RELEASE_BUILD_ROOT:-}"
+release_validate_path_setting DS41RT_RELEASE_BUILD_ROOT "$release_build_root"
+if [[ -n "$release_build_root" ]]; then
+  # A root inside the source tree would be staged into its own copy and then
+  # guarded as if it were the source, so the two must stay disjoint. The remote
+  # value is still unknown here; the leg that knows it repeats this check.
+  release_path_within "$release_build_root" "$repo_root" &&
+    release_die "DS41RT_RELEASE_BUILD_ROOT must not be $repo_root or inside it"
+  release_build_root_args=(
+    -v "$release_build_root:$release_build_root"
+    -e "DS41RT_RELEASE_BUILD_ROOT=$release_build_root"
+  )
+else
+  release_build_root_args=()
+fi
+
+# Create and probe the build root on the machine that will run the container.
+# HOST is empty for the local leg; SCRIPT_DIR is the tree holding
+# assert-build-filesystem.py there (the local checkout or the staged remote copy).
+# Both operands are %q-quoted, so a validated path cannot be reinterpreted by the
+# shell that runs the command.
+release_prepare_build_root() {
+  [[ -n "$release_build_root" ]] || return 0
+  local host="$1" script_dir="$2" quoted_root quoted_dir command
+  printf -v quoted_root '%q' "$release_build_root"
+  printf -v quoted_dir '%q' "$script_dir"
+  command="mkdir -p $quoted_root && python3 $quoted_dir/scripts/assert-build-filesystem.py $quoted_root"
+  if [[ -n "$host" ]]; then
+    release_ssh "$host" "$command" ||
+      release_die "$host release build root is not a safe writable filesystem: $release_build_root"
+  else
+    bash -c "$command" ||
+      release_die "release build root is not a safe writable filesystem: $release_build_root"
+  fi
+}
+# release-build-transport:end
+
 if ((dry_run)); then
   echo "Build dry-run passed; no image, container, SSH or submodule was touched."
   echo "  config: $RELEASE_CONFIG"
@@ -131,6 +203,8 @@ if ((dry_run)); then
   echo "  V41 Spark expert roles: ${spark_tp_roles:-<legacy TP4 only>} ($spark_tp_roles_note)"
   echo "  coordinator image: $COORDINATOR_DOCKER_INFERENCE"
   echo "  spark image: $SPARK_EXPERT_DOCKER_INFERENCE"
+  echo "  ssh config: ${release_ssh_config:-<stock>}"
+  echo "  release build root: ${release_build_root:-<container /tmp>}"
   exit 0
 fi
 
@@ -215,7 +289,7 @@ verify_remote_source_manifest() {
     release_die "release source manifest changed during the build"
   local remote_dir_quoted
   printf -v remote_dir_quoted '%q' "$remote_dir"
-  ssh -o BatchMode=yes "$seed_host" \
+  release_ssh "$seed_host" \
     "cd $remote_dir_quoted && python3 scripts/verify-release-source-manifest.py --source . --manifest -" \
     <"$source_manifest" ||
     release_die "$seed_host staged source differs from $source_manifest"
@@ -267,7 +341,7 @@ artifact_dir="$repo_root/.ds41rt-release-image"
 
 echo "== validating native Spark build hosts =="
 for host in "${RELEASE_BUILD_HOSTS[@]}"; do
-  ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" bash -s <<'REMOTE'
+  release_ssh -o ConnectTimeout=10 "$host" bash -s <<'REMOTE'
 set -euo pipefail
 command -v docker >/dev/null
 docker info >/dev/null
@@ -278,34 +352,74 @@ done
 
 release_sync_program=rsync
 if command -v rdmasync >/dev/null 2>&1 &&
-  ssh -o BatchMode=yes "$seed_host" "command -v rdmasync >/dev/null 2>&1"; then
+  release_ssh "$seed_host" "command -v rdmasync >/dev/null 2>&1"; then
   release_sync_program=rdmasync
   echo "== using RDMA source/artifact synchronization =="
 fi
 
 release_sync() {
+  # Transport options live in one place: rsync and rdmasync both accept the
+  # remote shell as a single --rsh value, so the ssh config override reaches the
+  # source and artifact copies as well as the explicit ssh calls above. A bare
+  # "-F" argument here would instead be their own --filter=dir-merge option.
   if [[ "$release_sync_program" == rdmasync ]]; then
-    rdmasync -a --rdma=required --rdma-show-config "$@"
+    rdmasync -a --rdma=required --rdma-show-config --rsh="$release_rsh" "$@"
   else
-    rsync -a "$@"
+    rsync -a --rsh="$release_rsh" "$@"
   fi
 }
 
 if [[ -z "$remote_dir" ]]; then
   remote_dir="$(
-    ssh -o BatchMode=yes "$seed_host" \
+    release_ssh "$seed_host" \
       'printf "%s/ds41rt-release-build" "$HOME"'
   )"
+fi
+
+# The Spark staging directory is embedded in remote shell command strings and in
+# Docker bind sources, so it gets the same canonical treatment as every other
+# setting; the default derived from the seed host's own $HOME is checked too rather
+# than assumed to be simple.
+release_validate_path_setting DS41RT_RELEASE_REMOTE_BUILD_DIR "$remote_dir"
+if [[ -n "$release_build_root" ]]; then
+  # The remote source tree and the remote scratch must stay disjoint: a build root
+  # inside the staged source would be copied into its own build directory, and a
+  # source tree inside the scratch would be deleted with it.
+  release_path_within "$release_build_root" "$remote_dir" &&
+    release_die "DS41RT_RELEASE_BUILD_ROOT must not be $remote_dir or inside it"
+  release_path_within "$remote_dir" "$release_build_root" &&
+    release_die "the Spark staging directory must not be inside DS41RT_RELEASE_BUILD_ROOT"
 fi
 
 local_free_kib="$(df -Pk "$repo_root" | awk 'NR==2 {print $4}')"
 ((local_free_kib >= 60 * 1024 * 1024)) || release_die "local build needs at least 60 GiB free"
 remote_free_kib="$(
-  ssh -o BatchMode=yes "$seed_host" bash -s <<'REMOTE'
+  release_ssh "$seed_host" bash -s <<'REMOTE'
 df -Pk "$HOME" | awk 'NR == 2 { print $4 }'
 REMOTE
 )"
 ((remote_free_kib >= 60 * 1024 * 1024)) || release_die "$seed_host build needs at least 60 GiB free"
+
+# A relocated build root is its own filesystem decision: the two checks above
+# cover the source tree and the Spark home, not the scratch the container writes.
+# The remote mkdir is where the directory starts to exist, so the same path can be
+# bind-mounted into the container without Docker creating it as root-owned later.
+if [[ -n "$release_build_root" ]]; then
+  # Create first: `df` on a path that does not exist yields no capacity, which an
+  # arithmetic comparison would silently read as zero and report as a space problem.
+  mkdir -p "$release_build_root" ||
+    release_die "cannot create release build root: $release_build_root"
+  local_root_free_kib="$(df -Pk "$release_build_root" | awk 'NR==2 {print $4}')"
+  ((local_root_free_kib >= 60 * 1024 * 1024)) ||
+    release_die "release build root $release_build_root needs at least 60 GiB free"
+  printf -v release_build_root_quoted '%q' "$release_build_root"
+  remote_root_free_kib="$(
+    release_ssh "$seed_host" \
+      "mkdir -p $release_build_root_quoted && df -Pk $release_build_root_quoted | awk 'NR == 2 { print \$4 }'"
+  )"
+  ((remote_root_free_kib >= 60 * 1024 * 1024)) ||
+    release_die "$seed_host release build root $release_build_root needs at least 60 GiB free"
+fi
 
 echo "== building coordinator development image: $COORDINATOR_DOCKER_DEV =="
 docker build \
@@ -319,12 +433,14 @@ docker build \
 
 echo "== compiling coordinator release artifacts in GPU-enabled development container =="
 mkdir -p "$artifact_dir"
+release_prepare_build_root "" "$repo_root"
 docker run --rm \
   --gpus device=0 \
   --ipc=host \
   --ulimit memlock=-1:-1 \
   -e CUDA_VISIBLE_DEVICES=0 \
   -e NVIDIA_VISIBLE_DEVICES=0 \
+  ${release_build_root_args[@]+"${release_build_root_args[@]}"} \
   -v "$repo_root:/source:ro" \
   -v "$artifact_dir:/output" \
   "$COORDINATOR_DOCKER_DEV" \
@@ -344,7 +460,8 @@ docker build \
   "$repo_root"
 
 echo "== staging native Spark build on $seed_host:$remote_dir =="
-ssh -o BatchMode=yes "$seed_host" "mkdir -p '$remote_dir'"
+printf -v remote_dir_quoted '%q' "$remote_dir"
+release_ssh "$seed_host" "mkdir -p $remote_dir_quoted"
 release_sync --delete \
   --exclude '.git' \
   --exclude '.venv*/' \
@@ -385,11 +502,16 @@ release_sync --delete --delete-excluded \
   "$seed_host:$remote_dir/third_party/xgrammar/"
 verify_remote_source_manifest
 
+# Prepared before the leg below so the quoted heredoc region stays exactly the
+# argument transport it is tested as: creating and probing the root is a host-side
+# step, not part of what the remote shell receives.
+release_prepare_build_root "$seed_host" "$remote_dir"
 echo "== building Spark development and inference images natively on $seed_host =="
-ssh -o BatchMode=yes "$seed_host" bash -s -- \
+release_ssh "$seed_host" bash -s -- \
   "$remote_dir" "$SPARK_EXPERT_DOCKER_DEV" "$SPARK_EXPERT_DOCKER_INFERENCE" \
   "$engine_commit" "$sparkinfer_commit" "$release_version" \
-  "$EXL3_PAIRED_TP4" "${source_manifest_sha256:-__legacy__}" "${spark_tp_roles//;/,}" <<'REMOTE'
+  "$EXL3_PAIRED_TP4" "${source_manifest_sha256:-__legacy__}" "${spark_tp_roles//;/,}" \
+  "${release_build_root:-__legacy__}" <<'REMOTE'
 set -euo pipefail
 remote_dir="$1"
 dev_image="$2"
@@ -406,9 +528,20 @@ source_manifest_sha256="${8-__legacy__}"
 # The role list travels as a comma list so a remote shell cannot split it at a
 # semicolon; it is restored to the CMake semicolon list here.
 spark_tp_roles="${9-__legacy__}"
+# The relocated build root is optional and travels last, for the same reason.
+# It is already created and filesystem-guarded by the caller, on this host.
+release_build_root="${10-__legacy__}"
 [[ "$source_manifest_sha256" != "__legacy__" ]] || source_manifest_sha256=
 [[ "$spark_tp_roles" != "__legacy__" ]] || spark_tp_roles=
+[[ "$release_build_root" != "__legacy__" ]] || release_build_root=
 spark_tp_roles="${spark_tp_roles//,/;}"
+release_build_root_args=()
+if [[ -n "$release_build_root" ]]; then
+  release_build_root_args=(
+    -v "$release_build_root:$release_build_root"
+    -e "DS41RT_RELEASE_BUILD_ROOT=$release_build_root"
+  )
+fi
 release_source_label_args=()
 if [[ -n "$source_manifest_sha256" ]]; then
   release_source_label_args+=(
@@ -434,6 +567,7 @@ docker run --rm \
   --ulimit memlock=-1:-1 \
   -e "DS41RT_RELEASE_EXL3_PAIRED_TP4=$exl3_paired_tp4" \
   -e "DS41RT_RELEASE_SPARK_TP_ROLES=$spark_tp_roles" \
+  ${release_build_root_args[@]+"${release_build_root_args[@]}"} \
   -v "$remote_dir:/source:ro" \
   -v "$remote_dir/.ds41rt-release-image:/output" \
   "$dev_image" \
@@ -487,7 +621,7 @@ docker cp \
 docker rm "$coordinator_container" >/dev/null
 trap - EXIT
 
-ssh -o BatchMode=yes "$seed_host" bash -s -- \
+release_ssh "$seed_host" bash -s -- \
   "$SPARK_EXPERT_DOCKER_INFERENCE" "$remote_dir/dist/spark-expert" <<'REMOTE'
 set -euo pipefail
 image="$1"
@@ -593,11 +727,11 @@ for host in "${RELEASE_BUILD_HOSTS[@]:1}"; do
   # A stopped expert container can still reference the prior image ID. Force
   # removal only untags that image while preserving the referenced layers, so
   # ensure_image cannot mistake the stale tag for the fresh seed image.
-  ssh -o BatchMode=yes "$host" "docker image rm --force '$SPARK_EXPERT_DOCKER_INFERENCE' >/dev/null 2>&1 || true"
+  release_ssh "$host" "docker image rm --force '$SPARK_EXPERT_DOCKER_INFERENCE' >/dev/null 2>&1 || true"
 done
 rdmapipe_ready=1
 for host in "${RELEASE_BUILD_HOSTS[@]}"; do
-  if ! ssh -o BatchMode=yes "$host" "command -v rdmapipe >/dev/null 2>&1"; then
+  if ! release_ssh "$host" "command -v rdmapipe >/dev/null 2>&1"; then
     rdmapipe_ready=0
     break
   fi
@@ -611,9 +745,9 @@ if ((rdmapipe_ready)); then
     (
       set -o pipefail
       echo "== RDMA image copy $seed_host -> $host =="
-      ssh -o BatchMode=yes "$seed_host" \
+      release_ssh "$seed_host" \
         "set -o pipefail; docker image save $spark_image_quoted | rdmapipe --send" |
-        ssh -o BatchMode=yes "$host" \
+        release_ssh "$host" \
           "set -o pipefail; rdmapipe --recv | docker image load"
       echo "== RDMA image copy $seed_host -> $host complete =="
     ) &
@@ -636,6 +770,8 @@ else
   DS41RT_SPARK_IMAGE_COPY_METHOD=spark-netcat \
   DS41RT_SPARK_IMAGE_ONLY=1 \
   DS41RT_SPARK_SKIP_STAGE=1 \
+  RSYNC_RSH="$release_rsh" \
+  DS41RT_RELEASE_SSH_CONFIG="$release_ssh_config" \
   "$repo_root/scripts/phase0-spark-tcp-bench.sh"
 fi
 
@@ -665,25 +801,25 @@ if [[ -n "$source_manifest_sha256" ]]; then
 fi
 for host in "${RELEASE_BUILD_HOSTS[@]}"; do
   revision="$(
-    ssh -o BatchMode=yes "$host" \
+    release_ssh "$host" \
       "docker image inspect -f '{{index .Config.Labels \"org.opencontainers.image.revision\"}}' '$SPARK_EXPERT_DOCKER_INFERENCE'"
   )"
   [[ "$revision" == "$engine_commit" ]] || release_die "$host Spark image revision mismatch: $revision"
   spark_version="$(
-    ssh -o BatchMode=yes "$host" \
+    release_ssh "$host" \
       "docker image inspect -f '{{index .Config.Labels \"org.opencontainers.image.version\"}}' '$SPARK_EXPERT_DOCKER_INFERENCE'"
   )"
   [[ "$spark_version" == "$release_version" ]] ||
     release_die "$host Spark image version mismatch: $spark_version"
   spark_sparkinfer_revision="$(
-    ssh -o BatchMode=yes "$host" \
+    release_ssh "$host" \
       "docker image inspect -f '{{index .Config.Labels \"io.ds41rt.sparkinfer.revision\"}}' '$SPARK_EXPERT_DOCKER_INFERENCE'"
   )"
   [[ "$spark_sparkinfer_revision" == "$sparkinfer_commit" ]] ||
     release_die "$host Spark image SparkInfer revision mismatch: $spark_sparkinfer_revision"
   if [[ -n "$source_manifest_sha256" ]]; then
     spark_source_manifest="$(
-      ssh -o BatchMode=yes "$host" \
+      release_ssh "$host" \
         "docker image inspect -f '{{index .Config.Labels \"io.ds41rt.source-manifest.sha256\"}}' '$SPARK_EXPERT_DOCKER_INFERENCE'"
     )"
     [[ "$spark_source_manifest" == "$source_manifest_sha256" ]] ||
@@ -693,7 +829,7 @@ for host in "${RELEASE_BUILD_HOSTS[@]}"; do
   # this is the identity the release launcher verifies before an explicit
   # topology launch, so a mismatch is a hard build failure.
   spark_role_label="$(
-    ssh -o BatchMode=yes "$host" \
+    release_ssh "$host" \
       "docker image inspect -f '{{index .Config.Labels \"io.ds41rt.v41.spark_tp_roles\"}}' '$SPARK_EXPERT_DOCKER_INFERENCE'"
   )"
   [[ "$spark_role_label" != "<no value>" ]] || spark_role_label=

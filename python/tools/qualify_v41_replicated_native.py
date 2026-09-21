@@ -27,6 +27,21 @@ shard geometry and artifact produced each number. ``--manifest`` is required
 with ``--timing``; row counts must be covered by a requested capacity variant
 (they are never clamped).
 
+For Spark TP3 the record also carries the compiled launch-geometry identity
+(`v41_spark_tp3_launch_geometry.py`), verified against the manifest's recorded
+block and the pinned kernel constants, plus the physical device, the pinned
+revision, the named gates, the wire/input/route hashes, and
+activation/routing/wire/operand immutability. Route weights are geometric by
+default (uniform is diagnostic only). The pre/post `nvidia-smi` state is selected
+by device UUID and checked against the exact `0x0` throttle mask; an unparseable
+reason field fails closed with the device row context -- in every `TIMING`
+record. Records are buffered and
+printed only after the whole run and its post-run throttle gate complete, so an
+aborted run cannot leave a partial `TIMING` line that looks final. Compare
+separately built widths with `--aggregate` (three repeats per cell, one context,
+distinct libraries, identical cross-width identity, no fastest width or default
+promotion).
+
 Run inside the DODO lease container with the pinned SparkInfer tree on
 PYTHONPATH (or via the project runner). No daemon/service is touched.
 """
@@ -38,6 +53,7 @@ import ctypes as C
 import hashlib
 import json
 import statistics
+import subprocess
 import time
 from pathlib import Path
 
@@ -46,6 +62,7 @@ import torch
 import _pinned_sparkinfer  # noqa: F401
 from _v41_expert_native import Info, L, Native, P, check, library
 from tests.moe.test_v41_grouped_slices import _check_grouped_slices
+from v41_spark_tp3_launch_geometry import LaunchGeometryError, manifest_geometry
 
 # Role 5 = Spark TP2 (I=1152), role 6 = Spark TP3 (I=768), role 7 = Spark TP6
 # (I=384). TP2/TP3/TP6 are unpadded; the legacy TP4 shard stores 640 for a 576
@@ -60,6 +77,11 @@ LEGACY_TP4_LOGICAL, LEGACY_TP4_STORAGE = 576, 640
 ARENA_EXPERTS = 384
 SENTINEL = 384
 REL_TOL, COS_TOL = 0.01, 0.9999
+# Exact-zero throttle mask only. The 0x4 software-power-cap diagnostic path is
+# deliberately not implemented (it needs P1-both, stable-clock and bounded-delta
+# evidence plus a transition record), so a nonzero mask fails closed.
+DEFAULT_THROTTLE_MASK = "0x0"
+SPARK_TP3_DEGREE = 3
 FULL_INTERMEDIATE = 2304
 OFFICIAL_REVISION = "dba1be0a40aa45a94ad051997016db3960a90277"
 DEFAULT_SNAPSHOT = (
@@ -252,7 +274,88 @@ def verify_manifest_identity(manifest, expected_intermediate, expected_degree):
             f"match the requested logical intermediate {expected_intermediate}")
     if geometry.get("experts") != ARENA_EXPERTS:
         raise SystemExit(f"manifest experts={geometry.get('experts')!r} != {ARENA_EXPERTS}")
+    role = manifest.get("role")
+    if expected_degree in (2, 3, 6) and role is not None and role != f"spark_tp{expected_degree}":
+        raise SystemExit(
+            f"manifest role={role!r} is not the requested spark_tp{expected_degree}")
     return manifest
+
+
+def verify_manifest_geometry(manifest, expected_intermediate, expected_degree):
+    """Resolve the compiled launch-geometry identity for every variant.
+
+    Only the Spark TP3 slice kernel has a geometry identity contract today, so
+    other degrees resolve to an empty map rather than an invented one. A manifest
+    that records a ``launch_geometry`` block disagreeing with the pinned contract
+    fails closed.
+    """
+    if expected_degree != SPARK_TP3_DEGREE:
+        return {}
+    try:
+        return manifest_geometry(manifest, degree=expected_degree,
+                                 intermediate=expected_intermediate)
+    except LaunchGeometryError as error:
+        raise SystemExit(f"manifest launch geometry: {error}")
+
+
+def verify_manifest_device(manifest, device):
+    """Manifest capability must match the device; physical_sms is a build ceiling.
+
+    Compute capability is a hard contract. `physical_sms` is the SM count of the
+    host that exported the artifact -- a build-time ceiling, not the live device:
+    the native loader clamps the cooperative grid to `min(export, live)`, so a
+    smaller live part is valid. It is validated as a positive ceiling and
+    recorded rather than required to be equal.
+    """
+    capability = manifest.get("capability")
+    if capability is not None and list(capability) != list(device["compute_capability"]):
+        raise SystemExit(
+            f"manifest capability={list(capability)} does not match device "
+            f"{device['compute_capability']}")
+    physical_sms = manifest.get("physical_sms")
+    if physical_sms is not None and (
+            isinstance(physical_sms, bool) or not isinstance(physical_sms, int)
+            or physical_sms < 1):
+        raise SystemExit(
+            f"manifest physical_sms={physical_sms!r} must be a positive "
+            "build-host SM ceiling")
+    return manifest
+
+
+def verify_loaded_meta(meta, manifest, capacity, degree):
+    """Cross-check the loaded native info struct against the manifest arm.
+
+    The role table proves the family; this proves the manifest's model geometry
+    and the requested capacity match the artifact actually loaded, so a
+    mismatched library/manifest pair cannot be timed under the wrong label.
+    """
+    geometry = manifest.get("geometry") or {}
+    expected = {
+        "role": SPARK_TP_ROLE.get(degree),
+        "experts": geometry.get("experts"),
+        "hidden_size": geometry.get("hidden"),
+        "logical_intermediate": geometry.get("intermediate"),
+        "kernel_intermediate": geometry.get("kernel_intermediate"),
+        "topk": geometry.get("topk"),
+        "capacity_rows": capacity,
+    }
+    if degree == SPARK_TP3_DEGREE and (
+            geometry.get("hidden") is None
+            or geometry.get("kernel_intermediate") is None):
+        raise SystemExit(
+            "TP3 manifest geometry must declare hidden and kernel_intermediate "
+            "for the loaded-meta cross-check")
+    mismatches = {}
+    for field, want in expected.items():
+        if want is None:
+            continue
+        got = getattr(meta, field, None)
+        if got != want:
+            mismatches[field] = {"loaded": got, "manifest": want}
+    if mismatches:
+        raise SystemExit(
+            f"loaded native info disagrees with the manifest arm: {mismatches}")
+    return meta
 
 
 def _native_forward(torch_module, native, rows):
@@ -263,10 +366,31 @@ def _native_forward(torch_module, native, rows):
     return native.output[:rows * topk].view(rows, topk, 5120).sum(1)
 
 
-def _fill_routing(torch_module, ids, rw, rows, base, gids, active, device="cuda"):
+def _route_weights(torch_module, rows, active, weight_mode, device="cuda"):
+    """Per-slot routing weights for `active` dispatched slots.
+
+    ``uniform`` is the historical ``1/active`` contract. ``geometric`` halves
+    each successive route weight (then normalizes), so the reduction and the
+    weighted epilogue are exercised with nonuniform weights instead of a
+    degenerate equal split. The mode is named and recorded, never implicit.
+    """
+    if active < 1 or active > 6:
+        raise SystemExit(f"active must be in 1..6, got {active}")
+    if weight_mode == "uniform":
+        return torch_module.full((rows, active), 1.0 / active, device=device)
+    if weight_mode == "geometric":
+        steps = torch_module.arange(active, device=device, dtype=torch_module.float32)
+        weights = torch_module.pow(
+            torch_module.tensor(0.5, device=device, dtype=torch_module.float32), steps)
+        return (weights / weights.sum()).reshape(1, active).repeat(rows, 1)
+    raise SystemExit(f"unsupported route weight mode {weight_mode!r}")
+
+
+def _fill_routing(torch_module, ids, rw, rows, base, gids, active, device="cuda",
+                  weight_mode="uniform"):
     """Populate `rows` with `active` resident experts; inactive slots are SKIPPED.
 
-    The first `active` slots carry valid resident ids and weights `1/active`.
+    The first `active` slots carry valid resident ids and `weight_mode` weights.
     Slots at or beyond `active` carry the documented unassigned id `SENTINEL`
     (384) and weight 0, so the kernel does not dispatch a route for them:
     `active` is a real work axis, not a weights-only decoration. `SENTINEL` is
@@ -284,7 +408,8 @@ def _fill_routing(torch_module, ids, rw, rows, base, gids, active, device="cuda"
     dispatch = local_ids + base
     dispatch[:, active:] = SENTINEL  # unassigned: no route for this slot
     routing = torch_module.zeros((rows, 6), device=device)
-    routing[:, :active] = 1.0 / active
+    routing[:, :active] = _route_weights(torch_module, rows, active, weight_mode,
+                                         device=device)
     ids.fill_(SENTINEL)
     rw.zero_()
     ids[:rows].copy_(dispatch)
@@ -307,19 +432,23 @@ def _route_counts(ids, rw):
 
 def _oracle_compact_mask_checks(torch_module, lib, native, wire, x, weights, scales,
                                 ids, rw, capacity, rows, base, gids, active=6, *,
-                                reference):
+                                reference, rel_tol=REL_TOL, cos_tol=COS_TOL,
+                                weight_mode="uniform"):
     """The shared native correctness gates: oracle, compaction, sentinel masks.
 
     This is the checkpoint path's gate set, factored out so the timing path runs
     exactly the same checks for every (capacity, rows, active) it times. The
     scalar oracle is passed in explicitly because `run_checkpoint` imports it as
     a local (it lives in the pinned SparkInfer test tree), so it is not a module
-    global. Returns `(metrics, local_ids, routing, graph)`; `wire` is left holding
-    the base activation and `ids`/`rw` are left all-inactive.
+    global. The tolerances and the route-weight mode are named arguments so the
+    gates and the record always describe the same run. Returns
+    `(metrics, local_ids, routing, graph)`; `wire` is left holding the base
+    activation and `ids`/`rw` are left all-inactive.
     """
     topk = native.info.topk
     wire.copy_(_quantize_wire(x, capacity, torch_module))
-    local_ids, routing = _fill_routing(torch_module, ids, rw, rows, base, gids, active)
+    local_ids, routing = _fill_routing(torch_module, ids, rw, rows, base, gids,
+                                       active, weight_mode=weight_mode)
     native.output.fill_(float("nan"))
     graph = torch_module.cuda.CUDAGraph()
     with torch_module.cuda.graph(graph):
@@ -334,7 +463,7 @@ def _oracle_compact_mask_checks(torch_module, lib, native, wire, x, weights, sca
     rel = ((actual - expected).norm() / expected.norm()).item()
     cosine = torch_module.nn.functional.cosine_similarity(
         actual.flatten(), expected.flatten(), dim=0).item()
-    assert rel < REL_TOL and cosine > COS_TOL, (capacity, rows, active, rel, cosine)
+    assert rel < rel_tol and cosine > cos_tol, (capacity, rows, active, rel, cosine)
 
     # Runtime BF16 compaction on the native FP32 output. ABI 3 uses the token
     # compactor; ABI 2 uses the route compactor. Compared against the Python BF16
@@ -355,7 +484,7 @@ def _oracle_compact_mask_checks(torch_module, lib, native, wire, x, weights, sca
     compact_rel = ((compact_actual - bf16_expected).norm() / bf16_expected.norm()).item()
     compact_cos = torch_module.nn.functional.cosine_similarity(
         compact_actual.flatten(), bf16_expected.flatten(), dim=0).item()
-    assert compact_rel < REL_TOL and compact_cos > COS_TOL, (
+    assert compact_rel < rel_tol and compact_cos > cos_tol, (
         "compaction", capacity, rows, active, compact_rel, compact_cos)
 
     # Sentinel masking (id 384, weight 0) must yield an exact zero row, and every
@@ -378,7 +507,9 @@ def _oracle_compact_mask_checks(torch_module, lib, native, wire, x, weights, sca
     metrics = dict(
         rel_l2=rel, cosine=cosine,
         compact_bf16_rel_l2=compact_rel, compact_bf16_cosine=compact_cos,
-        mask_zero=True, all_inactive_zero=True)
+        mask_zero=True, all_inactive_zero=True,
+        rel_tolerance=rel_tol, cosine_tolerance=cos_tol,
+        route_weights=weight_mode)
     return metrics, local_ids, routing, graph
 
 
@@ -400,6 +531,146 @@ def _time_graph(torch_module, graph, intervals, launches_per_replay):
         end.synchronize()
         device.append(start.elapsed_time(end) * 1000.0 / launches_per_replay)
     return device, host
+
+
+def _device_identity(torch_module):
+    """Physical GPU identity for the measurement's provenance tuple."""
+    props = torch_module.cuda.get_device_properties(0)
+    identity = {
+        "name": props.name,
+        "compute_capability": [props.major, props.minor],
+        "sm_count": props.multi_processor_count,
+        "total_memory_bytes": int(props.total_memory),
+    }
+    uuid = getattr(props, "uuid", None)
+    if uuid is not None:
+        identity["uuid"] = str(uuid)
+    return identity
+
+
+def _gpu_state(device=None, index=0):
+    """Pre/post `nvidia-smi` state for the MEASURED device, selected by UUID.
+
+    Falls back to the CUDA device index when torch exposes no UUID. A missing
+    tool or a missing device row is recorded as not-found; `verify_throttle`
+    turns that into a hard failure because the throttle contract cannot be
+    certified from an unknown state.
+    """
+    try:
+        lines = subprocess.check_output(
+            ["nvidia-smi",
+             "--query-gpu=index,uuid,pstate,clocks.sm,clocks.mem,"
+             "clocks_event_reasons.active",
+             "--format=csv,noheader"],
+            text=True, timeout=20).strip().splitlines()
+    except (OSError, subprocess.SubprocessError) as error:
+        return {"rows": [], "found": False, "error": f"{type(error).__name__}: {error}"}
+    rows = [row.strip() for row in lines if row.strip()]
+    uuid = None if device is None else device.get("uuid")
+    selected = []
+    for row in rows:
+        fields = [field.strip() for field in row.split(",")]
+        if uuid:
+            if len(fields) > 1 and fields[1] == uuid:
+                selected.append(row)
+        elif fields and fields[0] == str(index):
+            selected.append(row)
+    return {"rows": selected, "found": bool(selected), "error": None,
+            "selected_by": "uuid" if uuid else "index"}
+
+
+def parse_throttle_mask(raw):
+    """Declared allowed `clocks_event_reasons.active` bits.
+
+    Only the exact `0x0` mask is implemented. A nonzero `0x4`
+    software-power-cap diagnostic would require P1-both, stable-clock and
+    bounded-delta evidence plus an explicit transition record, so it is rejected
+    here rather than silently accepted. Empty, missing and unparseable values
+    also fail closed.
+    """
+    text = str(raw).strip()
+    if not text:
+        raise SystemExit("--throttle-mask must be provided and be exactly 0x0")
+    masks = []
+    for item in text.split(","):
+        item = item.strip()
+        if not item:
+            raise SystemExit(f"--throttle-mask has an empty entry in {raw!r}")
+        try:
+            masks.append(int(item, 16))
+        except ValueError as error:
+            raise SystemExit(f"--throttle-mask entries must be hex, got {item!r}") from error
+    if any(mask != 0 for mask in masks):
+        raise SystemExit(
+            "only the 0x0 throttle mask is accepted; a nonzero diagnostic mask "
+            "(for example 0x4) is not implemented and fails closed")
+    return masks
+
+
+def _throttle_reasons(state, device=None):
+    """Active throttle-reason bitmasks from one device-filtered state snapshot.
+
+    An unparseable or `[N/A]` reason field is a hard failure, never a silent
+    zero: the throttle contract cannot be certified from a state we could not
+    read, and treating a missing field as "no throttling" is exactly the false
+    pass this gate exists to prevent. The message carries the device selector and
+    the offending row so the failure is actionable.
+    """
+    selector = state.get("selected_by") or "unknown"
+    if device:
+        selector = f"{selector}:{device.get('uuid') or device.get('name')}"
+    reasons = []
+    for row in state.get("rows", []):
+        fields = [field.strip() for field in row.split(",")]
+        if len(fields) != 6:
+            raise SystemExit(
+                f"nvidia-smi throttle row for device {selector} is malformed "
+                f"({len(fields)} fields, expected 6): {row!r}")
+        try:
+            reasons.append(int(fields[-1], 16))
+        except ValueError as error:
+            raise SystemExit(
+                f"cannot parse clocks_event_reasons.active for device {selector} "
+                f"from {row!r}: {error}") from error
+    return reasons
+
+
+def verify_throttle(gpu_before, gpu_after, masks, device=None):
+    """Fail closed on an unknown state or an undeclared throttle reason."""
+    for label, state in (("before", gpu_before), ("after", gpu_after)):
+        if state.get("error"):
+            raise SystemExit(
+                f"cannot read GPU throttle state {label} timing: {state['error']}")
+        if not state.get("found"):
+            raise SystemExit(
+                f"GPU device row not found {label} timing "
+                f"(selector={state.get('selected_by') or 'unknown'})")
+    reasons = sorted(set(_throttle_reasons(gpu_before, device)
+                         + _throttle_reasons(gpu_after, device)))
+    allowed = 0
+    for mask in masks:
+        allowed |= mask
+    disallowed = [hex(reason) for reason in reasons if reason & ~allowed]
+    if disallowed:
+        raise SystemExit(
+            f"throttle reasons {disallowed} are outside the declared mask "
+            f"{[hex(mask) for mask in masks]}")
+    return {"reasons": [hex(reason) for reason in reasons],
+            "mask": [hex(mask) for mask in masks], "ok": True,
+            "device": None if device is None else (device.get("uuid") or device.get("name"))}
+
+
+def _immutability(name, before, after):
+    """Fail closed unless a buffer is byte-identical before and after timing.
+
+    A timed graph must only READ the activation, routing, wire and operand
+    arenas; any mutation means the number describes a different input than the
+    one that was gated.
+    """
+    if before != after:
+        raise SystemExit(
+            f"{name} changed across the timed region ({before} -> {after})")
+    return True
 
 
 def _run_timing(options, torch_module, lib, arena, intermediate, role, gids, base,
@@ -436,6 +707,16 @@ def _run_timing(options, torch_module, lib, arena, intermediate, role, gids, bas
     lib_sha = _sha256_file(options.native_lib)
     manifest_sha = _sha256_file(options.manifest)
     seed = int(getattr(options, "timing_seed", 0x51))
+    geometries = verify_manifest_geometry(manifest, intermediate, degree)
+    device = _device_identity(torch_module)
+    verify_manifest_device(manifest, device)
+    revision = manifest.get("sparkinfer_revision")
+    rel_tol = float(getattr(options, "rel_tolerance", REL_TOL))
+    cos_tol = float(getattr(options, "cosine_tolerance", COS_TOL))
+    weight_mode = str(getattr(options, "route_weights", "geometric"))
+    throttle_masks = parse_throttle_mask(getattr(options, "throttle_mask", DEFAULT_THROTTLE_MASK))
+    gpu_before = _gpu_state(device)
+    verify_throttle(gpu_before, gpu_before, throttle_masks, device)
     results = []
     for capacity in capacities:
         # Confirm the library actually exposes this role family and extent
@@ -446,6 +727,7 @@ def _run_timing(options, torch_module, lib, arena, intermediate, role, gids, bas
         meta = Info()
         check(lib.ds41rt_v41_expert_info(capacity, C.byref(meta)))
         assert meta.role == role, (capacity, meta.role)
+        verify_loaded_meta(meta, manifest, capacity, degree)
         generator = torch_module.Generator(device="cuda").manual_seed(seed)
         x = torch_module.randn(capacity, 5120, generator=generator,
                                device="cuda").mul_(0.5).bfloat16()
@@ -455,6 +737,16 @@ def _run_timing(options, torch_module, lib, arena, intermediate, role, gids, bas
         rw = torch_module.empty(capacity, 6, device="cuda")
         native = Native(lib, capacity, arena, wire, ids, rw,
                         spark_tp=options.spark_tp)
+        # C1: the native scratch extent must equal the manifest variant's recorded
+        # core scratch, so a mismatched library/manifest pair cannot be timed.
+        variant = next((entry for entry in manifest.get("variants", [])
+                        if entry.get("capacity_rows") == capacity), None)
+        core_scratch = None if variant is None else variant.get("core_scratch_nbytes")
+        if core_scratch is not None:
+            assert int(core_scratch) == native.storage.numel(), (
+                capacity, core_scratch, native.storage.numel())
+        operands_before = None if not arena else [_tensor_sha256(t) for t in arena]
+        capacity_record_start = len(results)
         flush = torch_module.empty(flush_bytes // 4, device="cuda",
                                    dtype=torch_module.float32)
         compact = torch_module.empty((capacity, 5120), device="cuda",
@@ -482,15 +774,18 @@ def _run_timing(options, torch_module, lib, arena, intermediate, role, gids, bas
                     _oracle_compact_mask_checks(
                         torch_module, lib, native, wire, x, weights, scales,
                         ids, rw, capacity, rows, base, gids, active=active,
-                        reference=reference))
+                        reference=reference, rel_tol=rel_tol, cos_tol=cos_tol,
+                        weight_mode=weight_mode))
                 check_graph.reset()
                 # Restore the base activation and the exact routing the timed
                 # graphs read (the gates above left both mutated), then hash the
                 # DISPATCHED device routing: inactive slots carry id -1, so this
                 # binds the real work, not just the weights.
                 wire.copy_(_quantize_wire(x, capacity, torch_module))
-                _fill_routing(torch_module, ids, rw, rows, base, gids, active)
+                _fill_routing(torch_module, ids, rw, rows, base, gids, active,
+                              weight_mode=weight_mode)
                 route_sha = _routing_sha256(ids[:rows], rw[:rows])
+                wire_sha = _tensor_sha256(wire)
                 valid_routes, weighted_routes = _route_counts(ids[:rows], rw[:rows])
 
                 single = torch_module.cuda.CUDAGraph()
@@ -546,8 +841,15 @@ def _run_timing(options, torch_module, lib, arena, intermediate, role, gids, bas
                     flush.fill_(1.0)
                     cold_compact.extend(
                         _time_graph(torch_module, single_compact, 1, 1)[0])
+                route_after = _routing_sha256(ids[:rows], rw[:rows])
+                input_after = _tensor_sha256(x)
+                wire_after = _tensor_sha256(wire)
+                routing_immutable = _immutability("routing", route_sha, route_after)
+                input_immutable = _immutability("activation", input_sha, input_after)
+                wire_immutable = _immutability("quantized wire", wire_sha, wire_after)
                 record = dict(
-                    kind="native_timing", role=role, spark_tp=options.spark_tp,
+                    kind="native_timing", status="ok", role=role,
+                    spark_tp=options.spark_tp,
                     tp4_legacy=bool(options.tp4_legacy), capacity=capacity,
                     rows=rows, active=active, abi_version=meta.abi_version,
                     valid_route_count=valid_routes,
@@ -557,10 +859,23 @@ def _run_timing(options, torch_module, lib, arena, intermediate, role, gids, bas
                     width=compiled[int(capacity)], repeats=options.repeats,
                     cold_bytes=flush_bytes, timing_seed=seed,
                     input_sha256=input_sha, route_sha256=route_sha,
+                    wire_sha256=wire_sha,
                     lib_sha256=lib_sha, manifest_path=str(options.manifest),
                     manifest_sha256=manifest_sha,
                     manifest_role=manifest.get("role"),
                     manifest_spark_tp_degree=manifest.get("spark_tp_degree"),
+                    manifest_geometry=manifest.get("geometry"),
+                    sparkinfer_revision=revision,
+                    device=device,
+                    launch_geometry=geometries.get(capacity),
+                    manifest_core_scratch_nbytes=core_scratch,
+                    manifest_capability=manifest.get("capability"),
+                    build_host_ceiling=manifest.get("physical_sms"),
+                    live_sm_count=device["sm_count"],
+                    routing_immutable=routing_immutable,
+                    input_immutable=input_immutable,
+                    wire_immutable=wire_immutable,
+                    operands_immutable=None,
                     scratch_bytes=native.storage.numel(),
                     compact_output_bytes=compact.numel() * compact.element_size(),
                     kernel_only=dict(
@@ -583,11 +898,28 @@ def _run_timing(options, torch_module, lib, arena, intermediate, role, gids, bas
                         cold_samples_us=cold_compact),
                     **metrics)
                 results.append(record)
-                print("TIMING " + json.dumps(record, sort_keys=True), flush=True)
                 for graph in (single, single_compact, amortized, amortized_compact):
                     graph.reset()
+        operands_after = None if not arena else [_tensor_sha256(t) for t in arena]
+        operands_immutable = (
+            None if operands_before is None
+            else _immutability("expert operand arenas", operands_before, operands_after))
+        for record in results[capacity_record_start:]:
+            record["operands_immutable"] = operands_immutable
         del native, wire, ids, rw, flush, compact
         torch_module.cuda.empty_cache()
+    gpu_after = _gpu_state(device)
+    throttle = verify_throttle(gpu_before, gpu_after, throttle_masks, device)
+    for record in results:
+        record["gpu_state_before"] = gpu_before
+        record["gpu_state_after"] = gpu_after
+        record["throttle"] = throttle
+    # Buffered emission: only finalized, complete records are printed, and only
+    # after the post-run throttle gate has passed.
+    for record in results:
+        print("TIMING " + json.dumps(record, sort_keys=True), flush=True)
+    if getattr(options, "output", None) is not None:
+        Path(options.output).write_text(json.dumps(results, indent=2) + "\n")
     return results
 
 
@@ -812,9 +1144,196 @@ def run_checkpoint(options, torch_module, lib):
     return results
 
 
+def _geometry_sha256(geometry):
+    """Stable digest of a launch-geometry identity (the contract a record ran).
+
+    Prose is stripped: the digest covers the structured geometry fields only, so
+    a wording change in the source description cannot masquerade as a different
+    compiled contract (the pinned revision is carried separately in the identity
+    tuple).
+    """
+    if geometry is None:
+        return None
+    structured = {key: value for key, value in geometry.items() if key != "source"}
+    return hashlib.sha256(
+        json.dumps(structured, sort_keys=True).encode()).hexdigest()
+
+
+def _context_identity(record):
+    """Cross-width identity: everything that must match between width arms.
+
+    Build-specific fields (library hash, manifest hash, compiled width and the
+    per-variant launch geometry) are excluded; the model geometry, seed, routing
+    mode, named tolerances, pinned revision and physical device must be identical
+    before two widths can be compared at all.
+    """
+    device = record.get("device") or {}
+    return (
+        record.get("spark_tp"), record.get("capacity"), record.get("rows"),
+        record.get("active"), record.get("timing_seed"),
+        record.get("route_weights"), record.get("rel_tolerance"),
+        record.get("cosine_tolerance"), record.get("sparkinfer_revision"),
+        json.dumps(record.get("manifest_geometry"), sort_keys=True),
+        device.get("uuid") or device.get("name"),
+    )
+
+
+def _record_identity(record):
+    """Full per-width repeat identity; timing numbers are excluded."""
+    return _context_identity(record) + (
+        record.get("width"), record.get("lib_sha256"),
+        record.get("manifest_sha256"), record.get("wire_sha256"),
+        record.get("input_sha256"), record.get("route_sha256"),
+        _geometry_sha256(record.get("launch_geometry")),
+    )
+
+
+def _load_timing_records(path):
+    """Read one result file: a JSON list, ``{"records": [...]}``, or JSONL."""
+    text = Path(path).read_text()
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        payload = None
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if isinstance(payload, dict) and isinstance(payload.get("records"), list):
+        return [item for item in payload["records"] if isinstance(item, dict)]
+    records = []
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("TIMING "):
+            line = line[len("TIMING "):]
+        if not line:
+            continue
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(item, dict):
+            records.append(item)
+    return records
+
+
+def aggregate_results(options):
+    """Compare repeated, separately built width arms without promoting one.
+
+    Requirements, all fail-closed:
+
+    * exactly one measurement context ``(spark_tp, capacity, rows, active)`` so a
+      comparison cannot silently mix shapes;
+    * at least two widths, each with a *distinct* native library hash (the
+      process-wide generated launch symbols make a same-library width A/B
+      invalid);
+    * exactly ``--aggregate-repeats`` records per width, every one
+      ``status == "ok"`` and identical on the full per-width identity (seed,
+      routing mode, tolerances, revision, model geometry, device, input/route/wire
+      hashes, library and manifest hashes, compiled launch geometry);
+    * one identical cross-width context identity (seed, routing mode, tolerances,
+      revision, model geometry, device);
+    * uniform route weights are diagnostic only and are rejected for
+      qualification unless ``--allow-uniform-diagnostic`` is explicit.
+
+    The output reports per-width medians only. There is no fastest width and no
+    promotion: a default change needs the reviewed export/CMake override plus
+    separate correctness and release evidence.
+    """
+    records = []
+    for path in options.aggregate:
+        records.extend(_load_timing_records(path))
+    records = [record for record in records if record.get("kind") == "native_timing"]
+    if not records:
+        raise SystemExit("--aggregate found no native_timing records")
+    repeats = int(options.aggregate_repeats)
+    allow_uniform = bool(getattr(options, "allow_uniform_diagnostic", False))
+    contexts = {(record.get("spark_tp"), record.get("capacity"),
+                 record.get("rows"), record.get("active")) for record in records}
+    if len(contexts) != 1:
+        raise SystemExit(
+            "aggregate inputs must share exactly one measurement context "
+            f"(spark_tp, capacity, rows, active); got {sorted(contexts)}")
+    for record in records:
+        if record.get("status") != "ok":
+            raise SystemExit(
+                f"aggregate input is not status ok: width={record.get('width')} "
+                f"capacity={record.get('capacity')} rows={record.get('rows')}")
+        if record.get("route_weights") != "geometric" and not allow_uniform:
+            raise SystemExit(
+                "aggregate input uses uniform route weights, which are diagnostic "
+                "only; re-run with --route-weights geometric or pass "
+                "--allow-uniform-diagnostic to compare diagnostics")
+    by_width = {}
+    for record in records:
+        by_width.setdefault(record.get("width"), []).append(record)
+    if len(by_width) < 2:
+        raise SystemExit(
+            f"aggregate needs at least two widths, got {sorted(by_width)}")
+    per_width_lib = {}
+    widths = []
+    for width, cell in sorted(by_width.items()):
+        if len(cell) != repeats:
+            raise SystemExit(
+                f"width {width} has {len(cell)} records, need {repeats}")
+        identities = {_record_identity(record) for record in cell}
+        if len(identities) != 1:
+            raise SystemExit(
+                f"width {width} mixes identity tuples; not a valid repeat set")
+        libs = {record.get("lib_sha256") for record in cell}
+        if len(libs) != 1:
+            raise SystemExit(f"width {width} repeats used different libraries")
+        per_width_lib[width] = next(iter(libs))
+        samples = [record["kernel_only"]["warm_amortized_device_us"]
+                   for record in cell]
+        widths.append({
+            "width": width,
+            "records": len(cell),
+            "identity": list(next(iter(identities))),
+            "kernel_only_warm_amortized_device_us": statistics.median(samples),
+            "kernel_only_warm_amortized_samples_us": samples,
+        })
+    if len(set(per_width_lib.values())) != len(per_width_lib):
+        raise SystemExit(
+            "aggregate widths must use distinct native libraries; the same "
+            "library cannot back two width arms")
+    if len({_context_identity(record) for record in records}) != 1:
+        raise SystemExit(
+            "aggregate widths do not share one cross-width context identity "
+            "(seed, route weights, tolerances, revision, model geometry, device)")
+    context = contexts.pop()
+    summary = {
+        "kind": "native_timing_comparison",
+        "report_only": True,
+        "promotes_default": False,
+        "repeats_per_width": repeats,
+        "context": {"spark_tp": context[0], "capacity": context[1],
+                    "rows": context[2], "active": context[3]},
+        "widths": widths,
+        "note": (
+            "Report-only comparison of separately built artifacts. There is no "
+            "fastest width and no promotion here; a default change needs the "
+            "reviewed export/CMake override plus correctness and release evidence."),
+    }
+    if options.output is not None:
+        Path(options.output).write_text(json.dumps(summary, indent=2) + "\n")
+    print(json.dumps(summary, sort_keys=True), flush=True)
+    return summary
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--native-lib", required=True)
+    parser.add_argument("--native-lib",
+                        help="built libds41rt_native.so (not needed with --aggregate)")
+    parser.add_argument("--aggregate", type=Path, nargs="+", metavar="RESULT",
+                        help="CPU only: compare repeated TIMING result files by "
+                             "width; requires --aggregate-repeats records per cell "
+                             "with identical identity tuples")
+    parser.add_argument("--aggregate-repeats", type=int, default=3,
+                        help="independent result files required per width cell")
+    parser.add_argument("--allow-uniform-diagnostic", action="store_true",
+                        help="permit uniform route weights in --aggregate; without "
+                             "this flag a uniform-weight comparison is rejected")
+    parser.add_argument("--output", type=Path, default=None,
+                        help="write the emitted timing/comparison records to this file")
     parser.add_argument("--spark-tp", type=int, choices=(2, 3, 6),
                         help="Spark TP degree: 2 (I=1152), 3 (I=768) or 6 (I=384)")
     parser.add_argument("--tp4-legacy", action="store_true",
@@ -857,7 +1376,24 @@ def main():
     parser.add_argument("--tp-rank", type=int, default=0)
     parser.add_argument("--no-repack-compare", dest="compare_repack",
                         action="store_false")
+    parser.add_argument("--route-weights", choices=("uniform", "geometric"),
+                        default="geometric",
+                        help="routing weight pattern; geometric (nonuniform) is the "
+                             "qualification default, uniform is diagnostic only")
+    parser.add_argument("--rel-tolerance", type=float, default=REL_TOL,
+                        help="named relative-L2 gate, recorded with the result")
+    parser.add_argument("--cosine-tolerance", type=float, default=COS_TOL,
+                        help="named cosine gate, recorded with the result")
+    parser.add_argument("--throttle-mask", default=DEFAULT_THROTTLE_MASK,
+                        help="exact allowed hex clocks_event_reasons.active bits; "
+                             "only 0x0 is implemented, so empty or nonzero values "
+                             "fail closed (default 0x0)")
     options = parser.parse_args()
+    if options.aggregate:
+        aggregate_results(options)
+        return
+    if options.native_lib is None:
+        parser.error("--native-lib is required unless --aggregate is used")
     options.snapshot = Path(options.snapshot)
     if (options.spark_tp is None) == (not options.tp4_legacy):
         parser.error("select exactly one of --spark-tp 2|3 or --tp4-legacy")

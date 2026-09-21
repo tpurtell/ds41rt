@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import json
 import shlex
@@ -44,7 +45,10 @@ class NativeReleaseLauncherTest(unittest.TestCase):
         ):
             with self.subTest(digest=digest, roles=roles):
                 harness = f'''set -euo pipefail
-ssh() {{ shift 3; bash -c "$*"; }}
+# build.sh routes every remote step through release_ssh (host is its first
+# argument); emulating it by re-running the joined command string locally is what
+# reproduces OpenSSH's behaviour of collapsing an empty argument.
+release_ssh() {{ shift 1; bash -c "$*"; }}
 seed_host=fixture
 remote_dir=/fixture
 SPARK_EXPERT_DOCKER_DEV=dev
@@ -62,6 +66,74 @@ spark_tp_roles={shlex.quote(roles)}
                                         cwd=ROOT, text=True, capture_output=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(result.stdout.splitlines(), expected)
+
+    def test_ssh_config_file_escaped_onto_child_command_line_is_never_reparsed(self) -> None:
+        source = (ROOT / 'build.sh').read_text()
+        block = source.split('echo "== building Spark development and inference images natively on $seed_host =="', 1)[1]
+        invocation, remote = block.split("<<'REMOTE'", 1)
+        preamble = remote.split('cd "$remote_dir"', 1)[0]
+        # An ssh config path chosen for the build must reach ssh as its own argv
+        # element and must never be re-spelled inside the command string the remote
+        # shell executes: OpenSSH flattens that string, so a value that landed there
+        # would be re-parsed by a second shell. The leg is a quoted heredoc, so the
+        # only thing the remote shell receives is the positional argument vector.
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            config = root / 'ds41rt-release.config'
+            config.write_text("Include ~/.ssh/config\n")
+            log = root / 'ssh.argv'
+            stub_dir = root / 'bin'
+            stub_dir.mkdir()
+            (stub_dir / 'ssh').write_text(
+                '#!/usr/bin/env bash\n'
+                'set -euo pipefail\n'
+                'opts=(); rest=()\n'
+                'while [[ $# -gt 0 ]]; do\n'
+                '  case "$1" in\n'
+                '    -o|-F|-i|-l|-p) opts+=("$1" "$2"); shift 2 ;;\n'
+                '    -*) opts+=("$1"); shift ;;\n'
+                '    *) host="$1"; shift; rest+=("$@"); break ;;\n'
+                '  esac\n'
+                'done\n'
+                '{ printf "H\\t%s\\n" "$host"\n'
+                '  for token in ${opts[@]+"${opts[@]}"}; do printf "O\\t%s\\n" "$token"; done\n'
+                '  for token in ${rest[@]+"${rest[@]}"}; do printf "C\\t%s\\n" "$token"; done; } '
+                f'>>"{log}"\n'
+                'exec bash -c "${rest[*]}"\n'
+            )
+            (stub_dir / 'ssh').chmod(0o755)
+            harness = f'''set -euo pipefail
+source scripts/release-common.sh
+export DS41RT_RELEASE_SSH_CONFIG={shlex.quote(str(config))}
+seed_host=fixture
+remote_dir=/fixture
+SPARK_EXPERT_DOCKER_DEV=dev
+SPARK_EXPERT_DOCKER_INFERENCE=inference
+engine_commit=engine
+sparkinfer_commit=fork
+release_version=v5
+EXL3_PAIRED_TP4=on
+source_manifest_sha256=
+spark_tp_roles=
+'''
+            environment = dict(os.environ)
+            environment['PATH'] = f"{stub_dir}:{environment['PATH']}"
+            result = subprocess.run(
+                ['bash', '-c', harness + invocation + "<<'REMOTE'" + preamble
+                 + 'printf "%s\\n" "$exl3_paired_tp4" "$source_manifest_sha256" "$spark_tp_roles"\nREMOTE\n'],
+                cwd=ROOT, text=True, capture_output=True, env=environment)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            records = {'H': [], 'O': [], 'C': []}
+            for line in log.read_text().splitlines():
+                kind, _, token = line.partition('\t')
+                records[kind].append(token)
+            self.assertEqual(records['O'], ['-o', 'BatchMode=yes', '-F', str(config)])
+            self.assertEqual(records['H'], ['fixture'])
+            self.assertEqual(records['C'][:3], ['bash', '-s', '--'],
+                             'the remote command is what OpenSSH joins into one string')
+            self.assertFalse([t for t in records['C'] if str(config) in t],
+                             'the config path must not appear in the remote command line')
+            self.assertEqual(result.stdout.splitlines(), ['on', '', ''])
 
     def test_native_api_identity_is_independent_of_checkpoint_repository(self) -> None:
         for model, expected in [('deepseek-ai/DeepSeek-V4.1-Flash', 0),
@@ -198,11 +270,29 @@ printf '%s\n' "$MODEL_ID" "$MODEL_REVISION" "$EXPERT_FORMAT" "$SPARKINFER_EXL3" 
         # that pins a per-topology local tag (a `*-candidate` reference built
         # only by that exact config) fails `run.sh`'s image check on a host that
         # only has the published release, which is what it is documenting.
+        # Temporary exemption (delete at v10 release promotion, when these two
+        # files are retargeted to whatever pair is then published): the two v10
+        # candidate profiles intentionally pin the not-yet-published v10 pair.
+        # Each name must be the actual baseline role repository retagged to
+        # v10 — a prefix/suffix check would let two coordinators through, this
+        # one does not.
+        v10_candidates = {"tp3ep1-native.config", "exl3-compact-tp3.config"}
+        v10_coordinator = coordinator.rsplit(":", 1)[0] + ":v10"
+        v10_spark = spark.rsplit(":", 1)[0] + ":v10"
         examples = sorted((ROOT / "examples" / "configs").glob("*.config"))
         self.assertTrue(examples, "the example directory must not be empty")
+        self.assertEqual(
+            v10_candidates,
+            {path.name for path in examples} & v10_candidates,
+            "the v10 candidate exemption names files that must exist",
+        )
         for path in examples:
             with self.subTest(example=path.name):
                 text = path.read_text()
+                if path.name in v10_candidates:
+                    self.assertIn(f"COORDINATOR_DOCKER_INFERENCE={v10_coordinator}", text)
+                    self.assertIn(f"SPARK_EXPERT_DOCKER_INFERENCE={v10_spark}", text)
+                    continue
                 self.assertIn(f"COORDINATOR_DOCKER_INFERENCE={coordinator}", text)
                 self.assertIn(f"SPARK_EXPERT_DOCKER_INFERENCE={spark}", text)
         # The documented pull commands must name the release the launcher uses.
@@ -249,6 +339,70 @@ printf '%s\n' "$MODEL_ID" "$MODEL_REVISION" "$EXPERT_FORMAT" "$SPARKINFER_EXL3" 
             )
             self.assertEqual(result.returncode, 2)
             self.assertIn(message, result.stderr)
+
+
+class V10BuildTargetTest(unittest.TestCase):
+    """The canonical v10 build tag comes from the explicit build config.
+
+    `ds41rt.build-v10.config` is the release BUILD target (build.sh derives
+    `release_version` from its coordinator tag). It must be identical to
+    `ds41rt.config` except for the two release-pair lines, and the runtime
+    default must stay on the published v9 pair until release promotion.
+    """
+
+    BUILD_CONFIG = ROOT / "ds41rt.build-v10.config"
+    V9_EXAMPLES = ("tp4ep1-explicit-native.config", "tp2ep2-native.config",
+                   "tp3ep2-native.config", "tp2ep3-native.config", "tp6ep1-native.config")
+    V10_CANDIDATES = ("tp3ep1-native.config", "exl3-compact-tp3.config")
+
+    def dry_run(self, config: Path | None) -> str:
+        args = ["bash", "build.sh"]
+        if config is not None:
+            args += ["--config", str(config)]
+        args += ["--dry-run"]
+        result = subprocess.run(args, cwd=ROOT, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout
+
+    def assignments(self, path: Path) -> list[str]:
+        return [line for line in path.read_text().splitlines()
+                if "=" in line and not line.lstrip().startswith("#")]
+
+    def test_build_config_retags_only_the_release_pair(self) -> None:
+        base = self.assignments(ROOT / "ds41rt.config")
+        target = self.assignments(self.BUILD_CONFIG)
+        self.assertEqual(len(base), len(target))
+        differing = [(a, b) for a, b in zip(base, target) if a != b]
+        self.assertEqual(differing, [
+            ("COORDINATOR_DOCKER_INFERENCE=ghcr.io/tpurtell/ds41rt-coordinator:v9",
+             "COORDINATOR_DOCKER_INFERENCE=ghcr.io/tpurtell/ds41rt-coordinator:v10"),
+            ("SPARK_EXPERT_DOCKER_INFERENCE=ghcr.io/tpurtell/ds41rt-spark-expert:v9",
+             "SPARK_EXPERT_DOCKER_INFERENCE=ghcr.io/tpurtell/ds41rt-spark-expert:v10"),
+        ])
+
+    def test_default_build_tags_v9_and_explicit_config_tags_v10(self) -> None:
+        # CPU-only: --dry-run validates without touching Docker, SSH or images.
+        default = self.dry_run(None)
+        self.assertIn("release tag: v9", default)
+        self.assertIn("coordinator image: ghcr.io/tpurtell/ds41rt-coordinator:v9", default)
+        v10 = self.dry_run(self.BUILD_CONFIG)
+        self.assertIn("release tag: v10", v10)
+        self.assertIn("coordinator image: ghcr.io/tpurtell/ds41rt-coordinator:v10", v10)
+        self.assertIn("spark image: ghcr.io/tpurtell/ds41rt-spark-expert:v10", v10)
+        # Same universal role set as the v9 default pair.
+        self.assertIn("tp2;tp3;tp6", v10)
+
+    def test_existing_examples_stay_v9_and_candidates_v10(self) -> None:
+        for name in self.V9_EXAMPLES:
+            with self.subTest(example=name):
+                text = (ROOT / "examples" / "configs" / name).read_text()
+                self.assertIn("COORDINATOR_DOCKER_INFERENCE=ghcr.io/tpurtell/ds41rt-coordinator:v9", text)
+                self.assertIn("SPARK_EXPERT_DOCKER_INFERENCE=ghcr.io/tpurtell/ds41rt-spark-expert:v9", text)
+        for name in self.V10_CANDIDATES:
+            with self.subTest(example=name):
+                text = (ROOT / "examples" / "configs" / name).read_text()
+                self.assertIn("COORDINATOR_DOCKER_INFERENCE=ghcr.io/tpurtell/ds41rt-coordinator:v10", text)
+                self.assertIn("SPARK_EXPERT_DOCKER_INFERENCE=ghcr.io/tpurtell/ds41rt-spark-expert:v10", text)
 
 
 if __name__ == "__main__":

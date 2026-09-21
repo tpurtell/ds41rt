@@ -370,15 +370,30 @@ def test_run_timing_branch_executes_with_mocks_and_emits_the_record_schema(tmp_p
         [1.0] * intervals, [2.0] * intervals)
     q._oracle_compact_mask_checks = lambda *a, **k: (
         dict(rel_l2=0.001, cosine=0.999999, compact_bf16_rel_l2=0.002,
-             compact_bf16_cosine=0.9999, mask_zero=True, all_inactive_zero=True),
+             compact_bf16_cosine=0.9999, mask_zero=True, all_inactive_zero=True,
+             rel_tolerance=q.REL_TOL, cosine_tolerance=q.COS_TOL,
+             route_weights="geometric"),
         _FakeTensor(), _FakeTensor(), _FakeGraph())
+    q._device_identity = lambda torch_module: {
+        "name": "fake-gpu", "compute_capability": [12, 1], "sm_count": 48,
+        "total_memory_bytes": 1, "uuid": "GPU-fake"}
+    q._gpu_state = lambda *a, **k: {
+        "rows": [], "found": True, "error": None, "selected_by": "uuid"}
+
+    holder = {"capacity": None}
 
     class FakeInfo:
         role = 7
         abi_version = 2
+        experts = q.ARENA_EXPERTS
+        hidden_size = 5120
         logical_intermediate = 384
         kernel_intermediate = 384
         topk = 6
+
+        @property
+        def capacity_rows(self):
+            return holder["capacity"]
 
     q.Info = lambda: FakeInfo()
 
@@ -395,8 +410,13 @@ def test_run_timing_branch_executes_with_mocks_and_emits_the_record_schema(tmp_p
     q.Native = lambda *a, **k: FakeNative()
     # `C.byref` is only a pointer hand-off to the mocked info call.
     q.C = SimpleNamespace(byref=lambda obj: obj)
+
+    def _record_capacity(capacity, out):
+        holder["capacity"] = capacity
+        return 0
+
     lib = SimpleNamespace(
-        ds41rt_v41_expert_info=lambda capacity, out: 0,
+        ds41rt_v41_expert_info=_record_capacity,
         ds41rt_v41_compact_routes_bf16_async=lambda *a, **k: 0,
         ds41rt_v41_compact_tokens_bf16_async=lambda *a, **k: 0)
 
@@ -404,7 +424,9 @@ def test_run_timing_branch_executes_with_mocks_and_emits_the_record_schema(tmp_p
         manifest=manifest_path, native_lib=tmp_path / "lib.so", width=None,
         spark_tp=6, tp4_legacy=False, capacities="1,80", timing_rows="1,8",
         active_counts="6", cold_bytes=1024, timing_seed=0x51, repeats=2,
-        warm_replays=2, single_replays=2, cold_replays=2)
+        warm_replays=2, single_replays=2, cold_replays=2,
+        route_weights="geometric", rel_tolerance=q.REL_TOL,
+        cosine_tolerance=q.COS_TOL, throttle_mask="0x0", output=None)
 
     records = q._run_timing(options, _FakeTorch(), lib, arena=None,
                             intermediate=384, role=7, gids=[0, 1, 2],
@@ -414,21 +436,37 @@ def test_run_timing_branch_executes_with_mocks_and_emits_the_record_schema(tmp_p
     assert [(r["capacity"], r["rows"], r["active"]) for r in records] == [
         (1, 1, 6), (80, 1, 6), (80, 8, 6)]
     for record in records:
-        for key in ("kind", "role", "spark_tp", "tp4_legacy", "capacity", "rows",
-                    "active", "abi_version", "valid_route_count",
+        for key in ("kind", "status", "role", "spark_tp", "tp4_legacy", "capacity",
+                    "rows", "active", "abi_version", "valid_route_count",
                     "weighted_route_count", "intermediate", "kernel_intermediate",
                     "width", "timing_seed", "input_sha256", "route_sha256",
-                    "lib_sha256", "manifest_sha256", "manifest_role",
-                    "manifest_spark_tp_degree", "scratch_bytes",
-                    "compact_output_bytes", "rel_l2", "cosine",
+                    "wire_sha256", "lib_sha256", "manifest_sha256", "manifest_role",
+                    "manifest_spark_tp_degree", "manifest_geometry",
+                    "sparkinfer_revision", "device",
+                    "launch_geometry", "manifest_core_scratch_nbytes",
+                    "manifest_capability", "build_host_ceiling", "live_sm_count",
+                    "route_weights", "rel_tolerance", "cosine_tolerance",
+                    "routing_immutable", "input_immutable", "wire_immutable",
+                    "operands_immutable",
+                    "gpu_state_before", "gpu_state_after", "throttle",
+                    "scratch_bytes", "compact_output_bytes", "rel_l2", "cosine",
                     "kernel_only", "kernel_plus_compact"):
             assert key in record, (key, sorted(record))
         assert record["kind"] == "native_timing"
+        assert record["status"] == "ok"
         assert record["lib_sha256"] == "0" * 64
         assert record["input_sha256"] == "a" * 64
         assert record["route_sha256"] == "b" * 64
+        assert record["wire_sha256"] == "a" * 64
+        assert record["route_weights"] == "geometric"
+        assert record["live_sm_count"] == 48
+        assert record["build_host_ceiling"] is None
+        assert record["throttle"]["ok"] is True
         assert record["valid_route_count"] == 18
         assert record["weighted_route_count"] == 18
+        assert record["routing_immutable"] is True
+        assert record["input_immutable"] is True
+        assert record["wire_immutable"] is True
         assert record["width"] == {1: 64, 80: 192}[record["capacity"]]
         for variant in ("kernel_only", "kernel_plus_compact"):
             for key in ("warm_single_device_us", "warm_amortized_device_us",

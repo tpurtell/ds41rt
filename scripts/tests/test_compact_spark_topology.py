@@ -124,19 +124,139 @@ release_stop_wip_containers
         self.assertEqual(check(small, 80).returncode, 0)
         self.assertEqual(check(small).returncode, 2)
 
+    # --- v10 three-rank profiles: implicit compact TP3, explicit native bypass --
+
+    COMPACT3 = 'SPARK_COUNT=3\nEXPERT_FORMAT=exl3\nSPARKINFER_EXL3=auto'
+    NATIVE3 = ('SPARK_COUNT=3\nEXPERT_FORMAT=native\nSPARKINFER_EXL3=disable\n'
+               'SPARK_TP=3\nSPARK_EP=1')
+
+    def test_compact_tp3_defaults_ceiling_and_prefill_cap(self):
+        for value, success in [('', True), ('32GiB', True), ('31GiB', True),
+                               ('34359738369B', False), ('50%', False)]:
+            with self.subTest(value=value):
+                result = self.config(self.COMPACT3 + '\nMEMORY_RESERVATION=' + value)
+                self.assertEqual(result.returncode, 0 if success else 2, result.stderr)
+                if success:
+                    self.assertEqual(result.stdout.splitlines(), [value or '32GiB', '2GiB'])
+        # A too-large prefill is clamped with a TP3-named note; smaller stands.
+        result = self.config(self.COMPACT3 + '\nPREFILL_BATCH_TOKENS=2048',
+                             'printf "%s" "$PREFILL_BATCH_TOKENS"')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, '256')
+        self.assertIn('compact Spark TP3 caps PREFILL_BATCH_TOKENS=2048', result.stderr)
+        result = self.config(self.COMPACT3 + '\nPREFILL_BATCH_TOKENS=128',
+                             'printf "%s" "$PREFILL_BATCH_TOKENS"')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, '128')
+        self.assertNotIn('caps PREFILL_BATCH_TOKENS', result.stderr)
+        # Two-rank behavior is unchanged.
+        result = self.config('SPARK_COUNT=2\nEXPERT_FORMAT=exl3\nSPARKINFER_EXL3=auto',
+                             'printf "%s\\n" "$MEMORY_RESERVATION" "$KV_POOL_SIZE"')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines(), ['32GiB', '2GiB'])
+
+    def test_compact_tp3_rejects_wrong_format_single_rtx_and_paired(self):
+        for settings in ['SPARK_COUNT=3',                       # native without keys
+                         self.COMPACT3 + '\nRTX_GPUS=2',        # compact is one-RTX only
+                         self.COMPACT3 + '\nEXL3_PAIRED_TP4=on' # disjoint packages only
+                         ]:
+            with self.subTest(settings=settings):
+                self.assertEqual(self.config(settings).returncode, 2, settings)
+
+    def test_explicit_native_tp3ep1_bypasses_every_compact_rule(self):
+        # The bypass must hold for MEMORY_RESERVATION, KV, prefill and the
+        # single-RTX rule: nothing in the compact block may touch this launch.
+        result = self.config(self.NATIVE3,
+                             'printf "%s\\n" "$MEMORY_RESERVATION" "$KV_POOL_SIZE" '
+                             '"$PREFILL_BATCH_TOKENS" "$EXPERT_FORMAT"')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines(), ['', '', '2048', 'native'])
+        result = self.config(self.NATIVE3 + '\nMEMORY_RESERVATION=90%',
+                             'printf "%s" "$MEMORY_RESERVATION"')
+        self.assertEqual(result.returncode, 0, result.stderr)   # percentages stay legal
+        self.assertEqual(result.stdout, '90%')
+        result = self.config(self.NATIVE3 + '\nPREFILL_BATCH_TOKENS=4096',
+                             'printf "%s" "$PREFILL_BATCH_TOKENS"')
+        self.assertEqual(result.returncode, 0, result.stderr)   # no 256 cap
+        self.assertEqual(result.stdout, '4096')
+        self.assertNotIn('caps PREFILL_BATCH_TOKENS', result.stderr)
+        result = self.config(self.NATIVE3 + '\nEXL3_PAIRED_TP4=on')
+        self.assertEqual(result.returncode, 2, result.stderr)   # native-only guard
+        self.assertIn('native topology', result.stderr)
+
+    def test_malformed_partial_three_rank_topologies_are_rejected(self):
+        for settings, message in [
+            ('SPARK_COUNT=3\nSPARK_TP=3', 'set together or omitted together'),
+            ('SPARK_COUNT=3\nSPARK_EP=1', 'set together or omitted together'),
+            ('SPARK_COUNT=3\nSPARK_TP=3\nSPARK_EP=2', 'must equal SPARK_COUNT'),
+            ('SPARK_COUNT=3\nSPARK_TP=1\nSPARK_EP=3', 'SPARK_TP must be 2, 3, 4, or 6'),
+            ('SPARK_COUNT=3\nSPARK_TP=2\nSPARK_EP=1', 'must equal SPARK_COUNT'),
+            ('SPARK_COUNT=3\nSPARK_TP=3\nSPARK_EP=1\nEXPERT_FORMAT=exl3\nSPARKINFER_EXL3=auto',
+             'requires EXPERT_FORMAT=native'),
+            ('SPARK_COUNT=5', 'SPARK_COUNT must be 0, 2, 3, 4, or 6'),
+        ]:
+            with self.subTest(settings=settings):
+                result = self.config(settings)
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertIn(message, result.stderr)
+
+    def test_compact_tp3_package_variants_admission(self):
+        # 2304/3 = 768-column shards for every rank and worker capacity; a
+        # missing rank must fail admission even when ranks 0 and 1 are whole.
+        variants = [dict(directory=f'tp3-rank{rank}/m{capacity}', capacity=capacity,
+                         intermediate=768, experts=384, top_k=6, output_dtype='bf16', bits=[2, 3])
+                    for rank in range(3) for capacity in [1, 16, 80, 256, 1024, 4096]]
+        base = dict(compute=[12, 1], variants=variants)
+        def check(manifest, capacity=4096):
+            return subprocess.run(['bash', '-euc',
+                'source scripts/release-common.sh; release_validate_exl3_compact_variants "$1" k23 3',
+                'test', str(capacity)], cwd=ROOT, input=json.dumps(manifest), text=True,
+                capture_output=True)
+        passed = check(base)
+        self.assertEqual(passed.returncode, 0, passed.stderr)
+        missing_rank2 = dict(base, variants=[v for v in variants
+                                             if not v['directory'].startswith('tp3-rank2')])
+        failed = check(missing_rank2)
+        self.assertEqual(failed.returncode, 2)
+        self.assertIn('lacks required TP3', failed.stderr)
+        for field, value in [('intermediate', 1152), ('intermediate', 576), ('bits', [3, 2])]:
+            with self.subTest(field=field, value=value):
+                candidate = json.loads(json.dumps(base))
+                candidate['variants'][0][field] = value
+                self.assertEqual(check(candidate).returncode, 2)
+        self.assertEqual(check(dict(base, compute=[12, 0])).returncode, 2)
+        # Compact admission only exists for the compact degrees TP2 and TP3.
+        rejected = subprocess.run(['bash', '-euc',
+            'source scripts/release-common.sh; release_validate_exl3_compact_variants 256 k23 4',
+            'test'], cwd=ROOT, input=json.dumps(base), text=True, capture_output=True)
+        self.assertEqual(rejected.returncode, 2)
+        self.assertIn('supports TP2 or TP3', rejected.stderr)
+        # A TP3 layout never passes the TP2 shim and vice versa.
+        shim = subprocess.run(['bash', '-euc',
+            'source scripts/release-common.sh; release_validate_exl3_tp2_variants 256 k23',
+            'test'], cwd=ROOT, input=json.dumps(base), text=True, capture_output=True)
+        self.assertEqual(shim.returncode, 2)
+
     def test_daemon_remote_arguments_preserve_world(self):
         source = (ROOT / 'run.sh').read_text()
         invocation, remote = source.split('echo "== starting native Spark experts =="', 1)[1].split("<<'REMOTE' &", 1)
         remote = remote.split('\nREMOTE', 1)[0]
         self.assertIn('"$SPARK_COUNT"', invocation)
-        result = subprocess.run(['bash', '-euc', 'docker() { printf "%s\\n" "$@"; }\n' +
-            remote.replace(' >/dev/null', ''), 'test', 'image', 'name', '1', '4096',
-            '107374182400', '19441', 'snapshot', 'fingerprint', '3', '2'],
-            cwd=ROOT, text=True, capture_output=True)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        arguments = result.stdout.splitlines()
-        self.assertEqual(arguments[arguments.index('--world') + 1], '2')
-        self.assertEqual(arguments[arguments.index('--first-layer') + 1], '3')
+        # The legacy ten-positional invocation must survive for both compact
+        # worlds: the coordinator keeps the worker at the world it was given.
+        for world in (2, 3):
+            with self.subTest(world=world):
+                result = subprocess.run(['bash', '-euc', 'docker() { printf "%s\\n" "$@"; }\n' +
+                    remote.replace(' >/dev/null', ''), 'test', 'image', 'name', '1', '4096',
+                    '107374182400', '19441', 'snapshot', 'fingerprint', '3', str(world)],
+                    cwd=ROOT, text=True, capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                arguments = result.stdout.splitlines()
+                self.assertEqual(arguments[arguments.index('--world') + 1], str(world))
+                self.assertEqual(arguments[arguments.index('--first-layer') + 1], '3')
+                # A legacy world-2/3 launch carries no explicit topology flags.
+                self.assertNotIn('--spark-tp', arguments)
+                self.assertNotIn('--spark-ep', arguments)
 
 
 if __name__ == '__main__':

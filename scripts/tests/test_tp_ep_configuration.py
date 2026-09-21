@@ -260,6 +260,12 @@ class ExampleConfigTest(unittest.TestCase):
             "tp3ep2-native.config": ("6", "3", "2"),
             "tp2ep3-native.config": ("6", "2", "3"),
             "tp6ep1-native.config": ("6", "6", "1"),
+            # V10 candidate profiles. The native one names its explicit keys;
+            # the compact EXL3 one is IMPLICIT (no SPARK_TP/SPARK_EP keys),
+            # so its resolved keys stay empty while SPARK_COUNT=3 activates the
+            # compact TP3 rules.
+            "tp3ep1-native.config": ("3", "3", "1"),
+            "exl3-compact-tp3.config": ("3", "", ""),
         }
         self.assertEqual(
             sorted(path.name for path in EXAMPLES.glob("*.config")),
@@ -338,6 +344,7 @@ class LauncherTopologyTest(unittest.TestCase):
                 **(extra_env or {}),
             )
             setup = f'''set -euo pipefail
+source scripts/release-common.sh
 release_die() {{ echo "$*" >&2; exit 1; }}
 release_validate_spark_weight_admission() {{ echo "remote_layers=stub"; }}
 RELEASE_RTX_GPUS="$1"
@@ -1295,6 +1302,13 @@ class PublishedImageReferenceTest(unittest.TestCase):
     images serve that topology.
     """
 
+    # Temporary exemption: the two v10 candidate profiles intentionally pin the
+    # not-yet-published v10 pair. They must still name one coherent public
+    # registry pair on the v10 tag. Delete both names from this set when the
+    # v10 release promotion retargets them onto the published pair; the
+    # published-pair equality below then applies to them unchanged.
+    V10_CANDIDATE_EXAMPLES = {"tp3ep1-native.config", "exl3-compact-tp3.config"}
+
     def published_pair(self) -> tuple[str, str]:
         values = {}
         for line in CONFIG.read_text().splitlines():
@@ -1320,6 +1334,19 @@ class PublishedImageReferenceTest(unittest.TestCase):
                     if line.startswith(("COORDINATOR_DOCKER_INFERENCE=",
                                         "SPARK_EXPERT_DOCKER_INFERENCE="))
                 )
+                if path.name in self.V10_CANDIDATE_EXAMPLES:
+                    # v10 candidates: each name must be the actual baseline
+                    # role repository retagged to v10 (a pair of coordinators
+                    # would satisfy a prefix/suffix check but not this one).
+                    # The exemption is deleted at release promotion, when the
+                    # files are retargeted to whatever pair is then published.
+                    v10_coordinator = coordinator.rsplit(":", 1)[0] + ":v10"
+                    v10_spark = spark.rsplit(":", 1)[0] + ":v10"
+                    self.assertEqual(values.get("COORDINATOR_DOCKER_INFERENCE"), v10_coordinator,
+                                     path.name)
+                    self.assertEqual(values.get("SPARK_EXPERT_DOCKER_INFERENCE"), v10_spark,
+                                     path.name)
+                    continue
                 self.assertEqual(values.get("COORDINATOR_DOCKER_INFERENCE"), coordinator)
                 self.assertEqual(values.get("SPARK_EXPERT_DOCKER_INFERENCE"), spark)
                 # One release, one tag: a mixed pair fails the launcher's engine
@@ -1370,6 +1397,7 @@ echo "docker $*"
 """
 
     HARNESS = """set -euo pipefail
+source scripts/release-common.sh
 ssh() {{ shift 5; bash -c "$*"; }}
 release_die() {{ echo "die: $*" >&2; exit 1; }}
 SPARK_EXPERT_DOCKER_INFERENCE=registry.example/spark:v9
@@ -1389,7 +1417,7 @@ unset HF_HOME
     def statement(cls) -> str:
         if cls.STATEMENT is None:
             source = (ROOT / "run.sh").read_text()
-            start = source.index('spark_manifest="$(ssh')
+            start = source.index('spark_manifest="$(release_ssh')
             end = source.index(' (see the messages above)"', start) + len(' (see the messages above)"')
             cls.STATEMENT = source[start:end]
         return cls.STATEMENT
@@ -1450,6 +1478,7 @@ class SparkRoleGateTest(unittest.TestCase):
              ssh_rc: int = 0) -> subprocess.CompletedProcess[str]:
         block = run_sh_block('spark_advertised_roles=""', "\n# Zero-Spark deployments")
         script = f'''set -euo pipefail
+source scripts/release-common.sh
 release_die() {{ echo "die: $*" >&2; exit 1; }}
 ssh() {{ [[ {ssh_rc} -eq 0 ]] || {{ echo "No such image" >&2; return 255; }}; printf '%s\\n' '{advertised}'; }}
 hosts=(h0 h1 h2 h3 h4 h5)

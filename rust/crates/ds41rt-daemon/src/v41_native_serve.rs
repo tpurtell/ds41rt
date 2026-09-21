@@ -44,16 +44,19 @@ pub(crate) async fn run(mut args: crate::cli::NativeServeArgs) -> Result<()> {
         args.peers.len(),
         "serve-native",
     )?;
-    // The legacy compact profile is the non-topology, two-peer EXL3 path.
-    let compact = topology.is_none() && args.peers.len() == 2;
+    // The legacy compact profile is the non-topology, EXL3 path with either two
+    // or three Spark peers: one RTX, a hard 32 GiB device ceiling and no
+    // paired TP4 artifacts. An explicit topology carries its own rank count and
+    // is never compact.
+    let compact = legacy_compact(topology, args.peers.len());
     ensure!(
-        topology.is_some() || matches!(args.peers.len(), 2 | 4),
-        "two or four Spark peers required for the legacy non-topology layout; \
+        topology.is_some() || matches!(args.peers.len(), 2 | 3 | 4),
+        "two, three or four Spark peers required for the legacy non-topology layout; \
          an explicit --spark-tp/--spark-ep topology carries its own rank count"
     );
     ensure!(
         args.peers.len() == 4 || topology.is_some() || (args.rtx_gpus == 1 && !args.exl3_paired_tp4),
-        "two Spark peers require the single-RTX, non-paired EXL3 profile"
+        "two or three Spark peers require the single-RTX, non-paired EXL3 profile"
     );
     if compact {
         compact_budget(&mut args.memory_reservation, &mut args.kv_pool_size)?;
@@ -121,7 +124,30 @@ fn prefill_capacity(batch_tokens: u32) -> Result<u32> {
 
 #[cfg(test)]
 mod prefill_capacity_tests {
-    use super::{prefill_capacity, compact_budget, memory};
+    use super::{legacy_compact, prefill_capacity, compact_budget, memory};
+
+    /// One predicate drives the whole compact profile: the 32 GiB absolute
+    /// ceiling, the prefill workspace clamp, the reservation headroom cap and the
+    /// final residency check. It must cover the implicit two- and three-rank EXL3
+    /// groups and nothing else — an explicit TP3EP1 native launch is not compact.
+    #[test]
+    fn compact_profile_covers_implicit_two_and_three_peers_only() {
+        let tp3ep1 = ds41rt_transport::v41_expert::V41SparkTopology::new(3, 1).unwrap();
+        for (topology, peers, expected) in [
+            (None, 2, true),
+            (None, 3, true),
+            (None, 4, false),
+            (None, 6, false),
+            (Some(tp3ep1), 3, false),
+            (Some(tp3ep1), 2, false),
+        ] {
+            assert_eq!(
+                legacy_compact(topology, peers),
+                expected,
+                "topology {topology:?} with {peers} Spark peers"
+            );
+        }
+    }
 
     #[test]
     fn compact_budget_is_absolute_including_headroom() {
@@ -178,6 +204,15 @@ pub(crate) fn protocol_v2_timing() -> bool {
     ds41rt_transport::protocol_v2_timing_from_env()
 }
 
+/// True for the legacy compact profile: the non-topology launch with an
+/// implicit two- or three-rank EXL3 Spark group. Kept in one place because the
+/// 32 GiB device ceiling, the prefill workspace clamp and the reservation
+/// headroom cap all belong to exactly this profile; an explicit topology (any
+/// native layout, including `TP3EP1`) is never compact.
+fn legacy_compact(topology: Option<ds41rt_transport::v41_expert::V41SparkTopology>, peers: usize) -> bool {
+    topology.is_none() && matches!(peers, 2 | 3)
+}
+
 fn spark_transport(
     peers: &[std::net::SocketAddr],
     capacity: u32,
@@ -195,9 +230,17 @@ fn spark_transport(
             ds41rt_transport::v41_expert::v41_spark_executor_id(2, 0)?,
             ds41rt_transport::v41_expert::v41_spark_executor_id(2, 1)?,
         ], capacity, config),
+        // The implicit three-rank EXL3 group answers in the TP3EP1 namespace
+        // (7..=9) but keeps the canonical non-ownership frame contract, so it
+        // must not be built through `new_topology`.
+        3 => V41Tp4Roce::new_ranks(peers, &[
+            ds41rt_transport::v41_expert::v41_spark_executor_id(3, 0)?,
+            ds41rt_transport::v41_expert::v41_spark_executor_id(3, 1)?,
+            ds41rt_transport::v41_expert::v41_spark_executor_id(3, 2)?,
+        ], capacity, config),
         4 => V41Tp4Roce::new(peers.try_into().expect("four peers"), [1, 2, 3, 4], capacity, config),
         _ => anyhow::bail!(
-            "the legacy non-topology transport takes two or four Spark peers; \
+            "the legacy non-topology transport takes two, three or four Spark peers; \
              a six-rank layout (pure TP6EP1 or replicated) must pass --spark-tp/--spark-ep"
         ),
     }
@@ -251,10 +294,16 @@ fn worker(
         // library cannot reduce this physical-rank count.
         lib.v41_compact_reducer()?
             .require_rank_count(topology.world_size() as u32)?;
+    } else if args.peers.len() == 3 {
+        // The implicit three-rank EXL3 group reduces through the N-plane entry,
+        // so it gets the same fail-fast rule. The two-rank group keeps using its
+        // historical pairwise reducer path untouched.
+        lib.v41_compact_reducer()?.require_rank_count(3)?;
     }
     ensure!(
         args.peers.len() == 4 || topology.is_some() || catalog.exl3().is_some(),
-        "two Spark peers require an EXL3 checkpoint or an explicit replicated topology"
+        "an implicit two- or three-peer Spark group requires an EXL3 checkpoint; \
+         a native three-rank group must pass --spark-tp 3 --spark-ep 1"
     );
     let paired_profile = crate::v41_experts::paired::PairedProfile::for_serving(&catalog, args.exl3_paired_tp4)?;
     let start = Instant::now();
@@ -417,10 +466,10 @@ fn worker(
     let (free, total) = lib.cuda_memory_info()?;
     // A nominal 32 GiB card can expose slightly less memory to CUDA. The
     // compact ceiling may become smaller, never larger, on that hardware.
-    // This cap belongs to the legacy two-peer EXL3 compact profile only; an
-    // explicit TP2×EP1 native topology is not compact.
-    let legacy_compact = topology.is_none() && args.peers.len() == 2;
-    let reservation = if legacy_compact {
+    // This cap belongs to the legacy two- or three-peer EXL3 compact profile
+    // only; an explicit TP3EP1 native topology is not compact.
+    let compact = legacy_compact(topology, args.peers.len());
+    let reservation = if compact {
         match args.memory_reservation {
             Some(memory::Reservation::Bytes(memory::ByteSize(bytes))) =>
                 Some(memory::Reservation::Bytes(memory::ByteSize(bytes.min(total)))),
@@ -506,7 +555,7 @@ fn worker(
     }
     let (free, total) = lib.cuda_memory_info()?;
     let occupied = total - free;
-    if legacy_compact {
+    if compact {
         ensure!(occupied.checked_add(memory::RUNTIME_HEADROOM).is_some_and(|n| n <= pool.reservation_bytes),
             "compact residency {occupied} bytes plus runtime headroom exceeds {} byte device ceiling", pool.reservation_bytes);
     }

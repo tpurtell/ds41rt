@@ -197,10 +197,16 @@ no placement directory) and the shape
 `examples/configs/tp3ep2-native.config` pins; `RTX_EXPERT_LAYERS=auto` there
 would let the coordinator keep local layers the workers already reserve.
 
-Daemon-level `TP2EP1` / `TP3EP1` are not launcher-selectable: `SPARK_COUNT=2` is
-the EXL3 compact path and there is no `SPARK_COUNT=3` convention. They stay a
-low-level diagnostic that must be driven manually, so no user-facing
-customization is implied.
+Daemon-level `TP2EP1` remains not launcher-selectable and stays a low-level
+diagnostic that must be driven manually, so no user-facing customization is
+implied there. The three-rank `SPARK_COUNT=3` gate opened for v10 as an opt-in
+launcher selection, and the two three-rank forms are deliberately distinct:
+explicit `SPARK_TP=3 SPARK_EP=1` is the native `TP3EP1` expert-group topology
+(`examples/configs/tp3ep1-native.config`), while `SPARK_COUNT=3` with **no**
+`SPARK_TP`/`SPARK_EP` keys is the implicit compact EXL3 TP3 layout
+(`examples/configs/exl3-compact-tp3.config`), never a native one. Both target
+the v10 pair and carry examples-only status; this paragraph records launcher
+selectability and nothing about qualification.
 
 ## 4. Identity
 

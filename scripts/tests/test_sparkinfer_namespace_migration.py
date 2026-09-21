@@ -473,7 +473,11 @@ def test_phase0_remote_expertd_argument_vector_is_contiguous() -> None:
     phase0 = (ROOT / "scripts" / "phase0-spark-tcp-bench.sh").read_text(
         encoding="utf-8"
     )
-    launch_start = phase0.rindex('ssh -o BatchMode=yes "$host" bash -s --')
+    # phase0 routes every remote step through the shared release_ssh helper (its
+    # first argument is the host), so this anchor follows that call, not a literal
+    # ssh: what is under test is the positional argument vector that reaches the
+    # remote heredoc.
+    launch_start = phase0.rindex('release_ssh "$host" bash -s --')
     launch_end = phase0.index("<<'REMOTE'", launch_start)
     launch = phase0[launch_start:launch_end].replace("\\\n", " ")
     tokens = shlex.split(launch)

@@ -67,6 +67,18 @@ fn layout(catalog: &OfficialV41Catalog, layer: ExpertLayer, partition: V41Exl3Pa
         ExpertLayer::Backbone { layer, rank } => (V41Exl3Layer::Backbone(layer), 4, rank),
         ExpertLayer::BackboneFull { layer } => (V41Exl3Layer::Backbone(layer), 1, 0),
         ExpertLayer::BackboneTp2 { layer, rank } => (V41Exl3Layer::Backbone(layer), 2, rank),
+        // Implicit compact TP shard on a compressed checkpoint: the shard count
+        // rides on the layer, so the whole-block H128 partition drives residency
+        // directly. Only the three-rank group reaches this layer — the two-rank
+        // compact profile keeps `BackboneTp2` untouched above, and no six-rank
+        // EXL3 artifact family exists.
+        ExpertLayer::BackboneExl3Tp { layer, rank, world } => {
+            ensure!(
+                world == 3 && rank < world,
+                "EXL3 Spark shards support the implicit three-rank group only, got TP{world} rank {rank}"
+            );
+            (V41Exl3Layer::Backbone(layer), world, rank)
+        }
         ExpertLayer::Dspark { stage } => (V41Exl3Layer::Dspark(stage), 1, 0),
         ExpertLayer::DsparkTp2 { .. } => anyhow::bail!("TP2 dSpark EXL3 is not implemented"),
         // Replicated native TP×EP groups are native-checkpoint only; EXL3

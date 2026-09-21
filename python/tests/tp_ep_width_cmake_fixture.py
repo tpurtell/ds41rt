@@ -120,6 +120,12 @@ def run_width_override_scenario() -> dict:
         (tools / "export_b12x_v41_experts_aot.py").write_text(
             "# stub\n", encoding="utf-8"
         )
+        # The real CMake export command depends on the shared TP3 launch-geometry
+        # module the slices exporter imports; the toy fixture must provide it or
+        # Make fails on a missing prerequisite.
+        (tools / "v41_spark_tp3_launch_geometry.py").write_text(
+            "# stub\n", encoding="utf-8"
+        )
         build = tmp / "build"
         build.mkdir()
         log = tmp / "exports.log"

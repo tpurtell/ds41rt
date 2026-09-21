@@ -35,7 +35,11 @@ impl V41Exl3Info {
             words[0] == 2
                 && matches!(words[15], 2 | 4)
                 && words[1] == 5120
-                && matches!(words[2], 512 | 640 | 1152 | 2304)
+                // Published rank shard widths: 2304 full (RTX local), 1152 for
+                // the implicit TP2 group, 768 for the implicit TP3 group, and
+                // 640/512 for TP4, where the first two ranks own one extra
+                // whole H128 block.
+                && matches!(words[2], 512 | 640 | 768 | 1152 | 2304)
                 && words[3] <= 384
                 && words[3] >= words[5]
                 && words[4] > 0
@@ -390,6 +394,30 @@ mod info_tests {
             let info = V41Exl3Info::from_words(words).unwrap();
             assert_eq!(info.tier_count, bits.len());
             assert_eq!(&info.bits[..bits.len()], bits);
+        }
+    }
+
+    /// Every published rank shard width is a distinct accepted geometry. The
+    /// implicit three-rank EXL3 group exports 768 (18 whole H128 blocks split
+    /// three ways), which must not be confused with the native FP8 shard widths
+    /// 384/576 that no EXL3 publication ever produces.
+    #[test]
+    fn native_info_accepts_every_published_shard_width() {
+        let base = [2u32, 5120, 768, 384, 16, 6, 2, 44, 18, 7, 3, 2, 3, 0, 0, 2];
+        for intermediate in [512u32, 640, 768, 1152, 2304] {
+            let mut words = base;
+            words[2] = intermediate;
+            let info = V41Exl3Info::from_words(words)
+                .unwrap_or_else(|error| panic!("shard width {intermediate} must be accepted: {error}"));
+            assert_eq!(info.intermediate, intermediate as usize);
+        }
+        for intermediate in [0u32, 384, 576, 896, 1024, 1280] {
+            let mut words = base;
+            words[2] = intermediate;
+            assert!(
+                V41Exl3Info::from_words(words).is_err(),
+                "shard width {intermediate} must be rejected"
+            );
         }
     }
 

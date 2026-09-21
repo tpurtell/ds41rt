@@ -29,6 +29,7 @@ add_custom_command(
     "${DS41RT_V41_TP2_EXPERT_DIR}/v41_expert_variants.h"
     "${DS41RT_V41_TP2_EXPERT_DIR}/v41_tp2_expert_variants.h"
   DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../python/tools/export_b12x_v41_slices_aot.py"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../python/tools/v41_spark_tp3_launch_geometry.py"
     "${CMAKE_CURRENT_SOURCE_DIR}/../python/tools/export_b12x_v41_experts_aot.py"
     ${DS41RT_SPARKINFER_PROVENANCE_INPUTS} ${DS41RT_SPARKINFER_EXPORT_INPUTS}
   COMMENT "Exporting TP2 RTX backbone expert kernels"

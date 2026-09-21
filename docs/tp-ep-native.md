@@ -274,6 +274,33 @@ fixture and its independent scalar oracle; 384-expert arenas with the fixture's
 capacities 1/16/80, ABI 2), max rel_l2 0.001679, min cosine 0.9999986, sentinel
 (id 384, weight 0) rows exactly zero, graph replay allocates nothing.
 
+**Native Spark TP3 launch-geometry identity.** Every exported `spark_tp3`
+variant records its compiled `launch_geometry` in `v41_experts.json` (built by
+`python/tools/v41_spark_tp3_launch_geometry.py`, schema version 2): the pinned
+`m16n8k32` atom, the fixed 16-row route group, the per-CTA slice width (fc1
+logical N per projection, fused `w13` N = 2x, fc2 K contribution), the K128 /
+40-stage FC1 schedule, the `3 + 16` route-metadata columns, the compiled
+`output_kind`, per-stage control authority (`controls.fc1/fc2/grid`; M and K are
+pinned constants, only N is manifest-planned), and the pinned source revision.
+Any other hidden extent, or a storage extent that is not the exact 128-element
+roundup of the logical intermediate, fails closed. `qualify_v41_replicated_native.py`
+resolves and verifies that identity per arm (`verify_manifest_geometry`),
+cross-checks the loaded native info and the manifest scratch/capability identity,
+and records -- with GPU identity, revision, named tolerances, geometric
+route-weight mode (uniform is diagnostic only), input/route/wire hashes,
+activation/routing/wire/operand immutability flags and pre/post `nvidia-smi` state
+selected by device UUID against the exact `0x0` throttle mask (an unparseable or
+`[N/A]` reason field fails closed with the device row) -- in every `TIMING`
+record. Records are
+buffered and printed only after the whole run completes, so a partial line can
+never look final. `--aggregate` then requires one measurement context, at least
+two widths backed by *distinct* libraries, three repeats per width with identical
+per-width identity and one identical cross-width identity (seed, routing,
+tolerances, revision, model geometry, device); it reports per-width medians only,
+with no fastest width and no default promotion. CPU contract and pinned-source
+tripwires live in `python/tests/test_v41_spark_tp3_launch_geometry.py`, gated by
+`scripts/run-tp-ep-kernel-checks.sh test`.
+
 **Real official checkpoint, all TP ranks, ABI 2 and 3 (DODO).** Official
 revision `dba1be0a40aa45a94ad051997016db3960a90277`, layers **11/20/39**
 (remote boundary candidates), **original checkpoint expert ids 0..5 and 383**
@@ -466,7 +493,8 @@ single lease, not a serving measurement.
 - `native/tests/v41_expert_pack_tp3_selftest.cc` — GPU TP3 (768) packer byte-oracle selftest.
 - `python/tools/export_b12x_v41_slices_aot.py`, `python/tools/export_b12x_v41_experts_aot.py` — role tables, guards, metadata.
 - `python/tools/_v41_expert_native.py` — `spark_tp=None|2|3` family selection + native packer-size binding.
-- `python/tools/qualify_v41_replicated_native.py` — synthetic and real-checkpoint native qualification (ABI 2 and 3) plus the `--timing` M1 harness.
+- `python/tools/qualify_v41_replicated_native.py` — synthetic and real-checkpoint native qualification (ABI 2 and 3), the `--timing` M1 harness, the verified per-variant `launch_geometry` identity record, and `--aggregate` repeated-width comparison.
+- `python/tools/v41_spark_tp3_launch_geometry.py` — the native Spark TP3 launch-geometry identity contract shared by the exporter and the qualifier.
 - `python/tools/bench_v41_native_ep.py` — tracked timing entry point (single reproducible command).
 - `python/tests/test_v41_spark_tp_roles.py`, `python/tests/test_v41_spark_tp_expert_symbols.py`, `python/tests/test_v41_expert_native_roles.py` — CPU-only tests.
 - `rust/crates/ds41rt-ffi/src/v41_experts.rs`, `rust/crates/ds41rt-ffi/src/lib.rs` — FFI methods, validation, reducer, rank-count capability, tests.

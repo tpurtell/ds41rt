@@ -15,6 +15,20 @@ import _pinned_sparkinfer
 from bench_v41_exl3_tiles import load_weights
 
 
+
+def packed_route_blocks(route_slots, block_m):
+    """Whole MOE blocks needed for route_slots packed routes: round UP.
+
+    Truncating integer division here under-provisions the last partial block,
+    so the compiler would be told to fill fewer m-blocks than the packer can
+    emit.  This is the export tool's `(slots + block - 1) // block` contract,
+    factored out so the paired qualifier and its tests share one copy.
+    """
+    if route_slots < 0 or block_m <= 0:
+        raise ValueError(f'invalid packed-route geometry: slots={route_slots} block={block_m}')
+    return (route_slots + block_m - 1) // block_m
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--snapshot', type=Path, required=True)
@@ -57,17 +71,30 @@ def main():
     for paired, ranges in [(False, [(0,640),(640,640),(1280,512),(1792,512)]),
                            (True, [(0,640),(512,640),(1152,640),(1664,640)])]:
         for rank, (start,width) in enumerate(ranges):
+            fam={}
             prepared = load_weights(SimpleNamespace(snapshot=args.snapshot, layer=args.layer,
                 intermediate=width, slice_start=start), torch, safe_open,
-                ProjectionTrellisTierWeights, prepare_projection_native_trellis_weights, replace)
+                ProjectionTrellisTierWeights, prepare_projection_native_trellis_weights, replace,
+                family=fam)
+            # The checkpoint resolves its own per-tensor tier bits; compiling
+            # with the function defaults (3/4) while binding a different
+            # family would fail deep inside the binder, so refuse cleanly.
+            bits = fam.get('tiers')
+            if not isinstance(bits, list) or len(bits) != 2:
+                raise ValueError(f'loaded projection has no two-tier EXL3 family: {fam!r}')
             tile = _projection_mixed_tile_config(None, hidden_size=5120, intermediate_size=width,
                 token_count=args.capacity, direct_topk_routes=False) if args.production_policy else (64,128,64,128)
+            # Packed routing on the shipped package's block with the export
+            # tool's CEIL (route_slots rounded UP to whole MOE blocks).
+            block_m = 8
+            route_slots = route_pack_capacity(args.capacity*6,block_m,384,topk=6)[1]
             launch = compile_mixed_trellis(size_m=args.capacity, hidden_size=5120,
                 intermediate_size=width, tier0_num_experts=384, tier1_num_experts=384,
                 route_num_experts=384, top_k=6,
-                max_m_blocks=route_pack_capacity(args.capacity*6,8,384,topk=6)[1]//8,
+                max_m_blocks=packed_route_blocks(route_slots, block_m),
                 sms=props.multi_processor_count, max_shared_mem=props.shared_memory_per_block_optin,
                 force_tile_config=tile, swiglu_limit=10.,
+                tier0_bits=bits[0], tier1_bits=bits[1], moe_block_size=block_m,
                 force_blocks_per_sm=args.paired_blocks_per_sm if paired else None,
                 full_rotation_output_dtype='bf16',
                 paired_boundary=('first' if rank%2 else 'last') if paired else None)

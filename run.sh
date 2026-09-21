@@ -9,9 +9,12 @@ usage() {
 Usage: ./run.sh [OPTIONS]
 
 Starts native DeepSeek V4.1 on the RTX coordinator and configured Spark ranks.
-SPARK_COUNT=2 requires EXL3 on one RTX, with a hard 32GiB GPU ceiling.
-An optional replicated expert-group topology is selected in the configuration
-with SPARK_TP and SPARK_EP (all-or-none); see docs/tp-ep-configuration.md.
+SPARK_COUNT=2 or SPARK_COUNT=3 (compact EXL3, no SPARK_TP/SPARK_EP keys)
+requires EXL3 on one RTX, with a hard 32GiB GPU ceiling.
+An optional expert-group topology is selected in the configuration with
+SPARK_TP and SPARK_EP (all-or-none, native checkpoint only); at SPARK_COUNT=3
+the explicit SPARK_TP=3 SPARK_EP=1 form is one unreplicated three-rank group.
+See docs/tp-ep-configuration.md.
 Command-line values override ds41rt.config for this launch.
 
   --config FILE                 alternate complete configuration
@@ -42,6 +45,14 @@ Optional RDMA tuning env values are forwarded to both roles only when set:
   DS41RT_PROTOCOL_V2_VERBS_HOST_DEVICE_MAP (local-ip=device,...),
   DS41RT_VERBS_APP_IB_PORT_NUM, DS41RT_PROTOCOL_V2_VERBS_HOST_EXECUTION_LANES.
 This is how a multi-homed six-rank launch pins the rail per host.
+
+Every remote step shares one SSH option set with the release build scripts:
+  DS41RT_RELEASE_SSH_CONFIG       ssh config file to use (default empty: stock
+                                  OpenSSH resolution; BatchMode is always forced so
+                                  a poll or cleanup can never wait on a prompt).
+                                  /dev/null discards a broken system include but
+                                  also drops your ~/.ssh/config host aliases, so
+                                  prefer a file containing 'Include ~/.ssh/config'.
 EOF
 }
 
@@ -123,11 +134,18 @@ case "$RTX_GPUS" in auto|1|2) ;; *) release_die "RTX_GPUS must be auto, 1, or 2"
 [[ -z "$KV_POOL_SIZE" || "$KV_POOL_SIZE" =~ ^[0-9]+([.][0-9]{1,6})?(B|MB|GB|MiB|GiB)?$ ]] || release_die "KV_POOL_SIZE has an invalid unit"
 [[ -z "$MEMORY_RESERVATION" || "$MEMORY_RESERVATION" =~ ^[0-9]+([.][0-9]{1,6})?((B|MB|GB|MiB|GiB)|%)$ ]] || release_die "MEMORY_RESERVATION has an invalid unit"
 ((restart == 0 || dry_run == 0)) || release_die "--restart and --dry-run are mutually exclusive"
-release_validate_compact_tp2
+release_validate_compact_spark
 if ((SPARK_COUNT == 0)); then
   [[ "$RTX_EXPERT_LAYERS" == 40 && "$RTX_GPUS" != 1 ]] ||
     release_die "SPARK_COUNT=0 requires two RTX GPUs and RTX_EXPERT_LAYERS=40"
 fi
+
+# Resolve the one SSH option set used by every remote step below: preflight reads,
+# expert launch, readiness polling and the EXIT cleanup. Placed after argument,
+# config and value validation so a mistyped DS41RT_RELEASE_SSH_CONFIG fails before
+# any host is contacted, and before the daemon/image checks so --dry-run and every
+# action share one answer. Stock resolution stays the default.
+release_configure_ssh_transport
 
 for tool in docker ssh curl jq ss nvidia-smi sha256sum python3; do release_need "$tool"; done
 docker info >/dev/null 2>&1 || release_die "local Docker daemon is unavailable"
@@ -138,8 +156,8 @@ release_resolve_local_model_revision "$hf_home"
 release_resolve_coordinator_gpu_identity
 snapshot_rel="hub/models--${RELEASE_MODEL_ID//\//--}/snapshots/$RELEASE_MODEL_REVISION"
 model_is_exl3="$(jq -r '.quantization_config.quant_method == "exl3"' "$hf_home/$snapshot_rel/config.json")"
-if ((SPARK_COUNT == 2)); then
-  [[ "$model_is_exl3" == true ]] || release_die "SPARK_COUNT=2 requires an EXL3 checkpoint"
+if release_spark_compact_active; then
+  [[ "$model_is_exl3" == true ]] || release_die "SPARK_COUNT=$SPARK_COUNT requires an EXL3 checkpoint"
 fi
 # Multi-family EXL3 images ship exl3-kXX packages per decoder-tier family.
 # The deployed checkpoint's resident tiers are [floor(bits), floor(bits)+1]
@@ -203,9 +221,9 @@ gpu_selection_mode="$RTX_GPUS"
 # explicit 1/2) decides, and an infeasible combination is rejected below by the
 # resolved weight budget instead of a topology-to-layout hardcode.
 compact_selection_args=()
-if ((SPARK_COUNT == 2)); then
+if release_spark_compact_active; then
   gpu_selection_mode=1
-  compact_selection_args+=(--compact-spark-tp2)
+  compact_selection_args+=(--compact-spark)
 fi
 gpu_selection="$(python3 "$repo_root/scripts/select-release-gpus.py" \
   --mode "$gpu_selection_mode" \
@@ -219,7 +237,9 @@ gpu_selection="$(python3 "$repo_root/scripts/select-release-gpus.py" \
   --expert-format "$expert_format" \
   "${compact_selection_args[@]}" "${reclaim_args[@]}")"
 RELEASE_RTX_GPUS="$(jq -r '.count' <<<"$gpu_selection")"
-((SPARK_COUNT != 2 || RELEASE_RTX_GPUS == 1)) || release_die "SPARK_COUNT=2 requires one selected RTX GPU"
+if release_spark_compact_active; then
+  ((RELEASE_RTX_GPUS == 1)) || release_die "SPARK_COUNT=$SPARK_COUNT requires one selected RTX GPU"
+fi
 ((SPARK_COUNT != 0 || RELEASE_RTX_GPUS == 2)) || release_die "SPARK_COUNT=0 requires two selected RTX GPUs"
 if release_tp2_enabled; then
   ((RELEASE_RTX_GPUS == 2)) || release_die "TP2 options require two selected RTX GPUs; use --rtx-gpus 2"
@@ -275,7 +295,7 @@ for host in "${hosts[@]}"; do
   # arguments into one remote shell line, so an empty argument is elided and
   # every later positional shifts; the optional EXL3 family tag therefore
   # travels as a sentinel and the host name sits ahead of it.
-  spark_manifest="$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" bash -s -- "$SPARK_EXPERT_DOCKER_INFERENCE" "$engine_commit" "$sparkinfer_commit" "$snapshot_rel" "$host" "$model_is_exl3" "${exl3_family_tag:-__none__}" <<'REMOTE'
+  spark_manifest="$(release_ssh -o ConnectTimeout=10 "$host" bash -s -- "$SPARK_EXPERT_DOCKER_INFERENCE" "$engine_commit" "$sparkinfer_commit" "$snapshot_rel" "$host" "$model_is_exl3" "${exl3_family_tag:-__none__}" <<'REMOTE'
 set -euo pipefail
 image="$1"; engine="$2"; sparkinfer="$3"; snapshot_rel="$4"; host="$5"
 exl3="$6"; exl3_family="${7:-__none__}"
@@ -303,10 +323,10 @@ REMOTE
 )" || release_die "Spark host preflight failed on $host (see the messages above)"
   if [[ "$model_is_exl3" == true ]]; then
     identity="$(release_exl3_package_identity "$sparkinfer_commit" <<<"$spark_manifest")"
-    [[ "$SPARK_COUNT" != 2 || "$identity" != paired:* ]] ||
-      release_die "SPARK_COUNT=2 requires disjoint EXL3 packages, not paired TP4"
-    if ((SPARK_COUNT == 2)); then
-      release_validate_exl3_tp2_variants "$expert_capacity" "$exl3_family_tag" <<<"$spark_manifest"
+    if release_spark_compact_active; then
+      [[ "$identity" != paired:* ]] ||
+        release_die "SPARK_COUNT=$SPARK_COUNT requires disjoint EXL3 packages, not paired TP4"
+      release_validate_exl3_compact_variants "$expert_capacity" "$exl3_family_tag" "$SPARK_COUNT" <<<"$spark_manifest"
     fi
     [[ -z "$spark_exl3_identity" || "$spark_exl3_identity" == "$identity" ]] ||
       release_die "Spark EXL3 packages differ across hosts; rebuild/distribute matching images"
@@ -325,7 +345,7 @@ spark_advertised_roles=""
 if [[ -n "$spark_tp_roles_required" ]]; then
   for host in "${hosts[@]}"; do
     advertised_roles="$(
-      ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" \
+      release_ssh -o ConnectTimeout=10 "$host" \
         "docker image inspect -f '{{index .Config.Labels \"io.ds41rt.v41.spark_tp_roles\"}}' '$SPARK_EXPERT_DOCKER_INFERENCE'"
     )" || release_die "$host cannot report the role label of $SPARK_EXPERT_DOCKER_INFERENCE; is the Spark image present on that host?"
     [[ ";$advertised_roles;" == *";$spark_tp_roles_required;"* ]] ||
@@ -379,21 +399,21 @@ else
   docker inspect "$coordinator" >/dev/null 2>&1 && release_die "$coordinator already exists; use --restart"
   for i in "${!hosts[@]}"; do
     remote="${spark_prefix}-${hosts[$i]}-${EXPERT_PORT}"
-    ssh -o BatchMode=yes "${hosts[$i]}" "! docker inspect '$remote' >/dev/null 2>&1" || release_die "$remote already exists; use --restart"
+    release_ssh "${hosts[$i]}" "! docker inspect '$remote' >/dev/null 2>&1" || release_die "$remote already exists; use --restart"
   done
 fi
 
 ss -ltn "sport = :${ADDR##*:}" 2>/dev/null | tail -n +2 | grep -q . &&
   release_die "API port ${ADDR##*:} is already in use"
 for i in "${!hosts[@]}"; do
-  ssh -o BatchMode=yes "${hosts[$i]}" \
+  release_ssh "${hosts[$i]}" \
     "! ss -ltn 'sport = :$EXPERT_PORT' 2>/dev/null | tail -n +2 | grep -q ." ||
     release_die "${hosts[$i]}:$EXPERT_PORT is already in use; stop the development worker first"
 done
 
 cleanup() {
   docker rm -f "$coordinator" >/dev/null 2>&1 || true
-  for i in "${!hosts[@]}"; do ssh -o BatchMode=yes "${hosts[$i]}" "docker rm -f '${spark_prefix}-${hosts[$i]}-${EXPERT_PORT}' >/dev/null 2>&1 || true" || true; done
+  for i in "${!hosts[@]}"; do release_ssh "${hosts[$i]}" "docker rm -f '${spark_prefix}-${hosts[$i]}-${EXPERT_PORT}' >/dev/null 2>&1 || true" || true; done
 }
 trap cleanup EXIT
 
@@ -478,7 +498,7 @@ echo "== starting native Spark experts =="
 pids=()
 for i in "${!hosts[@]}"; do
   host="${hosts[$i]}"; remote="${spark_prefix}-${host}-${EXPERT_PORT}"
-  ssh -o BatchMode=yes "$host" bash -s -- "$SPARK_EXPERT_DOCKER_INFERENCE" "$remote" "$i" "$expert_capacity" "$SPARK_DEVICE_BUDGET_BYTES" "$EXPERT_PORT" "$snapshot_rel" "$fingerprint" "$spark_first_layer" "$SPARK_COUNT" "$topology_explicit" "$spark_tp" "$spark_ep" "${DS41RT_PROTOCOL_V2_VERBS_HOST_DEVICE_MAP:-}" "${DS41RT_VERBS_APP_IB_PORT_NUM:-}" "${DS41RT_PROTOCOL_V2_VERBS_HOST_EXECUTION_LANES:-}" <<'REMOTE' &
+  release_ssh "$host" bash -s -- "$SPARK_EXPERT_DOCKER_INFERENCE" "$remote" "$i" "$expert_capacity" "$SPARK_DEVICE_BUDGET_BYTES" "$EXPERT_PORT" "$snapshot_rel" "$fingerprint" "$spark_first_layer" "$SPARK_COUNT" "$topology_explicit" "$spark_tp" "$spark_ep" "${DS41RT_PROTOCOL_V2_VERBS_HOST_DEVICE_MAP:-}" "${DS41RT_VERBS_APP_IB_PORT_NUM:-}" "${DS41RT_PROTOCOL_V2_VERBS_HOST_EXECUTION_LANES:-}" <<'REMOTE' &
 set -euo pipefail
 image="$1"; name="$2"; rank="$3"; capacity="$4"; budget="$5"; port="$6"; snapshot_rel="$7"; fingerprint="$8"; first_layer="$9"; world="${10}"
 # Defaults keep a legacy invocation (ten positional arguments) valid.
@@ -504,8 +524,8 @@ for pid in "${pids[@]}"; do wait "$pid"; done
 
 for i in "${!hosts[@]}"; do
   host="${hosts[$i]}"; remote="${spark_prefix}-${host}-${EXPERT_PORT}"
-  until ssh -o BatchMode=yes "$host" "test \"\$(docker inspect -f '{{.State.Status}}' '$remote' 2>/dev/null)\" = running && timeout 1 bash -c '</dev/tcp/127.0.0.1/$EXPERT_PORT'" 2>/dev/null; do
-    ((SECONDS < deadline)) || { ssh "$host" "docker logs --tail 100 '$remote'" >&2 || true; release_die "$host native expert did not become ready"; }
+  until release_ssh "$host" "test \"\$(docker inspect -f '{{.State.Status}}' '$remote' 2>/dev/null)\" = running && timeout 1 bash -c '</dev/tcp/127.0.0.1/$EXPERT_PORT'" 2>/dev/null; do
+    ((SECONDS < deadline)) || { release_ssh "$host" "docker logs --tail 100 '$remote'" >&2 || true; release_die "$host native expert did not become ready"; }
     sleep 1
   done
 done

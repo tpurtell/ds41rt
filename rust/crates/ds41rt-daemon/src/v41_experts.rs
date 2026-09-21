@@ -32,9 +32,25 @@ pub(crate) enum ExpertLayer {
     /// is the pure unreplicated `TP6EP1` layout: six disjoint intermediate
     /// slices of every expert, so every rank sees every route.
     BackboneReplicatedTp { layer: usize, rank: usize, world: usize },
+    /// EXL3 compact TP shard: one rank of an implicit (no `--spark-tp/--spark-ep`
+    /// keys), unreplicated three-way intermediate split of the compressed
+    /// checkpoint, carved on whole H128 blocks. `world` is the shard count and is
+    /// only ever 3 today; the two-rank compact profile keeps the dedicated
+    /// `BackboneTp2` layer so its published behavior is unchanged. This layer
+    /// must never resolve to a native FP8/W4A4 kernel or native staging
+    /// selection, which would substitute a different weight format.
+    BackboneExl3Tp { layer: usize, rank: usize, world: usize },
     Dspark { stage: usize },
     DsparkTp2 { stage: usize, rank: usize },
 }
+
+/// `role()` reports a native expert role id. EXL3 shards publish none, so they
+/// report a sentinel that is deliberately outside the native role range
+/// (coordinator 0, Spark TP4 1, rtx_backbone 2, rtx_tp2 3, dspark_tp2 4,
+/// spark_tp2 5, spark_tp3 6, spark_tp6 7). It exists only for startup logging
+/// and as a fail-loud guard: it can never equal a native kernel's role.
+const EXL3_SHARD_ROLE_SENTINEL: u32 = 100;
+
 impl ExpertLayer {
     fn expert(self, expert: usize) -> V41ExpertSelection {
         match self {
@@ -47,6 +63,9 @@ impl ExpertLayer {
             Self::BackboneTp2 { layer, rank } => V41ExpertSelection::BackboneTp2 { layer, expert, rank },
             Self::BackboneReplicatedTp { layer, rank, world } =>
                 V41ExpertSelection::BackboneTp { layer, expert, rank, world },
+            Self::BackboneExl3Tp { .. } => unreachable!(
+                "EXL3 Spark shards never stage native expert weights"
+            ),
             Self::Dspark { stage } => V41ExpertSelection::Dspark { stage, expert },
             Self::DsparkTp2 { stage, rank } => V41ExpertSelection::DsparkTp2 { stage, expert, rank },
         }
@@ -57,6 +76,7 @@ impl ExpertLayer {
             Self::Backbone { layer, .. }
             | Self::BackboneFull { layer }
             | Self::BackboneTp2 { layer, .. }
+            | Self::BackboneExl3Tp { layer, .. }
             | Self::BackboneReplicatedTp { layer, .. } => layer,
             Self::Dspark { .. } | Self::DsparkTp2 { .. } => usize::MAX,
         }
@@ -73,10 +93,18 @@ impl ExpertLayer {
             Self::BackboneReplicatedTp { world: 3, .. } => 6,
             Self::BackboneReplicatedTp { world: 6, .. } => 7,
             Self::BackboneReplicatedTp { .. } => 1,
+            // Compressed shards have no native role; see the sentinel doc.
+            Self::BackboneExl3Tp { world, .. } => EXL3_SHARD_ROLE_SENTINEL + world as u32,
             Self::DsparkTp2 { .. } => 4,
         }
     }
     fn info(self, library: &NativeLibrary, capacity: u32) -> Result<ds41rt_ffi::V41ExpertInfo> {
+        // The chain below ends in a native catch-all, so the compressed shard
+        // has to be refused before it: resolving it to a native expert family
+        // would silently serve the wrong weight format.
+        if let Self::BackboneExl3Tp { .. } = self {
+            return Self::exl3_shard_refusal();
+        }
         if matches!(self, Self::BackboneFull { .. }) {
             library.v41_local_expert_info(capacity)
         } else if matches!(self, Self::BackboneTp2 { .. }) {
@@ -94,6 +122,9 @@ impl ExpertLayer {
         } else { library.v41_expert_info(capacity) }
     }
     fn kernel(self, library: &NativeLibrary, capacity: u32) -> Result<V41ExpertKernel<'_>> {
+        if let Self::BackboneExl3Tp { .. } = self {
+            return Self::exl3_shard_refusal();
+        }
         if matches!(self, Self::BackboneFull { .. }) {
             library.v41_local_expert_kernel(capacity)
         } else if matches!(self, Self::BackboneTp2 { .. }) {
@@ -109,6 +140,14 @@ impl ExpertLayer {
                 other => anyhow::bail!("unsupported replicated Spark TP degree {other}"),
             }
         } else { library.v41_expert_kernel(capacity) }
+    }
+
+    /// Shared refusal for compressed shards reaching a native-only resolver.
+    fn exl3_shard_refusal<T>() -> Result<T> {
+        anyhow::bail!(
+            "EXL3 Spark shards execute through the EXL3 worker package, \
+             not the native expert kernels"
+        )
     }
 
     /// W4A4 NVFP4 family selection. Only backbone experts are quantized; the

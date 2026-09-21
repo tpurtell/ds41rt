@@ -235,7 +235,12 @@ def test_publisher_reads_spark_labels_over_ssh():
     """The Spark image lives on SPARK_0_HOST, not in the local daemon."""
     text = PUSH.read_text(encoding="utf-8")
     read = text.split('spark_roles="$(')[1].split('\n)"')[0]
-    assert "ssh -o BatchMode=yes" in read and "docker image inspect" in read
+    # The call goes through the shared release transport, which owns the option set
+    # (BatchMode plus any configured DS41RT_RELEASE_SSH_CONFIG); the publisher must
+    # not spell options out itself.
+    assert "release_ssh" in read and "docker image inspect" in read
+    assert '"$spark_host"' in read
+    assert "BatchMode" not in read, "options belong to scripts/release-common.sh"
     assert 'io.ds41rt.v41.spark_tp_roles' in read
 
 

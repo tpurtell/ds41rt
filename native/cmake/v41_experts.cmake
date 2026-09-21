@@ -85,6 +85,7 @@ add_custom_command(
   DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../python/tools/${DS41RT_V41_EXPERT_EXPORT_SCRIPT}"
     "${CMAKE_CURRENT_SOURCE_DIR}/../python/tools/export_b12x_v41_experts_aot.py"
     "${CMAKE_CURRENT_SOURCE_DIR}/../python/tools/export_b12x_v41_slices_aot.py"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../python/tools/v41_spark_tp3_launch_geometry.py"
     ${DS41RT_SPARKINFER_PROVENANCE_INPUTS} ${DS41RT_SPARKINFER_EXPORT_INPUTS}
   COMMENT "Exporting native V4.1 expert kernels and scratch layouts"
   VERBATIM

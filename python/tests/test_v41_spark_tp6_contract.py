@@ -214,10 +214,15 @@ def test_native_role_ids_and_packer_extent_are_declared() -> None:
 
 def test_build_selectors_accept_a_tp6_role() -> None:
     build = BUILD.read_text(encoding="utf-8")
-    assert "6) spark_tp_roles=tp6 ;;" in build
+    # Release images are universal by default: TP6 ships inside the default
+    # tp2;tp3;tp6 role set instead of a per-topology tag, and the env var is
+    # an explicit SUBSET override. The `${VAR-default}` spelling keeps an
+    # empty override as the legacy TP4-only request.
+    assert 'release_universal_spark_tp_roles="tp2;tp3;tp6"' in build
+    assert "${DS41RT_RELEASE_SPARK_TP_ROLES-$release_universal_spark_tp_roles}" in build
     assert "tp2|tp3|tp6)" in build
-    assert "DS41RT_RELEASE_SPARK_TP_ROLES accepts only tp2, tp3 and tp6" in build
-    assert "SPARK_TP=2/3/6" in build
+    assert "accepts only tp2, tp3 and tp6" in build
+    assert "NON-UNIVERSAL expert role subset" in build
 
     release = RELEASE_ARTIFACTS.read_text(encoding="utf-8")
     assert "tp2|tp3|tp6)" in release

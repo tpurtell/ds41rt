@@ -480,11 +480,46 @@ mod tests {
     fn legacy_selection_is_unchanged_and_topology_must_agree() {
         assert_eq!(config(4, 3, None).selection(2).unwrap(), ExpertLayer::Backbone { layer: 2, rank: 3 });
         assert_eq!(config(2, 1, None).selection(2).unwrap(), ExpertLayer::BackboneTp2 { layer: 2, rank: 1 });
+        // The implicit three-rank group is the EXL3 compact shard, keyed on the
+        // launched world rather than an explicit topology key.
+        assert_eq!(
+            config(3, 2, None).selection(2).unwrap(),
+            ExpertLayer::BackboneExl3Tp { layer: 2, rank: 2, world: 3 }
+        );
         // The explicit topology must match the launched rank count.
         let topology = V41SparkTopology::new(2, 2).unwrap();
         assert!(resolve_topology_mismatch(&config(6, 0, Some(topology))));
         // A rank outside the topology is rejected before selection is used.
         assert!(config(4, 4, Some(topology)).selection(0).is_err());
+        // A native three-rank launch therefore has to carry its topology: the
+        // explicit path stays on the native shard family, never the EXL3 layer.
+        let tp3ep1 = V41SparkTopology::new(3, 1).unwrap();
+        assert_eq!(
+            config(3, 2, Some(tp3ep1)).selection(2).unwrap(),
+            ExpertLayer::BackboneReplicatedTp { layer: 2, rank: 2, world: 3 }
+        );
+    }
+
+    /// A compressed shard must never be routable to the native expert family:
+    /// that would silently substitute the native weight format for EXL3.
+    #[test]
+    fn exl3_compact_shard_reports_no_native_role() {
+        for rank in 0..3 {
+            let shard = config(3, rank, None).selection(7).unwrap();
+            assert_eq!(shard.layer(), 7);
+            // Native roles occupy 0..=7; the sentinel is outside that range, so
+            // every `info.role == layer.role()` guard fails loudly instead of
+            // matching the spark_tp3 native role by accident.
+            assert!(shard.role() > 7, "EXL3 shard reported native role {}", shard.role());
+            assert_ne!(shard.role(), crate::v41_spark_topology::SPARK_TP3_ROLE);
+            assert_eq!(shard, ExpertLayer::BackboneExl3Tp { layer: 7, rank, world: 3 });
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "never stage native expert weights")]
+    fn exl3_compact_shard_cannot_select_native_staging() {
+        let _ = ExpertLayer::BackboneExl3Tp { layer: 0, rank: 0, world: 3 }.expert(0);
     }
 
     fn resolve_topology_mismatch(config: &NativeExpertServiceConfig) -> bool {
@@ -644,7 +679,9 @@ mod tests {
 /// Reject an explicit topology before any weight allocation: it is defined only
 /// for the official native checkpoint, its rank count must match `--world`, and
 /// every rank must be inside the topology. The legacy world 2/4 rules are kept
-/// exactly (two ranks still require EXL3).
+/// exactly (two ranks still require EXL3). The implicit world additionally
+/// admits three ranks; both the two- and three-rank implicit groups are
+/// EXL3-only, so a native three-rank launch must carry its explicit topology.
 fn validate_topology(config: &NativeExpertServiceConfig, catalog: &OfficialV41Catalog) -> Result<()> {
     if let Some(topology) = config.topology {
         crate::v41_spark_topology::require_native(Some(topology), catalog)?;
@@ -660,12 +697,18 @@ fn validate_topology(config: &NativeExpertServiceConfig, catalog: &OfficialV41Ca
         return Ok(());
     }
     ensure!(
-        matches!(config.world, 2 | 4) && config.rank < config.world,
-        "Spark world must be 2 or 4 and rank must be below world"
+        matches!(config.world, 2 | 3 | 4) && config.rank < config.world,
+        "implicit Spark world must be 2, 3 or 4 with rank below world; \
+         an explicit TP x EP topology must pass --spark-tp/--spark-ep"
     );
+    // The three-rank compact group is the single-RTX EXL3 profile only: a
+    // native three-rank layout has to carry its explicit topology, which keeps
+    // it on the native shard family instead of an EXL3 substitution (and vice
+    // versa).
     ensure!(
         config.world == 4 || catalog.exl3().is_some(),
-        "two Spark ranks require EXL3 experts"
+        "a two or three rank implicit Spark group requires EXL3 experts; \
+         a native three-rank group must pass --spark-tp 3 --spark-ep 1"
     );
     Ok(())
 }
@@ -673,13 +716,16 @@ fn validate_topology(config: &NativeExpertServiceConfig, catalog: &OfficialV41Ca
 impl NativeExpertServiceConfig {
     /// Resident layer selection for the running checkpoint format. Explicit
     /// replicated topologies always select the native generic shard; the legacy
-    /// path keeps the fixed TP4/EXL3-TP2 behavior byte-for-byte.
+    /// path keeps the fixed TP4/EXL3-TP2 behavior byte-for-byte, and an
+    /// admitted implicit three-rank group selects the EXL3 compact shard layer.
     fn selection(&self, layer: usize) -> Result<ExpertLayer> {
         let Some(topology) = self.topology else {
-            return Ok(if self.world == 2 {
-                ExpertLayer::BackboneTp2 { layer, rank: self.rank }
-            } else {
-                ExpertLayer::Backbone { layer, rank: self.rank }
+            return Ok(match self.world {
+                2 => ExpertLayer::BackboneTp2 { layer, rank: self.rank },
+                // Admission above admits world 3 only for an EXL3 checkpoint, so
+                // this can never resolve to the native FP8 shard family.
+                3 => ExpertLayer::BackboneExl3Tp { layer, rank: self.rank, world: 3 },
+                _ => ExpertLayer::Backbone { layer, rank: self.rank },
             });
         };
         let shard = topology.tp_rank(self.rank)? as usize;

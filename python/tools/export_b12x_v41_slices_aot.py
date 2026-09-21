@@ -12,6 +12,8 @@ import json
 import re
 from pathlib import Path
 
+from v41_spark_tp3_launch_geometry import launch_geometry
+
 os.environ["B12X_COMPILE_DISK_CACHE"] = "0"
 os.environ["B12X_COMPILE_MEMORY_CACHE"] = "0"
 import _pinned_sparkinfer
@@ -121,6 +123,23 @@ def export(output, capacities, width, atomic_min_capacity=None, role="spark", *,
         selected_width = width[capacity] if isinstance(width, dict) else width
         routes = capacity * topk
         planes = (intermediate + selected_width - 1) // selected_width
+        # The native Spark TP3 launch geometry is recorded from the reviewed
+        # identity contract (pinned kernel constants + this variant's compiled
+        # width). It is keyed on static capacity and model geometry only: no live
+        # row, token, group or expert count enters the export, the compile key,
+        # or this audit block. Other roles keep their existing manifest exactly.
+        recorded_geometry = (
+            launch_geometry(
+                capacity,
+                selected_width,
+                intermediate=intermediate,
+                kernel_intermediate=kernel_intermediate,
+                output_kind="fp32_tokens" if atomic else "fp32_routes",
+                revision=_pinned_sparkinfer.REVISION,
+            )
+            if role == "spark_tp3"
+            else None
+        )
         specs = [
             (cutlass.Uint32, (capacity, 1280), (1320, 1)),
             (cutlass.Uint8, (capacity, 160), (5280, 1)),
@@ -307,6 +326,8 @@ def export(output, capacities, width, atomic_min_capacity=None, role="spark", *,
                 scratch=scratch,
                 scratch_pointer_offsets=offsets,
                 native_entry=symbol[0],
+                **({"launch_geometry": recorded_geometry}
+                   if recorded_geometry is not None else {}),
             )
         )
     (output / "v41_expert_variants.h").write_text(

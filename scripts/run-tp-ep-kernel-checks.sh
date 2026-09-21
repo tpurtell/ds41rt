@@ -79,6 +79,7 @@ case "$mode" in
       "$repo_root/python/tests/test_v41_sentinel_masking.py"
       "$repo_root/python/tests/test_v41_ep_algebra.py"
       "$repo_root/python/tests/test_v41_spark_tp6_contract.py"
+      "$repo_root/python/tests/test_v41_spark_tp3_launch_geometry.py"
       "$repo_root/python/tests/test_bench_tp_ep_kernel_tp6.py"
     )
     for candidate in "${tests[@]}"; do

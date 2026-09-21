@@ -31,17 +31,27 @@ pub const V41_PARTIAL_ROW_BYTES: u32 = V41_HIDDEN * 2;
 /// Bind native Spark responses to their tensor-parallel topology without a wire
 /// ABI change. TP4 retains executor IDs 1..=4; TP2 uses the disjoint namespace
 /// 5..=6, so a two-peer coordinator rejects stale TP4 rank-0/rank-1 workers.
-/// This identifies topology and rank, not checkpoint or deployment identity.
+/// Three-rank groups — the implicit single-RTX EXL3 compact profile — use the
+/// `TP3EP1` namespace 7..=9, exactly as the two-rank compact group already
+/// shares the `TP2EP1` namespace. This identifies topology and rank, not
+/// checkpoint or deployment identity.
 ///
-/// This helper covers only the two legacy topologies that predate
-/// [`V41SparkTopology`]. Every explicit layout — including pure `TP6EP1` — must
-/// use [`V41SparkTopology::executor_id`], which owns the wider disjoint
+/// This helper covers only the implicit worlds that predate [`V41SparkTopology`].
+/// Every explicit layout — including pure `TP6EP1` — must use
+/// [`V41SparkTopology::executor_id`], which owns the wider disjoint
 /// namespaces and rejects a legacy identity.
 pub fn v41_spark_executor_id(world: usize, rank: usize) -> Result<u64> {
-    ensure!(matches!(world, 2 | 4) && rank < world,
-        "native Spark executor requires legacy world 2 or 4 and rank below world; \
-         an explicit topology must use V41SparkTopology::executor_id");
-    Ok(rank as u64 + if world == 2 { 5 } else { 1 })
+    let base = match world {
+        4 => 1,
+        2 => 5,
+        3 => 7,
+        _ => anyhow::bail!(
+            "native Spark executor requires an implicit world of 2, 3 or 4; \
+             an explicit topology must use V41SparkTopology::executor_id"
+        ),
+    };
+    ensure!(rank < world, "native Spark executor rank {rank} is outside world {world}");
+    Ok(rank as u64 + base)
 }
 
 // Shared by wire parsing on workers and validation of owned coordinator requests.
@@ -548,17 +558,23 @@ mod tests {
     fn spark_executor_namespaces_reject_other_world_responses() -> Result<()> {
         let tp4 = [0, 1, 2, 3].map(|rank| v41_spark_executor_id(4, rank).unwrap());
         let tp2 = [0, 1].map(|rank| v41_spark_executor_id(2, rank).unwrap());
+        // The implicit three-rank EXL3 compact group answers in the TP3EP1
+        // namespace, exactly as the two-rank group shares TP2EP1's 5..=6.
+        let tp3 = [0, 1, 2].map(|rank| v41_spark_executor_id(3, rank).unwrap());
         assert_eq!(tp4, [1, 2, 3, 4]);
         assert_eq!(tp2, [5, 6]);
+        assert_eq!(tp3, [7, 8, 9]);
+        assert_eq!(tp3.to_vec(), V41SparkTopology::new(3, 1)?.executor_ids());
+        // Every implicit namespace stays disjoint from the other worlds'.
         for (world, rank) in [
             (0, 0),
             (1, 0),
-            (3, 0),
             // Explicit layouts (e.g. pure TP6EP1) must go through the topology
-            // namespace, never this legacy two/ four-rank helper.
+            // namespace, never this implicit two/three/four-rank helper.
             (6, 0),
             (6, 5),
             (2, 2),
+            (3, 3),
             (4, 4),
             (usize::MAX, 0),
             (2, usize::MAX),
