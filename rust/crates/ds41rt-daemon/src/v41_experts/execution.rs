@@ -12,11 +12,11 @@ use super::ExpertLayer;
 
 /// Native roles that publish token-major FP32 routed partials and therefore
 /// need the compact output buffer plus the compact reducer: legacy grouped
-/// Spark TP4 (role 1) and the replicated-group Spark TP2/TP3 shards (roles
-/// 5/6). The full-width RTX backbone (role 2) owns its separate local reducer
+/// Spark TP4 (role 1) and the Spark shard families TP2/TP3/pure-TP6 (roles
+/// 5/6/7). The full-width RTX backbone (role 2) owns its separate local reducer
 /// and never enters this execution.
 fn compact_output_role(role: u32) -> bool {
-    matches!(role, 1 | 5 | 6)
+    matches!(role, 1 | 5 | 6 | 7)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -810,16 +810,27 @@ mod mapped_tests;
 #[cfg(test)]
 mod timing_role_tests {
     /// The timing gate is the same predicate that selects the compact output
-    /// and reducer, so the replicated Spark shards (roles 5/6) and the legacy
+    /// and reducer, so the Spark shard families (roles 5/6/7) and the legacy
     /// grouped Spark TP4 (role 1) all publish the routed breakdown; the dSpark,
     /// full-width RTX and RTX TP2 roles do not.
     #[test]
     fn routed_timing_is_enabled_for_the_compact_output_roles() {
-        for role in [1u32, 5, 6] {
+        for role in [1u32, 5, 6, 7] {
             assert!(super::compact_output_role(role), "role {role} must be timed");
         }
-        for role in [0u32, 2, 3, 4, 7, u32::MAX] {
+        for role in [0u32, 2, 3, 4, 8, u32::MAX] {
             assert!(!super::compact_output_role(role), "role {role} must not be timed");
         }
+    }
+
+    /// A pure TP6EP1 worker must allocate the compact output buffer and load
+    /// the compact reducer exactly like the other Spark shard families; a
+    /// missing role 7 would silently fall back to the uncompacted path.
+    #[test]
+    fn pure_tp6_role_selects_the_compact_output_path() {
+        assert!(super::compact_output_role(
+            crate::v41_spark_topology::SPARK_TP6_ROLE
+        ));
+        assert_eq!(crate::v41_spark_topology::SPARK_TP6_ROLE, 7);
     }
 }

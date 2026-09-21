@@ -7,9 +7,10 @@ extern "C" {
 #define DS41RT_V41_EXPERT_POINTERS 44
 /* Per-expert prepared sizes in bytes: W13, W13 scales, W2, W2 scales.
  * Logical intermediate must be 2304 (full RTX / coordinator), 1152 (RTX TP2 or
- * Spark TP2), 768 (Spark TP3), or 576 (backbone TP4). Every accepted extent is
- * a multiple of 32 so the K/32 UE8M0 scale axis is exact; storage is padded up
- * to 128 along the packed axis (TP4 576 -> 640; the others are already aligned).
+ * Spark TP2), 768 (Spark TP3), 576 (backbone TP4), or 384 (pure Spark TP6).
+ * Every accepted extent is a multiple of 32 so the K/32 UE8M0 scale axis is
+ * exact; storage is padded up to 128 along the packed axis (TP4 576 -> 640; the
+ * others, including TP6 384, are already aligned).
  * Sources are contiguous official bytes: W1, W3, W2, S1, S3, S2.
  * Destinations are distinct, 16-byte aligned device allocations with the sizes
  * returned below; source and destination storage must not overlap.
@@ -34,7 +35,8 @@ typedef struct ds41rt_v41_expert_launch_t {
 typedef struct ds41rt_v41_expert_info_t {
   uint32_t abi_version;
   uint32_t role; /* 0: coordinator dSpark; 1: Spark TP4 shard; 2: full RTX backbone; 3: backbone TP2;
-                    4: dSpark TP2; 5: Spark TP2 shard (intermediate 1152); 6: Spark TP3 shard (intermediate 768) */
+                    4: dSpark TP2; 5: Spark TP2 shard (intermediate 1152); 6: Spark TP3 shard (intermediate 768);
+                    7: Spark TP6 shard (intermediate 384, no padding) */
   uint32_t experts;
   uint32_t hidden_size;
   uint32_t logical_intermediate;
@@ -75,11 +77,11 @@ int32_t ds41rt_v41_expert_bind_scratch(void* kernel, void* storage,
 int32_t ds41rt_v41_expert_initialize_scratch_async(void* kernel, void* storage,
     uint64_t bytes, void* stream);
 
-/* Replicated-group Spark TP2/TP3 shard families (native FP8 K32, SM121 only).
+/* Replicated-group Spark TP2/TP3/TP6 shard families (native FP8 K32, SM121 only).
  * Same per-call contract as ds41rt_v41_expert_*, but a distinct symbol family
- * and role id per TP degree (5: TP2 logical intermediate 1152; 6: TP3 768).
- * Both are unpadded (kernel_intermediate == logical_intermediate). Artifacts are
- * pre-compiled per capacity; there is no runtime compilation path. */
+ * and role id per TP degree (5: TP2 logical intermediate 1152; 6: TP3 768;
+ * 7: TP6 384). All are unpadded (kernel_intermediate == logical_intermediate).
+ * Artifacts are pre-compiled per capacity; there is no runtime compilation path. */
 int32_t ds41rt_v41_spark_tp2_expert_info(int32_t capacity, ds41rt_v41_expert_info_t* out);
 int32_t ds41rt_v41_spark_tp2_expert_initialize(int32_t capacity, void** out_kernel);
 int32_t ds41rt_v41_spark_tp2_expert_launch(void* kernel, const ds41rt_v41_expert_launch_t* args);
@@ -96,6 +98,14 @@ int32_t ds41rt_v41_spark_tp3_expert_bind_scratch(void* kernel, void* storage,
 int32_t ds41rt_v41_spark_tp3_expert_initialize_scratch_async(void* kernel, void* storage,
     uint64_t bytes, void* stream);
 int32_t ds41rt_v41_spark_tp3_expert_output_kind(int32_t capacity, uint32_t* out);
+int32_t ds41rt_v41_spark_tp6_expert_info(int32_t capacity, ds41rt_v41_expert_info_t* out);
+int32_t ds41rt_v41_spark_tp6_expert_initialize(int32_t capacity, void** out_kernel);
+int32_t ds41rt_v41_spark_tp6_expert_launch(void* kernel, const ds41rt_v41_expert_launch_t* args);
+int32_t ds41rt_v41_spark_tp6_expert_bind_scratch(void* kernel, void* storage,
+    uint64_t bytes, void* tensors[DS41RT_V41_EXPERT_POINTERS]);
+int32_t ds41rt_v41_spark_tp6_expert_initialize_scratch_async(void* kernel, void* storage,
+    uint64_t bytes, void* stream);
+int32_t ds41rt_v41_spark_tp6_expert_output_kind(int32_t capacity, uint32_t* out);
 
 /* Reduce contiguous FP32 [rows,topk,5120] route planes into BF16 [rows,5120].
  * Supported geometries: ranks=1 or 2/topk=3 (RTX dSpark), ranks=4/topk=6 (backbone).

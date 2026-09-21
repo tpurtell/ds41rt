@@ -169,8 +169,9 @@ type PackFn = unsafe extern "C" fn(*const *const u8, *const *mut u8, u32, *mut c
 
 /// Native packer accept-list. Every accepted extent is a multiple of 32 so the
 /// K/32 UE8M0 scale axis is exact; 576 (Spark TP4) is storage-padded to 640.
+/// 384 (pure `TP6EP1`) needs no padding: it is already 128-aligned.
 pub fn v41_pack_intermediate_supported(intermediate: u32) -> bool {
-    matches!(intermediate, 576 | 768 | 1152 | 2304)
+    matches!(intermediate, 384 | 576 | 768 | 1152 | 2304)
 }
 
 /// Physical-rank counts the compact reduction contract defines: legacy 2 and 4
@@ -203,6 +204,9 @@ fn expected_expert_geometry(
         // is already 128-aligned.
         (false, 5) => Some((384, 1152, 1152, 6)),
         (false, 6) => Some((384, 768, 768, 6)),
+        // Pure TP6EP1: one disjoint 384-column intermediate slice per rank with
+        // no storage padding (384 is already 128-aligned).
+        (false, 7) => Some((384, 384, 384, 6)),
         _ => None,
     }
 }
@@ -519,7 +523,7 @@ impl NativeLibrary {
     pub fn v41_expert_packer(&self, intermediate: u32) -> Result<V41ExpertPacker<'_>> {
         ensure!(
             v41_pack_intermediate_supported(intermediate),
-            "unsupported V4.1 pack intermediate {intermediate}; expected 576 (Spark TP4), 768 (Spark TP3), 1152 (TP2) or 2304 (full)"
+            "unsupported V4.1 pack intermediate {intermediate}; expected 384 (Spark TP6), 576 (Spark TP4), 768 (Spark TP3), 1152 (TP2) or 2304 (full)"
         );
         let sizes = unsafe {
             self.lib
@@ -578,10 +582,17 @@ impl NativeLibrary {
         self.expert_info_for(capacity, 9)
     }
 
+    /// Pure `TP6EP1` Spark shard metadata (intermediate 384, SM121). Six
+    /// disjoint intermediate slices of every routed expert, no storage padding.
+    pub fn v41_spark_tp6_expert_info(&self, capacity: u32) -> Result<V41ExpertInfo> {
+        self.expert_info_for(capacity, 11)
+    }
+
     fn expert_info_for(&self, capacity: u32, interface: u8) -> Result<V41ExpertInfo> {
         // 5..7 select the W4A4 ModelOpt NVFP4 family (RTX TP2, Spark TP4, full
-        // RTX); 0..4 select the native W4A8 family; 8/9 select the native
-        // replicated-group Spark TP2/TP3 shards. All may live in one library.
+        // RTX); 0..4 select the native W4A8 family; 8/9/11 select the native
+        // replicated-group Spark TP2/TP3 and pure TP6 shards. All may live in
+        // one library.
         let name: &[u8] = match interface {
             2 => b"ds41rt_v41_local_expert_info",
             3 => b"ds41rt_v41_tp2_expert_info",
@@ -591,6 +602,7 @@ impl NativeLibrary {
             7 => b"ds41rt_v41_nvfp4_local_expert_info",
             8 => b"ds41rt_v41_spark_tp2_expert_info",
             9 => b"ds41rt_v41_spark_tp3_expert_info",
+            11 => b"ds41rt_v41_spark_tp6_expert_info",
             _ => b"ds41rt_v41_expert_info",
         };
         let function = unsafe { self.lib.get::<InfoFn>(name) }
@@ -612,16 +624,17 @@ impl NativeLibrary {
                 // inside the kernel.
                 info.input_dtype == 1
             } else {
-                info.input_dtype == 1 || (matches!(info.role, 1 | 2 | 3 | 4 | 5 | 6) && info.input_dtype == 7)
+                info.input_dtype == 1 || (matches!(info.role, 1 | 2 | 3 | 4 | 5 | 6 | 7) && info.input_dtype == 7)
             },
             "unsupported native expert input representation"
         );
-        if matches!(interface, 8 | 9) {
-            // Replicated-group Spark shards are always exported from the native
-            // FP8 K32 wire format; reject a BF16-hidden artifact explicitly.
+        if matches!(interface, 8 | 9 | 11) {
+            // Replicated-group and pure TP6 Spark shards are always exported
+            // from the native FP8 K32 wire format; reject a BF16-hidden
+            // artifact explicitly.
             ensure!(
                 info.input_dtype == 7,
-                "Spark TP2/TP3 require the native FP8 K32 input representation"
+                "Spark TP2/TP3/TP6 require the native FP8 K32 input representation"
             );
         }
         let expected = expected_expert_geometry(nvfp4, info.role, info.kernel_intermediate)
@@ -646,6 +659,7 @@ impl NativeLibrary {
             7 => Some(2),
             8 => Some(5),
             9 => Some(6),
+            11 => Some(7),
             other => Some(u32::from(other)),
         };
         match expected_role {
@@ -680,6 +694,12 @@ impl NativeLibrary {
     /// Replicated-group Spark TP3 shard kernels (native FP8 K32, SM121).
     pub fn v41_spark_tp3_expert_kernel(&self, capacity: u32) -> Result<V41ExpertKernel<'_>> {
         self.expert_kernel_for(capacity, 9)
+    }
+
+    /// Pure `TP6EP1` Spark shard kernels (native FP8 K32, SM121): six disjoint
+    /// intermediate slices of every routed expert, no storage padding.
+    pub fn v41_spark_tp6_expert_kernel(&self, capacity: u32) -> Result<V41ExpertKernel<'_>> {
+        self.expert_kernel_for(capacity, 11)
     }
 
     /// W4A4 ModelOpt NVFP4 expert kernels. The family publishes BF16
@@ -724,6 +744,7 @@ impl NativeLibrary {
             7 => "ds41rt_v41_nvfp4_local",
             8 => "ds41rt_v41_spark_tp2",
             9 => "ds41rt_v41_spark_tp3",
+            11 => "ds41rt_v41_spark_tp6",
             _ => "ds41rt_v41",
         };
         let symbol = |operation: &str| format!("{prefix}_expert_{operation}").into_bytes();
@@ -758,7 +779,7 @@ impl NativeLibrary {
                     self.lib.get::<ReduceTp2Bf16RoutesFn>(b"ds41rt_v41_reduce_tp2_bf16_routes_async")?;
                 }
             } else {
-                ensure!(kind == V41ExpertOutputKind::Fp32Tokens && matches!(info.role, 1 | 2 | 3 | 5 | 6),
+                ensure!(kind == V41ExpertOutputKind::Fp32Tokens && matches!(info.role, 1 | 2 | 3 | 5 | 6 | 7),
                     "unsupported V4.1 ABI 3 output layout");
                 unsafe { self.lib.get::<CompactFn>(b"ds41rt_v41_compact_tokens_bf16_async")?; }
             }
@@ -860,19 +881,25 @@ mod tests {
 
     #[test]
     fn packed_intermediate_accept_list_covers_spark_tp_degrees() {
-        for intermediate in [576u32, 768, 1152, 2304] {
+        for intermediate in [384u32, 576, 768, 1152, 2304] {
             assert!(v41_pack_intermediate_supported(intermediate));
         }
-        for intermediate in [0u32, 1, 128, 577, 640, 2303, 4096] {
+        for intermediate in [0u32, 1, 128, 385, 577, 640, 2303, 4096] {
             assert!(!v41_pack_intermediate_supported(intermediate));
         }
     }
 
     #[test]
-    fn expected_geometry_covers_spark_tp2_tp3_without_touching_rtx_tp2() {
-        // Replicated-group Spark shards: TP2 1152 and TP3 768 are unpadded.
+    fn expected_geometry_covers_spark_tp2_tp3_tp6_without_touching_rtx_tp2() {
+        // Replicated-group Spark shards: TP2 1152 and TP3 768 are unpadded, and
+        // pure TP6 384 stores exactly its 2304/6 slice with no padding.
         assert_eq!(expected_expert_geometry(false, 5, 1152), Some((384, 1152, 1152, 6)));
         assert_eq!(expected_expert_geometry(false, 6, 768), Some((384, 768, 768, 6)));
+        assert_eq!(expected_expert_geometry(false, 7, 384), Some((384, 384, 384, 6)));
+        // Role 7 exists only in the native FP8 family: the W4A4 table and an
+        // unknown role id both fail closed instead of matching by accident.
+        assert_eq!(expected_expert_geometry(true, 7, 384), None);
+        assert_eq!(expected_expert_geometry(false, 9, 384), None);
         // Historical Spark TP4 padding and RTX TP2 role semantics are unchanged.
         assert_eq!(expected_expert_geometry(false, 1, 640), Some((384, 576, 640, 6)));
         assert_eq!(expected_expert_geometry(false, 3, 1152), Some((384, 1152, 1152, 6)));

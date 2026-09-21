@@ -23,6 +23,78 @@ fn builtin_profile_applies(gpus: usize, topology: Option<V41SparkTopology>, worl
     gpus == 1 && topology.is_none() && world == 4
 }
 
+/// Which adaptive verification-cost model a launch actually resolved.
+///
+/// The default (`Auto`) keeps the historical behavior exactly: the shipped
+/// built-in calibration for the legacy single-RTX TP4×EP1 layout, and no model
+/// (the legacy heuristic) for every other placement. That default means two
+/// arms with different topologies are compared under *different* cost models,
+/// which confounds a throughput A/B (for example legacy TP4 vs pure TP6).
+/// `legacy` and `builtin` pin both arms to one model on purpose.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum CostMode {
+    /// Historical default: built-in only where it was calibrated, else none.
+    Auto,
+    /// No placement-aware model; the legacy closed-form heuristic only.
+    Legacy,
+    /// The shipped built-in calibration, or a loud failure if it does not cover
+    /// this placement (an explicit topology needs its own calibrated profile).
+    Builtin,
+    /// An explicit `DS41RT_ADAPTIVE_COST_PROFILE` file, which must cover every
+    /// installed backend of this placement.
+    Profile,
+}
+
+/// Resolve the requested cost mode once at startup. `DS41RT_ADAPTIVE_COST_MODE`
+/// is opt-in and validated fail-closed; a legacy `DS41RT_ADAPTIVE_COST_PROFILE`
+/// still implies `profile`, and its literal `legacy` value still means `legacy`.
+fn resolve_cost_mode(explicit_profile: Option<&std::ffi::OsStr>) -> Result<CostMode> {
+    if explicit_profile == Some(std::ffi::OsStr::new("legacy")) {
+        return Ok(CostMode::Legacy);
+    }
+    let Some(raw) = std::env::var_os("DS41RT_ADAPTIVE_COST_MODE") else {
+        return Ok(if explicit_profile.is_some() { CostMode::Profile } else { CostMode::Auto });
+    };
+    let value = raw
+        .into_string()
+        .map_err(|_| anyhow::anyhow!("DS41RT_ADAPTIVE_COST_MODE is not valid UTF-8"))?;
+    match value.trim() {
+        "auto" => Ok(CostMode::Auto),
+        "legacy" => Ok(CostMode::Legacy),
+        "builtin" => Ok(CostMode::Builtin),
+        "profile" => {
+            ensure!(
+                explicit_profile.is_some_and(|path| path != std::ffi::OsStr::new("legacy")),
+                "DS41RT_ADAPTIVE_COST_MODE=profile requires DS41RT_ADAPTIVE_COST_PROFILE=<path>"
+            );
+            Ok(CostMode::Profile)
+        }
+        other => anyhow::bail!(
+            "DS41RT_ADAPTIVE_COST_MODE must be auto, legacy, builtin or profile, got {other:?}"
+        ),
+    }
+}
+
+/// The model an arm actually used, for a run report. `None` means the legacy
+/// heuristic is in force, which is what a fair comparison must state.
+pub(super) fn resolved_cost_mode_label(
+    mode: CostMode,
+    builtin_applies: bool,
+    has_profile: bool,
+) -> &'static str {
+    match (mode, builtin_applies, has_profile) {
+        (CostMode::Legacy, _, _) => "legacy-heuristic",
+        (CostMode::Profile, _, true) => "explicit-profile",
+        // `profile` without a readable path is rejected at resolve time, so this
+        // arm cannot serve; report it as a configuration error, not a model.
+        (CostMode::Profile, _, false) => "explicit-profile-missing",
+        (CostMode::Builtin, _, _) => "builtin-calibration",
+        // Auto: the shipped table only exists for the legacy TP4 layout.
+        (CostMode::Auto, true, _) => "builtin-calibration",
+        (CostMode::Auto, false, _) => "legacy-heuristic",
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Profile {
@@ -41,9 +113,13 @@ pub(super) struct Model {
 impl Model {
     /// Single-RTX uses the checkpoint-format calibration by default. Explicit
     /// profiles override either layout; "legacy" restores the original formula.
+    ///
+    /// `DS41RT_ADAPTIVE_COST_MODE` (auto/legacy/builtin/profile) pins the model
+    /// explicitly. The default `auto` is unchanged; `legacy` or `builtin` is how
+    /// a cross-topology A/B avoids comparing two different cost models.
     pub fn from_environment(transport: &NativeTp4Wave<'_>, nvfp4: bool) -> Result<Option<Self>> {
         let path = std::env::var_os("DS41RT_ADAPTIVE_COST_PROFILE");
-        if path.as_deref() == Some(std::ffi::OsStr::new("legacy")) { return Ok(None); }
+        let mode = resolve_cost_mode(path.as_deref())?;
         let placement: [String; 40] = std::array::from_fn(|layer| {
             let backend = if transport.has_tp2_layer(layer) { "rtx_tp2".to_owned() }
                 else if transport.has_local_layer(layer) { "rtx_local".to_owned() }
@@ -53,17 +129,47 @@ impl Model {
         });
         let gpus = if (0..40).any(|layer| transport.has_tp2_shared_layer(layer)
             || transport.has_tp2_layer(layer)) { 2 } else { 1 };
-        let bytes = match &path {
-            Some(path) => std::fs::read(path).context("reading adaptive cost profile")?,
-            // The built-in measurements are legacy single-RTX TP4×EP1. An
-            // explicit TP×EP topology has no shipped calibration yet, so it uses
-            // the legacy adaptive heuristic until a truthful profile is supplied.
-            None if builtin_profile_applies(gpus, transport.native_topology(), transport.spark_world()) =>
-                Self::builtin(nvfp4).to_vec(),
-            None => return Ok(None),
+        let builtin_applies = builtin_profile_applies(
+            gpus,
+            transport.native_topology(),
+            transport.spark_world(),
+        );
+        // `profile` requires a readable path; resolve it before any file read so
+        // the failure names the flag, not an empty path.
+        let profile_bytes = match mode {
+            CostMode::Profile => {
+                let path = path
+                    .as_deref()
+                    .filter(|value| *value != std::ffi::OsStr::new("legacy"))
+                    .context("DS41RT_ADAPTIVE_COST_MODE=profile requires DS41RT_ADAPTIVE_COST_PROFILE")?;
+                Some(std::fs::read(path).context("reading adaptive cost profile")?)
+            }
+            CostMode::Legacy => None,
+            // `builtin` deliberately reuses the shipped measurement: a placement
+            // it does not cover must fail loudly rather than silently fall back.
+            CostMode::Builtin => Some(Self::builtin(nvfp4).to_vec()),
+            // `auto` keeps the historical selection exactly.
+            CostMode::Auto if builtin_applies => Some(Self::builtin(nvfp4).to_vec()),
+            CostMode::Auto if path.is_some() => {
+                let path = path.as_deref().expect("checked present");
+                Some(std::fs::read(path).context("reading adaptive cost profile")?)
+            }
+            CostMode::Auto => None,
+        };
+        let resolved = resolved_cost_mode_label(mode, builtin_applies, profile_bytes.is_some());
+        let Some(bytes) = profile_bytes else {
+            tracing::info!(
+                mode = ?mode,
+                cost_model = resolved,
+                gpus,
+                spark_world = transport.spark_world(),
+                topology = ?transport.native_topology(),
+                "adaptive verification costs disabled; legacy heuristic in force"
+            );
+            return Ok(None);
         };
         let model = Self::parse(&bytes, &placement, gpus)?;
-        tracing::info!(profile=?path, nvfp4, gpus, placement=?placement,
+        tracing::info!(profile=?path, mode=?mode, cost_model=resolved, nvfp4, gpus, placement=?placement,
             "placement-aware adaptive costs loaded");
         Ok(Some(model))
     }
@@ -169,13 +275,19 @@ mod tests {
         let tp2ep2 = Some(V41SparkTopology::new(2, 2).unwrap());
         let tp3ep2 = Some(V41SparkTopology::new(3, 2).unwrap());
         let tp4ep1 = Some(V41SparkTopology::new(4, 1).unwrap());
+        let tp6ep1 = Some(V41SparkTopology::new(6, 1).unwrap());
         assert!(builtin_profile_applies(1, None, 4));
         assert!(!builtin_profile_applies(1, None, 2));
         assert!(!builtin_profile_applies(2, None, 4));
         // A single-RTX six-rank TP3×EP2 launch is not the legacy TP4 layout even
         // though the RTX side is one GPU.
         assert!(!builtin_profile_applies(1, tp3ep2, 6));
-        for topology in [tp2ep2, tp3ep2, tp4ep1] {
+        // Pure TP6EP1 is also never covered by the legacy TP4 calibration, so by
+        // default it runs the legacy heuristic while a TP4 control runs the
+        // built-in table: a cross-topology A/B must pin the cost model.
+        assert!(!builtin_profile_applies(1, tp6ep1, 6));
+        assert!(!builtin_profile_applies(2, tp6ep1, 6));
+        for topology in [tp2ep2, tp3ep2, tp4ep1, tp6ep1] {
             assert!(!builtin_profile_applies(1, topology, topology.unwrap().world_size()));
         }
         // Explicit profiles still use the truthful topology label.
@@ -186,12 +298,37 @@ mod tests {
     }
 
     #[test]
-    fn profiles_cannot_silently_misprice_missing_backends_or_layouts() {        let mut placement = std::array::from_fn(|_| "spark_tp4_shared1".to_owned());
+    fn resolved_cost_mode_is_reported_for_every_arm() {
+        // The default TP4 layout uses the shipped table; the same arm under an
+        // explicit `legacy` request uses the heuristic, which is the point of the
+        // switch. TP6's default is the heuristic, and `builtin` would refuse it.
+        assert_eq!(resolved_cost_mode_label(CostMode::Auto, true, false), "builtin-calibration");
+        assert_eq!(resolved_cost_mode_label(CostMode::Auto, false, false), "legacy-heuristic");
+        assert_eq!(resolved_cost_mode_label(CostMode::Legacy, true, false), "legacy-heuristic");
+        assert_eq!(resolved_cost_mode_label(CostMode::Legacy, true, true), "legacy-heuristic");
+        assert_eq!(resolved_cost_mode_label(CostMode::Builtin, false, true), "builtin-calibration");
+        assert_eq!(resolved_cost_mode_label(CostMode::Profile, false, true), "explicit-profile");
+        // `profile` without a readable path is a configuration error, never a
+        // silent model.
+        assert_eq!(resolved_cost_mode_label(CostMode::Profile, false, false), "explicit-profile-missing");
+        // Pure TP6 must not be reported as calibrated by the TP4 table.
+        let tp6 = V41SparkTopology::new(6, 1).unwrap();
+        let applies = builtin_profile_applies(2, Some(tp6), tp6.world_size());
+        assert_eq!(resolved_cost_mode_label(CostMode::Auto, applies, false), "legacy-heuristic");
+    }
+
+    #[test]
+    fn profiles_cannot_silently_misprice_missing_backends_or_layouts() {
+        let mut placement = std::array::from_fn(|_| "spark_tp4_shared1".to_owned());
         assert!(Model::parse(PROFILE, &placement, 2).is_err());
         placement[20] = "spark_tp4_shared2".into();
         assert!(Model::parse(PROFILE, &placement, 1).is_err());
         placement[20] = "spark_tp4_shared1".into();
         let invalid = String::from_utf8(PROFILE.to_vec()).unwrap().replace("[10,2,4,1]", "[10,-2,4,1]");
         assert!(Model::parse(invalid.as_bytes(), &placement, 1).is_err());
+        // A built-in TP4 profile cannot price a pure-TP6 placement: the backend
+        // label is the truthful `spark_tp6ep1`, which the table does not carry.
+        let tp6 = std::array::from_fn(|_| "spark_tp6ep1_shared1".to_owned());
+        assert!(Model::parse(PROFILE, &tp6, 2).is_err());
     }
 }

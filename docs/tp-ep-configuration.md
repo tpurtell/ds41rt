@@ -25,7 +25,7 @@ and phase gates), `examples/configs/README.md` (runnable example files),
 
 | Key | Meaning | Allowed |
 | --- | --- | --- |
-| `SPARK_TP` | tensor-parallel degree inside one replicated expert group | `2`, `3`, `4` |
+| `SPARK_TP` | tensor-parallel degree inside one expert group | `2`, `3`, `4`, `6` |
 | `SPARK_EP` | number of replicated expert groups (each holds every expert) | `1`, `2`, `3` |
 
 Rules enforced while loading a configuration:
@@ -34,13 +34,14 @@ Rules enforced while loading a configuration:
 - `SPARK_TP * SPARK_EP == SPARK_COUNT`.
 - `SPARK_COUNT` is now `0`, `2`, `4` or `6`. `6` requires explicit keys.
 - Only the approved native official layouts are accepted:
-  `TP2xEP2`, `TP3xEP2`, `TP2xEP3`, plus the explicit legacy `TP4xEP1`.
+  `TP2xEP2`, `TP3xEP2`, `TP2xEP3`, the explicit legacy `TP4xEP1`, and the
+  **pure unreplicated `TP6xEP1`** (see §14).
 - Explicit keys require `EXPERT_FORMAT=native`, `SPARKINFER_EXL3=disable` and
   `EXL3_PAIRED_TP4=off`. EXL3 and NVFP4 keep their existing, separate behavior;
   they are only rejected when an explicit replicated topology is requested.
 - `RTX_GPUS` is **not** restricted by the explicit-topology validator:
   `release-common.sh` checks only `SPARK_COUNT` (4 or 6), native format, EXL3
-  off and the approved `2x2|3x2|2x3|4x1` set. Both RTX counts are exercised —
+  off and the approved `2x2|3x2|2x3|4x1|6x1` set. Both RTX counts are exercised —
   the tested `six-1rtx6-tp3ep2` and `six-2rtx6-tp3ep2` configs use the same
   TP3xEP2 topology with 1 and 2 RTX respectively.
 - `SPARK_0`..`SPARK_5` host and `LANE_A` keys are validated for every active
@@ -60,6 +61,7 @@ tp_rank = global_rank % SPARK_TP
 | `TP2xEP2` | 4 | 2 | `0:(0,0) 1:(0,1) 2:(1,0) 3:(1,1)` |
 | `TP3xEP2` | 6 | 1 | `0..2:(0,0..2) 3..5:(1,0..2)` |
 | `TP2xEP3` | 6 | 2 | `0,1:(0,0/1) 2,3:(1,0/1) 4,5:(2,0/1)` |
+| `TP6xEP1` (pure) | 6 | 1 or 2 | `0..5:(0,0..5)` — one unreplicated group |
 
 `release_spark_rank_map` in `scripts/release-common.sh` is the single launcher
 source of that map and is unit-tested for every approved layout.
@@ -108,7 +110,8 @@ boundary**, not a hardcoded 20:
 - `release_spark_layer_bytes` returns the exact native per-TP-rank routed weight
   for one layer:
   `TP2 = 3,609,722,880 B`, `TP3 = 2,406,481,920 B`,
-  `TP4 = 2,005,401,600 B` (576 padded to a 640 kernel extent).
+  `TP4 = 2,005,401,600 B` (576 padded to a 640 kernel extent),
+  `TP6 = 1,203,240,960 B` (384, already 128-aligned, no padding).
 - `release_validate_spark_weight_admission` compares
   `remote_layers * layer_bytes` with `SPARK_DEVICE_BUDGET_BYTES`. Overflow is a
   hard failure before any service change; a fit prints the residual and
@@ -123,6 +126,7 @@ six-rank runs):
 | 2 | 30 remote layers | **at least 10 RTX-local layers** are required for the weights alone; workspace needs more |
 | 3 | 40 remote layers (96.26 GB) | all layers can be remote on weights alone |
 | 4 | 40 remote layers (80.2 GB padded) | release geometry |
+| 6 | 40 remote layers (48.13 GB) | pure TP6; even the 100 GiB default fallback admits all 40 remote layers |
 
 The default `ds41rt.config` fallback remains 100 GiB (`107,374,182,400 B`) and is
 unchanged; the tested configurations raise it to the candidate minimum above.
@@ -221,12 +225,12 @@ strict quality FAIL, and no gate may be marked passed from them.
 
 ## 6. Build plumbing and the role-manifest trust boundary
 
-The optional CMake switch `DS41RT_V41_SPARK_TP_ROLES` (`tp2`/`tp3`, empty by
-default) is passed through by both build helpers:
+The optional CMake switch `DS41RT_V41_SPARK_TP_ROLES` (`tp2`/`tp3`/`tp6`, empty
+by default) is passed through by both build helpers:
 
 | Build | Env override | Default |
 | --- | --- | --- |
-| `build.sh` → `scripts/build-release-artifacts.sh` | `DS41RT_RELEASE_SPARK_TP_ROLES` | derived from an explicit `SPARK_TP` (2→`tp2`, 3→`tp3`); empty for the legacy default |
+| `build.sh` → `scripts/build-release-artifacts.sh` | `DS41RT_RELEASE_SPARK_TP_ROLES` | derived from an explicit `SPARK_TP` (2→`tp2`, 3→`tp3`, 6→`tp6`); empty for the legacy default |
 | `wip.sh` → `scripts/build-wip-artifacts.sh` | `DS41RT_WIP_SPARK_TP_ROLES` | same derivation |
 | WIP official-only scope | `DS41RT_WIP_EXL3_AOT`, `DS41RT_WIP_NVFP4_AOT` | both `ON`; `OFF` skips the quantization AOT and its package/verify |
 
@@ -447,3 +451,141 @@ requires explicit `SPARK_TP`/`SPARK_EP`.
 | Image label | `io.ds41rt.v41.spark_tp_roles` |
 | Artifact manifest | `V41_EXPERT_TP_AOT.json` |
 | Release fingerprint tag | `spark-topology=<TP>x<EP>:explicit=<0|1>`, `v41-spark-tp-roles=<role>` |
+
+## 14. Pure unreplicated `TP6xEP1` (opt-in, UNQUALIFIED)
+
+**Status: configuration, runtime, native-role, admission and CPU-test plumbing
+are implemented and locally validated (Rust unit/integration tests plus
+CPU-only script gates). No hardware run has been performed for TP6, and nothing
+in this section is a memory, correctness, readiness, quality or performance
+claim.** It does not change `ds41rt.config`, the release images or the default
+serving selection.
+
+### What it is, and what it is not
+
+`TP6xEP1` is **one unreplicated group of six Spark ranks**. Each rank holds a
+disjoint `2304 / 6 = 384` column slice of **every** routed expert of every
+remote layer, and the coordinator sums the six compact BF16 `[M, 5120]` rank
+planes once. It is therefore *not* an expert-parallel layout:
+
+| | `TP2xEP3` / `TP3xEP2` (replicated groups) | `TP6xEP1` (pure) |
+| --- | --- | --- |
+| Copies of each expert | `EP` copies, one per group | exactly one |
+| Per-rank intermediate | 1152 / 768 | 384 |
+| Kernel storage padding | none | none (384 is already 128-aligned) |
+| Wire planes per batch | `TP * EP` physical planes | 6 physical planes |
+| Coordinator reduction | sum `TP*EP` planes | sum 6 planes (same generic entry point) |
+| Route ownership word | one-hot group bit per expert | always group 0 |
+
+Because no expert is duplicated, TP6 uses six ranks to make each rank's resident
+weight set **smaller** (`1,203,240,960 B` per rank per layer versus `2,005,401,600 B`
+at TP4 and `3,609,722,880 B` at TP2), at the cost of one more wire plane and one
+more term in the coordinator reduction than TP4. It is a resident-footprint and
+shard-width experiment, not an expert-duplication strategy.
+
+### Implemented surfaces (unqualified)
+
+| Surface | Where |
+| --- | --- |
+| Topology + disjoint executor namespace `27..=32` | `rust/crates/ds41rt-transport/src/v41_expert/native_group.rs` |
+| Six-plane compact reduction (`ranks=6`) | `native/cuda/kernels/v41_route_reduce.cu`, FFI `V41CompactReducer::reduce_planes` |
+| Worker shard geometry (`world: 6` → native role 7) | `rust/crates/ds41rt-daemon/src/v41_experts.rs`, `rust/crates/ds41rt-daemon/src/v41_spark_topology.rs` |
+| CLI parsing (`--spark-tp 6 --spark-ep 1`) | `rust/crates/ds41rt-daemon/src/cli.rs` |
+| Checkpoint staging (384-column W2 slice, 32-group aligned) | `rust/crates/ds41rt-loader/src/v41_expert_staging.rs` |
+| Role AOT export (`spark_tp6`, intermediate 384) | `python/tools/export_b12x_v41_{slices,experts}_aot.py`, `native/cmake/v41_spark_tp_experts.cmake` |
+| Launch config | `examples/configs/tp6ep1-native.config`, `scripts/fixtures/tp-ep-six/site-{1,2}rtx6-tp6ep1.config` |
+| Qualification gate + corpus | `scripts/qualify-ds41-tp-ep-e2e-six.py`, `scripts/fixtures/tp-ep-e2e-corpus-v5-six.jsonl` (v5), startup templates `scripts/fixtures/tp-ep-six/startup-{1,2}rtx6-tp6ep1.template.json` |
+| CPU tests | `scripts/tests/test_tp_ep_six_readiness_tp6.py`, transport `pure_tp6_*`, loader TP6 staging coverage, FFI role-7 geometry |
+
+The **v4 six-rank corpus is unchanged** (`sha256 99034171…`) and its accepted
+results keep binding that revision. v5 adds the two TP6 arms; its header records
+that it is a new, unexecuted revision, its `future_scope` names the pure TP6
+family, and the approved v5 arm set is a strict superset of v4 (nothing was
+removed or renumbered). The qualifier's `report["six"]["schema"]` is derived from
+the corpus header, so a v5 run never reports itself as v4.
+
+`--corpus` defaults to **v4** for compatibility with the accepted arms. A TP6
+arm must name v5 explicitly:
+
+```bash
+# CPU-only schema/identity preflight for the six-rank corpus
+python3 scripts/qualify-ds41-tp-ep-e2e-six.py validate \
+  --corpus scripts/fixtures/tp-ep-e2e-corpus-v5-six.jsonl
+
+# Drive one TP6 arm (requires the hardware lease and a filled startup metadata)
+python3 scripts/qualify-ds41-tp-ep-e2e-six.py run \
+  --corpus scripts/fixtures/tp-ep-e2e-corpus-v5-six.jsonl \
+  --arm 2rtx6-tp6ep1 \
+  --startup-metadata runs/tp-ep-six/startup-2rtx6-tp6ep1.json \
+  --output runs/tp-ep-six/2rtx6-tp6ep1.json
+
+# Compare the pure TP6 candidate against the TP3EP2 control
+python3 scripts/qualify-ds41-tp-ep-e2e-six.py compare \
+  --corpus scripts/fixtures/tp-ep-e2e-corpus-v5-six.jsonl \
+  --control runs/tp-ep-six/2rtx6-tp3ep2.json \
+  --candidate runs/tp-ep-six/2rtx6-tp6ep1.json \
+  --output runs/tp-ep-six/compare-tp6-vs-tp3ep2.json
+```
+
+Because the default corpus is v4, `run --arm 2rtx6-tp6ep1` without `--corpus`
+fails with "--arm is not a config in <v4 corpus>"; that is the intended
+fail-closed behavior, not a missing arm.
+
+### Build and launch
+
+```bash
+./build.sh --config examples/configs/tp6ep1-native.config --dry-run
+DS41RT_RELEASE_SPARK_TP_ROLES=tp6 ./build.sh --config examples/configs/tp6ep1-native.config
+```
+
+The Spark image must advertise the `spark_tp6` role in
+`io.ds41rt.v41.spark_tp_roles`; a v8 image without it is rejected before any
+service change. `run.sh` derives `tp6` from an explicit `SPARK_TP=6` the same way
+it derives `tp2`/`tp3`.
+
+### Measurement confounds that must be controlled before any A/B
+
+1. **Verification-cost model.** `builtin_profile_applies` deliberately returns
+   false for every explicit topology, so by default a TP6 arm runs the legacy
+   heuristic while a legacy `TP4xEP1` control runs the shipped calibrated table.
+   A topology A/B under the defaults compares two different cost models.
+   `DS41RT_ADAPTIVE_COST_MODE=legacy|builtin|profile` pins the model explicitly
+   (`auto` is the unchanged default, and `builtin` *fails loudly* if the shipped
+   TP4 table does not cover the placement). The resolved mode is logged at
+   startup as `cost_model=`; every report must record it.
+2. **dSpark draft policy/limit** must be identical across arms; the per-arm
+   draft limit is a control, not a topology property.
+3. **KV class/pool and boundary** must be matched (`g3-paired` N20 for the
+   2-RTX arms; the 1-RTX arm is standalone and cannot be compared across
+   hardware).
+4. **Moa rail address**: the staged peer list uses rhea fabric A `.5` + moa
+   fabric B `.12`. That mix follows the documented route analysis
+   ([tp-ep-six-readiness.md](tp-ep-six-readiness.md) §4) and remains
+   **PROVISIONAL** pending live A↔B reachability; moa fabric A is `.6`. Do not
+   describe `.12` as fabric A.
+
+### Runtime role proof (v5 gate)
+
+A startup template's `expert_tp_manifests` block describes what the **artifact**
+contains; `spark_artifact_roles` lists the role labels the image advertises.
+Neither proves that a running rank loaded its topology's shard family. v5
+therefore requires `worker_runtime_role`: one entry per physical rank with the
+`role` and `intermediate` its readiness line actually reported, plus a
+`source_log`. For TP6 that is role `7`, intermediate `384`, world `6`. An image
+that advertises `spark_tp6` in a manifest but never initializes role 7 fails this
+gate instead of failing at the first request. The gate is versioned
+(`WORKER_RUNTIME_ROLE_SINCE = 5`), so accepted v4 results are not
+retro-invalidated.
+
+Weight-only perspective for the record: at 100 GiB, TP3 (96.26 GB), TP4
+(80.2 GB padded) and TP6 (48.13 GB) all fit 40 remote layers' weights; TP6 is the
+roomiest, not the only one. Workspace, staging and ring headroom remain
+unmeasured for all of them.
+
+### What is still required
+
+A qualified TP6 claim needs: the `spark_tp6` role in the image, a live
+per-rank memory capture (20 GiB reserve + workspace + ring versus the device
+budget), the six-plane reduction numerical check on the built library, the
+canonical v5 matrix, a matched cost model and draft policy against the TP3EP2
+control, and independent review of the logs and per-host inventory.

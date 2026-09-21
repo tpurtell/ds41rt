@@ -161,7 +161,7 @@ pub(crate) struct NativeExpertDaemonArgs {
     #[arg(long, default_value_t = 4, value_parser = clap::value_parser!(u32).range(2..=6))]
     pub(crate) world: u32,
     /// Replicated-group tensor-parallel degree inside one group (opt-in; all-or-none with --spark-ep).
-    #[arg(long, requires = "spark_ep", value_parser = clap::value_parser!(u8).range(2..=4))]
+    #[arg(long, requires = "spark_ep", value_parser = parse_spark_tp)]
     pub(crate) spark_tp: Option<u8>,
     /// Number of replicated expert groups, each holding all 384 experts (opt-in; all-or-none with --spark-tp).
     #[arg(long, requires = "spark_tp", value_parser = clap::value_parser!(u8).range(1..=3))]
@@ -551,10 +551,29 @@ mod tests {
             "--rank", "5", "--world", "6"]).unwrap();
         let Commands::ExpertdNative(args) = cli.command else { panic!("expertd-native") };
         assert_eq!((args.rank, args.world), (5, 6));
+
+        // Pure TP6EP1 is a real shard family on both processes. Five is not a
+        // family and stays rejected even though it is inside the numeric range.
+        let six_expert = ["ds41rt", "expertd-native", "--snapshot", "/model", "--native-lib",
+            "/native.so", "--device-budget-bytes", "1000", "--rank", "5", "--world", "6"];
+        for command in [&serve[..], &six_expert[..]] {
+            let cli = Cli::try_parse_from(command.iter().copied()
+                .chain(["--spark-tp", "6", "--spark-ep", "1"])).unwrap();
+            match cli.command {
+                Commands::ServeNative(args) => assert_eq!((args.spark_tp, args.spark_ep), (Some(6), Some(1))),
+                Commands::ExpertdNative(args) => assert_eq!((args.spark_tp, args.spark_ep), (Some(6), Some(1))),
+                other => panic!("unexpected command {other:?}"),
+            }
+            let error = Cli::try_parse_from(command.iter().copied()
+                .chain(["--spark-tp", "5", "--spark-ep", "1"]))
+                .expect_err("TP5 has no shard family");
+            assert!(error.to_string().contains("expected 2, 3, 4 or 6"), "{error}");
+        }
     }
 
     #[test]
-    fn protocol_benchmark_names_tp4_reduction_without_expert_ownership() {        let cli = Cli::try_parse_from([
+    fn protocol_benchmark_names_tp4_reduction_without_expert_ownership() {
+        let cli = Cli::try_parse_from([
             "ds41rt",
             "bench-protocol-v2-tcp",
             "--addr",
@@ -706,7 +725,7 @@ pub(crate) struct NativeServeArgs {
     #[arg(long,value_delimiter=',',num_args=1..)] pub peers: Vec<std::net::SocketAddr>,
     #[arg(long,default_value="127.0.0.1:8000")] pub listen: String,
     /// Replicated-group tensor-parallel degree inside one Spark group (opt-in; all-or-none with --spark-ep).
-    #[arg(long, requires = "spark_ep", value_parser = clap::value_parser!(u8).range(2..=4))]
+    #[arg(long, requires = "spark_ep", value_parser = parse_spark_tp)]
     pub spark_tp: Option<u8>,
     /// Number of replicated Spark expert groups, each holding all 384 experts (opt-in; all-or-none with --spark-tp).
     #[arg(long, requires = "spark_tp", value_parser = clap::value_parser!(u8).range(1..=3))]
@@ -719,6 +738,21 @@ fn parse_dspark_confidence(value: &str) -> Result<f64, String> {
         return Err("confidence cutoff must be finite and between zero and one".into());
     }
     Ok(value)
+}
+
+/// Spark TP degrees with a native shard family: 2/3 replicated-group shards,
+/// 4 the legacy grouped layout, and 6 the pure unreplicated `TP6EP1` slices.
+/// Five has no artifact family, so it is rejected here rather than at load time.
+fn parse_spark_tp(value: &str) -> Result<u8, String> {
+    let value: u8 = value
+        .parse()
+        .map_err(|_| "expected a Spark TP degree between 2 and 6".to_string())?;
+    match value {
+        2 | 3 | 4 | 6 => Ok(value),
+        _ => Err(format!(
+            "unsupported Spark TP degree {value}; expected 2, 3, 4 or 6"
+        )),
+    }
 }
 
 impl NativeServeArgs {

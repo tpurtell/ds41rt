@@ -436,7 +436,7 @@ mod tests {
 
     #[test]
     fn explicit_topology_maps_every_physical_rank_to_its_local_shard() {
-        for (tp, ep) in [(2u8, 1u8), (3, 1), (4, 1), (2, 2), (3, 2), (2, 3)] {
+        for (tp, ep) in [(2u8, 1u8), (3, 1), (4, 1), (2, 2), (3, 2), (2, 3), (6, 1)] {
             let topology = V41SparkTopology::new(tp, ep).unwrap();
             for rank in 0..topology.world_size() {
                 let selection = config(topology.world_size(), rank, Some(topology))
@@ -454,10 +454,13 @@ mod tests {
                             world: tp as usize,
                         }
                     );
-                    assert_eq!(selection.role(), if tp == 2 {
-                        crate::v41_spark_topology::SPARK_TP2_ROLE
-                    } else {
-                        crate::v41_spark_topology::SPARK_TP3_ROLE
+                    assert_eq!(selection.role(), match tp {
+                        2 => crate::v41_spark_topology::SPARK_TP2_ROLE,
+                        3 => crate::v41_spark_topology::SPARK_TP3_ROLE,
+                        // Pure TP6EP1 is its own native shard family: six
+                        // disjoint intermediate slices of every expert.
+                        6 => crate::v41_spark_topology::SPARK_TP6_ROLE,
+                        other => panic!("unexpected explicit TP degree {other}"),
                     });
                     assert_eq!(
                         selection.expert(3),

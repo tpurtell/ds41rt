@@ -18,9 +18,9 @@ import _pinned_sparkinfer
 
 # Plan-time expert placement roles. Geometry, SM guard and native role id are
 # properties of the role, never of the live row count. `spark` is the historical
-# TP4 shard (576 padded to 640 storage); `spark_tp2`/`spark_tp3` are the
-# replicated-group shards and are already 128-aligned. These pure tables are the
-# authoritative source for the export geometry and are covered by a CPU-only
+# TP4 shard (576 padded to 640 storage); `spark_tp2`/`spark_tp3`/`spark_tp6` are
+# the replicated-group shards and are already 128-aligned. These pure tables are
+# the authoritative source for the export geometry and are covered by a CPU-only
 # test that needs neither torch nor CUDA.
 ROLE_GEOMETRY = {
     "coordinator": (128, 2304, 2304, 3),
@@ -28,6 +28,7 @@ ROLE_GEOMETRY = {
     "rtx_tp2": (384, 1152, 1152, 6),
     "spark_tp2": (384, 1152, 1152, 6),
     "spark_tp3": (384, 768, 768, 6),
+    "spark_tp6": (384, 384, 384, 6),
     "rtx_backbone": (384, 2304, 2304, 6),
     "spark": (384, 576, 640, 6),
 }
@@ -39,6 +40,7 @@ ROLE_SM = {
     "spark": (12, 1),
     "spark_tp2": (12, 1),
     "spark_tp3": (12, 1),
+    "spark_tp6": (12, 1),
 }
 # Native `ds41rt_v41_expert_info_t.role` values (see native/include/ds41rt_v41_experts.h).
 ROLE_NATIVE_ID = {
@@ -49,8 +51,9 @@ ROLE_NATIVE_ID = {
     "dspark_tp2": 4,
     "spark_tp2": 5,
     "spark_tp3": 6,
+    "spark_tp6": 7,
 }
-SPARK_TP_DEGREE = {"spark": 4, "spark_tp2": 2, "spark_tp3": 3}
+SPARK_TP_DEGREE = {"spark": 4, "spark_tp2": 2, "spark_tp3": 3, "spark_tp6": 6}
 
 
 def export(output, capacities, width, atomic_min_capacity=None, role="spark", *, standard_names=False, compact_max_capacity=None, compact_live_rows=None):
@@ -332,7 +335,7 @@ def export(output, capacities, width, atomic_min_capacity=None, role="spark", *,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--role", choices=("spark", "spark_tp2", "spark_tp3", "coordinator", "rtx_backbone", "rtx_tp2", "dspark_tp2"), default="spark")
+    parser.add_argument("--role", choices=("spark", "spark_tp2", "spark_tp3", "spark_tp6", "coordinator", "rtx_backbone", "rtx_tp2", "dspark_tp2"), default="spark")
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--rows", default="1,16,80")
     parser.add_argument(

@@ -69,14 +69,18 @@ pub(crate) fn tp_rank_of(topology: Option<V41SparkTopology>, rank: usize) -> Res
     topology.map(|topology| topology.tp_rank(rank)).transpose()
 }
 
-/// Roles published by the two new native Spark shard families, for callers that
-/// need the expected role without loading the library. Three- and six-rank
-/// layouts reduce through the native generic N-plane entry point; admission
-/// uses `V41CompactReducer::require_rank_count` on the loaded library before any
-/// allocation or readiness publication, so a missing artifact fails startup
-/// rather than the first request.
+/// Roles published by the native Spark shard families, for callers that need
+/// the expected role without loading the library. `TP6` is the pure
+/// unreplicated six-rank layout (one disjoint intermediate slice of every
+/// expert per rank); `TP2`/`TP3` are the replicated-group shards. Three-, four-
+/// and six-rank layouts reduce through the native generic N-plane entry point;
+/// admission uses `V41CompactReducer::require_rank_count` on the loaded library
+/// before any allocation or readiness publication, so a missing artifact fails
+/// startup rather than the first request.
 pub(crate) const SPARK_TP2_ROLE: u32 = 5;
 pub(crate) const SPARK_TP3_ROLE: u32 = 6;
+/// Native role id of the pure `TP6EP1` Spark shard family.
+pub(crate) const SPARK_TP6_ROLE: u32 = 7;
 
 #[cfg(test)]
 mod tests {
@@ -101,7 +105,7 @@ mod tests {
 
     #[test]
     fn approved_layouts_require_their_exact_rank_count() {
-        for (tp, ep) in [(2u8, 1u8), (3, 1), (4, 1), (2, 2), (3, 2), (2, 3)] {
+        for (tp, ep) in [(2u8, 1u8), (3, 1), (4, 1), (2, 2), (3, 2), (2, 3), (6, 1)] {
             let expected = topology(tp, ep);
             let resolved = resolve(Some(tp), Some(ep), expected.world_size(), "serve-native")
                 .unwrap()
@@ -114,10 +118,29 @@ mod tests {
 
     #[test]
     fn unapproved_layouts_and_ranges_are_rejected() {
-        for (tp, ep) in [(1u8, 1u8), (2, 4), (4, 2), (3, 3), (0, 1)] {
+        for (tp, ep) in [(1u8, 1u8), (2, 4), (4, 2), (3, 3), (0, 1), (6, 2), (6, 3)] {
             let world = tp as usize * ep as usize;
             assert!(resolve(Some(tp), Some(ep), world, "serve-native").is_err(), "{tp}x{ep}");
         }
+    }
+
+    #[test]
+    fn pure_tp6_is_one_unreplicated_group_of_six_disjoint_shards() {
+        let resolved = resolve(Some(6), Some(1), 6, "expertd-native")
+            .unwrap()
+            .expect("explicit TP6EP1 topology");
+        assert_eq!(resolved.tp(), 6);
+        assert_eq!(resolved.ep(), 1);
+        assert_eq!(resolved.group_count(), 1);
+        for rank in 0..6 {
+            assert_eq!(group_of(Some(resolved), rank).unwrap(), Some(0));
+            assert_eq!(tp_rank_of(Some(resolved), rank).unwrap(), Some(rank as u8));
+            assert_eq!(resolved.executor_id(rank).unwrap(), 27 + rank as u64);
+        }
+        assert!(group_of(Some(resolved), 6).is_err());
+        // The topology-free world-6 helper rejects six ranks; only the explicit
+        // topology may own them.
+        assert!(ds41rt_transport::v41_expert::v41_spark_executor_id(6, 0).is_err());
     }
 
     #[test]

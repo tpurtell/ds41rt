@@ -26,8 +26,8 @@ pub enum V41ExpertSelection {
     /// Half-width encoder expert on one member of an RTX pair.
     BackboneTp2 { layer: usize, expert: usize, rank: usize },
     /// Explicitly sized TP shard of one official native FP4/E8M0 backbone
-    /// routed expert. `world` is the shard count (2, 3 or 4) and `rank` is the
-    /// shard index. W1/W3 weights and both scale planes slice output rows;
+    /// routed expert. `world` is the shard count (2, 3, 4 or 6) and `rank` is
+    /// the shard index. W1/W3 weights and both scale planes slice output rows;
     /// W2 weight and scale slice input columns. Only the official MXFP4
     /// (native FP4/E8M0) checkpoint is accepted: EXL3 and ModelOpt NVFP4
     /// publications keep their own compressed/NVFP4 staging.
@@ -73,8 +73,8 @@ impl V41BackboneTpGeometry {
         rank: usize,
     ) -> Result<Self> {
         ensure!(
-            (2..=4).contains(&world),
-            "backbone TP world must be 2, 3 or 4, got {world}"
+            matches!(world, 2 | 3 | 4 | 6),
+            "backbone TP world must be 2, 3, 4 or 6, got {world}"
         );
         ensure!(
             rank < world,

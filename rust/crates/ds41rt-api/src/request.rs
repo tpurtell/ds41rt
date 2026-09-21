@@ -409,7 +409,10 @@ fn validate_identifier(
     Ok(())
 }
 
-fn validate_strict_json_schema(
+/// Shared OpenAI strict-mode subset check. `pub(crate)` so the native
+/// `serve-native` path can apply the same contract as `validate_request`
+/// (the adapter crate deserializes `json_schema` into a fieldless variant).
+pub(crate) fn validate_strict_json_schema(
     schema: &Value,
     parameter: impl Into<String>,
 ) -> Result<(), ApiError> {

@@ -110,8 +110,22 @@ release_known_key() {
   esac
 }
 
+# Load and validate a configuration file.
+#
+# mode defaults to "launch" and keeps the full strict launch contract,
+# including serving topology, GPU layout, model-format and reduction-rail
+# requirements. stop.sh passes "stop": cleanup only needs the Spark host keys
+# and the port/address values, so parsing, known-key, quoting and every
+# value-safety check stay in force while launch-only topology/readiness
+# requirements are skipped. A launch-incomplete but syntactically valid file
+# can therefore clean every host it names.
 release_load_config() {
   local config="$1"
+  local mode="${2:-launch}"
+  case "$mode" in
+    launch|stop) ;;
+    *) release_die "unknown release_load_config mode: $mode (expected launch or stop)" ;;
+  esac
   [[ -f "$config" ]] || release_die "configuration file not found: $config"
 
   local default_model_id=deepseek-ai/DeepSeek-V4.1-Flash
@@ -193,8 +207,10 @@ release_load_config() {
   case "$MODEL_VARIANT" in flash|pro) ;; *) release_die "MODEL_VARIANT must be flash or pro" ;; esac
   case "$EXPERT_FORMAT" in native|exl3) ;; *) release_die "EXPERT_FORMAT must be native or exl3" ;; esac
   case "$EXL3_PAIRED_TP4" in on|off) ;; *) release_die "EXL3_PAIRED_TP4 must be on or off" ;; esac
-  [[ "$MODEL_VARIANT" != pro || "$EXPERT_FORMAT" == exl3 ]] ||
-    release_die "DeepSeek V4 Pro requires EXPERT_FORMAT=exl3"
+  if [[ "$mode" == launch ]]; then
+    [[ "$MODEL_VARIANT" != pro || "$EXPERT_FORMAT" == exl3 ]] ||
+      release_die "DeepSeek V4 Pro requires EXPERT_FORMAT=exl3"
+  fi
   case "$DSPARK" in on|off) ;; *) release_die "DSPARK must be on or off" ;; esac
   case "$DSPARK_DRAFT_POLICY" in
     full|adaptive) ;;
@@ -204,10 +220,12 @@ release_load_config() {
     auto|disable|force) ;;
     *) release_die "SPARKINFER_EXL3 must be auto, disable, or force" ;;
   esac
-  [[ "$SPARKINFER_EXL3" != disable || "$EXPERT_FORMAT" == native ]] ||
-    release_die "SPARKINFER_EXL3=disable requires EXPERT_FORMAT=native"
-  [[ "$SPARKINFER_EXL3" != force || "$EXPERT_FORMAT" == exl3 ]] ||
-    release_die "SPARKINFER_EXL3=force requires EXPERT_FORMAT=exl3"
+  if [[ "$mode" == launch ]]; then
+    [[ "$SPARKINFER_EXL3" != disable || "$EXPERT_FORMAT" == native ]] ||
+      release_die "SPARKINFER_EXL3=disable requires EXPERT_FORMAT=native"
+    [[ "$SPARKINFER_EXL3" != force || "$EXPERT_FORMAT" == exl3 ]] ||
+      release_die "SPARKINFER_EXL3=force requires EXPERT_FORMAT=exl3"
+  fi
   [[ "$RTX_EXPERT_LAYERS" == auto || "$RTX_EXPERT_LAYERS" =~ ^([0-9]|[1-3][0-9]|40)$ ]] ||
     release_die "RTX_EXPERT_LAYERS must be auto or 0..40"
   case "$RTX_GPUS" in auto|1|2) ;; *) release_die "RTX_GPUS must be auto, 1, or 2" ;; esac
@@ -255,38 +273,44 @@ release_load_config() {
     release_die "MODEL_REVISION must be empty or a 40..64 lowercase hex revision"
 
   release_validate_tp2_options
-  release_validate_spark_topology
+  if [[ "$mode" == launch ]]; then
+    release_validate_spark_topology
 
-  case "$SPARK_COUNT" in
-    0)
-      [[ "$RTX_EXPERT_LAYERS" == 40 ]] || release_die "SPARK_COUNT=0 requires RTX_EXPERT_LAYERS=40 (every routed layer must fit the RTX layout)"
-      [[ "$RTX_GPUS" != 1 ]] || release_die "SPARK_COUNT=0 requires two RTX GPUs"
-      ;;
-    2) release_validate_compact_tp2 ;;
-    4) ;;
-    6)
-      release_spark_topology_explicit ||
-        release_die "SPARK_COUNT=6 requires explicit SPARK_TP and SPARK_EP (six Sparks are only approved as a replicated native topology)"
-      ;;
-    *) release_die "SPARK_COUNT must be 0, 2, 4, or 6" ;;
-  esac
+    case "$SPARK_COUNT" in
+      0)
+        [[ "$RTX_EXPERT_LAYERS" == 40 ]] || release_die "SPARK_COUNT=0 requires RTX_EXPERT_LAYERS=40 (every routed layer must fit the RTX layout)"
+        [[ "$RTX_GPUS" != 1 ]] || release_die "SPARK_COUNT=0 requires two RTX GPUs"
+        ;;
+      2) release_validate_compact_tp2 ;;
+      4) ;;
+      6)
+        release_spark_topology_explicit ||
+          release_die "SPARK_COUNT=6 requires explicit SPARK_TP and SPARK_EP (six Sparks are approved only as a pure TP6=6x1 or replicated native topology)"
+        ;;
+      *) release_die "SPARK_COUNT must be 0, 2, 4, or 6" ;;
+    esac
 
-  local missing_b=0 present_b=0 spark_required="$SPARK_COUNT"
-  for ((release_i = 0; release_i < spark_required; release_i++)); do
-    local host_name="SPARK_${release_i}_HOST"
-    local lane_a_name="SPARK_${release_i}_LANE_A"
-    local lane_b_name="SPARK_${release_i}_LANE_B"
-    if ((release_i < spark_required)); then
-      [[ -n "${!host_name}" ]] || release_die "$host_name must not be empty"
-      [[ "${!lane_a_name}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || release_die "$lane_a_name must be an IPv4 address"
-    fi
-    if [[ -n "${!lane_b_name}" ]]; then
-      ((present_b += 1))
-    else
-      ((missing_b += 1))
-    fi
-  done
-  ((present_b == 0 || missing_b == 0)) || release_die "secondary Spark rail must provide all $SPARK_COUNT active LANE_B values or none"
+    local missing_b=0 present_b=0 spark_required="$SPARK_COUNT"
+    for ((release_i = 0; release_i < spark_required; release_i++)); do
+      local host_name="SPARK_${release_i}_HOST"
+      local lane_a_name="SPARK_${release_i}_LANE_A"
+      local lane_b_name="SPARK_${release_i}_LANE_B"
+      if ((release_i < spark_required)); then
+        [[ -n "${!host_name}" ]] || release_die "$host_name must not be empty"
+        [[ "${!lane_a_name}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || release_die "$lane_a_name must be an IPv4 address"
+      fi
+      if [[ -n "${!lane_b_name}" ]]; then
+        ((present_b += 1))
+      else
+        ((missing_b += 1))
+      fi
+    done
+    ((present_b == 0 || missing_b == 0)) || release_die "secondary Spark rail must provide all $SPARK_COUNT active LANE_B values or none"
+  else
+    # Cleanup discovers the hosts itself; serving topology, GPU layout, model
+    # format and the reduction rail are launch requirements, not stop safety.
+    release_validate_stop_config
+  fi
 
   for release_image_name in COORDINATOR_DOCKER_DEV COORDINATOR_DOCKER_INFERENCE SPARK_EXPERT_DOCKER_DEV SPARK_EXPERT_DOCKER_INFERENCE; do
     [[ -n "${!release_image_name}" && "${!release_image_name}" != *[[:space:]]* ]] || release_die "$release_image_name must be a Docker image reference"
@@ -295,6 +319,37 @@ release_load_config() {
   RELEASE_CONFIG="$(realpath "$config")"
   RELEASE_MODEL_ID="$MODEL_ID"
   RELEASE_MODEL_REVISION="$MODEL_REVISION"
+}
+
+# Stop-only configuration validation.
+#
+# Cleanup launches nothing, so an incomplete or unsupported serving topology
+# must not block it. SPARK_COUNT/SPARK_TP/SPARK_EP are launch topology: stop
+# accepts any non-negative integer count and positive integer degrees, or their
+# absence, and cleans every Spark host the file names. LANE_A/B, GPU layout,
+# model variant/format and EXL3 combination rules are also launch-only. What
+# remains is the safety contract: the parser, known-key, quoting and every
+# value-domain check above already ran, and a named Spark host must be a safe
+# token because cleanup interpolates it into SSH arguments and container names.
+# The accepted shape is Docker's own container-name rule
+# ([A-Za-z0-9][A-Za-z0-9_.-]*): it preserves every alias the launcher can
+# already use, including a trailing separator, while rejecting whitespace,
+# shell metacharacters, `user@host` and IPv6 literals.
+release_validate_stop_config() {
+  local name value
+  [[ -z "$SPARK_COUNT" || "$SPARK_COUNT" =~ ^[0-9]+$ ]] ||
+    release_die "SPARK_COUNT must be a non-negative integer"
+  [[ -z "$SPARK_TP" || "$SPARK_TP" =~ ^[1-9][0-9]*$ ]] ||
+    release_die "SPARK_TP must be a positive integer"
+  [[ -z "$SPARK_EP" || "$SPARK_EP" =~ ^[1-9][0-9]*$ ]] ||
+    release_die "SPARK_EP must be a positive integer"
+  for name in $(compgen -v SPARK_ 2>/dev/null || true); do
+    [[ "$name" =~ ^SPARK_[0-9]+_HOST$ ]] || continue
+    value="${!name:-}"
+    [[ -n "$value" ]] || continue
+    [[ "$value" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] ||
+      release_die "$name is not a safe host token: $value"
+  done
 }
 
 release_resolve_coordinator_gpu_identity() {
@@ -429,8 +484,8 @@ release_spark_rank_map() {
 
 release_validate_spark_topology() {
   case "$SPARK_TP" in
-    ""|2|3|4) ;;
-    *) release_die "SPARK_TP must be 2, 3, or 4" ;;
+    ""|2|3|4|6) ;;
+    *) release_die "SPARK_TP must be 2, 3, 4, or 6" ;;
   esac
   case "$SPARK_EP" in
     ""|1|2|3) ;;
@@ -451,8 +506,8 @@ release_validate_spark_topology() {
   ((SPARK_TP * SPARK_EP == SPARK_COUNT)) ||
     release_die "SPARK_TP(${SPARK_TP}) * SPARK_EP(${SPARK_EP}) must equal SPARK_COUNT(${SPARK_COUNT})"
   case "${SPARK_TP}x${SPARK_EP}" in
-    2x2|3x2|2x3|4x1) ;;
-    *) release_die "unsupported native Spark topology TP${SPARK_TP}EP${SPARK_EP}; approved: TP2EP2, TP3EP2, TP2EP3, TP4EP1" ;;
+    2x2|3x2|2x3|4x1|6x1) ;;
+    *) release_die "unsupported native Spark topology TP${SPARK_TP}EP${SPARK_EP}; approved: TP2EP2, TP3EP2, TP2EP3, TP4EP1, TP6EP1" ;;
   esac
 }
 
@@ -496,6 +551,61 @@ release_expert_hosts_csv() {
     printf '%sspark-%s=%s:%s' "$separator" "$i" "${!lane}" "$EXPERT_PORT"
     separator=,
   done
+}
+
+# ---------------------------------------------------------------------------
+# Stop-side Spark host scope.
+#
+# Launch and topology helpers (release_spark_values) enumerate exactly the
+# active SPARK_COUNT ranks. Cleanup must be a superset of that: a previous
+# six-rank run can leave release or WIP containers on the fifth/sixth hosts
+# even when the configuration currently selects a smaller serving set, and the
+# default configuration names those hosts. stop.sh therefore selects every
+# Spark host the configuration names, independent of SPARK_COUNT, before
+# calling any stop helper. Duplicate names collapse to one host so a repeated
+# name is not contacted twice. Launch/restart callers leave RELEASE_STOP_HOSTS
+# unset and keep cleaning only the active ranks.
+release_select_stop_hosts() {
+  local name host seen_host index
+  local -a indices=() seen=()
+  RELEASE_STOP_HOSTS=()
+
+  # Enumerate every configured SPARK_<rank>_HOST variable, whatever its index.
+  # The configuration grammar (release_known_key) is the single authority on
+  # which ranks exist, so an out-of-grammar key is reported rather than
+  # skipped, and a future added rank needs no second hard-coded bound here.
+  for name in $(compgen -v SPARK_ 2>/dev/null || true); do
+    [[ "$name" =~ ^SPARK_[0-9]+_HOST$ ]] || continue
+    index="${name#SPARK_}"
+    index="${index%_HOST}"
+    [[ "$index" =~ ^(0|[1-9][0-9]*)$ ]] &&
+      release_known_key "$name" ||
+      release_die "unsupported Spark host key $name; stop cleanup follows the configured SPARK_<rank>_HOST grammar"
+    [[ -n "${!name:-}" ]] || continue
+    indices+=("$index")
+  done
+  ((${#indices[@]})) || return 0
+
+  while IFS= read -r index; do
+    name="SPARK_${index}_HOST"
+    host="${!name:-}"
+    for seen_host in ${seen[@]+"${seen[@]}"}; do
+      [[ "$host" != "$seen_host" ]] || { host=""; break; }
+    done
+    [[ -n "$host" ]] || continue
+    seen+=("$host")
+    RELEASE_STOP_HOSTS+=("$host")
+  done < <(printf '%s\n' "${indices[@]}" | sort -n)
+}
+
+# Emit the cleanup host set: every configured host once release_select_stop_hosts
+# has run, otherwise the active ranks for launch/restart callers.
+release_stop_hosts() {
+  if [[ -n "${RELEASE_STOP_HOSTS+x}" && "${#RELEASE_STOP_HOSTS[@]}" -gt 0 ]]; then
+    printf '%s\n' "${RELEASE_STOP_HOSTS[@]}"
+  else
+    release_spark_values HOST
+  fi
 }
 
 release_stop_local_container() {
@@ -572,7 +682,7 @@ release_stop_services() {
   local -a stop_hosts=()
   local -a stop_pids=()
   local -a active_hosts=()
-  mapfile -t active_hosts < <(release_spark_values HOST)
+  mapfile -t active_hosts < <(release_stop_hosts)
   for host in "${active_hosts[@]}"; do
     [[ -n "$host" ]] || continue
     release_container="${spark_container_prefix}-${host}-${EXPERT_PORT}"
@@ -634,7 +744,7 @@ release_stop_wip_containers() {
   local host
   local -a hosts=() pids=()
   local -a active_hosts=()
-  mapfile -t active_hosts < <(release_spark_values HOST)
+  mapfile -t active_hosts < <(release_stop_hosts)
   for host in "${active_hosts[@]}"; do
     [[ -n "$host" ]] || continue
     release_stop_persistent_remote_container "$host" "$spark_container" &
@@ -704,14 +814,18 @@ release_stop_wip_services() {
   local host
   local -a hosts=() pids=()
   local -a active_hosts=()
-  mapfile -t active_hosts < <(release_spark_values HOST)
+  mapfile -t active_hosts < <(release_stop_hosts)
   for host in "${active_hosts[@]}"; do
     [[ -n "$host" ]] || continue
     (
-      if ! ssh -o BatchMode=yes "$host" \
-        "test \"\$(docker inspect -f '{{.State.Running}}' '$spark_container' 2>/dev/null || true)\" = true"; then
-        exit 0
-      fi
+      # Distinguish an unreachable host from one that simply has no running
+      # WIP container. The remote command always exits 0 because of `|| true`,
+      # so a nonzero ssh status is a transport/remote-shell failure that must
+      # be reported instead of being swallowed as "nothing to stop".
+      state="$(ssh -o BatchMode=yes "$host" \
+        "docker inspect -f '{{.State.Running}}' '$spark_container' 2>/dev/null || true")" ||
+        exit 1
+      [[ "$state" == true ]] || exit 0
       ssh -o BatchMode=yes "$host" docker exec -i "$spark_container" \
         bash -s -- "$expert_process" <<'CONTAINER'
 set -euo pipefail
@@ -804,14 +918,17 @@ release_spark_first_layer() {
 # Native per-TP-rank routed weight for one 40-layer backbone layer, in bytes.
 # These are the exact tensor windows from the official checkpoint geometry:
 # 1,804,861,440 B/rank at TP4 raw, padded to a 640-wide kernel extent
-# (2,005,401,600 B); TP2 (1152) and TP3 (768) need no padding. They are weight
-# arithmetic only and do not include workspace, staging or runtime headroom.
+# (2,005,401,600 B); TP6 (384), TP2 (1152) and TP3 (768) need no padding, so
+# their values are the exact 2304/TP window times the uniform per-column cost
+# (1,804,861,440 * TP4/TP = 7,219,445,760 / TP). They are weight arithmetic only
+# and do not include workspace, staging or runtime headroom.
 release_spark_layer_bytes() {
   case "$1" in
     2) printf '%s\n' 3609722880 ;;
     3) printf '%s\n' 2406481920 ;;
     4) printf '%s\n' 2005401600 ;;
-    *) release_die "unsupported Spark TP degree: $1 (expected 2, 3, or 4)" ;;
+    6) printf '%s\n' 1203240960 ;;
+    *) release_die "unsupported Spark TP degree: $1 (expected 2, 3, 4, or 6)" ;;
   esac
 }
 

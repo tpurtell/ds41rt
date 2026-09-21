@@ -51,6 +51,16 @@ from b12x._lib.utils import current_cuda_stream  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 
+# One shard geometry per topology: the TP degree fixes how wide this rank's
+# slice is, so the per-rank intermediate comes with it. `tp6` is the pure
+# six-way split of the official 2304 (384 per rank, no padding); TP2/TP3 are the
+# replicated-group degrees and TP4 is the historical padded shard.
+TP_GEOMETRIES = ((2, 1152, "tp2"), (4, 576, "tp4"), (3, 768, "tp3"),
+                 (6, 384, "tp6"))
+# The slice kernel asserts width in (64, 128, 192); anything else cannot be
+# exported, so the harness must not silently accept it.
+SUPPORTED_SLICE_WIDTHS = (64, 128, 192)
+
 
 def _load_bench():
     path = ROOT / "python" / "tools" / "benchmark_v41_ep_groups.py"
@@ -896,11 +906,15 @@ def parse_args(argv=None):
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--topologies", default="tp2,tp3,tp4",
-                        help="comma list of tp2,tp3,tp4 (each implies its own "
-                             "per-rank intermediate: 1152 / 768 / 576)")
+                        help="comma list of tp2,tp3,tp4,tp6 (each implies its "
+                             "own per-rank intermediate: 1152 / 768 / 576 / 384; "
+                             "tp6 is the pure six-way split of the official 2304)")
     parser.add_argument("--ep-degree", type=int, choices=(1, 2, 3), default=1,
                         help="ownership groups; 1 = this rank owns everything")
-    parser.add_argument("--widths", default="192")
+    parser.add_argument("--widths", default="192",
+                        help="comma list of intermediate slice widths; each must "
+                             "be 64/128/192 and divide the topology's per-rank "
+                             "intermediate exactly (tp6 384 = 2*192 = 3*128 = 6*64)")
     parser.add_argument("--rows", default="1,2,8,16,80")
     parser.add_argument("--experts", type=int, default=8)
     parser.add_argument("--operands", choices=("synthetic", "checkpoint"),
@@ -967,6 +981,25 @@ def parse_args(argv=None):
         parser.error("rows must not exceed capacity")
     if options.operands == "checkpoint" and options.snapshot is None:
         parser.error("--operands checkpoint requires --snapshot")
+    # Width must be a real export tile (the slice kernel asserts 64/128/192) and
+    # must tile the topology's per-rank intermediate exactly, so a request that
+    # would need storage padding or an extra partial slice fails before any GPU
+    # work. TP6's 384 is 2*192, 3*128 and 6*64 -- all three tile exactly.
+    wanted = {t for t in options.topologies.split(",") if t}
+    if not wanted or not any(g[2] in wanted for g in TP_GEOMETRIES):
+        parser.error(f"no topology selected by --topologies {options.topologies!r}")
+    for width in options.widths:
+        if width not in SUPPORTED_SLICE_WIDTHS:
+            parser.error(
+                f"--widths must be {SUPPORTED_SLICE_WIDTHS}, got {width}")
+    for tp_degree, intermediate, tag in TP_GEOMETRIES:
+        if tag not in wanted:
+            continue
+        for width in options.widths:
+            if intermediate % width:
+                parser.error(
+                    f"--widths {width} does not tile {tag} per-rank intermediate "
+                    f"{intermediate} exactly (slices would leave a partial tile)")
     return options
 
 
@@ -1034,12 +1067,11 @@ def main(argv=None):
                "is not a full real expert bank"],
     )
     # One shard geometry per topology: TP degree fixes how wide this rank's
-    # slice is, so intermediate comes with it.
-    geometries = [(2, 1152, "tp2"), (4, 576, "tp4"), (3, 768, "tp3")]
+    # slice is, so intermediate comes with it. TP6 is the pure six-way split of
+    # the official 2304 and is the only geometry whose per-rank intermediate is
+    # 384 (no 128-alignment padding).
     wanted = {t for t in options.topologies.split(",") if t}
-    geometries = [g for g in geometries if g[2] in wanted]
-    if not geometries:
-        parser.error(f"no topology selected by --topologies {options.topologies!r}")
+    geometries = [g for g in TP_GEOMETRIES if g[2] in wanted]
     records = []
     for tp_degree, intermediate, tag in geometries:
         for width in options.widths:

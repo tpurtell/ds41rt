@@ -41,8 +41,9 @@ def load_file(path: Path, command: str = 'printf "%s\\n" "$SPARK_COUNT" "$SPARK_
 
 
 # Six placeholders are deliberate: REPLACE-ME-* is not resolvable and
-# 192.0.2.0/24 is the RFC 5737 documentation range. The base config's legacy
-# four-rank secondary rail is cleared so the six-rank rail stays all-or-none.
+# 192.0.2.0/24 is the RFC 5737 documentation range. The base config's secondary
+# rail is cleared for every active rank so the six-rank rail stays all-or-none
+# even though the shipped default now names all six Spark hosts.
 SIX_HOSTS = """\
 SPARK_4_HOST=REPLACE-ME-spark-4
 SPARK_5_HOST=REPLACE-ME-spark-5
@@ -52,6 +53,8 @@ SPARK_0_LANE_B=
 SPARK_1_LANE_B=
 SPARK_2_LANE_B=
 SPARK_3_LANE_B=
+SPARK_4_LANE_B=
+SPARK_5_LANE_B=
 """
 
 
@@ -80,6 +83,10 @@ class TopologyConfigTest(unittest.TestCase):
                 "0 0 0", "1 0 1", "2 1 0", "3 1 1", "4 2 0", "5 2 1",
             ],
             "SPARK_TP=4\nSPARK_EP=1\n": ["0 0 0", "1 0 1", "2 0 2", "3 0 3"],
+            # Pure unreplicated TP6: one group, six disjoint intermediate shards.
+            "SPARK_COUNT=6\nSPARK_TP=6\nSPARK_EP=1\n" + SIX_HOSTS: [
+                "0 0 0", "1 0 1", "2 0 2", "3 0 3", "4 0 4", "5 0 5",
+            ],
         }
         for overlay, expected in cases.items():
             with self.subTest(overlay=overlay):
@@ -124,7 +131,7 @@ class TopologyConfigTest(unittest.TestCase):
     def test_invalid_combinations_are_rejected(self) -> None:
         cases = {
             "SPARK_TP=2\nSPARK_EP=1\n": "must equal SPARK_COUNT",
-            "SPARK_TP=5\nSPARK_EP=2\n": "SPARK_TP must be 2, 3, or 4",
+            "SPARK_TP=5\nSPARK_EP=2\n": "SPARK_TP must be 2, 3, 4, or 6",
             "SPARK_EP=4\n": "SPARK_EP must be 1, 2, or 3",
             "SPARK_TP=2\n": "set together or omitted together",
             "SPARK_COUNT=6\nSPARK_TP=3\nSPARK_EP=3\n" + SIX_HOSTS: "must equal SPARK_COUNT",
@@ -182,12 +189,16 @@ class AdmissionTest(unittest.TestCase):
         )
 
     def test_exact_layer_bytes(self) -> None:
-        expected = {2: "3609722880", 3: "2406481920", 4: "2005401600"}
+        # TP6 stores the exact 2304/6 = 384 column slice with no padding, so its
+        # per-rank layer is exactly one sixth of the 7,219,445,760-byte
+        # six-column total and smaller than TP4's 640-padded extent.
+        expected = {2: "3609722880", 3: "2406481920", 4: "2005401600", 6: "1203240960"}
         for tp, value in expected.items():
             with self.subTest(tp=tp):
                 result = source_common('release_spark_layer_bytes "$1"', str(tp))
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(result.stdout.strip(), value)
+        self.assertLess(int(expected[6]), int(expected[4]))
         result = source_common('release_spark_layer_bytes 1')
         self.assertEqual(result.returncode, 2)
 
@@ -214,6 +225,27 @@ class AdmissionTest(unittest.TestCase):
         self.assertEqual(tp4.returncode, 0, tp4.stderr)
         self.assertIn(f"per_rank_weight_bytes={40 * 2005401600}", tp4.stdout)
 
+        # Pure TP6 is the roomiest layout: it fits all 40 remote layers' weights
+        # inside the 100 GiB default fallback with the largest residual. TP3
+        # (96.26 GB) and TP4 (80.2 GB padded) also fit; only TP2 cannot. Real
+        # workspace, staging and ring headroom remain unmeasured for all of them.
+        tp6 = self.report(0, 6)
+        self.assertEqual(tp6.returncode, 0, tp6.stderr)
+        self.assertIn("remote_layers=40", tp6.stdout)
+        self.assertIn(f"per_rank_weight_bytes={40 * 1203240960}", tp6.stdout)
+
+    def test_single_rtx_tp6_can_load_all_forty_layers_remote(self) -> None:
+        # A 1-RTX TP6 placement has no local routed layer, so every layer must be
+        # remote. Pure TP6 fits the tested six-host floor with a large margin.
+        first_layer = source_common('release_spark_first_layer 1 auto')
+        self.assertEqual(first_layer.stdout.strip(), "0")
+        admission = source_common('release_validate_spark_weight_admission 0 6 109119320064')
+        self.assertEqual(admission.returncode, 0, admission.stderr)
+        self.assertIn("remote_layers=40", admission.stdout)
+        self.assertIn(f"per_rank_weight_bytes={40 * 1203240960}", admission.stdout)
+        # The residual is real: 109,119,320,064 - 48,129,638,400.
+        self.assertIn("weight_margin_bytes=60989681664", admission.stdout)
+
     def test_dynamic_boundary_changes_the_verdict(self) -> None:
         # The same topology flips at the real boundary; no hardcoded 20.
         self.assertEqual(self.report(20, 2).returncode, 0)
@@ -227,6 +259,7 @@ class ExampleConfigTest(unittest.TestCase):
             "tp2ep2-native.config": ("4", "2", "2"),
             "tp3ep2-native.config": ("6", "3", "2"),
             "tp2ep3-native.config": ("6", "2", "3"),
+            "tp6ep1-native.config": ("6", "6", "1"),
         }
         self.assertEqual(
             sorted(path.name for path in EXAMPLES.glob("*.config")),
@@ -239,25 +272,25 @@ class ExampleConfigTest(unittest.TestCase):
                 self.assertEqual(tuple(result.stdout.splitlines()), geometry)
 
     def test_six_host_examples_use_the_connected_fifth_and_sixth_sparks(self) -> None:
-        for name in ("tp3ep2-native.config", "tp2ep3-native.config"):
+        for name in ("tp3ep2-native.config", "tp2ep3-native.config", "tp6ep1-native.config"):
             text = (EXAMPLES / name).read_text()
             self.assertIn("SPARK_4_HOST=rhea", text)
             self.assertIn("SPARK_5_HOST=moa", text)
-            # rhea/moa fabric A; the candidate launcher is single-rail A-only,
-            # so the six-host secondary rail stays unset.
+            # Both rails use matching host numbers on separate subnets;
+            # the candidate launcher still selects fabric A.
             self.assertIn("SPARK_4_LANE_A=10.55.0.5", text)
             self.assertIn("SPARK_5_LANE_A=10.55.0.6", text)
             self.assertIn("NOT RELEASE-QUALIFIED", text)
-            self.assertNotIn("SPARK_4_LANE_B=", text)
-            self.assertNotIn("SPARK_5_LANE_B=", text)
+            self.assertIn("SPARK_4_LANE_B=10.55.1.5", text)
+            self.assertIn("SPARK_5_LANE_B=10.55.1.6", text)
             self.assertNotIn("REPLACE-ME", text)
             self.assertNotIn("192.0.2.", text)
-        # The default config must not synthesize the fifth/sixth Sparks.
+        # The default config keeps the shipped four-rank serving selection; it
+        # names the connected fifth/sixth hosts so cleanup can reach them, but
+        # must not select them for launch.
         default = CONFIG.read_text()
-        self.assertNotIn("SPARK_4_HOST", default)
-        self.assertNotIn("SPARK_5_HOST", default)
-        self.assertNotIn("SPARK_4_LANE_A", default)
-        self.assertNotIn("SPARK_5_LANE_A", default)
+        self.assertIn("SPARK_COUNT=4", default)
+        self.assertNotIn("SPARK_TP=", default)
 
     def test_two_rtx_tp2ep2_example_is_opt_in_and_bound_to_real_hosts(self) -> None:
         text = (EXAMPLES / "tp2ep2-native.config").read_text()
@@ -423,6 +456,86 @@ SPARK_COUNT={spark_count}
         self.assertEqual([args[-7] for args in starts], ["6"] * 6)
         self.assertEqual([args[-6:-3] for args in starts], [["1", "2", "3"]] * 6)
 
+    def test_single_rtx_local_count_publishes_and_hands_off_five(self) -> None:
+        # The current official 1-RTX shape on an explicit topology: 5 local
+        # routed layers, so the coordinator publishes boundary 5 and every worker
+        # is started at --first-layer 5 instead of 0.
+        result, events = self.run_startup(
+            gpus=1,
+            plan=dict(version=1, rtx_gpus=1, nonce="fresh", rtx_expert_layers=5, spark_first_layer=5),
+            topology_explicit=1,
+            spark_tp=6,
+            spark_ep=1,
+            spark_count=6,
+            hosts=["a", "b", "c", "d", "e", "f"],
+            extra_setup="RTX_EXPERT_LAYERS=5\n",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        coordinator = next(args for tool, args in events if tool == "docker" and args[0] == "run")
+        self.assertIn("--placement-directory", coordinator)
+        self.assertEqual(coordinator[coordinator.index("--rtx-gpus") + 1], "1")
+        self.assertEqual(coordinator[coordinator.index("--rtx-expert-layers") + 1], "5")
+        self.assertEqual(coordinator[coordinator.index("--spark-tp") + 1], "6")
+        self.assertEqual(coordinator[coordinator.index("--spark-ep") + 1], "1")
+        starts = [args for tool, args in events if tool == "ssh" and "-s" in args]
+        self.assertEqual(len(starts), 6)
+        # Worker positional tail: ... first_layer world topology explicit,tp,ep
+        for args in starts:
+            self.assertEqual(args[-8], "5", args)
+            self.assertEqual(args[-7], "6")
+            self.assertEqual(args[-6:-3], ["1", "6", "1"])
+        # The boundary is acknowledged after the workers start.
+        acks = [args for tool, args in events if tool == "docker" and args[0] == "exec"]
+        self.assertTrue(any("ready.json" in " ".join(a) for a in acks), acks)
+
+    def test_single_rtx_all_remote_keeps_the_legacy_no_handoff_launch(self) -> None:
+        # RTX_EXPERT_LAYERS=0 has no local boundary to publish on one RTX.
+        result, events = self.run_startup(
+            gpus=1,
+            plan=dict(version=1, rtx_gpus=1, nonce="fresh", rtx_expert_layers=40, spark_first_layer=39),
+            topology_explicit=1,
+            spark_tp=6,
+            spark_ep=1,
+            spark_count=6,
+            hosts=["a", "b", "c", "d", "e", "f"],
+            extra_setup="RTX_EXPERT_LAYERS=0\n",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        coordinator = next(args for tool, args in events if tool == "docker" and args[0] == "run")
+        self.assertNotIn("--placement-directory", coordinator)
+        starts = [args for tool, args in events if tool == "ssh" and "-s" in args]
+        self.assertEqual(len(starts), 6)
+        for args in starts:
+            self.assertEqual(args[-8], "0", args)
+        acks = [args for tool, args in events if tool == "docker" and args[0] == "exec"]
+        self.assertFalse(any("ready.json" in " ".join(a) for a in acks), acks)
+
+    def test_single_rtx_invalid_or_missing_plan_fails_closed(self) -> None:
+        # A published boundary the launcher cannot trust must stop the launch;
+        # it must never start workers at a guessed layer.
+        for plan in (
+            dict(version=1, rtx_gpus=1, nonce="fresh", rtx_expert_layers=0, spark_first_layer=0),
+            dict(version=1, rtx_gpus=2, nonce="fresh", rtx_expert_layers=5, spark_first_layer=5),
+            dict(version=1, rtx_gpus=1, nonce="fresh", rtx_expert_layers=5, spark_first_layer=9),
+        ):
+            with self.subTest(plan=plan):
+                result, events = self.run_startup(
+                    gpus=1,
+                    plan=plan,
+                    topology_explicit=1,
+                    spark_tp=6,
+                    spark_ep=1,
+                    spark_count=6,
+                    hosts=["a", "b", "c", "d", "e", "f"],
+                    extra_setup="RTX_EXPERT_LAYERS=5\n",
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("placement plan", result.stderr)
+                self.assertFalse(
+                    [args for tool, args in events if tool == "ssh" and "-s" in args],
+                    "no worker may start from an untrusted plan",
+                )
+
     def test_worker_remote_block_emits_flags_only_when_explicit(self) -> None:
         source = (ROOT / "run.sh").read_text()
         _, remote = source.split("echo \"== starting native Spark experts ==\"", 1)[1].split("<<'REMOTE' &", 1)
@@ -509,6 +622,9 @@ class StopScriptTest(unittest.TestCase):
         text = (ROOT / "stop.sh").read_text()
         self.assertNotIn("coordinator and four", text)
         self.assertIn("configured Spark rank", text)
+        # Cleanup must not be advertised as bounded by the active rank count.
+        self.assertIn("regardless of SPARK_COUNT", text)
+        self.assertIn("superset of the", text)
 
     def test_release_stop_services_covers_six_configured_hosts(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -713,13 +829,37 @@ class BuildScopeTest(unittest.TestCase):
         release = (ROOT / "run.sh").read_text()
         self.assertIn('--argjson gpus "$RELEASE_RTX_GPUS"', release)
         self.assertIn(".rtx_gpus == $gpus", release)
-        # Single-RTX placement remains held for the daemon boot-order refactor.
-        self.assertIn("((RELEASE_RTX_GPUS != 2)) || placement_directory=/run/ds41rt-placement", release)
+        # A dual-RTX launch always publishes a placement plan; a single-RTX
+        # explicit topology does so only for an explicit local count in 1..=39,
+        # because `auto`/`0` have no local boundary to hand off. Standalone `0`
+        # and the legacy default keep the historical no-handoff launch.
+        self.assertIn("((RELEASE_RTX_GPUS == 2)) || { ((topology_explicit)) && [[ -n \"$release_local_expert_count\" ]]; }", release)
+        self.assertIn('^([1-9]|[1-3][0-9])$', release)
+        self.assertIn("handoff", release)
+        # The boundary acknowledgement must not be gated on the RTX count alone.
+        self.assertIn('if [[ -n "$placement_directory" ]]; then', release)
+        self.assertNotIn("((RELEASE_RTX_GPUS == 2)); then\n  docker exec \"$coordinator\" sh -c 'cp", release)
 
     def test_shared_config_has_no_topology_to_rtx_hardcode(self) -> None:
         common = (ROOT / "scripts/release-common.sh").read_text()
         self.assertNotIn("one-RTX layout", common)
         self.assertNotIn("two-RTX layout", common)
+
+    def test_adaptive_cost_mode_reaches_the_coordinator_container(self) -> None:
+        # The mode is resolved from the process environment at startup, so an
+        # explicitly pinned model must be passed into the coordinator container;
+        # it is opt-in and adds nothing when unset.
+        release = (ROOT / "run.sh").read_text()
+        self.assertIn("DS41RT_ADAPTIVE_COST_MODE", release)
+        loop = release[release.index("rdma_env_args=()"):]
+        loop = loop[:loop.index("done")]
+        self.assertIn("DS41RT_ADAPTIVE_COST_MODE", loop)
+        # The worker positional argument vector is unchanged: the knob is read by
+        # whichever role builds the transport, and widening the positional list
+        # would shift every existing worker argument.
+        worker = release[release.index("set -euo pipefail\nimage=\"$1\""):]
+        worker = worker[:worker.index("REMOTE\n")]
+        self.assertNotIn("adaptive_cost_mode", worker)
 
     def test_run_wip_rejects_replicated_wire_on_the_legacy_backend(self) -> None:
         launcher = (ROOT / "scripts/run-wip.sh").read_text()
@@ -966,15 +1106,25 @@ class CandidateLauncherTest(unittest.TestCase):
         self.assertIn("requires explicit SPARK_TP", result.stderr)
 
     def test_examples_never_use_the_stale_secondary_rail(self) -> None:
-        self.assertIn("SPARK_0_LANE_B=10.55.0.5", CONFIG.read_text())  # default unchanged
+        # The shipped default now carries the corrected six-host rail, so no
+        # address names rhea/moa fabric A by accident.
+        default = CONFIG.read_text()
+        for stale in ("SPARK_0_LANE_B=10.55.0.5", "SPARK_1_LANE_B=10.55.0.6"):
+            self.assertNotIn(stale, default)
+        for corrected in (
+            "SPARK_0_LANE_B=10.55.1.1", "SPARK_1_LANE_B=10.55.1.2",
+            "SPARK_2_LANE_B=10.55.1.3", "SPARK_3_LANE_B=10.55.1.4",
+            "SPARK_4_LANE_B=10.55.1.5", "SPARK_5_LANE_B=10.55.1.6",
+        ):
+            self.assertIn(corrected, default)
         for name in ("tp2ep2-native.config", "tp4ep1-explicit-native.config"):
             text = (EXAMPLES / name).read_text()
             self.assertNotIn("SPARK_0_LANE_B=10.55.0.5", text)
             self.assertNotIn("SPARK_1_LANE_B=10.55.0.6", text)
-            self.assertIn("SPARK_0_LANE_B=10.55.0.7", text)
-            self.assertIn("SPARK_1_LANE_B=10.55.0.8", text)
-            self.assertIn("SPARK_2_LANE_B=10.55.0.9", text)
-            self.assertIn("SPARK_3_LANE_B=10.55.0.10", text)
+            self.assertIn("SPARK_0_LANE_B=10.55.1.1", text)
+            self.assertIn("SPARK_1_LANE_B=10.55.1.2", text)
+            self.assertIn("SPARK_2_LANE_B=10.55.1.3", text)
+            self.assertIn("SPARK_3_LANE_B=10.55.1.4", text)
 
     def candidate(self, root: Path, *args: str, scenario: str = "normal",
                   env_extra: dict | None = None) -> subprocess.CompletedProcess[str]:

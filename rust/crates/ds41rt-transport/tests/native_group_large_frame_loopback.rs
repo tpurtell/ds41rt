@@ -396,9 +396,10 @@ async fn native_group_large_frame_wire_loopback_ep1() -> Result<()> {
         .and_then(|value| value.parse().ok())
         .unwrap_or(4);
     let topology = match ranks {
+        6 => V41SparkTopology::NATIVE_TP6_EP1,
         4 => V41SparkTopology::NATIVE_TP4_EP1,
         2 => V41SparkTopology::NATIVE_TP2_EP1,
-        other => bail!("loopback ranks must be 4 (TP4EP1) or 2 (TP2EP1), got {other}"),
+        other => bail!("loopback ranks must be 6 (TP6EP1), 4 (TP4EP1) or 2 (TP2EP1), got {other}"),
     };
     ensure!(topology.world_size() == ranks);
 

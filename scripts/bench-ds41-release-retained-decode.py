@@ -35,6 +35,103 @@ def compact_result(result: dict) -> dict:
     return result
 
 
+# The retained parent turn is a bounded, deterministic primer ("reply only OK").
+# 16 is the historical budget and stays the DEFAULT so existing consumers are
+# unchanged; a larger value is an explicit protocol change recorded in the
+# report's prime_protocol metadata.
+DEFAULT_DISABLED_PRIME_MAX_TOKENS = 16
+ENABLED_PRIME_MAX_TOKENS = 1024
+PRIME_TEXT_HEAD_CHARS = 200
+PRIME_ERROR_CHARS = 400
+
+
+def positive_int(raw: str) -> int:
+    """argparse type: a strictly positive token budget (no zero, no negative)."""
+    value = int(raw)
+    if value < 1:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return value
+
+
+def prime_protocol(disabled_max_tokens: int) -> dict:
+    """Protocol metadata so a budget change is visible in every report."""
+    return {
+        "disabled_max_tokens": disabled_max_tokens,
+        "enabled_max_tokens": ENABLED_PRIME_MAX_TOKENS,
+        "version": f"retained-prime-v1.disabled{disabled_max_tokens}",
+        "historical_default": DEFAULT_DISABLED_PRIME_MAX_TOKENS,
+    }
+
+
+def prime_failure_reason(result: dict, context: int) -> str | None:
+    """None when the retained parent turn is usable, else a short reason.
+
+    Strict, unchanged conditions: the parent must stop on its own, be non-empty,
+    and the server must agree with the fitted context token count. Callers still
+    verify the child's cache frontier (`hit in parent_frontiers`) separately.
+    """
+    if result.get("finish_reason") != "stop":
+        return f"finish_reason={result.get('finish_reason')!r}"
+    if not (result.get("text") or "").strip():
+        return "empty parent answer"
+    if result.get("usage", {}).get("prompt_tokens") != context:
+        return "server disagrees with fitted context token count"
+    return None
+
+
+def prime_failure_diagnostics(result: dict, *, context: int, thinking: str,
+                              max_tokens: int, reason: str) -> dict:
+    """Bounded failure record; text is truncated, never re-used as a parent."""
+    usage = result.get("usage") or {}
+    return {
+        "context_tokens": context,
+        "thinking": thinking,
+        "max_tokens": max_tokens,
+        "reason": reason,
+        "finish_reason": result.get("finish_reason"),
+        "prompt_tokens": usage.get("prompt_tokens"),
+        "completion_tokens": usage.get("completion_tokens"),
+        "text_head": (result.get("text") or "")[:PRIME_TEXT_HEAD_CHARS],
+    }
+
+
+def prime_error_diagnostics(error: BaseException, *, context: int, thinking: str,
+                            max_tokens: int) -> dict:
+    """Bounded transport/HTTP failure record for the same abort path."""
+    return {
+        "context_tokens": context,
+        "thinking": thinking,
+        "max_tokens": max_tokens,
+        "reason": "request failed",
+        "error": repr(error)[:PRIME_ERROR_CHARS],
+    }
+
+
+def cache_failure_diagnostics(usage: dict, *, context: int, case_id: str, repeat: int,
+                              parent_frontiers: list[int]) -> dict:
+    """Bounded record for a child whose cached prefix is not a parent frontier.
+
+    `hit + miss == prompt_tokens` is accounting self-consistency only; it does
+    NOT prove the child reused the parent turn. The observed hit, the miss and
+    the allowed frontiers are kept so the mismatch stays diagnosable without
+    loosening the identity gate.
+    """
+    hit = usage.get("prompt_cache_hit_tokens")
+    miss = usage.get("prompt_cache_miss_tokens")
+    return {
+        "context_tokens": context,
+        "case": case_id,
+        "repeat": repeat,
+        "reason": "cache accounting failed",
+        "prompt_tokens": usage.get("prompt_tokens"),
+        "cached_tokens": hit,
+        "miss_tokens": miss,
+        "allowed_parent_frontiers": list(parent_frontiers),
+        "accounting_consistent": hit is not None and miss is not None
+                                 and hit + miss == usage.get("prompt_tokens"),
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
@@ -52,6 +149,13 @@ def main() -> None:
     )
     parser.add_argument("--context", type=int, action="append")
     parser.add_argument("--repeats", type=int, default=2)
+    parser.add_argument(
+        "--disabled-prime-max-tokens", type=positive_int,
+        default=DEFAULT_DISABLED_PRIME_MAX_TOKENS,
+        help="Bounded token budget for the thinking-disabled retained parent turn. "
+             "The historical default is 16; passing a larger value (e.g. 64) changes "
+             "the retained prime protocol and is recorded in report['prime_protocol']",
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.output.exists():
@@ -92,7 +196,9 @@ def main() -> None:
         "started_ns": time.time_ns(),
         "primes": [],
         "samples": [],
-        "passed": False,
+        "status": "running",
+        "passed": None,
+        "prime_protocol": prime_protocol(args.disabled_prime_max_tokens),
     }
 
     def save() -> None:
@@ -123,12 +229,28 @@ def main() -> None:
             seed_request["thinking"] = {"type": thinking}
             if effort:
                 seed_request["reasoning_effort"] = effort
-            seed_request["max_tokens"] = 1024 if thinking == "enabled" else 16
-            seed = compact_result(api["stream_case"](args.base_url, seed_request))
-            if seed["usage"]["prompt_tokens"] != context:
-                raise RuntimeError("server disagrees with fitted context token count")
-            if seed["finish_reason"] != "stop" or not seed["text"].strip():
-                raise RuntimeError("retained parent did not finish its answer")
+            seed_request["max_tokens"] = (
+                ENABLED_PRIME_MAX_TOKENS if thinking == "enabled"
+                else args.disabled_prime_max_tokens)
+            try:
+                seed = compact_result(api["stream_case"](args.base_url, seed_request))
+            except Exception as error:
+                report.setdefault("prime_failures", []).append(
+                    prime_error_diagnostics(
+                        error, context=context, thinking=thinking,
+                        max_tokens=seed_request["max_tokens"]))
+                report["status"] = "aborted"
+                save()
+                raise
+            reason = prime_failure_reason(seed, context)
+            if reason:
+                report.setdefault("prime_failures", []).append(
+                    prime_failure_diagnostics(
+                        seed, context=context, thinking=thinking,
+                        max_tokens=seed_request["max_tokens"], reason=reason))
+                report["status"] = "aborted"
+                save()
+                raise RuntimeError(f"retained parent did not finish its answer: {reason}")
             assistant = {"role": "assistant", "content": seed["text"]}
             if thinking == "enabled":
                 assistant["reasoning_content"] = seed["reasoning"]
@@ -192,7 +314,19 @@ def main() -> None:
                 }
                 report["samples"].append(sample)
                 save()
-                result = compact_result(api["stream_case"](args.base_url, request))
+                try:
+                    result = compact_result(api["stream_case"](args.base_url, request))
+                except Exception as error:
+                    report.setdefault("sample_failures", []).append({
+                        "context_tokens": context,
+                        "case": case_id,
+                        "repeat": repeat,
+                        "reason": "request failed",
+                        "error": repr(error)[:PRIME_ERROR_CHARS],
+                    })
+                    report["status"] = "aborted"
+                    save()
+                    raise
                 if definition.get("thinking") == "enabled" and not result["reasoning"].strip():
                     raise RuntimeError("requested reasoning was missing")
                 usage = result["usage"]
@@ -220,6 +354,12 @@ def main() -> None:
                 )
                 save()
                 if not cache_valid:
+                    report.setdefault("sample_failures", []).append(
+                        cache_failure_diagnostics(
+                            usage, context=context, case_id=case_id, repeat=repeat,
+                            parent_frontiers=parent_frontiers))
+                    report["status"] = "aborted"
+                    save()
                     raise RuntimeError(
                         f"cache accounting failed for {context}/{case_id}/{repeat}: {usage}"
                     )
@@ -276,6 +416,7 @@ def main() -> None:
             }
         )
     report["completed_ns"] = time.time_ns()
+    report["status"] = "complete"
     report["passed"] = all(row["passed"] for row in report["samples"])
     report["objective_checks_passed"] = all(
         row["objective_checks_passed"] is not False for row in report["samples"]

@@ -9,6 +9,7 @@ capture cannot pass against fabricated evidence.
 """
 from __future__ import annotations
 
+import json
 import os
 import stat
 import subprocess
@@ -42,7 +43,9 @@ if [[ "${1:-}" == "exec" ]]; then
     exit 0                                   # wip-process existence check: exists
   fi
   if [[ "${cmd[0]:-}" == "cat" ]]; then
-    echo '{"version":1,"rtx_gpus":2,"nonce":"n","rtx_expert_layers":20,"spark_first_layer":20}'; exit 0
+    # The published plan must echo the launch's own layout; the harness writes
+    # that JSON to FAKE_PLAN_FILE so this fake never has to build JSON in shell.
+    cat "${FAKE_PLAN_FILE:?}"; exit 0
   fi
   for token in "${cmd[@]}"; do [[ "$token" == "status" ]] && { echo "running 4321"; exit 0; }; done
   exit 0
@@ -71,7 +74,10 @@ case "$remote" in
       ostrich) rank=0 ;; dodo) rank=1 ;; emu) rank=2 ;;
       kiwi) rank=3 ;; rhea) rank=4 ;; moa) rank=5 ;; *) rank=9 ;;
     esac
-    echo "native local RoCE expert worker ready rank=$rank world=6 first_layer=20"
+    # Structured startup evidence, ANSI-decorated like the real log, plus the
+    # stale-line variants that must NOT satisfy the readiness wait.
+    printf 'INFO ds41rt: \033[2mnative local RoCE expert worker ready\033[0m rank=%s world=6 \033[3mrole\033[0m=%s \033[3mintermediate\033[0m=%s first_layer=%s\n' \
+      "$rank" "${FAKE_WORKER_ROLE:-7}" "${FAKE_WORKER_INTERMEDIATE:-384}" "${FAKE_WORKER_LOG_FIRST:-20}"
     echo "native local RoCE expert worker ready rank=$rank world=6 first_layer=0"
     # Real behaviour: the endpoint (and its GID line) exists only after a client
     # connection, and the line is timing-gated by the forwarded diagnostic flag.
@@ -103,10 +109,16 @@ def _fake_bin(tmp_path) -> Path:
     return bin_dir
 
 
-def _start_env(bin_dir: Path, log: Path) -> dict:
+def _start_env(bin_dir: Path, log: Path, rtx_gpus: int = 2, layers: int = 20, first: int = 20) -> dict:
     env = dict(os.environ)
     env["PATH"] = f"{bin_dir}:{env['PATH']}"
     env["FAKE_LOG"] = str(log)
+    # The fake coordinator publishes a plan matching the launch under test.
+    plan_file = log.parent / "fake-plan.json"
+    plan_file.write_text(json.dumps(dict(version=1, rtx_gpus=rtx_gpus, nonce="fresh",
+                                         rtx_expert_layers=layers, spark_first_layer=first)))
+    env["FAKE_PLAN_FILE"] = str(plan_file)
+    env["FAKE_WORKER_LOG_FIRST"] = str(first)
     env["DS41RT_TPEP_L3_GRANT"] = "1"
     env["DS41RT_TPEP_WORKER_READY_TIMEOUT_SECONDS"] = "20"
     env["DS41RT_SPARKINFER_SOURCE_DIR"] = "/workspace/ds41rt/third_party/sparkinfer"
@@ -138,7 +150,7 @@ def test_plan_renders_ordered_six_rank_lifecycle() -> None:
     experts = [line for line in dual.splitlines() if line.startswith("CMD expert-")]
     assert len(experts) == 6
     assert all(f"ssh -o BatchMode=yes {host} " in line for line, host in zip(experts, HOSTS))
-    assert "10.55.0.12:29441" in dual and "10.55.0.6:29441" not in dual
+    assert "10.55.0.6:29441" in dual and "10.55.0.12:29441" not in dual
 
     single = _plan("site-1rtx6-tp3ep2.config", 1)
     single_steps = [line for line in single.splitlines() if line.startswith("STEP ")]
@@ -164,6 +176,11 @@ def test_six_wrapper_rejects_bad_fixture_inputs(tmp_path) -> None:
         "arm-1rtx-tp2ep3": (base.replace("SPARK_TP=3", "SPARK_TP=2").replace("SPARK_EP=2", "SPARK_EP=3")
                             .replace("RTX_GPUS=2", "RTX_GPUS=1").replace("RTX_EXPERT_LAYERS=20", "RTX_EXPERT_LAYERS=0"),
                             "approved six-rank arms"),
+        # A two-shard or non-unity-group TP6 combination is not a supported arm.
+        "arm-tp6ep2": (base.replace("SPARK_TP=3", "SPARK_TP=6"),
+                       "must be 6"),
+        "arm-tp6ep3": (base.replace("SPARK_TP=3", "SPARK_TP=6").replace("SPARK_EP=2", "SPARK_EP=3"),
+                       "must be 6"),
         "missing-count": (base.replace("SPARK_COUNT=6\n", ""), "SPARK_COUNT must be 6"),
     }
     for name, (text, expected) in cases.items():
@@ -177,14 +194,17 @@ def test_six_wrapper_rejects_bad_fixture_inputs(tmp_path) -> None:
     assert not log.exists() or log.read_text() == "", "a rejected config must send no remote command"
 
 
-def _mock_start(tmp_path, config: str, rtx_gpus: int, first_layer: int, run_id: str, tcp_timing: bool):
+def _mock_start(tmp_path, config: str, rtx_gpus: int, first_layer: int, run_id: str, tcp_timing: bool,
+                plan_layers: int | None = None):
     bin_dir, log = _fake_bin(tmp_path), tmp_path / "calls.log"
     command = ["bash", str(WRAPPER), "start", "--config", str(FIX / config), "--rtx-gpus", str(rtx_gpus),
                "--first-layer", str(first_layer), "--run-id", run_id, "--host-device-map", DEVICE_MAP,
                "--host-artifact-root", str(ROOT / "runs" / "tp-ep-six")]
     if tcp_timing:
         command += ["--tcp-timing", "1"]
-    result = subprocess.run(command, capture_output=True, text=True, cwd=ROOT, env=_start_env(bin_dir, log))
+    layers = plan_layers if plan_layers is not None else first_layer
+    result = subprocess.run(command, capture_output=True, text=True, cwd=ROOT,
+                            env=_start_env(bin_dir, log, rtx_gpus, layers, first_layer))
     calls = [line.replace("\\", "") for line in log.read_text().splitlines()] if log.exists() else []
     launches = [line for line in calls if "exec -d" in line
                 and ("candidate-coordinator-18000" in line or "candidate-expert-29441" in line)]
@@ -247,5 +267,61 @@ def test_mock_start_single_arm_orders_workers_first(tmp_path) -> None:
     binding = ROOT / "runs" / "tp-ep-six" / "gid-binding-mocksingle.txt"
     assert binding.exists() and "gid_index=5" in binding.read_text()
     binding.unlink()
+    for path in (tmp_path / "calls.log.connected", tmp_path / "calls.log.timing"):
+        path.unlink(missing_ok=True)
+
+
+# 6b. Single-RTX explicit-topology TP6 with local routed layers: the coordinator
+#     must publish a plan, be started exactly ONCE, start workers at the published
+#     boundary, and acknowledge exactly one plan. This is the case where gating the
+#     ack on rtx_gpus == 2 double-started the coordinator and never acknowledged.
+def test_mock_start_single_rtx_local_count_acknowledges_once(tmp_path) -> None:
+    result, calls, launches = _mock_start(tmp_path, "site-1rtx6-tp6ep1.config", 1, 5, "mocktp6local", True)
+    assert result.returncode == 0, result.stderr
+    assert len(launches) == 7, launches
+    # With a handoff the coordinator starts first (to publish the plan) and the
+    # workers follow at the published boundary.
+    coordinator = next(line for line in launches if "candidate-coordinator" in line)
+    workers = [line for line in launches if "candidate-expert" in line]
+    assert len(workers) == 6, launches
+    assert launches.index(coordinator) < launches.index(workers[0]), launches
+    assert "--rtx-gpus 1" in coordinator
+    assert "--rtx-expert-layers 5" in coordinator
+    assert "--placement-directory" in coordinator
+    assert "--spark-tp 6" in coordinator and "--spark-ep 1" in coordinator
+    for index, line in enumerate(workers):
+        assert line.startswith("ssh ") and HOSTS[index] in line
+        assert f"--rank {index} " in line and "--world 6" in line and "--first-layer 5" in line
+        assert "--spark-tp 6" in line and "--spark-ep 1" in line
+    # Exactly one coordinator start for the whole run.
+    starts = [line for line in calls if "exec -d" in line and "candidate-coordinator-18000" in line]
+    assert len(starts) == 1, starts
+    # Exactly one plan acknowledgement, and it happens after the workers start.
+    acks = [line for line in calls if "ready.json" in line and "plan.json" in line]
+    assert len(acks) == 1, acks
+    first_request = calls.index(next(line for line in calls if "/v1/chat/completions" in line))
+    assert calls.index(workers[-1]) < calls.index(acks[0]) < first_request
+    binding = ROOT / "runs" / "tp-ep-six" / "gid-binding-mocktp6local.txt"
+    binding.unlink(missing_ok=True)
+    for path in (tmp_path / "calls.log.connected", tmp_path / "calls.log.timing"):
+        path.unlink(missing_ok=True)
+
+
+# 6. Pure unreplicated TP6 (SPARK_TP=6 SPARK_EP=1) is an approved six-rank arm:
+#    six disjoint intermediate slices of every expert, one unreplicated group.
+def test_tp6_dual_arm_is_approved_and_forwards_the_pure_topology(tmp_path) -> None:
+    result, calls, launches = _mock_start(tmp_path, "site-2rtx6-tp6ep1.config", 2, 20, "mocktp6", True)
+    assert result.returncode == 0, result.stderr
+    assert len(launches) == 7, launches
+    coordinator, experts = launches[0], launches[1:]
+    assert "--spark-tp 6" in coordinator and "--spark-ep 1" in coordinator
+    assert "--rtx-expert-layers 20" in coordinator and "--world 6" not in coordinator
+    for index, line in enumerate(experts):
+        assert line.startswith("ssh ") and HOSTS[index] in line
+        assert f"--rank {index} " in line and "--world 6" in line
+        assert "--spark-tp 6" in line and "--spark-ep 1" in line
+        assert "--first-layer 20" in line
+    binding = ROOT / "runs" / "tp-ep-six" / "gid-binding-mocktp6.txt"
+    binding.unlink(missing_ok=True)
     for path in (tmp_path / "calls.log.connected", tmp_path / "calls.log.timing"):
         path.unlink(missing_ok=True)

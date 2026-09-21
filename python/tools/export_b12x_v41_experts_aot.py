@@ -229,17 +229,17 @@ def export_input_quantizer(output_dir: Path, manifest: dict) -> None:
 
 
 # Roles served by the SM121 Spark expert family. `spark` is the historical TP4
-# shard; `spark_tp2`/`spark_tp3` are the replicated-group TP shards. The degree
-# is a plan-time role property, never derived from live rows.
-SPARK_ROLES = ("spark", "spark_tp2", "spark_tp3")
-SPARK_TP_DEGREES = {"spark": 4, "spark_tp2": 2, "spark_tp3": 3}
+# shard; `spark_tp2`/`spark_tp3`/`spark_tp6` are the replicated-group TP shards.
+# The degree is a plan-time role property, never derived from live rows.
+SPARK_ROLES = ("spark", "spark_tp2", "spark_tp3", "spark_tp6")
+SPARK_TP_DEGREES = {"spark": 4, "spark_tp2": 2, "spark_tp3": 3, "spark_tp6": 6}
 
 
 def export(output_dir: Path, role: str, rows: tuple[int, ...], input_format: str = "bf16", compact_live_rows: int | None = None) -> None:
     if input_format not in ("bf16", "fp8_k32") or (role not in SPARK_ROLES and input_format != "bf16"):
         raise ValueError("FP8 K32 input is supported only for Spark backbone experts")
-    if role in ("spark_tp2", "spark_tp3") and input_format != "fp8_k32":
-        raise ValueError("Spark TP2/TP3 use the native FP8 K32 slice export only")
+    if role in ("spark_tp2", "spark_tp3", "spark_tp6") and input_format != "fp8_k32":
+        raise ValueError("Spark TP2/TP3/TP6 use the native FP8 K32 slice export only")
     if compact_live_rows is not None and (role not in SPARK_ROLES or input_format != "fp8_k32"):
         raise ValueError("compact dispatch requires native FP8 Spark experts")
     if role == "coordinator":
@@ -409,7 +409,7 @@ def export(output_dir: Path, role: str, rows: tuple[int, ...], input_format: str
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--role", choices=("spark", "spark_tp2", "spark_tp3", "coordinator"), required=True)
+    parser.add_argument("--role", choices=("spark", "spark_tp2", "spark_tp3", "spark_tp6", "coordinator"), required=True)
     parser.add_argument("--rows", default="1,16,80,256,1024,4096")
     parser.add_argument("--input-format", choices=("bf16", "fp8_k32"), default="bf16")
     parser.add_argument("--compact-live-rows", type=int, help="Experimental Spark live-row compact cutoff")

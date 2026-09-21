@@ -21,6 +21,17 @@ impl<'a> Weights<'a> {
             Self::Exl3(weights) => weights.len(),
         }
     }
+    /// Logical intermediate values this worker loaded per expert, reported as
+    /// part of the structured startup evidence. `None` when nothing is resident
+    /// (an all-remote worker), where the value would be a claim, not a fact.
+    pub(super) fn intermediate(&self) -> Option<usize> {
+        match self {
+            Self::Full(weights) => weights.first().map(|weight| weight.intermediate()),
+            // EXL3 packs its own tiered layout; the logical intermediate is the
+            // checkpoint's own value, reported by the EXL3 weights themselves.
+            Self::Exl3(_) => None,
+        }
+    }
     pub(super) fn execution(
         &self,
         library: &'a NativeLibrary,

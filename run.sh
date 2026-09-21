@@ -101,6 +101,7 @@ if ((topology_explicit)); then
   case "$spark_tp" in
     2) spark_tp_roles_required=tp2 ;;
     3) spark_tp_roles_required=tp3 ;;
+    6) spark_tp_roles_required=tp6 ;;
   esac
 fi
 [[ -z "$HTTP_QUEUE_DEPTH" || ( "$HTTP_QUEUE_DEPTH" =~ ^[1-9][0-9]*$ && "$HTTP_QUEUE_DEPTH" -le 4096 ) ]] || release_die "HTTP_QUEUE_DEPTH must be in 1..4096"
@@ -229,7 +230,13 @@ gpu_uuid_csv="$(IFS=,; echo "${release_gpu_uuids[*]}")"
 gpu_index_csv="$(IFS=,; echo "${release_gpu_indices[*]}")"
 gpu_pci_csv="$(IFS=,; echo "${release_gpu_pci[*]}")"
 spark_first_layer="$(release_spark_first_layer "$RELEASE_RTX_GPUS" "$RTX_EXPERT_LAYERS")"
-if ((RELEASE_RTX_GPUS == 2)) && [[ "$RTX_EXPERT_LAYERS" == auto ]]; then spark_first_layer=runtime-plan; fi
+# A dual-RTX auto boundary, and a single-RTX explicit topology with an explicit
+# local count, are published by the coordinator; the weight-only admission below
+# must not pretend a boundary it has not read yet.
+if { ((RELEASE_RTX_GPUS == 2)) && [[ "$RTX_EXPERT_LAYERS" == auto ]]; } ||
+   { ((RELEASE_RTX_GPUS == 1)) && [[ "$RTX_EXPERT_LAYERS" =~ ^([1-9]|[1-3][0-9])$ ]]; }; then
+  spark_first_layer=runtime-plan
+fi
 # Admission against the resolved boundary. Weight-only is all the launcher can
 # know before the expert service reports its workspace; a pass is not a
 # launch-feasibility claim. An auto dual boundary is published by the
@@ -370,17 +377,24 @@ cleanup() {
 trap cleanup EXIT
 
 placement_directory=
-# Only the dual-RTX path publishes a placement plan today. The daemon rejects a
-# single-RTX placement and connects workers before its local plan, so a
-# single-RTX explicit topology (TP3EP2) loads all 40 remote layers and must not
-# wait for a plan. Revisit with the coordinated boot-ordering refactor.
-((RELEASE_RTX_GPUS != 2)) || placement_directory=/run/ds41rt-placement
+# A placement plan is needed whenever the coordinator keeps local routed experts
+# the workers must not also reserve. The dual-RTX path always does; an explicit
+# topology on ONE RTX does when it is given an explicit local count in 1..=39.
+# `auto` and `0` have no local boundary to publish on 1 RTX and keep the legacy
+# no-handoff launch, so the legacy TP4 default and the 2-RTX auto handoff are
+# unchanged. The daemon computes the real boundary from the local device only; it
+# does not read or connect the remote transport to do so.
+release_local_expert_count=""
+if [[ "$RTX_EXPERT_LAYERS" =~ ^([1-9]|[1-3][0-9])$ ]]; then release_local_expert_count="$RTX_EXPERT_LAYERS"; fi
+if ((RELEASE_RTX_GPUS == 2)) || { ((topology_explicit)) && [[ -n "$release_local_expert_count" ]]; }; then
+  placement_directory=/run/ds41rt-placement
+fi
 
 # Optional RDMA tuning values travel to both roles only when the operator sets
 # them, so a multi-homed six-rank launch can pin the rail without changing any
 # default. Values were format-checked above by release_validate_verbs_device_map.
 rdma_env_args=()
-for rdma_env_name in DS41RT_PROTOCOL_V2_VERBS_HOST_DEVICE_MAP DS41RT_VERBS_APP_IB_PORT_NUM DS41RT_PROTOCOL_V2_VERBS_HOST_EXECUTION_LANES; do
+for rdma_env_name in DS41RT_PROTOCOL_V2_VERBS_HOST_DEVICE_MAP DS41RT_VERBS_APP_IB_PORT_NUM DS41RT_PROTOCOL_V2_VERBS_HOST_EXECUTION_LANES DS41RT_ADAPTIVE_COST_MODE; do
   [[ -n "${!rdma_env_name:-}" ]] && rdma_env_args+=(-e "$rdma_env_name=${!rdma_env_name}")
 done
 
@@ -457,7 +471,11 @@ rdma_args=()
 [[ -z "$ib_port" ]] || rdma_args+=(-e "DS41RT_VERBS_APP_IB_PORT_NUM=$ib_port")
 [[ -z "$execution_lanes" ]] || rdma_args+=(-e "DS41RT_PROTOCOL_V2_VERBS_HOST_EXECUTION_LANES=$execution_lanes")
 hf_home="${HF_HOME:-$HOME/.cache/huggingface}"
-docker run -d --name "$name" --restart no --gpus all --network host --ipc host --ulimit memlock=-1:-1 --device=/dev/infiniband -e "DS41RT_RELEASE_CONFIG_SHA256=$fingerprint" "${rdma_args[@]}" -v "$hf_home:/root/.cache/huggingface:ro" "$image" ds41rt expertd-native --snapshot "/root/.cache/huggingface/$snapshot_rel" --native-lib /opt/ds41rt/lib/libds41rt_native.so --rank "$rank" --world "$world" --capacity "$capacity" --device-budget-bytes "$budget" --first-layer "$first_layer" --listen "0.0.0.0:$port" "${topology_args[@]}" >/dev/null
+# A fixed INFO default makes the worker's structured startup evidence
+# (`rank`/`world`/`role`/`intermediate`) observable; without it EnvFilter is
+# ERROR and the readiness line never reaches the container log. This adds no
+# positional argument, so the worker argument contract is unchanged.
+docker run -d --name "$name" --restart no --gpus all --network host --ipc host --ulimit memlock=-1:-1 --device=/dev/infiniband -e "DS41RT_RELEASE_CONFIG_SHA256=$fingerprint" -e "RUST_LOG=${RUST_LOG:-info}" "${rdma_args[@]}" -v "$hf_home:/root/.cache/huggingface:ro" "$image" ds41rt expertd-native --snapshot "/root/.cache/huggingface/$snapshot_rel" --native-lib /opt/ds41rt/lib/libds41rt_native.so --rank "$rank" --world "$world" --capacity "$capacity" --device-budget-bytes "$budget" --first-layer "$first_layer" --listen "0.0.0.0:$port" "${topology_args[@]}" >/dev/null
 REMOTE
   pids+=("$!")
 done
@@ -471,7 +489,10 @@ for i in "${!hosts[@]}"; do
   done
 done
 
-if ((RELEASE_RTX_GPUS == 2)); then
+# Acknowledge the published boundary for every handoff launch, including the
+# single-RTX explicit-topology case the coordinator now publishes. Only a launch
+# with no handoff starts the coordinator at this point.
+if [[ -n "$placement_directory" ]]; then
   docker exec "$coordinator" sh -c 'cp "$1/plan.json" "$1/.ready-pending" && mv "$1/.ready-pending" "$1/ready.json"' sh "$placement_directory"
 else
   start_coordinator

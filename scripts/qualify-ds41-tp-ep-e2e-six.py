@@ -7,8 +7,12 @@ assertion, reuses its content checks, per-request run loop (``cmd_run``) and
 core ``compare_arms``/``coverage_report``/``identity_report``/
 ``applied_control_report``, and layers on:
 
-* a v4 six-rank corpus schema (explicit ``configs`` and ``comparisons``, with
-  the four decode cases copied verbatim from the frozen four-Spark corpus);
+* a versioned six-rank corpus schema (explicit ``configs`` and ``comparisons``,
+  with the four decode cases copied verbatim from the frozen four-Spark corpus).
+  v4 is the accepted three-arm revision; v5 adds the two pure unreplicated
+  TP6EP1 arms and is a strict superset of v4. ``--corpus`` defaults to v4 for
+  compatibility, so a TP6 arm must name
+  ``scripts/fixtures/tp-ep-e2e-corpus-v5-six.jsonl``;
 * an explicit canonical-scope gate: a qualifying six-rank arm must have run the
   exact C1/2/4/8/16 x3 matrix over all four frozen cases, regardless of what its
   own ``matrix`` field claims (CLI overrides are allowed for pilots but cannot
@@ -25,6 +29,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import runpy
 import sys
 from pathlib import Path
@@ -35,6 +40,13 @@ RUNNER = REPO / "scripts" / "qualify-ds41-tp-ep-e2e.py"
 EXPECTED_RUNNER_SHA256 = "e197146aa6c98de0c8c731a698de69cbb0f3dadf3edb6fe20e3690e82a6008c4"
 V3_CORPUS = REPO / "scripts" / "fixtures" / "tp-ep-e2e-corpus.jsonl"
 V4_CORPUS = REPO / "scripts" / "fixtures" / "tp-ep-e2e-corpus-v4-six.jsonl"
+# v5 adds the two pure unreplicated TP6EP1 arms (2 RTX and 1 RTX) on top of the
+# accepted v4 arms. The v4 corpus and its recorded sha256 are untouched: the
+# already-accepted replicated-group results keep binding their own revision.
+V5_CORPUS = REPO / "scripts" / "fixtures" / "tp-ep-e2e-corpus-v5-six.jsonl"
+# sha256 of the accepted v4 six-rank corpus (the "99034171..." revision the
+# completed replicated-group arms bind). The selftest asserts it is unchanged.
+EXPECTED_V4_CORPUS_SHA256 = "99034171dba1fe8e6c64e41f9cbf07ab960d6c77932079f44a70c789cf836d85"
 CANONICAL_CONCURRENCY = [1, 2, 4, 8, 16]
 CANONICAL_REPEATS = 3
 CONFIG_KEYS = ("id", "rtx_count", "spark_count", "spark_tp", "spark_ep", "world",
@@ -48,13 +60,25 @@ SPARK_MIN_RESERVE_BYTES = 21474836480
 # 2 GiB coordinator/RTX planner runtime headroom: a SEPARATE domain, never the Spark reserve.
 COORDINATOR_RUNTIME_HEADROOM_MIN_BYTES = 2147483648
 # Per-TP-rank routed weight bytes for one 40-layer backbone layer (release-common values).
-SPARK_LAYER_BYTES = {2: 3609722880, 3: 2406481920, 4: 2005401600}
+SPARK_LAYER_BYTES = {2: 3609722880, 3: 2406481920, 4: 2005401600, 6: 1203240960}
 # The only approved six-rank layouts, keyed by id: (rtx_count, spark_count, spark_tp, spark_ep).
+# `6x1` is the pure unreplicated TP6 layout (six disjoint intermediate slices of
+# every expert), not an expert-parallel/duplicated group.
 EXPECTED_CONFIG_TUPLES = {
     "2rtx6-tp2ep3": (2, 6, 2, 3),
     "2rtx6-tp3ep2": (2, 6, 3, 2),
     "1rtx6-tp3ep2": (1, 6, 3, 2),
+    "2rtx6-tp6ep1": (2, 6, 6, 1),
+    "1rtx6-tp6ep1": (1, 6, 6, 1),
 }
+# Corpus revisions are immutable once their arms are accepted: v4 covers the
+# three replicated-group arms, v5 adds the two pure-TP6 arms. A newer corpus may
+# add configs but may never drop an accepted one.
+APPROVED_CONFIGS_BY_VERSION = {
+    4: frozenset({"2rtx6-tp2ep3", "2rtx6-tp3ep2", "1rtx6-tp3ep2"}),
+    5: frozenset(EXPECTED_CONFIG_TUPLES),
+}
+LATEST_CORPUS_VERSION = 5
 
 
 def positive_int(value) -> bool:
@@ -107,6 +131,11 @@ def validate_six(records, frozen_records, corpus_path: Path = V4_CORPUS) -> dict
     header = headers[0] if len(headers) == 1 else None
     controls = controls_list[0] if len(controls_list) == 1 else None
     matrix = matrices[0] if len(matrices) == 1 else None
+    version = header.get("version") if header is not None else None
+    approved = APPROVED_CONFIGS_BY_VERSION.get(version)
+    if header is not None and approved is None:
+        errors.append(f"corpus version {version!r} is not an approved revision "
+                      f"{sorted(APPROVED_CONFIGS_BY_VERSION)}")
     if header is not None:
         if header.get("base_corpus_sha256") != sha256(V3_CORPUS):
             errors.append("header base_corpus_sha256 does not match the frozen four-Spark corpus")
@@ -177,14 +206,21 @@ def validate_six(records, frozen_records, corpus_path: Path = V4_CORPUS) -> dict
         if config["rtx_count"] == 2 and config["requested_rtx_expert_layers"] != 20:
             errors.append(f"config {cid}: a 2-RTX six-rank arm must request 20 rtx expert layers explicitly")
         if config["rtx_count"] == 1:
-            if config["requested_rtx_expert_layers"] != 0:
-                errors.append(f"config {cid}: a 1-RTX arm must request 0 rtx expert layers")
+            # The current official 1-RTX placement keeps a small local expert set
+            # (5 local / 35 remote). All-40-remote is a separate measured sidearm,
+            # not the release-equivalent baseline, so either explicit value parses.
+            if not non_negative_int(config["requested_rtx_expert_layers"]):
+                errors.append(f"config {cid}: a 1-RTX arm must request an explicit rtx expert layer count")
             if not positive_int(config["coordinator_runtime_headroom_bytes"]):
                 errors.append(f"config {cid}: a standalone arm must declare the coordinator runtime headroom separately")
-        if config["rtx_count"] == 1 and config["require_placement_directory"]:
-            errors.append(f"config {cid}: a 1-RTX arm must not require --placement-directory")
-    if sorted(configs) != sorted(EXPECTED_CONFIG_TUPLES):
-        errors.append(f"corpus must define exactly the approved configs {sorted(EXPECTED_CONFIG_TUPLES)}; got {sorted(configs)}")
+            # A 1-RTX arm with local expert layers must hand them off, so it needs
+            # a placement directory; the all-remote arm must not have one.
+            has_local = config["expected_resolved_rtx_expert_layers"] > 0
+            if has_local != bool(config["require_placement_directory"]):
+                errors.append(f"config {cid}: require_placement_directory must be true exactly when a "
+                              "1-RTX arm keeps local expert layers")
+    if approved is not None and sorted(configs) != sorted(approved):
+        errors.append(f"corpus v{version} must define exactly its approved configs {sorted(approved)}; got {sorted(configs)}")
     comparison_ids = []
     for comparison in by_kind(records, "comparison"):
         if comparison.get("id") in comparison_ids:
@@ -420,6 +456,19 @@ def verify_common_controls(records, config: dict, metadata: dict) -> list:
     return problems
 
 
+def corpus_revision(records) -> dict:
+    """The corpus header's own revision identity, never a hardcoded default.
+
+    A v5 report must not claim to be v4: the schema string and name are read
+    from the corpus that was actually validated.
+    """
+    header = next((record for record in by_kind(records, "corpus")), {})
+    version = header.get("version")
+    return dict(version=version,
+                schema=header.get("name") or f"tp-ep-e2e-v{version}-six",
+                name=header.get("name"))
+
+
 def verify_arm_metadata(records, config: dict, metadata: dict) -> list:
     problems = []
     for field, expected in (("rtx_gpus", config["rtx_count"]), ("spark_tp", config["spark_tp"]),
@@ -442,8 +491,206 @@ def verify_arm_metadata(records, config: dict, metadata: dict) -> list:
     if not config["require_placement_directory"] and "--placement-directory" in parsed:
         problems.append("1RTX must omit --placement-directory")
     problems.extend(verify_common_controls(records, config, metadata))
+    problems.extend(verify_worker_runtime_role(records, config, metadata))
+    problems.extend(verify_cost_model_evidence(records, metadata))
     wrapped = {"startup_metadata": metadata}
     problems.extend(BASE["applied_control_report"](wrapped, wrapped))
+    return problems
+
+
+# Native role id per explicit TP degree: the worker's own readiness line must
+# report the role it loaded, and the family's logical intermediate. An artifact
+# manifest existing in an image is not proof that a running rank loaded it.
+EXPLICIT_TP_ROLE_INTERMEDIATE = {2: (5, 1152), 3: (6, 768), 4: (1, 640), 6: (7, 384)}
+# Corpus revision at which the per-rank runtime-role evidence became a required
+# field. Newer revisions cannot omit it; older accepted results are untouched.
+WORKER_RUNTIME_ROLE_SINCE = 5
+
+
+# The daemon's structured startup line. Matching the exact message keeps a
+# similarly-worded readiness echo or a partial line from being accepted.
+WORKER_READY_MESSAGE = "native local RoCE expert worker ready"
+# CSI escape sequences (the real tracing log inserts dim/italic codes between a
+# field name and its `=`, so the raw line does not parse until they are removed).
+ANSI_CSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def worker_role_in_log(text: str, rank: int):
+    """Extract `(role, intermediate, world)` from a worker's structured startup line.
+
+    Only a line that (a) contains the exact ready message, (b) names this rank on
+    a word boundary (`rank=1` must not match `rank=10`), and (c) carries both
+    `role` and `intermediate` is accepted. ANSI control sequences are stripped
+    first. The last such line wins, so a restart in the same appended log still
+    reports the final load.
+    """
+    best = None
+    for raw in text.splitlines():
+        line = ANSI_CSI.sub("", raw)
+        if WORKER_READY_MESSAGE not in line:
+            continue
+        if not re.search(rf"(?:^|[^0-9])rank={rank}(?![0-9])", line):
+            continue
+        fields = dict(re.findall(r"([a-z_]+)=([0-9]+)", line))
+        if "role" in fields and "intermediate" in fields and "world" in fields:
+            best = (int(fields["role"]), int(fields["intermediate"]), int(fields["world"]))
+    return best
+
+
+# The resolved adaptive verification-cost model, as the daemon logs it at
+# startup (`cost_model=<label>`). A report must state which model its numbers
+# came from; a topology A/B under two different models is confounded.
+# `explicit-profile-missing` is deliberately NOT an acceptable resolved model:
+# the daemon refuses to serve with that configuration, so a report claiming it
+# describes a run that could not have served. `auto` may legitimately resolve to
+# `explicit-profile` when the operator supplied a readable
+# DS41RT_ADAPTIVE_COST_PROFILE path, or to `legacy-heuristic` otherwise.
+COST_MODEL_LABELS = (
+    "legacy-heuristic",
+    "builtin-calibration",
+    "explicit-profile",
+)
+
+
+def cost_model_in_log(text: str):
+    """The last `cost_model=` label in a coordinator log, or None."""
+    found = None
+    for line in text.splitlines():
+        for label in COST_MODEL_LABELS:
+            if f"cost_model={label}" in line:
+                found = label
+    return found
+
+
+def verify_cost_model_evidence(records, metadata: dict) -> list:
+    """Bind the declared cost model to the captured coordinator log (v5+).
+
+    The knob an operator requested is recorded separately from the model the
+    daemon actually resolved, because `auto` resolves differently per layout.
+    """
+    revision = corpus_revision(records)["version"]
+    requested = metadata.get("requested_adaptive_cost_mode")
+    resolved = metadata.get("resolved_cost_model")
+    if revision < WORKER_RUNTIME_ROLE_SINCE and requested is None and resolved is None:
+        return []
+    problems = []
+    if requested not in (None, "auto", "legacy", "builtin", "profile"):
+        problems.append(f"requested_adaptive_cost_mode must be auto/legacy/builtin/profile, got {requested!r}")
+    if resolved not in COST_MODEL_LABELS:
+        problems.append(f"resolved_cost_model must be one of {list(COST_MODEL_LABELS)}, got {resolved!r}")
+    source_log = str(metadata.get("cost_model_source_log", "") or "").strip()
+    declared = metadata.get("cost_model_source_log_sha256")
+    if not source_log:
+        problems.append("cost_model_source_log is required so the resolved model is traceable to a capture")
+        return problems
+    path = Path(source_log)
+    if not path.is_file():
+        return problems + [f"cost_model_source_log does not exist: {source_log}"]
+    if not isinstance(declared, str) or len(declared) != 64:
+        problems.append("cost_model_source_log_sha256 (64 hex) is required for the captured log")
+    else:
+        actual = hashlib.sha256(path.read_bytes()).hexdigest()
+        if actual != declared:
+            problems.append("cost_model_source_log_sha256 does not match the captured coordinator log")
+    observed = cost_model_in_log(path.read_text(errors="replace"))
+    if observed is None:
+        problems.append("captured coordinator log has no cost_model= startup line")
+    elif resolved in COST_MODEL_LABELS and observed != resolved:
+        problems.append(f"resolved_cost_model={resolved!r} but the captured log reports {observed!r}")
+    # A pinned request must be the one that actually resolved. `auto` is defined
+    # by environment-dependent resolution: with a readable profile path it
+    # resolves to the explicit profile, otherwise to the legacy heuristic.
+    if requested in ("legacy", "builtin", "profile"):
+        expected = {"legacy": "legacy-heuristic", "builtin": "builtin-calibration",
+                    "profile": "explicit-profile"}[requested]
+        if resolved != expected:
+            problems.append(f"requested_adaptive_cost_mode={requested} must resolve to {expected}, got {resolved!r}")
+    elif requested == "auto" and resolved not in ("legacy-heuristic", "explicit-profile"):
+        problems.append(f"requested_adaptive_cost_mode=auto cannot resolve to {resolved!r}; "
+                        "auto is either the legacy heuristic or a supplied explicit profile")
+    return problems
+
+
+def verify_worker_runtime_role(records, config: dict, metadata: dict) -> list:
+    """Every physical rank must have reported its own loaded role/geometry.
+
+    The other gates prove the argv and the artifact manifests. They do not prove
+    a worker actually loaded the shard family its topology needs: a library that
+    advertises `spark_tp6` in a manifest but never initializes role 7 would pass
+    argv checks and then fail (or silently mis-serve) at the first request.
+    `worker_runtime_role` records the readiness line per rank.
+
+    Required for every corpus revision at or above `WORKER_RUNTIME_ROLE_SINCE`.
+    A recorded field on an older revision is validated too; an older revision
+    that never recorded it keeps its already-accepted result intact.
+    """
+    revision = corpus_revision(records)["version"]
+    if "worker_runtime_role" not in metadata and (
+        not isinstance(revision, int) or revision < WORKER_RUNTIME_ROLE_SINCE
+    ):
+        return []
+    world = world_expected = config["world"]
+    tp = config["spark_tp"]
+    expected_role, expected_intermediate = EXPLICIT_TP_ROLE_INTERMEDIATE[tp]
+    reported = metadata.get("worker_runtime_role")
+    if not isinstance(reported, list) or len(reported) != world:
+        return [f"worker_runtime_role must list every one of the {world} ranks, got "
+                f"{reported if not isinstance(reported, list) else len(reported)}"]
+    problems = []
+    seen = set()
+    for entry in reported:
+        if not isinstance(entry, dict):
+            problems.append("worker_runtime_role entries must be objects")
+            continue
+        rank = entry.get("rank")
+        if not isinstance(rank, int) or isinstance(rank, bool) or not 0 <= rank < world or rank in seen:
+            problems.append(f"worker_runtime_role has an invalid or duplicate rank {rank!r}")
+            continue
+        seen.add(rank)
+        if entry.get("role") != expected_role:
+            problems.append(f"worker rank {rank} reported role {entry.get('role')!r}; "
+                            f"TP{tp}EP{config['spark_ep']} requires native role {expected_role}")
+        if entry.get("intermediate") != expected_intermediate:
+            problems.append(f"worker rank {rank} reported intermediate {entry.get('intermediate')!r}; "
+                            f"TP{tp} requires {expected_intermediate}")
+        if entry.get("world") != world:
+            problems.append(f"worker rank {rank} reported world {entry.get('world')!r} != {world}")
+        source_log = str(entry.get("source_log", "")).strip()
+        if not source_log:
+            problems.append(f"worker rank {rank} needs a source_log")
+            continue
+        # From v5 a nonempty path is not enough: the captured log must hash to the
+        # recorded digest, so a hand-typed role/intermediate cannot claim a log it
+        # never produced.
+        if revision >= WORKER_RUNTIME_ROLE_SINCE:
+            declared = entry.get("source_log_sha256")
+            if not isinstance(declared, str) or len(declared) != 64:
+                problems.append(f"worker rank {rank} needs source_log_sha256 (64 hex) for the captured log")
+            else:
+                path = Path(source_log)
+                if not path.is_file():
+                    problems.append(f"worker rank {rank} source_log does not exist: {source_log}")
+                else:
+                    actual = hashlib.sha256(path.read_bytes()).hexdigest()
+                    if actual != declared:
+                        problems.append(f"worker rank {rank} source_log_sha256 does not match the "
+                                        f"captured log (declared {declared[:12]}…, actual {actual[:12]}…)")
+                    else:
+                        text = path.read_text(errors="replace")
+                        observed = worker_role_in_log(text, rank)
+                        if observed is None:
+                            problems.append(f"worker rank {rank} captured log has no role/intermediate "
+                                            "startup line")
+                        else:
+                            role, intermediate, world = observed
+                            if role != expected_role:
+                                problems.append(f"worker rank {rank} log reports role {role}; TP{tp} requires {expected_role}")
+                            if intermediate != expected_intermediate:
+                                problems.append(f"worker rank {rank} log reports intermediate {intermediate}; requires {expected_intermediate}")
+                            if world != world_expected:
+                                problems.append(f"worker rank {rank} log reports world {world}; requires {world_expected}")
+    if seen != set(range(world)):
+        problems.append(f"worker_runtime_role ranks {sorted(seen)} do not cover 0..{world - 1}")
     return problems
 
 
@@ -467,10 +714,11 @@ def cmd_run(args) -> int:
                                 concurrency=args.concurrency, repeats=args.repeats)
     code = BASE["cmd_run"](namespace)
     report = json.loads(Path(args.output).read_text())
+    revision = corpus_revision(records)
     report.update(arm_config=config, corpus=str(args.corpus), corpus_sha256=sha256(args.corpus),
                   run_corpus=str(run_corpus), run_corpus_sha256=sha256(run_corpus),
                   frozen_runner_sha256=FROZEN_RUNNER_SHA256, base_corpus_sha256=sha256(V3_CORPUS),
-                  six_runner="scripts/qualify-ds41-tp-ep-e2e-six.py")
+                  corpus_revision=revision, six_runner="scripts/qualify-ds41-tp-ep-e2e-six.py")
     BASE["write_json"](args.output, report)
     return code
 
@@ -487,7 +735,8 @@ def cmd_compare(args) -> int:
                       text=dict(exact_matches=0, divergent_requests=0, divergences=[]))
         report["control"] = str(args.control) if args.control else None
         report["candidate"] = str(args.candidate)
-        report["six"] = dict(schema="tp-ep-e2e-v4-six", corpus=str(args.corpus),
+        report["six"] = dict(schema=corpus_revision(records)["schema"],
+                             corpus_revision=corpus_revision(records), corpus=str(args.corpus),
                              corpus_sha256=sha256(args.corpus), base_corpus_sha256=sha256(V3_CORPUS),
                              frozen_runner_sha256=FROZEN_RUNNER_SHA256, comparison=None)
         BASE["write_json"](args.output, report)
@@ -539,7 +788,9 @@ def cmd_compare(args) -> int:
             report["gate_result"] = "FAIL"
     report["control"] = str(args.control) if args.control else None
     report["candidate"] = str(args.candidate)
-    report["six"] = dict(schema="tp-ep-e2e-v4-six", corpus=str(args.corpus), corpus_sha256=sha256(args.corpus),
+    revision = corpus_revision(records)
+    report["six"] = dict(schema=revision["schema"], corpus_revision=revision, corpus=str(args.corpus),
+                         corpus_sha256=sha256(args.corpus),
                          base_corpus_sha256=sha256(V3_CORPUS), frozen_runner_sha256=FROZEN_RUNNER_SHA256,
                          comparison=comparison)
     BASE["write_json"](args.output, report)
@@ -588,7 +839,30 @@ def cmd_selftest(args) -> int:
                                     "coordinator_argv": ["serve-native", "--rtx-gpus", "1"]}}
     assert any("--rtx-expert-layers 0 explicitly" in problem
                for problem in verify_arm_metadata(records, configs["1rtx6-tp3ep2"], one_rtx["startup_metadata"]))
-    print(json.dumps(dict(selftest="PASS", corpus=report["corpus_sha256"], runner=FROZEN_RUNNER_SHA256), indent=2))
+    # v5 adds the pure unreplicated TP6EP1 arms without changing the accepted v4
+    # revision or its recorded sha256.
+    v5 = load_jsonl(V5_CORPUS)
+    v5_report = validate_six(v5, frozen, V5_CORPUS)
+    assert v5_report["passed"], v5_report["errors"]
+    v5_configs = {c["id"]: c for c in by_kind(v5, "config")}
+    assert set(v5_configs) == set(EXPECTED_CONFIG_TUPLES), sorted(v5_configs)
+    for cid in ("2rtx6-tp6ep1", "1rtx6-tp6ep1"):
+        config = v5_configs[cid]
+        assert (config["spark_tp"], config["spark_ep"]) == (6, 1)
+        assert config["spark_layer_bytes"] == SPARK_LAYER_BYTES[6] == 1203240960
+        assert config["expected_spark_resident_bytes"] == 1203240960 * config["remote_layers"]
+    assert sha256(V4_CORPUS) == EXPECTED_V4_CORPUS_SHA256, "the accepted v4 corpus must not change"
+    v5_comparisons = by_kind(v5, "comparison")
+    v5_forbidden = by_kind(v5, "forbidden_comparison")
+    pure = comparison_report({"arm": "2rtx6-tp6ep1"}, {"arm": "2rtx6-tp3ep2"},
+                             v5_configs, v5_comparisons, v5_forbidden)
+    assert pure["class_"] == "paired" and pure["allowed"], pure
+    cross = comparison_report({"arm": "1rtx6-tp6ep1"}, {"arm": "2rtx6-tp6ep1"},
+                              v5_configs, v5_comparisons, v5_forbidden)
+    assert not cross["allowed"] and "forbidden" in " ".join(cross["reasons"]).lower(), cross
+    assert verify_memory_evidence({}, v5_configs["1rtx6-tp6ep1"])["ok"] is False
+    print(json.dumps(dict(selftest="PASS", corpus=report["corpus_sha256"],
+                          corpus_v5=v5_report["corpus_sha256"], runner=FROZEN_RUNNER_SHA256), indent=2))
     return 0
 
 

@@ -108,9 +108,16 @@ pub(super) fn run(config: NativeExpertServiceConfig, listen: &str) -> Result<()>
         None => ds41rt_transport::v41_expert::v41_spark_executor_id(config.world, config.rank)?,
     };
     let mut connections = Vec::<LocalVerbsExpertConnection>::with_capacity(16);
+    // Structured startup evidence: one line per rank naming the native role and
+    // logical intermediate this worker actually loaded. A captured log can then
+    // be hashed and checked against the declared topology, instead of trusting a
+    // hand-written value; the role comes from the same selection the loader used.
+    let loaded = config.selection(config.first_layer)?;
     tracing::info!(
         rank = config.rank,
         world = config.world,
+        role = loaded.role(),
+        intermediate = weights.intermediate(),
         capacity = config.capacity,
         first_layer = config.first_layer,
         layers = weights.len(),

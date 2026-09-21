@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/tpurtell/ds41rt/scripts/bench/v9-report-manifest.schema.json",
+  "title": "DS41RT v9 / TP6 report manifest",
+  "description": "Binds every rendered performance table to raw bench output and the exact artifact identity it was measured on. A renderer must never invent a value: any arm/field that is absent or null renders as an em dash.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["release", "checkpoint", "images", "network", "thresholds", "arms"],
+  "properties": {
+    "release": {"type": "string", "pattern": "^v[0-9]+$"},
+    "checkpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model_id", "revision", "quant"],
+      "properties": {
+        "model_id": {"type": "string"},
+        "revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "quant": {"type": "string", "description": "official | nvfp4 | exl3"}
+      }
+    },
+    "images": {"$ref": "#/$defs/images"},
+    "network": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["spark_link_mbps", "rails", "evidence"],
+      "properties": {
+        "spark_link_mbps": {"type": "integer", "minimum": 1, "description": "Negotiated per-rail link speed observed live, not advertised."},
+        "rails": {"enum": ["A-only", "A+B"]},
+        "evidence": {"type": "string", "description": "Path to the captured link/route evidence."},
+        "dual_lane_note": {"type": "string"}
+      }
+    },
+    "thresholds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["noise_percent", "weak_percent", "credible_percent", "basis"],
+      "properties": {
+        "noise_percent": {"type": "number"},
+        "weak_percent": {"type": "number"},
+        "credible_percent": {"type": "number"},
+        "basis": {"type": "string", "description": "Where the thresholds come from (observed historical repeat spread)."}
+      }
+    },
+    "arms": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/arm"}
+    }
+  },
+  "$defs": {
+    "images": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["coordinator", "spark_expert"],
+      "properties": {
+        "coordinator": {"$ref": "#/$defs/image"},
+        "spark_expert": {"$ref": "#/$defs/image"}
+      }
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tag", "digest", "revision"],
+      "properties": {
+        "tag": {"type": "string"},
+        "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
+      }
+    },
+    "arm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "quant", "topology", "rtx", "sparks", "config_sha256", "runtime_flags", "raw"],
+      "properties": {
+        "id": {"type": "string"},
+        "quant": {"type": "string", "description": "official | nvfp4 | exl3"},
+        "topology": {"type": "string", "description": "e.g. TP4xEP1, TP6xEP1, TP3xEP2"},
+        "rtx": {"type": "integer", "minimum": 0, "maximum": 2},
+        "sparks": {"type": "integer", "minimum": 0, "maximum": 6},
+        "config_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "comparison_group": {
+          "type": ["string", "null"],
+          "description": "Arms that may be compared with each other despite differing Spark count / TP world. The canonical six qualifier's fixed spark_count identity does not apply here; this campaign exists precisely to compare 4-Spark and 6-Spark deployments honestly."
+        },
+        "images": {
+          "description": "Optional per-arm image override. A v8-baseline vs v9-candidate comparison changes the code revision, so the bridge arm at the same rank count is required to attribute the change; record both identities.",
+          "oneOf": [
+            {"$ref": "#/$defs/images"},
+            {"type": "null"}
+          ]
+        },
+        "resident_bytes_per_rank": {"type": ["integer", "null"], "description": "Routed weight bytes resident per Spark rank for this arm."},
+        "remote_layers": {"type": ["integer", "null"], "description": "Layers the coordinator dispatches to the Sparks."},
+        "worker_allocated_layers": {"type": ["integer", "null"], "description": "Layers the worker actually allocated/loaded; may exceed the dispatched count."},
+        "weight_note": {"type": ["string", "null"]},
+        "cost_policy": {
+          "type": ["object", "null"],
+          "description": "Resolved speculative cost policy. The coordinator log line 'placement-aware adaptive costs loaded profile=...' is an input path, not proof of the resolved mode; record the resolved mode explicitly, including the controlled legacy side arm used for attribution.",
+          "additionalProperties": false,
+          "required": ["default_mode", "legacy_mode", "evidence"],
+          "properties": {
+            "default_mode": {"type": ["string", "null"], "description": "Resolved mode under the arm's normal defaults (e.g. builtin, heuristic, adaptive)."},
+            "legacy_mode": {"type": ["string", "null"], "description": "Resolved mode for the controlled legacy-both side arm."},
+            "adaptive_mode_env": {"type": ["string", "null"], "description": "Value of DS41RT_ADAPTIVE_COST_MODE, when the build exposes it."},
+            "evidence": {"type": ["string", "null"], "description": "Captured log path proving the resolved mode."}
+          }
+        },
+        "runtime_flags": {
+          "type": "object",
+          "description": "Actual resolved launch flags/geometry recorded from argv+log, not the intended config.",
+          "additionalProperties": true
+        },
+        "raw": {
+          "type": "object",
+          "description": "Relative paths to raw bench outputs. Absent/null => em dash in the report.",
+          "additionalProperties": false,
+          "properties": {
+            "decode": {"type": ["string", "null"]},
+            "prefill": {"type": ["string", "null"]},
+            "retained": {"type": ["string", "null"]},
+            "retained_control_2k": {"type": ["string", "null"]},
+            "concurrency_counting": {"type": ["string", "null"]},
+            "concurrency_code": {"type": ["string", "null"]},
+            "concurrency_topic": {"type": ["string", "null"]},
+            "mixed": {"type": ["string", "null"]},
+            "target_only": {"type": ["string", "null"]},
+            "startup_memory": {"type": ["string", "null"]},
+            "tool_eval": {"type": ["string", "null"]},
+            "kernel_tiling": {"type": ["string", "null"]}
+          }
+        },
+        "warmup": {"type": ["string", "null"], "description": "Warmup policy actually used."},
+        "repeats": {"type": ["integer", "null"], "minimum": 1},
+        "notes": {"type": ["string", "null"]},
+        "failures": {
+          "type": "array",
+          "description": "Retained negative results; a failure is reported, never silently dropped.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["what", "observed"],
+            "properties": {
+              "what": {"type": "string"},
+              "observed": {"type": "string"},
+              "scope": {"type": ["string", "null"]},
+              "evidence": {"type": ["string", "null"]}
+            }
+          }
+        }
+      }
+    }
+  }
+}

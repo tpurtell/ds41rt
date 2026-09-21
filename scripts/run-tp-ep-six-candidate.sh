@@ -45,8 +45,8 @@ dspark="$(value DSPARK)"
 [[ "$tp" =~ ^[0-9]+$ && "$ep" =~ ^[0-9]+$ ]] || fail "SPARK_TP/SPARK_EP must be integers, got '${tp}/${ep}'"
 ((tp * ep == 6)) || fail "SPARK_TP x SPARK_EP must be 6, got ${tp}x${ep}"
 case "$rtx:$tp:$ep" in
-  1:3:2 | 2:2:3 | 2:3:2) ;;
-  *) fail "approved six-rank arms are 1rtx6-tp3ep2 (1:3:2), 2rtx6-tp2ep3 (2:2:3), 2rtx6-tp3ep2 (2:3:2); got ${rtx}:${tp}:${ep}" ;;
+  1:3:2 | 2:2:3 | 2:3:2 | 1:6:1 | 2:6:1) ;;
+  *) fail "approved six-rank arms are 1rtx6-tp3ep2 (1:3:2), 2rtx6-tp2ep3 (2:2:3), 2rtx6-tp3ep2 (2:3:2), and the pure unreplicated 1rtx6-tp6ep1 (1:6:1) / 2rtx6-tp6ep1 (2:6:1); got ${rtx}:${tp}:${ep}" ;;
 esac
 [[ "$budget" =~ ^[0-9]+$ ]] || fail "SPARK_DEVICE_BUDGET_BYTES must be an integer, got '${budget}'"
 # Length/string bound, never Bash arithmetic: a 2^64 digit string must not wrap.
@@ -60,7 +60,13 @@ fi
 [[ "$rtx" == "1" || "$rtx" == "2" ]] || fail "RTX_GPUS must be 1 or 2, got '${rtx}'"
 [[ "$dspark" == "on" ]] || fail "DSPARK must be on"
 if [[ "$rtx" == "1" ]]; then
-  [[ "$layers" == "0" ]] || fail "a 1-RTX six-rank arm must set RTX_EXPERT_LAYERS=0 (all 40 layers remote), got '${layers}'"
+  # A 1-RTX arm either keeps no local routed layers (0, all 40 remote) or an
+  # explicit local count in 1..=39 with a placement handoff, which is the current
+  # official 1-RTX placement shape (5 local / 35 remote).
+  if [[ "$layers" != "0" ]]; then
+    [[ "$layers" =~ ^([1-9]|[1-3][0-9])$ ]] ||
+      fail "a 1-RTX six-rank arm must set RTX_EXPERT_LAYERS=0 or an explicit local count in 1..39, got '${layers}'"
+  fi
 else
   [[ "$layers" == "20" ]] || fail "a 2-RTX six-rank arm must set RTX_EXPERT_LAYERS=20 explicitly, got '${layers}'"
 fi

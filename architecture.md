@@ -18,7 +18,7 @@ implementation rationale is in [docs/ENGINEERING.md](docs/ENGINEERING.md). The
 | Backbone routers | Owning coordinator RTX |
 | Backbone shared experts | RTX0 in single mode; TP2 in dual mode |
 | Bottom-up resident backbone routed experts | Coordinator; TP1 in single mode, TP2 in dual mode |
-| Remaining backbone routed experts | Four Spark intermediate-dimension TP ranks |
+| Remaining backbone routed experts | Four Spark intermediate-dimension TP ranks (or, in the opt-in pure `TP6xEP1` layout, six unreplicated intermediate slices — see below) |
 | Three-stage dSpark drafter | Coordinator; normally RTX1 in dual mode, with optional routed-expert TP2 |
 | Retained inactive snapshots | Pinned host RAM; active requests remain in the GPU pool |
 

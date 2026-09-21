@@ -21,6 +21,12 @@
 #
 #   scripts/run-tp-ep-kernel-checks.sh test  [pytest args...]
 #   scripts/run-tp-ep-kernel-checks.sh bench [benchmark args...]
+#   DS41RT_NATIVE_BUILD_DIR=<dir> scripts/run-tp-ep-kernel-checks.sh gpu-check
+#
+# `test` runs the CPU contract tests (including the TP6 exporter/pack oracle)
+# against the verified pinned tree. `gpu-check` runs the native CMake selftests
+# on a real CUDA device with DS41RT_REQUIRE_CUDA=1, so a pass is `Passed` and a
+# missing device is a failure rather than a skip.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -69,10 +75,18 @@ PY
 case "$mode" in
   test)
     verify_imports
+    tests=(
+      "$repo_root/python/tests/test_v41_sentinel_masking.py"
+      "$repo_root/python/tests/test_v41_ep_algebra.py"
+      "$repo_root/python/tests/test_v41_spark_tp6_contract.py"
+      "$repo_root/python/tests/test_bench_tp_ep_kernel_tp6.py"
+    )
+    for candidate in "${tests[@]}"; do
+      [[ -f "$candidate" ]] || {
+        echo "kernel-check test missing: $candidate" >&2; exit 2; }
+    done
     exec "$repo_root/scripts/run-with-python-env.sh" \
-      python -m pytest \
-      "$repo_root/python/tests/test_v41_sentinel_masking.py" \
-      "$repo_root/python/tests/test_v41_ep_algebra.py" "$@"
+      python -m pytest "${tests[@]}" "$@"
     ;;
   bench)
     [[ -f "$repo_root/python/tools/benchmark_v41_ep_groups.py" ]] || {
@@ -81,8 +95,40 @@ case "$mode" in
     exec "$repo_root/scripts/run-with-python-env.sh" \
       python "$repo_root/python/tools/benchmark_v41_ep_groups.py" "$@"
     ;;
+  gpu-check)
+    # Device-level native checks. These MUST run on a CUDA host and must not
+    # skip: DS41RT_REQUIRE_CUDA turns a missing device into a failure, so the
+    # ctest result is "Passed", never "Skipped (77)".
+    build_dir="${DS41RT_NATIVE_BUILD_DIR:-}"
+    [[ -n "$build_dir" && -d "$build_dir" ]] || {
+      echo "DS41RT_NATIVE_BUILD_DIR must name a configured native build dir" >&2
+      exit 2; }
+    export DS41RT_REQUIRE_CUDA=1
+    # Run ctest in this shell (not via exec) so its status is the script's
+    # status, and fail when the filter matches nothing instead of reporting a
+    # vacuous success. ctest's "no tests matched" status varies by version, so
+    # the selected-test count is checked explicitly rather than inferred.
+    set +e
+    output="$(ctest --test-dir "$build_dir" --output-on-failure \
+      -R 'ds41rt_v41_(expert_pack_geometry|expert_pack_tp3|route_reduce_planes)_selftest' 2>&1)"
+    status=$?
+    set -e
+    printf '%s\n' "$output"
+    if grep -q "No tests were found" <<<"$output"; then
+      echo "no native selftest matched the filter in $build_dir" >&2
+      exit 2
+    fi
+    if [[ "$status" -eq 8 ]]; then
+      echo "ctest reported no matching tests in $build_dir" >&2
+      exit 2
+    fi
+    exit "$status"
+    ;;
   *)
-    echo "usage: $0 {test|bench} [args...]" >&2
+    echo "usage: $0 {test|bench|gpu-check} [args...]" >&2
+    echo "  test      CPU contract tests (verified pinned SparkInfer)" >&2
+    echo "  bench     standalone per-topology benchmark" >&2
+    echo "  gpu-check native CMake selftests on a real CUDA device" >&2
     exit 2
     ;;
 esac

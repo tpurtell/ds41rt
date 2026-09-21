@@ -26,9 +26,11 @@ pub(crate) enum ExpertLayer {
     BackboneFull { layer: usize },
     BackboneTp2 { layer: usize, rank: usize },
     /// Explicit replicated-group native Spark shard. `world` is this group's
-    /// tensor-parallel degree (2, 3 or 4) and `rank` is the shard index inside
-    /// the group (`global_rank % world`). Only the official native checkpoint
-    /// may select it; EXL3/NVFP4 keep their own layers.
+    /// tensor-parallel degree (2, 3, 4 or 6) and `rank` is the shard index
+    /// inside the group (`global_rank % world`). Only the official native
+    /// checkpoint may select it; EXL3/NVFP4 keep their own layers. `world: 6`
+    /// is the pure unreplicated `TP6EP1` layout: six disjoint intermediate
+    /// slices of every expert, so every rank sees every route.
     BackboneReplicatedTp { layer: usize, rank: usize, world: usize },
     Dspark { stage: usize },
     DsparkTp2 { stage: usize, rank: usize },
@@ -69,6 +71,7 @@ impl ExpertLayer {
             // only reachable through the legacy `Backbone` layer.
             Self::BackboneReplicatedTp { world: 2, .. } => 5,
             Self::BackboneReplicatedTp { world: 3, .. } => 6,
+            Self::BackboneReplicatedTp { world: 6, .. } => 7,
             Self::BackboneReplicatedTp { .. } => 1,
             Self::DsparkTp2 { .. } => 4,
         }
@@ -85,6 +88,7 @@ impl ExpertLayer {
                 2 => library.v41_spark_tp2_expert_info(capacity),
                 3 => library.v41_spark_tp3_expert_info(capacity),
                 4 => library.v41_expert_info(capacity),
+                6 => library.v41_spark_tp6_expert_info(capacity),
                 other => anyhow::bail!("unsupported replicated Spark TP degree {other}"),
             }
         } else { library.v41_expert_info(capacity) }
@@ -101,6 +105,7 @@ impl ExpertLayer {
                 2 => library.v41_spark_tp2_expert_kernel(capacity),
                 3 => library.v41_spark_tp3_expert_kernel(capacity),
                 4 => library.v41_expert_kernel(capacity),
+                6 => library.v41_spark_tp6_expert_kernel(capacity),
                 other => anyhow::bail!("unsupported replicated Spark TP degree {other}"),
             }
         } else { library.v41_expert_kernel(capacity) }
@@ -423,6 +428,19 @@ impl<'a> ExpertWeights<'a> {
             format: ExpertFormat::Nvfp4,
         })
     }
+    /// Intermediate values per expert held by this resident layer.
+    ///
+    /// Dimensional check: the W2 carrier for one expert is `hidden * intermediate
+    /// / 2` bytes (two packed values per byte), and the allocation holds one such
+    /// carrier per expert, so `w2_bytes * 2 / experts / hidden` recovers the
+    /// intermediate extent. Dividing by `experts` alone would be dimensionally
+    /// wrong by a factor of `hidden`.
+    pub fn intermediate(&self) -> usize {
+        let w2_bytes = self.buffers[2].buffer.bytes;
+        let per_expert = w2_bytes / self.experts.max(1);
+        per_expert * 2 / ds41rt_transport::v41_expert::V41_HIDDEN as usize
+    }
+
     pub fn budget(&self) -> ExpertLoadBudget {
         self.budget
     }

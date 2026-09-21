@@ -32,9 +32,15 @@ pub const V41_PARTIAL_ROW_BYTES: u32 = V41_HIDDEN * 2;
 /// ABI change. TP4 retains executor IDs 1..=4; TP2 uses the disjoint namespace
 /// 5..=6, so a two-peer coordinator rejects stale TP4 rank-0/rank-1 workers.
 /// This identifies topology and rank, not checkpoint or deployment identity.
+///
+/// This helper covers only the two legacy topologies that predate
+/// [`V41SparkTopology`]. Every explicit layout — including pure `TP6EP1` — must
+/// use [`V41SparkTopology::executor_id`], which owns the wider disjoint
+/// namespaces and rejects a legacy identity.
 pub fn v41_spark_executor_id(world: usize, rank: usize) -> Result<u64> {
     ensure!(matches!(world, 2 | 4) && rank < world,
-        "native Spark executor requires world 2 or 4 and rank below world");
+        "native Spark executor requires legacy world 2 or 4 and rank below world; \
+         an explicit topology must use V41SparkTopology::executor_id");
     Ok(rank as u64 + if world == 2 { 5 } else { 1 })
 }
 
@@ -544,7 +550,19 @@ mod tests {
         let tp2 = [0, 1].map(|rank| v41_spark_executor_id(2, rank).unwrap());
         assert_eq!(tp4, [1, 2, 3, 4]);
         assert_eq!(tp2, [5, 6]);
-        for (world, rank) in [(0, 0), (1, 0), (3, 0), (2, 2), (4, 4), (usize::MAX, 0), (2, usize::MAX)] {
+        for (world, rank) in [
+            (0, 0),
+            (1, 0),
+            (3, 0),
+            // Explicit layouts (e.g. pure TP6EP1) must go through the topology
+            // namespace, never this legacy two/ four-rank helper.
+            (6, 0),
+            (6, 5),
+            (2, 2),
+            (4, 4),
+            (usize::MAX, 0),
+            (2, usize::MAX),
+        ] {
             assert!(v41_spark_executor_id(world, rank).is_err());
         }
         let frame = request(1).encode()?;

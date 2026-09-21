@@ -50,12 +50,17 @@ HOST_CACHE_BYTES=auto
 KV_POOL_SIZE=
 MEMORY_RESERVATION=
 DSPARK=on
+# Mirror the run.sh scope the extracted block relies on: release_load_config
+# defaults DSPARK_DRAFT_POLICY, and run.sh's argument parsing always defines
+# dspark_draft_limit (empty unless --dspark-draft-limit was passed). Omitting
+# either makes the block die on `set -u` before any stub is invoked.
+DSPARK_DRAFT_POLICY=adaptive
+dspark_draft_limit=
 TP2_ATTENTION=off
 TP2_QUERY_PROJECTION=off
 TP2_OUTPUT_PROJECTION=off
 TP2_DSPARK_EXPERTS=off
 topology_explicit=0
-spark_tp=4
 spark_ep=1
 spark_admission=not-applicable
 spark_exl3_identity=
@@ -73,12 +78,26 @@ expert_capacity=4096
 spark_first_layer=0
 '''
             setup+=f'\nSPARK_COUNT={spark_count}\nhosts=("${{hosts[@]:0:SPARK_COUNT}}")\n'
+            # Legacy geometry: release_spark_tp defaults to SPARK_COUNT and
+            # release_spark_ep to 1 when no explicit topology is configured.
+            setup+=f'spark_tp={spark_count}\n'
             if spark_count == 2:
                 setup+='MEMORY_RESERVATION=32GiB\nKV_POOL_SIZE=2GiB\npeers=10.55.0.1:19441,10.55.0.2:19441\n'
             setup+=''.join(f'\nTP2_{option}=on\n' for option in options)
             result=subprocess.run(['bash','-c',setup+block,'test',str(gpus)],env=env,cwd=ROOT,capture_output=True,text=True,timeout=10)
             events=[json.loads(line) for line in (root/'events').read_text().splitlines()]
             return result,events
+
+    @staticmethod
+    def worker_tail(args):
+        """Worker values after `--` in a worker-start ssh invocation.
+
+        run.sh passes image, remote, rank, capacity, budget, port, snapshot,
+        fingerprint, first_layer, world, explicit_topology, tp, ep and then
+        three optional RDMA env values. Index from the `--` separator so the
+        optional tail does not shift the assertions.
+        """
+        return args[args.index('--') + 1:]
 
     def test_dual_starts_coordinator_then_correct_workers_then_acknowledges(self):
         for layers in [1,17,20,40]:
@@ -90,10 +109,11 @@ spark_first_layer=0
                 self.assertIn('--placement-directory',events[0][1])
                 starts=[args for tool,args in events if tool=='ssh' and '-s' in args]
                 self.assertEqual(len(starts),4)
-                # Worker positional tail: first_layer, world, then the legacy
-                # topology tail (explicit flag, TP, EP).
-                self.assertTrue(all(args[-5]==str(min(layers,39)) and args[-4]=='4' for args in starts))
-                self.assertTrue(all(args[-3:]==['0','4','1'] for args in starts))
+                tails=[self.worker_tail(args) for args in starts]
+                self.assertTrue(all(len(tail)==16 for tail in tails),tails)
+                # first_layer, world, then the legacy topology tail.
+                self.assertTrue(all(tail[8]==str(min(layers,39)) and tail[9]=='4' for tail in tails))
+                self.assertTrue(all(tail[10:13]==['0','4','1'] for tail in tails))
                 ack=[i for i,(tool,args) in enumerate(events) if tool=='docker' and args[:3]==['exec','coordinator','sh']]
                 self.assertEqual(len(ack),1)
                 ready=[i for i,(tool,args) in enumerate(events) if tool=='ssh' and any('timeout 1' in a for a in args)]
@@ -105,9 +125,10 @@ spark_first_layer=0
         self.assertEqual(result.returncode,0,result.stderr)
         starts=[args for tool,args in events if tool=='ssh' and '-s' in args]
         self.assertEqual(len(starts),2)
-        self.assertTrue(all(args[-5]=='0' and args[-4]=='2' for args in starts))
-        # Legacy topology tail: no explicit SPARK_TP/SPARK_EP flags are passed.
-        self.assertTrue(all(args[-3]=='0' for args in starts))
+        tails=[self.worker_tail(args) for args in starts]
+        self.assertTrue(all(tail[8]=='0' and tail[9]=='2' for tail in tails))
+        # Legacy geometry tail: explicit flag off, TP=SPARK_COUNT, EP=1.
+        self.assertTrue(all(tail[10:13]==['0','2','1'] for tail in tails))
         coordinator=next(args for tool,args in events if tool=='docker' and args[0]=='run')
         self.assertEqual(coordinator[coordinator.index('--peers')+1], '10.55.0.1:19441,10.55.0.2:19441')
         self.assertEqual(coordinator[coordinator.index('--memory-reservation')+1], '32GiB')
@@ -149,6 +170,9 @@ spark_first_layer=0
     def test_invalid_boundary_never_starts_workers(self):
         result,events=self.run_startup(2,dict(version=1,rtx_gpus=2,nonce='fresh',rtx_expert_layers=17,spark_first_layer=20))
         self.assertNotEqual(result.returncode,0)
+        # Pin the intended rejection so a fixture/scope error cannot satisfy the
+        # nonzero exit by accident.
+        self.assertIn('invalid coordinator placement plan',result.stderr)
         self.assertFalse(any(tool=='ssh' for tool,_ in events))
 
     def test_single_keeps_worker_first_startup_without_handoff(self):

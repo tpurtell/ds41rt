@@ -1,27 +1,29 @@
-# Replicated-group Spark TP2/TP3 expert shards (native FP8 K32 family, SM121).
+# Replicated-group Spark TP2/TP3/TP6 expert shards (native FP8 K32 family, SM121).
 #
 # Opt-in only: `DS41RT_V41_SPARK_TP_ROLES` is empty by default so no Spark
-# TP2/TP3 object or symbol is compiled or linked and every release default
+# TP2/TP3/TP6 object or symbol is compiled or linked and every release default
 # behaves exactly as the historical Spark TP4 shard. When the option lists
-# `tp2` and/or `tp3`, this exports those roles and compiles one distinct symbol
-# family per degree into the same libds41rt_native.so.
+# `tp2`, `tp3` and/or `tp6`, this exports those roles and compiles one distinct
+# symbol family per degree into the same libds41rt_native.so.
 #
 # The exporter runs on the target SM121 device and pre-compiles capacities
 # 1/16/80/256/1024/4096 ahead of runtime. The TP degree is a plan-time role
-# property; live row counts are never part of the AOT compile key.
+# property; live row counts are never part of the AOT compile key. TP6 is pure
+# tensor parallelism over the official intermediate 2304: six 384-wide ranks
+# with no storage padding (kernel_intermediate == intermediate == 384).
 if(NOT DS41RT_ENABLE_V41_EXPERT_AOT OR NOT DS41RT_V41_EXPERT_ROLE STREQUAL "spark")
-  message(FATAL_ERROR "Spark TP2/TP3 experts require the native SM121 Spark expert build")
+  message(FATAL_ERROR "Spark TP2/TP3/TP6 experts require the native SM121 Spark expert build")
 endif()
 
 set(DS41RT_V41_SPARK_TP_SELECTED)
 foreach(tp IN LISTS DS41RT_V41_SPARK_TP_ROLES)
-  if(tp STREQUAL "tp2" OR tp STREQUAL "tp3")
+  if(tp STREQUAL "tp2" OR tp STREQUAL "tp3" OR tp STREQUAL "tp6")
     if(tp IN_LIST DS41RT_V41_SPARK_TP_SELECTED)
       message(FATAL_ERROR "DS41RT_V41_SPARK_TP_ROLES lists ${tp} more than once")
     endif()
     list(APPEND DS41RT_V41_SPARK_TP_SELECTED "${tp}")
   else()
-    message(FATAL_ERROR "DS41RT_V41_SPARK_TP_ROLES accepts only tp2 and tp3, got ${tp}")
+    message(FATAL_ERROR "DS41RT_V41_SPARK_TP_ROLES accepts only tp2, tp3 and tp6, got ${tp}")
   endif()
 endforeach()
 
@@ -30,18 +32,22 @@ set(DS41RT_V41_SPARK_TP_EXPERT_INCLUDE_DIRS)
 set(DS41RT_V41_SPARK_TP_EXPERT_ROWS 1 16 80 256 1024 4096)
 set(DS41RT_V41_SPARK_TP_EXPERT_ROWS_ARG "1,16,80,256,1024,4096")
 # Capacity 1 is the narrow decode tile; every wider capacity uses width 192.
-# Per-role cache strings so a build can select a width map for TP2 and TP3
+# Per-role cache strings so a build can select a width map for TP2, TP3 and TP6
 # independently (for example a capacity-80 candidate) without patching this file.
-# Both defaults are byte-identical to the previous single shared map, so an
+# All defaults are byte-identical to the previous single shared map, so an
 # unconfigured build exports exactly the same objects. Each value is either a
 # scalar 64/128/192 or a full `capacity:width` map; the exporter validates that a
 # map covers every precompiled capacity exactly once and that widths are
 # 64/128/192, so an invalid override fails the export instead of being silently
-# accepted here.
+# accepted here. For TP6 the extra `slices * width <= kernel_intermediate`
+# relation (384 % 32 == 0, so 384/64, 384/128 and 384/192 all tile exactly) is
+# checked by the exporter's slice kernel too; an untileable width fails there.
 set(DS41RT_V41_SPARK_TP2_SLICE_WIDTH "1:64,16:192,80:192,256:192,1024:192,4096:192" CACHE STRING
   "Spark TP2 expert slice width: scalar 64/128/192 or capacity:width map")
 set(DS41RT_V41_SPARK_TP3_SLICE_WIDTH "1:64,16:192,80:192,256:192,1024:192,4096:192" CACHE STRING
   "Spark TP3 expert slice width: scalar 64/128/192 or capacity:width map")
+set(DS41RT_V41_SPARK_TP6_SLICE_WIDTH "1:64,16:192,80:192,256:192,1024:192,4096:192" CACHE STRING
+  "Spark TP6 expert slice width: scalar 64/128/192 or capacity:width map")
 
 foreach(tp IN LISTS DS41RT_V41_SPARK_TP_SELECTED)
   if(tp STREQUAL "tp2")
@@ -49,11 +55,16 @@ foreach(tp IN LISTS DS41RT_V41_SPARK_TP_SELECTED)
     set(width_map "${DS41RT_V41_SPARK_TP2_SLICE_WIDTH}")
     set(wrapper_src src/v41_spark_tp2_experts.cc)
     set(variant_header v41_spark_tp2_expert_variants.h)
-  else()
+  elseif(tp STREQUAL "tp3")
     set(role spark_tp3)
     set(width_map "${DS41RT_V41_SPARK_TP3_SLICE_WIDTH}")
     set(wrapper_src src/v41_spark_tp3_experts.cc)
     set(variant_header v41_spark_tp3_expert_variants.h)
+  else()
+    set(role spark_tp6)
+    set(width_map "${DS41RT_V41_SPARK_TP6_SLICE_WIDTH}")
+    set(wrapper_src src/v41_spark_tp6_experts.cc)
+    set(variant_header v41_spark_tp6_expert_variants.h)
   endif()
   # Content-stable per-role stamp. The output stems are constant
   # `v41_{role}_m{capacity}`, so a width change must still invalidate an existing

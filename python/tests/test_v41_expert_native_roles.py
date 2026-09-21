@@ -39,9 +39,11 @@ def test_symbol_prefix_selects_new_spark_families() -> None:
     assert module.expert_symbol_prefix(tp2=True) == "ds41rt_v41_tp2_expert_"
     assert module.expert_symbol_prefix(spark_tp=2) == "ds41rt_v41_spark_tp2_expert_"
     assert module.expert_symbol_prefix(spark_tp=3) == "ds41rt_v41_spark_tp3_expert_"
+    assert module.expert_symbol_prefix(spark_tp=6) == "ds41rt_v41_spark_tp6_expert_"
     assert module.SPARK_TP_PREFIX == {
         2: "ds41rt_v41_spark_tp2_expert_",
         3: "ds41rt_v41_spark_tp3_expert_",
+        6: "ds41rt_v41_spark_tp6_expert_",
     }
 
 
@@ -68,10 +70,15 @@ def test_symbol_families_are_mutually_exclusive() -> None:
         {"local": True, "tp2": True},
         {"spark_tp": 2, "tp2": True},
         {"spark_tp": 3, "local": True},
+        {"spark_tp": 6, "tp2": True},
         {"spark_tp": 2, "spark_tp": 3, "tp2": True},
     ):
         with pytest.raises(AssertionError):
             module.expert_symbol_prefix(**kwargs)
-    with pytest.raises(AssertionError):
-        module.expert_symbol_prefix(spark_tp=4)
+    # Only the built degrees 2/3/6 are valid; an unbuilt degree must be rejected
+    # rather than silently resolving to a missing symbol family.
+    for unsupported in (4, 5, 7):
+        with pytest.raises(AssertionError):
+            module.expert_symbol_prefix(spark_tp=unsupported)
     assert module.expert_symbol_prefix(spark_tp=2) == "ds41rt_v41_spark_tp2_expert_"
+    assert module.expert_symbol_prefix(spark_tp=6) == "ds41rt_v41_spark_tp6_expert_"

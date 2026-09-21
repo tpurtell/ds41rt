@@ -48,7 +48,8 @@ pub(crate) async fn run(mut args: crate::cli::NativeServeArgs) -> Result<()> {
     let compact = topology.is_none() && args.peers.len() == 2;
     ensure!(
         topology.is_some() || matches!(args.peers.len(), 2 | 4),
-        "two or four Spark peers required"
+        "two or four Spark peers required for the legacy non-topology layout; \
+         an explicit --spark-tp/--spark-ep topology carries its own rank count"
     );
     ensure!(
         args.peers.len() == 4 || topology.is_some() || (args.rtx_gpus == 1 && !args.exl3_paired_tp4),
@@ -195,7 +196,10 @@ fn spark_transport(
             ds41rt_transport::v41_expert::v41_spark_executor_id(2, 1)?,
         ], capacity, config),
         4 => V41Tp4Roce::new(peers.try_into().expect("four peers"), [1, 2, 3, 4], capacity, config),
-        _ => anyhow::bail!("two or four Spark peers required"),
+        _ => anyhow::bail!(
+            "the legacy non-topology transport takes two or four Spark peers; \
+             a six-rank layout (pure TP6EP1 or replicated) must pass --spark-tp/--spark-ep"
+        ),
     }
 }
 
@@ -205,8 +209,21 @@ fn worker(
     ready: &mut Option<oneshot::Sender<std::result::Result<(), String>>>,
     stats: std::sync::Arc<std::sync::Mutex<serde_json::Value>>,
 ) -> Result<()> {
-    ensure!(args.placement_directory.is_none() || args.rtx_gpus==2,
-        "placement handoff requires --rtx-gpus 2");
+    // A placement handoff needs a local/remote boundary to publish: it is
+    // meaningful when the coordinator keeps 1..=39 local routed layers, on one
+    // or two RTX cards. An all-local (40) or all-remote (0) plan has nothing to
+    // hand off and must not open the handshake.
+    if let Some(directory) = args.placement_directory.as_deref() {
+        ensure!(
+            args.rtx_gpus == 2 || matches!(args.rtx_expert_layers, memory::LocalLayers::Count(1..=39)),
+            "placement handoff requires --rtx-gpus 2 or a 1-RTX explicit local expert count in 1..=39"
+        );
+        // The handoff directory must name a real path, not an empty string.
+        ensure!(
+            !directory.as_os_str().is_empty(),
+            "placement handoff requires a non-empty directory"
+        );
+    }
     ensure!(!args.tp2_dspark_experts || (args.rtx_gpus==2 && args.dspark),
         "--tp2-dspark-experts requires --rtx-gpus 2 and --dspark");
     ensure!(!args.tp2_output_projection || args.rtx_gpus==2,"--tp2-output-projection requires --rtx-gpus 2");
@@ -419,6 +436,10 @@ fn worker(
     let mut requests = Requests::new(&lib, pipeline, args.concurrency as usize, pool.pages, pool.cache_bytes)?;
     if let Some(pool) = target_prefix_pool { requests.install_prefix_pool(pool)?; }
     let mut local_layers = 0usize;
+    // Published only on the single-RTX path; the 2-RTX distributed worker owns
+    // its own handshake. Dropping it without a ready acknowledgement leaves the
+    // launch unpublished, which the launcher treats as a failure.
+    let mut placement_handoff: Option<placement::StartupPlacement> = None;
     if args.rtx_expert_layers != memory::LocalLayers::Count(0) {
         use crate::v41_experts::{ExpertLayer, ExpertWeights, local::LocalExpertWave};
         let local_started = Instant::now();
@@ -441,7 +462,19 @@ fn worker(
         tracing::info!(layers=plan.layers, resident_bytes=plan.resident_bytes,
             workspace_bytes=plan.workspace_bytes, peak_bytes=plan.peak_bytes,
             "bottom-up RTX expert placement");
-        if plan.layers > 0 && compressed {
+        // Publish the resolved boundary before anything waits on it. On 1 RTX the
+        // 2-RTX distributed path never ran, so without this the launcher cannot
+        // know the real first remote layer and must start every worker at 0,
+        // over-reserving remote layers that the coordinator already owns.
+        // Computing the plan only needs the local device: it does not read the
+        // remote transport, connect to a peer, or wait on readiness.
+        if let Some(directory) = args.placement_directory.as_deref() {
+            placement_handoff = Some(placement::StartupPlacement::publish(
+                std::path::Path::new(directory),
+                args.rtx_gpus,
+                local_layers,
+            )?);
+        }        if plan.layers > 0 && compressed {
             let mut loaded = Vec::with_capacity(plan.layers);
             for layer in 0..plan.layers {
                 loaded.push(Exl3Weights::load(&lib, &catalog, ExpertLayer::BackboneFull { layer },
@@ -464,6 +497,12 @@ fn worker(
         }
         tracing::info!(layers=plan.layers, elapsed_ms=local_started.elapsed().as_millis(),
             "local RTX experts ready");
+    }
+    // The launcher has already started the workers at the published boundary and
+    // now acknowledges it; only then may remote transport creation and the first
+    // request proceed. The local experts above are installed either way.
+    if let Some(handoff) = placement_handoff {
+        handoff.wait_ready(Duration::from_secs(900))?;
     }
     let (free, total) = lib.cuda_memory_info()?;
     let occupied = total - free;

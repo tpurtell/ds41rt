@@ -1,4 +1,15 @@
 #!/usr/bin/env bash
+# Constrained-output / tool-stream serving smoke.
+#
+# The generation requests set `thinking: {type: "disabled"}` explicitly. Without
+# it the server defaults to high-effort thinking, which spends the whole 96-token
+# budget on reasoning and returns finish_reason=length with empty content, so the
+# exact-output assertions below fail even though constrained decoding is working.
+# That behaviour was observed on the published v8 images for both the 1x and 2x
+# official layouts (retained as a negative result in the v9 baseline evidence,
+# ~/.cache/ds41rt-v9-baseline/raw/CONTAMINATED/ and clean-*/api-constrained-smoke.txt).
+# The checks themselves are unchanged: exact structured output, exact streamed
+# tool arguments and the strict-schema 400 rejection are all still enforced.
 set -euo pipefail
 
 url="${1:-${URL:-http://127.0.0.1:8000}}"
@@ -26,6 +37,7 @@ trap cleanup EXIT
 schema_payload="$(
   jq -cn --arg model "$model" '{
     model: $model,
+    thinking: {type: "disabled"},
     messages: [{role: "user", content: "Return Taipei, 27, and sunny."}],
     temperature: 0,
     max_tokens: 96,
@@ -61,6 +73,7 @@ jq -e '
 combined_payload="$(
   jq -cn --arg model "$model" '{
     model: $model,
+    thinking: {type: "disabled"},
     messages: [
       {role: "user", content: "Look up the Taipei weather, then return the requested JSON."},
       {
@@ -135,6 +148,7 @@ jq -e '
 tool_payload="$(
   jq -cn --arg model "$model" '{
     model: $model,
+    thinking: {type: "disabled"},
     messages: [{role: "user", content: "Call lookup_weather for Taipei in metric units."}],
     temperature: 0,
     max_tokens: 96,

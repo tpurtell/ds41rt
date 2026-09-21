@@ -7,8 +7,8 @@ role export has been validated against the build that produced it:
 
 * the export manifest declares ``schema == 1`` and ``capability == [12, 1]``;
 * its geometry matches the official checkpoint (experts 384, hidden 5120,
-  intermediate 1152 for tp2 / 768 for tp3, topk 6) with no kernel padding
-  (``kernel_intermediate == intermediate``);
+  intermediate 1152 for tp2 / 768 for tp3 / 384 for tp6, topk 6) with no kernel
+  padding (``kernel_intermediate == intermediate``);
 * its non-empty ``variants`` cover capacities 1/16/80/256/1024/4096;
 * every file named in ``artifact_sha256`` exists in the role export directory
   and hashes to the declared value, so a stale or partial JSON cannot be
@@ -39,15 +39,17 @@ import shutil
 import subprocess
 import sys
 
-ROLE_TP_DEGREE = {"tp2": 2, "tp3": 3}
-ROLE_INTERMEDIATE = {"tp2": 1152, "tp3": 768}
+ROLE_TP_DEGREE = {"tp2": 2, "tp3": 3, "tp6": 6}
+ROLE_INTERMEDIATE = {"tp2": 1152, "tp3": 768, "tp6": 384}
 ROLE_INFO_SYMBOL = {
     "tp2": "ds41rt_v41_spark_tp2_expert_info",
     "tp3": "ds41rt_v41_spark_tp3_expert_info",
+    "tp6": "ds41rt_v41_spark_tp6_expert_info",
 }
 ROLE_LAUNCH_SYMBOL = {
     "tp2": "ds41rt_v41_spark_tp2_expert_launch",
     "tp3": "ds41rt_v41_spark_tp3_expert_launch",
+    "tp6": "ds41rt_v41_spark_tp6_expert_launch",
 }
 EXPECTED_EXPERTS = 384
 EXPECTED_HIDDEN = 5120
@@ -75,7 +77,7 @@ def parse_roles(value: str) -> list[str]:
         fail(f"duplicate Spark TP role in {value!r}")
     for role in roles:
         if role not in ROLE_TP_DEGREE:
-            fail(f"unsupported Spark TP role {role!r}; expected tp2 or tp3")
+            fail(f"unsupported Spark TP role {role!r}; expected tp2, tp3 or tp6")
     return roles
 
 
@@ -168,7 +170,7 @@ def validate_role_export(role: str, manifest_path: Path, export_dir: Path) -> di
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--role", choices=("coordinator", "expert"), required=True)
-    parser.add_argument("--requested", default="", help="semicolon-separated tp2/tp3 list")
+    parser.add_argument("--requested", default="", help="semicolon-separated tp2/tp3/tp6 list")
     parser.add_argument("--native-build-dir", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(

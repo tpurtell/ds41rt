@@ -1092,6 +1092,60 @@ mod expert_staging_tests {
             }
             assert!(staging[plan.staging_bytes()..].iter().all(|&v| v == 205));
         }
+        // The generic explicit-TP shard path (used by the replicated TP2/TP3
+        // groups and the pure unreplicated TP6 layout) slices W1/W3 output rows
+        // and W2 input columns; every slice must stay byte- and scale-aligned.
+        for (world, intermediate, staging_bytes, column_bytes, scale_column_bytes) in
+            [(3usize, 768usize, 6_266_880usize, 384usize, 24usize),
+             (6, 384, 3_133_440, 192, 12)]
+        {
+            for rank in 0..world {
+                let plan = catalog
+                    .expert_staging(V41ExpertSelection::BackboneTp { layer: 39, expert: 383, rank, world })
+                    .unwrap();
+                assert_eq!(plan.intermediate_size(), intermediate, "TP{world} rank {rank}");
+                assert_eq!(plan.staging_bytes(), staging_bytes, "TP{world} rank {rank}");
+                assert_eq!(plan.minimum_read_scratch_bytes(), 1152);
+                let mut staging = vec![205; plan.staging_bytes() + 32];
+                let mut scratch = vec![0; 1152 * 7 + 3];
+                assert!(plan
+                    .read_into(&mut staging[..plan.staging_bytes() - 1], &mut scratch)
+                    .is_err());
+                assert!(plan.read_into(&mut staging, &mut scratch[..1151]).is_err());
+                assert!(staging.iter().all(|&byte| byte == 205));
+                plan.prefetch().unwrap();
+                plan.read_into(&mut staging, &mut scratch).unwrap();
+                for (slot, range) in plan.tensor_ranges().iter().enumerate() {
+                    assert_eq!(range.start % 16, 0);
+                    let source = &payloads[slot];
+                    let expected = if slot == 2 {
+                        let row = source.len() / 5120;
+                        source
+                            .chunks_exact(row)
+                            .flat_map(|r| {
+                                r[rank * column_bytes..(rank + 1) * column_bytes].iter().copied()
+                            })
+                            .collect::<Vec<_>>()
+                    } else if slot == 5 {
+                        // Every rank owns whole 32-value scale groups, so the W2
+                        // scale column slice is exactly shard_intermediate/32.
+                        let row = source.len() / 5120;
+                        source
+                            .chunks_exact(row)
+                            .flat_map(|r| {
+                                r[rank * scale_column_bytes..(rank + 1) * scale_column_bytes]
+                                    .iter()
+                                    .copied()
+                            })
+                            .collect::<Vec<_>>()
+                    } else {
+                        source[rank * source.len() / world..(rank + 1) * source.len() / world].to_vec()
+                    };
+                    assert_eq!(&staging[range.clone()], expected.as_slice(), "TP{world} rank {rank} slot {slot}");
+                }
+                assert!(staging[plan.staging_bytes()..].iter().all(|&byte| byte == 205));
+            }
+        }
         // Full backbone reads must preserve every official byte, including W2
         // columns that the TP4 path normally slices into separate ranks.
         let full = catalog.expert_staging(V41ExpertSelection::BackboneFull {

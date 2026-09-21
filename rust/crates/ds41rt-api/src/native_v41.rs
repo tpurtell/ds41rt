@@ -126,6 +126,35 @@ async fn chat(State(state): State<NativeState>, Json(mut body): Json<Value>) -> 
         _ => return error(StatusCode::BAD_REQUEST, "tool_decoding_assistance must be boolean"),
     };
     let response_format = body.get("response_format").cloned().filter(|v| !v.is_null());
+    // The adapter crate deserializes `response_format.json_schema` into a
+    // fieldless "accepted and ignored" variant, so the schema is only available
+    // in the raw body. Enforce the OpenAI strict-mode subset here, before any
+    // backend admission and independently of the thinking mode, reusing the
+    // same validator as the OpenAI-compat `validate_request` path.
+    if let Some(format) = response_format.as_ref() {
+        if format.get("type").and_then(Value::as_str) == Some("json_schema") {
+            if let Some(definition) = format.get("json_schema") {
+                let strict = match definition.get("strict") {
+                    None | Some(Value::Null) => false,
+                    Some(Value::Bool(strict)) => *strict,
+                    _ => return error(
+                        StatusCode::BAD_REQUEST,
+                        "response_format.json_schema.strict must be boolean",
+                    ),
+                };
+                if strict {
+                    if let Some(schema) = definition.get("schema") {
+                        if let Err(rejection) = crate::request::validate_strict_json_schema(
+                            schema,
+                            "response_format.json_schema.schema",
+                        ) {
+                            return rejection.into_response();
+                        }
+                    }
+                }
+            }
+        }
+    }
     // The recipe rejects its regex variant, while native XGrammar supports it.
     // Keep the original format for enforcement and render it as ordinary text.
     if response_format.as_ref().and_then(|v| v.get("type")).and_then(Value::as_str) == Some("regex") {
@@ -330,6 +359,65 @@ mod tests {
     fn request(stream: bool) -> axum::http::Request<Body> {
         axum::http::Request::post("/v1/chat/completions").header("content-type","application/json").body(Body::from(json!({"model":MODEL,"messages":[{"role":"user","content":"What is 2 + 2? Answer with just the number."}],"thinking":{"type":"disabled"},"temperature":0,"max_tokens":16,"stream":stream}).to_string())).unwrap()
     }
+    fn strict_schema_body(thinking_disabled: bool, schema: Value) -> Body {
+        let mut body = json!({
+            "model": MODEL,
+            "messages": [{"role": "user", "content": "Return x."}],
+            "temperature": 0,
+            "max_tokens": 16,
+            "response_format": {"type": "json_schema", "json_schema": {
+                "name": "strict_probe", "strict": true, "schema": schema}}
+        });
+        if thinking_disabled {
+            body["thinking"] = json!({"type": "disabled"});
+        }
+        Body::from(body.to_string())
+    }
+
+    #[tokio::test]
+    async fn strict_schema_subset_is_rejected_before_admission_in_every_thinking_mode() {
+        // `strict: true` without `required` is not a valid OpenAI strict schema.
+        let invalid = json!({"type": "object", "properties": {"x": {"type": "string"}},
+            "additionalProperties": false});
+        for thinking_disabled in [false, true] {
+            let (tx, _rx) = mpsc::channel::<NativeRequest>(1);
+            let request = axum::http::Request::post("/v1/chat/completions")
+                .header("content-type", "application/json")
+                .body(strict_schema_body(thinking_disabled, invalid.clone()))
+                .unwrap();
+            let response = router(tx).oneshot(request).await.unwrap();
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST,
+                "thinking_disabled={thinking_disabled} must still reject");
+            let bytes = axum::body::to_bytes(response.into_body(), 1 << 20).await.unwrap();
+            let value: Value = serde_json::from_slice(&bytes).unwrap();
+            assert_eq!(value["error"]["type"], "invalid_request_error");
+            assert_eq!(value["error"]["param"], "response_format.json_schema.schema");
+        }
+    }
+
+    #[tokio::test]
+    async fn valid_strict_schema_is_not_newly_rejected() {
+        let valid = json!({"type": "object", "properties": {"x": {"type": "string"}},
+            "required": ["x"], "additionalProperties": false});
+        let (tx, mut rx) = mpsc::channel::<NativeRequest>(1);
+        let worker = tokio::spawn(async move {
+            let job = rx.recv().await.unwrap();
+            assert!(job.constraint.is_some());
+            job.events.send(Ok(InferenceChunk::Ready { system_fingerprint: None,
+                prompt_usage: PromptUsage { prompt_tokens: 1, prompt_cache_hit_tokens: 0 } })).await.unwrap();
+            job.events.send(Ok(InferenceChunk::Text {
+                content: "{\"x\":\"a\"}".into(), content_tokens: 5 })).await.unwrap();
+            job.events.send(Ok(InferenceChunk::Finish {
+                finish_reason: InferenceFinishReason::Stop })).await.unwrap();
+        });
+        let request = axum::http::Request::post("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .body(strict_schema_body(false, valid)).unwrap();
+        let response = router(tx).oneshot(request).await.unwrap();
+        assert_ne!(response.status(), StatusCode::BAD_REQUEST);
+        worker.await.unwrap();
+    }
+
     #[tokio::test]
     async fn output_limits_reach_worker_and_model_metadata() {
         for (limits, requested, expected) in [

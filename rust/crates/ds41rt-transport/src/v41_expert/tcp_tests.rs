@@ -256,6 +256,7 @@ fn generic_tcp_constructors_validate_world_and_topology() -> Result<()> {
         V41SparkTopology::NATIVE_TP2_EP2,
         V41SparkTopology::NATIVE_TP3_EP2,
         V41SparkTopology::NATIVE_TP2_EP3,
+        V41SparkTopology::NATIVE_TP6_EP1,
     ] {
         let world = topology.world_size();
         let client = V41Tp4Tcp::new_topology(topology, &peers[..world], 80, config())?;
@@ -320,6 +321,57 @@ async fn six_rank_native_group_tcp_covers_every_group_and_rank() -> Result<()> {
         })
         .await?;
     assert_eq!(chunks, topology.world_size() * 2);
+    for server in servers {
+        timeout(Duration::from_secs(3), server).await???;
+    }
+    Ok(())
+}
+
+/// Pure TP6EP1: six disjoint intermediate slices of every expert, one
+/// unreplicated group, six rank planes on the wire. Every rank must carry its
+/// own shard bytes and the coordinator must receive exactly six of them.
+#[tokio::test]
+async fn six_rank_pure_tp6_tcp_returns_six_distinct_rank_planes() -> Result<()> {
+    let topology = V41SparkTopology::NATIVE_TP6_EP1;
+    let executors = topology.executor_ids();
+    let mut peers = Vec::new();
+    let mut servers = Vec::new();
+    for rank in 0..topology.world_size() {
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        peers.push(listener.local_addr()?);
+        let executor_id = executors[rank];
+        servers.push(tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await?;
+            let frame = read_request(&mut stream).await?;
+            // Every rank of the single group parses the same owned batch and
+            // treats every route as its own shard's work.
+            let native = V41BackboneRequest::parse_native_group(&frame, 2, topology)?;
+            for row in 0..native.rows() {
+                let payload = vec![rank as u8 + 1; V41_PARTIAL_ROW_BYTES as usize];
+                let mut indices = [0u32];
+                let response =
+                    native.response_chunk(executor_id, row, &payload, &mut indices, FRAME)?;
+                stream.write_all(&response.to_owned()?.encode()?).await?;
+            }
+            Ok::<_, anyhow::Error>(())
+        }));
+    }
+    let mut request = request(2);
+    let owners = vec![0u8; V41_ROUTED_EXPERTS];
+    request.with_native_group_owners(&owners, topology)?;
+    let mut transport = V41Tp4Tcp::new_topology(topology, &peers, 2, config())?;
+    let mut seen = std::collections::BTreeSet::new();
+    transport
+        .execute(&request, |rank, row, bytes| {
+            assert!(rank < 6);
+            assert!(row < 2);
+            assert_eq!(bytes.len(), V41_PARTIAL_ROW_BYTES as usize);
+            assert!(bytes.iter().all(|&byte| byte == rank as u8 + 1));
+            seen.insert(rank);
+            Ok(())
+        })
+        .await?;
+    assert_eq!(seen.len(), 6);
     for server in servers {
         timeout(Duration::from_secs(3), server).await???;
     }

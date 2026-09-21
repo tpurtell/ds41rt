@@ -53,7 +53,12 @@ def test_spark_tp2_tp3_geometry_is_exact_and_padding_free() -> None:
     assert sm["spark_tp3"] == (12, 1)
     assert native_id["spark_tp2"] == 5
     assert native_id["spark_tp3"] == 6
-    assert degree == {"spark": 4, "spark_tp2": 2, "spark_tp3": 3}
+    # TP6 (role 7) is covered by its own contract test; the historical
+    # replicated-group degrees must not be disturbed by its addition.
+    assert {k: degree[k] for k in ("spark", "spark_tp2", "spark_tp3")} == {
+        "spark": 4, "spark_tp2": 2, "spark_tp3": 3
+    }
+    assert "spark_tp6" not in degree or degree["spark_tp6"] == 6
 
 
 def test_existing_tp4_and_rtx_roles_are_unchanged() -> None:
@@ -80,10 +85,18 @@ def test_existing_tp4_and_rtx_roles_are_unchanged() -> None:
 
 def test_ordinary_exporter_routes_new_roles_only_through_fp8_slices() -> None:
     tables = _literal_assignments(EXPERTS, {"SPARK_ROLES", "SPARK_TP_DEGREES"})
-    assert tables["SPARK_ROLES"] == ("spark", "spark_tp2", "spark_tp3")
-    assert tables["SPARK_TP_DEGREES"] == {"spark": 4, "spark_tp2": 2, "spark_tp3": 3}
+    roles = tables["SPARK_ROLES"]
+    degrees = tables["SPARK_TP_DEGREES"]
+    # The replicated-group roles are present with their plan-time degrees; TP6
+    # (degree 6) has its own contract test and must not renumber TP2/TP3.
+    for role in ("spark", "spark_tp2", "spark_tp3", "spark_tp6"):
+        assert role in roles
+    assert {k: degrees[k] for k in ("spark", "spark_tp2", "spark_tp3")} == {
+        "spark": 4, "spark_tp2": 2, "spark_tp3": 3
+    }
+    assert degrees.get("spark_tp6") == 6
     source = EXPERTS.read_text(encoding="utf-8")
-    assert "Spark TP2/TP3 use the native FP8 K32 slice export only" in source
+    assert "Spark TP2/TP3/TP6 use the native FP8 K32 slice export only" in source
 
 
 def test_cmake_wiring_is_opt_in_and_precompiles_capacities() -> None:
@@ -138,11 +151,15 @@ def test_spark_tp_width_maps_are_per_role_cache_knobs_with_identical_defaults() 
         f'set(DS41RT_V41_SPARK_TP3_SLICE_WIDTH "{SPARK_WIDTH_DEFAULT}" CACHE STRING'
         in tp
     )
+    assert (
+        f'set(DS41RT_V41_SPARK_TP6_SLICE_WIDTH "{SPARK_WIDTH_DEFAULT}" CACHE STRING'
+        in tp
+    )
     # The previous shared normal variable is gone: a normal set would shadow -D
-    # and re-couple both roles. Exactly two copies of the default remain.
+    # and re-couple the roles. Exactly one copy of the default remains per role.
     assert "set(DS41RT_V41_SPARK_TP_SLICE_WIDTH" not in tp
     assert "DS41RT_V41_SPARK_TP_SLICE_WIDTH" not in tp
-    assert tp.count(SPARK_WIDTH_DEFAULT) == 2
+    assert tp.count(SPARK_WIDTH_DEFAULT) == 3
 
 
 def test_each_role_forwards_its_own_width_map_to_the_exporter() -> None:

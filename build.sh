@@ -13,8 +13,8 @@ the first configured Spark. It exports both release artifact sets to dist/
 and distributes the Spark inference image to all configured Spark hosts.
 Use --spark-hosts ostrich,dodo to build and distribute only on available hosts;
 this does not change the serving topology.
-An explicit SPARK_TP=2/3 topology builds the matching opt-in SM121 expert role;
-DS41RT_RELEASE_SPARK_TP_ROLES=tp2;tp3 overrides that selection. The default
+An explicit SPARK_TP=2/3/6 topology builds the matching opt-in SM121 expert role;
+DS41RT_RELEASE_SPARK_TP_ROLES=tp2;tp3;tp6 overrides that selection. The default
 configuration builds no extra role and keeps the historical Spark TP4 shard.
 --dry-run validates the configuration, host set and role plan without touching
 Docker, SSH, submodules or any image.
@@ -72,23 +72,24 @@ spark_release_version="${SPARK_EXPERT_DOCKER_INFERENCE##*:}"
   release_die "coordinator and Spark inference image release tags must match"
 
 # Opt-in replicated-group Spark expert roles. The default configuration and an
-# explicit TP4xEP1 build no extra role; an explicit TP2/TP3 topology selects the
-# matching SM121 role. DS41RT_RELEASE_SPARK_TP_ROLES is the escape hatch for
-# building both (tp2;tp3) ahead of a topology A/B.
+# explicit TP4xEP1 build no extra role; an explicit TP2/TP3/TP6 topology selects
+# the matching SM121 role. DS41RT_RELEASE_SPARK_TP_ROLES is the escape hatch for
+# building several (tp2;tp3;tp6) ahead of a topology A/B.
 spark_tp_roles="${DS41RT_RELEASE_SPARK_TP_ROLES:-}"
 if [[ -z "$spark_tp_roles" ]] && release_spark_topology_explicit; then
   case "$SPARK_TP" in
     2) spark_tp_roles=tp2 ;;
     3) spark_tp_roles=tp3 ;;
     4) spark_tp_roles= ;;
+    6) spark_tp_roles=tp6 ;;
   esac
 fi
 if [[ -n "$spark_tp_roles" ]]; then
   IFS=';' read -ra spark_tp_role_list <<<"$spark_tp_roles"
   for spark_tp_role in "${spark_tp_role_list[@]}"; do
     case "$spark_tp_role" in
-      tp2|tp3) ;;
-      *) release_die "DS41RT_RELEASE_SPARK_TP_ROLES accepts only tp2 and tp3, got: $spark_tp_role" ;;
+      tp2|tp3|tp6) ;;
+      *) release_die "DS41RT_RELEASE_SPARK_TP_ROLES accepts only tp2, tp3 and tp6, got: $spark_tp_role" ;;
     esac
   done
   unset spark_tp_role spark_tp_role_list

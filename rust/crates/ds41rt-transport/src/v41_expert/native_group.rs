@@ -61,8 +61,8 @@ const WORD_MASK: u32 = 0xfff;
 /// Validated native Spark `TP×EP` topology.
 ///
 /// The supported set is exactly `TP2EP1`, `TP3EP1`, the legacy `TP4EP1`,
-/// `TP2EP2`, `TP3EP2` and `TP2EP3`; anything else is rejected. `TP×EP` is the
-/// physical rank count, with no dummy ranks.
+/// `TP2EP2`, `TP3EP2`, `TP2EP3` and the pure `TP6EP1`; anything else is
+/// rejected. `TP×EP` is the physical rank count, with no dummy ranks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct V41SparkTopology {
     tp: u8,
@@ -82,6 +82,12 @@ impl V41SparkTopology {
     pub const NATIVE_TP3_EP2: Self = Self { tp: 3, ep: 2 };
     /// Six physical ranks: three replicated groups of TP2.
     pub const NATIVE_TP2_EP3: Self = Self { tp: 2, ep: 3 };
+    /// Six physical ranks: one unreplicated group of TP6. Each rank holds one
+    /// disjoint intermediate-dimension slice of every routed expert
+    /// (2304/6 = 384 per rank, no storage padding), and the coordinator sums the
+    /// six compact BF16 planes. This is not an expert-parallel layout: no expert
+    /// is duplicated and every rank sees every routed expert's own rows.
+    pub const NATIVE_TP6_EP1: Self = Self { tp: 6, ep: 1 };
 
     /// Validates a `TP×EP` pair. Unsupported pairs fail; no rank is invented.
     pub fn new(tp: u8, ep: u8) -> Result<Self> {
@@ -163,9 +169,11 @@ impl V41SparkTopology {
     }
 
     fn executor_base(self) -> Result<u64> {
-        // Aligns the two same-world six-rank layouts with the architecture
-        // audit's proposal (TP3EP2 = 11..=16, TP2EP3 = 21..=26) and keeps every
-        // other namespace disjoint, including the legacy 1..=4 and 5..=6.
+        // Aligns the two same-world six-rank replicated layouts with the
+        // architecture audit's proposal (TP3EP2 = 11..=16, TP2EP3 = 21..=26),
+        // keeps the pure six-rank TP6EP1 in its own 27..=32 namespace next to
+        // them, and keeps every other namespace disjoint, including the legacy
+        // 1..=4 and 5..=6.
         match (self.tp, self.ep) {
             (4, 1) => Ok(1),
             (2, 1) => Ok(5),
@@ -173,9 +181,10 @@ impl V41SparkTopology {
             (3, 2) => Ok(11),
             (2, 2) => Ok(17),
             (2, 3) => Ok(21),
+            (6, 1) => Ok(27),
             (tp, ep) => bail!(
                 "unsupported native Spark TP×EP topology TP{tp}EP{ep}: \
-                 supported are TP2EP1, TP3EP1, TP4EP1, TP2EP2, TP3EP2 and TP2EP3"
+                 supported are TP2EP1, TP3EP1, TP4EP1, TP2EP2, TP3EP2, TP2EP3 and TP6EP1"
             ),
         }
     }
@@ -350,13 +359,14 @@ mod tests {
     use std::collections::BTreeSet;
     use std::net::SocketAddr;
 
-    const ALL: [V41SparkTopology; 6] = [
+    const ALL: [V41SparkTopology; 7] = [
         V41SparkTopology::NATIVE_TP2_EP1,
         V41SparkTopology::NATIVE_TP3_EP1,
         V41SparkTopology::NATIVE_TP4_EP1,
         V41SparkTopology::NATIVE_TP2_EP2,
         V41SparkTopology::NATIVE_TP3_EP2,
         V41SparkTopology::NATIVE_TP2_EP3,
+        V41SparkTopology::NATIVE_TP6_EP1,
     ];
 
     fn owners_for(topology: V41SparkTopology) -> Vec<u8> {
@@ -385,13 +395,14 @@ mod tests {
 
     #[test]
     fn topology_mapping_is_group_major_and_namespaces_are_disjoint() {
-        let expected: [(V41SparkTopology, usize, [u64; 6]); 6] = [
+        let expected: [(V41SparkTopology, usize, [u64; 6]); 7] = [
             (V41SparkTopology::NATIVE_TP2_EP1, 2, [5, 6, 0, 0, 0, 0]),
             (V41SparkTopology::NATIVE_TP3_EP1, 3, [7, 8, 9, 0, 0, 0]),
             (V41SparkTopology::NATIVE_TP4_EP1, 4, [1, 2, 3, 4, 0, 0]),
             (V41SparkTopology::NATIVE_TP2_EP2, 4, [17, 18, 19, 20, 0, 0]),
             (V41SparkTopology::NATIVE_TP3_EP2, 6, [11, 12, 13, 14, 15, 16]),
             (V41SparkTopology::NATIVE_TP2_EP3, 6, [21, 22, 23, 24, 25, 26]),
+            (V41SparkTopology::NATIVE_TP6_EP1, 6, [27, 28, 29, 30, 31, 32]),
         ];
         let mut seen = BTreeSet::new();
         for (topology, world, ids) in expected {
@@ -431,6 +442,12 @@ mod tests {
         // Same-size six-rank topologies never accept each other's workers.
         assert_eq!(V41SparkTopology::NATIVE_TP3_EP2.rank_of_executor(20), None);
         assert_eq!(V41SparkTopology::NATIVE_TP2_EP3.rank_of_executor(14), None);
+        // Pure TP6EP1 shares the six-rank world size but not the identities of
+        // either replicated six-rank layout, in both directions.
+        assert_eq!(V41SparkTopology::NATIVE_TP6_EP1.rank_of_executor(21), None);
+        assert_eq!(V41SparkTopology::NATIVE_TP6_EP1.rank_of_executor(11), None);
+        assert_eq!(V41SparkTopology::NATIVE_TP2_EP3.rank_of_executor(27), None);
+        assert_eq!(V41SparkTopology::NATIVE_TP3_EP2.rank_of_executor(27), None);
         // A four-rank TP2×EP2 receiver never accepts legacy TP4 identities.
         assert_eq!(V41SparkTopology::NATIVE_TP2_EP2.rank_of_executor(1), None);
     }
@@ -451,7 +468,8 @@ mod tests {
             (3, 3),
             (2, 4),
             (5, 1),
-            (6, 1),
+            (6, 2),
+            (6, 3),
             (255, 1),
             (2, 255),
         ] {
@@ -460,9 +478,44 @@ mod tests {
                 "TP{tp}EP{ep} must be rejected"
             );
         }
-        for (tp, ep) in [(2, 1), (3, 1), (4, 1), (2, 2), (3, 2), (2, 3)] {
+        for (tp, ep) in [(2, 1), (3, 1), (4, 1), (2, 2), (3, 2), (2, 3), (6, 1)] {
             assert!(V41SparkTopology::new(tp, ep).is_ok(), "TP{tp}EP{ep}");
         }
+    }
+
+    #[test]
+    fn pure_tp6_is_one_unreplicated_group_over_six_ranks() {
+        let topology = V41SparkTopology::new(6, 1).unwrap();
+        assert_eq!(topology, V41SparkTopology::NATIVE_TP6_EP1);
+        assert_eq!(topology.tp(), 6);
+        assert_eq!(topology.ep(), 1);
+        assert_eq!(topology.world_size(), 6);
+        // Every rank is its own TP shard of the single group, so ownership has
+        // exactly one legal value and cannot be inactive.
+        assert_eq!(topology.group_count(), 1);
+        for rank in 0..6 {
+            assert_eq!(topology.group(rank).unwrap(), 0);
+            assert_eq!(topology.tp_rank(rank).unwrap() as usize, rank);
+            assert_eq!(topology.executor_id(rank).unwrap(), 27 + rank as u64);
+        }
+        // Owners are all group 0; routing weight and route order are untouched.
+        let owners = owners_for(topology);
+        assert!(owners.iter().all(|owner| *owner == 0));
+        let request = native_request(4, topology, &owners).unwrap();
+        assert_ne!(request.header.flags & V41_NATIVE_GROUP_REQUEST_FLAG, 0);
+        assert_eq!(request.routes.len(), 4 * 6);
+        for route in &request.routes {
+            let decoded = V41NativeOwnerRouteWord::decode(route.expert_id, 1).unwrap();
+            assert_eq!(decoded.owner, 0);
+            assert_eq!(decoded.expert_id as usize, route.expert_id as usize & 0x1ff);
+        }
+        // The owned batch is validated by the native-group contract itself; the
+        // canonical/paired consumers (and the float-plane reducer that stops at
+        // four ranks) must keep rejecting it.
+        assert!(V41BackboneRequest::validate_owned_native_group(&request, 4096, topology).is_ok());
+        assert!(V41BackboneRequest::validate_owned(&request, 4096).is_err());
+        let frame = request.encode().unwrap();
+        assert!(V41BackboneRequest::parse(&frame, 4096).is_err());
     }
 
     #[test]
@@ -710,6 +763,8 @@ mod tests {
         for (topology, other) in [
             (V41SparkTopology::NATIVE_TP3_EP2, V41SparkTopology::NATIVE_TP2_EP3),
             (V41SparkTopology::NATIVE_TP2_EP3, V41SparkTopology::NATIVE_TP3_EP2),
+            (V41SparkTopology::NATIVE_TP6_EP1, V41SparkTopology::NATIVE_TP2_EP3),
+            (V41SparkTopology::NATIVE_TP2_EP3, V41SparkTopology::NATIVE_TP6_EP1),
         ] {
             let owners = owners_for(topology);
             let request = native_request(2, topology, &owners)?;

@@ -378,14 +378,26 @@ fi
 # re-checked after the plan is read, before any worker starts.
 # ---------------------------------------------------------------------------
 resolved_first_layer="$first_layer"
+# A placement plan exists whenever the coordinator keeps local routed experts the
+# workers must not also reserve: always on two RTX, and on one RTX for an explicit
+# topology given an explicit local count in 1..=39. `auto`/`0` on one RTX has no
+# local boundary to publish and keeps the legacy no-handoff launch. The daemon
+# computes the boundary from the local device only, before any remote transport.
+candidate_placement_handoff=0
+# The candidate launcher always requires an explicit topology (checked above), so
+# the local-count condition only has to confirm an explicit layer count.
+if [[ "$RTX_EXPERT_LAYERS" =~ ^([1-9]|[1-3][0-9])$ ]]; then
+  [[ "$rtx_gpus" != 1 || ( -n "$spark_tp" && -n "$spark_ep" ) ]] && candidate_placement_handoff=1
+fi
+[[ "$rtx_gpus" == 2 ]] && candidate_placement_handoff=1
 admission="not-applicable"
-if [[ "$rtx_gpus" == 1 && -z "$resolved_first_layer" ]]; then
+if [[ "$candidate_placement_handoff" == 0 && "$rtx_gpus" == 1 && -z "$resolved_first_layer" ]]; then
   resolved_first_layer=0
 fi
 if [[ -n "$resolved_first_layer" ]]; then
   admission="$(release_validate_spark_weight_admission "$resolved_first_layer" "$spark_tp" "$SPARK_DEVICE_BUDGET_BYTES")"
 else
-  admission="PENDING (2-RTX plan not published; weight-only check runs after the real boundary is read)"
+  admission="PENDING (placement plan not published; weight-only check runs after the real boundary is read)"
 fi
 
 render() { printf '%q ' "$@"; }
@@ -407,6 +419,7 @@ candidate_env_args() {
     DS41RT_PROTOCOL_V2_VERBS_HOST_DEVICE_MAP \
     DS41RT_VERBS_APP_IB_PORT_NUM \
     DS41RT_PROTOCOL_V2_VERBS_HOST_EXECUTION_LANES \
+    DS41RT_ADAPTIVE_COST_MODE \
     DS41RT_PROTOCOL_V2_TCP_TIMING \
     DS41RT_SPARKINFER_SOURCE_DIR \
     PYTHONPATH \
@@ -476,7 +489,7 @@ coordinator_argv() {
   [[ "$TP2_QUERY_PROJECTION" != on ]] || args+=(--tp2-query-projection)
   [[ "$TP2_OUTPUT_PROJECTION" != on ]] || args+=(--tp2-output-projection)
   [[ "$TP2_DSPARK_EXPERTS" != on ]] || args+=(--tp2-dspark-experts)
-  [[ "$rtx_gpus" != 2 ]] || args+=(--placement-directory "$placement_dir")
+  [[ "$candidate_placement_handoff" == 0 ]] || args+=(--placement-directory "$placement_dir")
   printf '%s\0' "${args[@]}"
 }
 
@@ -770,7 +783,9 @@ capture_gid_binding() {
 # Refuse to inherit another run's plan; --restart clears only this run's dir
 # under the candidate placement root.
 prepare_placement_directory() {
-  [[ "$rtx_gpus" == 2 ]] || return 0
+  # Same predicate as the handoff itself: a single-RTX explicit-topology launch
+  # with local routed layers uses the directory and needs the stale-state guard.
+  [[ "$candidate_placement_handoff" == 1 ]] || return 0
   case "$placement_dir" in
     "$placement_root"/*) ;;
     *) release_die "placement directory must be under $placement_root: $placement_dir" ;;
@@ -855,7 +870,7 @@ start_candidate() {
   done
 
   local resolved="$resolved_first_layer"
-  if [[ "$rtx_gpus" == 2 ]]; then
+  if [[ "$candidate_placement_handoff" == 1 ]]; then
     prepare_placement_directory
     echo "== starting candidate coordinator (plan handshake, run $run_id) =="
     start_coordinator
@@ -886,7 +901,7 @@ start_candidate() {
   else
     resolved=0
     [[ -z "$first_layer" || "$first_layer" == 0 ]] ||
-      release_die "--first-layer must be 0 for a single-RTX launch (no placement handoff)"
+      release_die "--first-layer must be 0 for a single-RTX launch with no local expert boundary"
   fi
 
   echo "== starting candidate Spark experts =="
@@ -906,7 +921,11 @@ start_candidate() {
   # acknowledged only after every rank logs its current-process readiness line.
   wait_for_worker_ready "$resolved"
 
-  if [[ "$rtx_gpus" == 2 ]]; then
+  # The acknowledgement must track the handoff predicate, not the RTX count: a
+  # single-RTX explicit-topology launch with local routed layers publishes a plan
+  # too, and gating this on `rtx_gpus == 2` would start the coordinator a second
+  # time and never acknowledge the plan.
+  if [[ "$candidate_placement_handoff" == 1 ]]; then
     docker exec "$coordinator_container" sh -c \
       "cp \"$placement_dir/plan.json\" \"$placement_dir/.ready-pending\" && mv \"$placement_dir/.ready-pending\" \"$placement_dir/ready.json\"" ||
       release_die "failed to acknowledge the candidate placement plan"

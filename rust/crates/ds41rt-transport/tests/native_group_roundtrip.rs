@@ -44,14 +44,16 @@ const MAX_ROWS: u32 = 4096;
 const MAX_FRAME: usize = 200_000;
 const HIDDEN_BYTES: usize = 5120 * 2;
 
-/// Every approved layout: World 2, 3, 4 and 6.
-const TOPOLOGIES: [V41SparkTopology; 6] = [
+/// Every approved layout: World 2, 3, 4 and 6, including the pure unreplicated
+/// six-rank TP6EP1.
+const TOPOLOGIES: [V41SparkTopology; 7] = [
     V41SparkTopology::NATIVE_TP2_EP1,
     V41SparkTopology::NATIVE_TP3_EP1,
     V41SparkTopology::NATIVE_TP4_EP1,
     V41SparkTopology::NATIVE_TP2_EP2,
     V41SparkTopology::NATIVE_TP3_EP2,
     V41SparkTopology::NATIVE_TP2_EP3,
+    V41SparkTopology::NATIVE_TP6_EP1,
 ];
 const ROWS: [usize; 4] = [1, 2, 8, 16];
 
@@ -302,6 +304,7 @@ fn ep1_owner_zero_flag_and_single_owner_bit() -> Result<()> {
         V41SparkTopology::NATIVE_TP2_EP1,
         V41SparkTopology::NATIVE_TP3_EP1,
         V41SparkTopology::NATIVE_TP4_EP1,
+        V41SparkTopology::NATIVE_TP6_EP1,
     ] {
         ensure!(topology.group_count() == 1);
         for rows in [1usize, 8] {
@@ -381,6 +384,7 @@ fn chunked_response_coverage_matches_n_physical_planes() -> Result<()> {
         V41SparkTopology::NATIVE_TP4_EP1,
         V41SparkTopology::NATIVE_TP2_EP2,
         V41SparkTopology::NATIVE_TP3_EP2,
+        V41SparkTopology::NATIVE_TP6_EP1,
     ] {
         let rows = 8usize;
         let fixture = fixture(rows, 0xC0FF_EE00)?;

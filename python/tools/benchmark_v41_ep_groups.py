@@ -72,6 +72,13 @@ import torch  # noqa: E402
 HIDDEN = 5120
 SENTINEL = 384
 EXPERT_POINTERS = 44
+# The official routed intermediate. Every supported TP degree divides it with no
+# remainder; TP6 is the pure six-way split (384 per rank, no storage padding).
+OFFICIAL_INTERMEDIATE = 2304
+# Degrees this harness can actually execute: TP4 (historical padded shard), TP2
+# and TP3 (replicated groups) and TP6 (pure). TP1 is the unsliced leg used as a
+# reference. Anything else has no exported kernel family.
+TP_DEGREES = (1, 2, 3, 4, 6)
 
 
 # --------------------------------------------------------------------------- #
@@ -982,9 +989,11 @@ def parse_args(argv=None):
                              "weights and the reference gate)")
     parser.add_argument("--layer", type=int, default=0)
     parser.add_argument("--intermediate", type=int, default=1152,
-                        help="per-rank intermediate width")
-    parser.add_argument("--tp-degree", type=int, choices=(1, 2, 3, 4), default=2,
-                        help="tensor-parallel degree; 1 = no slicing")
+                        help="per-rank intermediate width; must equal "
+                             "2304 / --tp-degree for a TP shard")
+    parser.add_argument("--tp-degree", type=int, choices=TP_DEGREES, default=2,
+                        help="tensor-parallel degree; 1 = no slicing, 6 = the "
+                             "pure TP6 split (384 per rank)")
     parser.add_argument("--ep-degree", type=int, choices=(1, 2, 3), default=1,
                         help="expert-parallel groups; >1 uses the diagnostic "
                              "modulo ownership mask, not a production scheduler")
@@ -1009,6 +1018,14 @@ def parse_args(argv=None):
             "--phase split.")
     if max(options.rows) > options.capacity:
         parser.error("rows must not exceed capacity")
+    # The degree fixes the per-rank intermediate (the official 2304 divided by
+    # the degree). A mismatch would slice a different width than the topology
+    # claims, so fail closed instead of silently measuring the wrong shard.
+    expected_intermediate = OFFICIAL_INTERMEDIATE // options.tp_degree
+    if options.intermediate != expected_intermediate:
+        parser.error(
+            f"--intermediate {options.intermediate} does not match --tp-degree "
+            f"{options.tp_degree} (expected {expected_intermediate})")
     return options
 
 

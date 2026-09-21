@@ -1010,6 +1010,14 @@ if(DS41RT_ENABLE_CUDA)
   add_test(NAME ds41rt_v41_expert_pack_tp3_selftest
     COMMAND ds41rt_v41_expert_pack_tp3_selftest)
   set_tests_properties(ds41rt_v41_expert_pack_tp3_selftest PROPERTIES SKIP_RETURN_CODE 77)
+  # Geometry-driven packer check: every native extent, including the padded TP4
+  # 576 -> 640 storage, in one parameterized device test.
+  add_executable(ds41rt_v41_expert_pack_geometry_selftest
+    tests/v41_expert_pack_geometry_selftest.cc)
+  target_link_libraries(ds41rt_v41_expert_pack_geometry_selftest PRIVATE ds41rt_native CUDA::cudart)
+  add_test(NAME ds41rt_v41_expert_pack_geometry_selftest
+    COMMAND ds41rt_v41_expert_pack_geometry_selftest)
+  set_tests_properties(ds41rt_v41_expert_pack_geometry_selftest PROPERTIES SKIP_RETURN_CODE 77)
   add_executable(ds41rt_v41_fp4_attention_selftest tests/v41_fp4_attention_selftest.cc)
   target_link_libraries(ds41rt_v41_fp4_attention_selftest PRIVATE ds41rt_native CUDA::cudart)
   if(DS41RT_ENABLE_V41_ATTENTION_AOT)
