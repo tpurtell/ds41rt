@@ -11,8 +11,13 @@ source_dir="$(realpath "$1")"
 role="$2"
 cuda_arch="$3"
 output_dir="$(realpath -m "$4")"
-# Reject unsafe source/output/cache filesystems before staging or invoking Cargo.
-python3 "$(dirname "$0")/assert-build-filesystem.py" "$source_dir" "$output_dir" "${CARGO_TARGET_DIR:-$source_dir/rust/target}" "${CARGO_HOME:-$HOME/.cargo}" /tmp
+# Reject unsafe output/cache filesystems before staging or invoking Cargo.
+# SOURCE_DIR is a read-only input: the release container mounts it `/source:ro`
+# and this script stages a writable copy into the build root below, so probing
+# the source here would only trip the guard's fail-closed read-only rule. The
+# selected cargo target is guarded because it is where the daemon is written.
+python3 "$(dirname "$0")/assert-build-filesystem.py" \
+  "$output_dir" "${CARGO_TARGET_DIR:-/tmp}" "${CARGO_HOME:-$HOME/.cargo}" /tmp
 
 case "$role" in
   coordinator)
@@ -89,6 +94,10 @@ fi
 build_root="$(mktemp -d /tmp/ds41rt-release-build.XXXXXX)"
 trap 'rm -rf "$build_root"' EXIT
 mkdir -p "$build_root/source"
+# The cargo target and the install source must agree. Default to the writable
+# staged copy; an explicit external override is honored for both so a caller
+# that relocates the target cannot leave the install pointing at the old path.
+cargo_target_dir="${CARGO_TARGET_DIR:-$build_root/source/rust/target}"
 tar \
   -C "$source_dir" \
   --exclude=.git \
@@ -126,7 +135,7 @@ if [[ "$xgrammar" == ON ]]; then
 fi
 
 export PYO3_PYTHON=python3
-cargo build \
+CARGO_TARGET_DIR="$cargo_target_dir" cargo build \
   --manifest-path "$build_root/source/rust/Cargo.toml" \
   -p ds41rt-daemon \
   --release
@@ -169,7 +178,7 @@ cmake \
 cmake --build "$build_root/native"
 
 install -d "$output_dir"
-install -m 0755 "$build_root/source/rust/target/release/ds41rt" "$output_dir/ds41rt"
+install -m 0755 "$cargo_target_dir/release/ds41rt" "$output_dir/ds41rt"
 install -m 0755 "$build_root/native/libds41rt_native.so" "$output_dir/libds41rt_native.so"
 exl3_family_tags=()
 IFS=';' read -ra exl3_family_list <<<"$exl3_bit_families"
