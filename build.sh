@@ -13,9 +13,12 @@ the first configured Spark. It exports both release artifact sets to dist/
 and distributes the Spark inference image to all configured Spark hosts.
 Use --spark-hosts ostrich,dodo to build and distribute only on available hosts;
 this does not change the serving topology.
-An explicit SPARK_TP=2/3/6 topology builds the matching opt-in SM121 expert role;
-DS41RT_RELEASE_SPARK_TP_ROLES=tp2;tp3;tp6 overrides that selection. The default
-configuration builds no extra role and keeps the historical Spark TP4 shard.
+Release images are universal by default: the ARM64 (SM121) Spark expert image
+carries the TP2, TP3 and TP6 replicated-group shards on top of the always-built
+TP4 shard, so one pair serves every approved native topology and ./run.sh selects
+the mode with SPARK_TP/SPARK_EP. The x86_64 coordinator image needs no Spark role.
+Set DS41RT_RELEASE_SPARK_TP_ROLES to an explicit subset (for example tp6, or empty
+for the historical TP4-only shard) for a bounded topology A/B or a legacy rebuild.
 --dry-run validates the configuration, host set and role plan without touching
 Docker, SSH, submodules or any image.
 
@@ -71,29 +74,53 @@ spark_release_version="${SPARK_EXPERT_DOCKER_INFERENCE##*:}"
 [[ "$spark_release_version" == "$release_version" ]] ||
   release_die "coordinator and Spark inference image release tags must match"
 
-# Opt-in replicated-group Spark expert roles. The default configuration and an
-# explicit TP4xEP1 build no extra role; an explicit TP2/TP3/TP6 topology selects
-# the matching SM121 role. DS41RT_RELEASE_SPARK_TP_ROLES is the escape hatch for
-# building several (tp2;tp3;tp6) ahead of a topology A/B.
-spark_tp_roles="${DS41RT_RELEASE_SPARK_TP_ROLES:-}"
-if [[ -z "$spark_tp_roles" ]] && release_spark_topology_explicit; then
-  case "$SPARK_TP" in
-    2) spark_tp_roles=tp2 ;;
-    3) spark_tp_roles=tp3 ;;
-    4) spark_tp_roles= ;;
-    6) spark_tp_roles=tp6 ;;
-  esac
-fi
-if [[ -n "$spark_tp_roles" ]]; then
-  IFS=';' read -ra spark_tp_role_list <<<"$spark_tp_roles"
-  for spark_tp_role in "${spark_tp_role_list[@]}"; do
-    case "$spark_tp_role" in
+# Spark expert roles are universal by default: the ARM64 (SM121) image carries the
+# TP2, TP3 and TP6 replicated-group shards on top of the always-built TP4 shard,
+# so one published pair serves every approved native topology (TP4EP1, TP2EP2,
+# TP2EP3, TP3EP2, TP6EP1) and ./run.sh selects the mode. The x86_64 coordinator
+# needs no Spark role: roles are expert-only, so it is topology-independent.
+# DS41RT_RELEASE_SPARK_TP_ROLES is an explicit SUBSET override for a bounded
+# topology A/B or a legacy TP4-only rebuild (empty).
+# release-spark-tp-roles:start
+release_spark_tp_roles_canonical() {
+  # Echo a role list sorted and de-duplicated, or die. An unknown token, an empty
+  # element, an embedded newline or a duplicate would advertise a topology the
+  # image cannot serve. The wholly empty list is the explicit legacy TP4-only
+  # request. $2 names the source in diagnostics: the build override or the label.
+  local raw="$1" source_name="${2:-DS41RT_RELEASE_SPARK_TP_ROLES}"
+  local entry prior
+  local -a parts=() selected=()
+  [[ -n "$raw" ]] || return 0
+  [[ "$raw" != *";;"* && "$raw" != ";"* && "$raw" != *";" && "$raw" != *$'\n'* ]] ||
+    release_die "$source_name is not a ';'-separated role list: $raw"
+  IFS=';' read -ra parts <<<"$raw"
+  for entry in "${parts[@]}"; do
+    case "$entry" in
       tp2|tp3|tp6) ;;
-      *) release_die "DS41RT_RELEASE_SPARK_TP_ROLES accepts only tp2, tp3 and tp6, got: $spark_tp_role" ;;
+      *) release_die "$source_name accepts only tp2, tp3 and tp6, got: $entry" ;;
     esac
+    for prior in ${selected[@]+"${selected[@]}"}; do
+      [[ "$prior" != "$entry" ]] ||
+        release_die "$source_name lists $entry more than once"
+    done
+    selected+=("$entry")
   done
-  unset spark_tp_role spark_tp_role_list
-fi
+  printf '%s\n' "${selected[@]}" | sort | paste -sd';' -
+}
+
+release_universal_spark_tp_roles="tp2;tp3;tp6"
+# `${VAR-default}`, not `:-`, so an explicitly empty override stays the legacy
+# TP4-only request rather than falling back to the universal set.
+spark_tp_roles="$(release_spark_tp_roles_canonical \
+  "${DS41RT_RELEASE_SPARK_TP_ROLES-$release_universal_spark_tp_roles}")"
+[[ "$spark_tp_roles" == "$release_universal_spark_tp_roles" ]] ||
+  echo "== NON-UNIVERSAL expert role subset '${spark_tp_roles:-<none>}'; this pair cannot serve every approved native topology =="
+# Repeated by --dry-run and the build summary so a subset build is never mistaken
+# for the universal default.
+spark_tp_roles_note='universal, covers every approved native topology'
+[[ "$spark_tp_roles" == "$release_universal_spark_tp_roles" ]] ||
+  spark_tp_roles_note='explicit subset, not universal'
+# release-spark-tp-roles:end
 
 if ((dry_run)); then
   echo "Build dry-run passed; no image, container, SSH or submodule was touched."
@@ -101,7 +128,7 @@ if ((dry_run)); then
   echo "  build hosts (${#RELEASE_BUILD_HOSTS[@]}): $(IFS=,; echo "${RELEASE_BUILD_HOSTS[*]}")"
   echo "  seed host: ${RELEASE_BUILD_HOSTS[0]:-}"
   echo "  release tag: $release_version"
-  echo "  V41 Spark expert roles: ${spark_tp_roles:-<legacy TP4 only>}"
+  echo "  V41 Spark expert roles: ${spark_tp_roles:-<legacy TP4 only>} ($spark_tp_roles_note)"
   echo "  coordinator image: $COORDINATOR_DOCKER_INFERENCE"
   echo "  spark image: $SPARK_EXPERT_DOCKER_INFERENCE"
   exit 0
@@ -670,13 +697,13 @@ for host in "${RELEASE_BUILD_HOSTS[@]}"; do
       "docker image inspect -f '{{index .Config.Labels \"io.ds41rt.v41.spark_tp_roles\"}}' '$SPARK_EXPERT_DOCKER_INFERENCE'"
   )"
   [[ "$spark_role_label" != "<no value>" ]] || spark_role_label=
-  if [[ -z "$spark_tp_roles" ]]; then
-    [[ -z "$spark_role_label" ]] ||
-      release_die "$host Spark image advertises expert roles '$spark_role_label', expected none"
-  else
-    [[ ";$spark_role_label;" == *";$spark_tp_roles;"* ]] ||
-      release_die "$host Spark image advertises expert roles '$spark_role_label', expected '$spark_tp_roles'"
-  fi
+  # release-spark-tp-roles-postcheck:start
+  # One canonicalizer for both sides of the comparison, so a permutation or a
+  # stray separator cannot make an equal set look unequal (or the reverse).
+  [[ "$(release_spark_tp_roles_canonical "$spark_role_label" \
+    "io.ds41rt.v41.spark_tp_roles")" == "$spark_tp_roles" ]] ||
+    release_die "$host Spark image advertises expert roles '$spark_role_label', expected exactly '$spark_tp_roles'"
+  # release-spark-tp-roles-postcheck:end
 done
 
 echo "Build complete."
@@ -685,7 +712,7 @@ echo "  SparkInfer:  $sparkinfer_commit"
 if [[ -n "$source_manifest_sha256" ]]; then
   echo "  source:      $source_manifest_sha256"
 fi
-[[ -z "$spark_tp_roles" ]] || echo "  expert roles: $spark_tp_roles"
+echo "  expert roles: ${spark_tp_roles:-<none>} ($spark_tp_roles_note)"
 echo "  coordinator: $COORDINATOR_DOCKER_INFERENCE"
 echo "  spark:       $SPARK_EXPERT_DOCKER_INFERENCE"
 echo "  artifacts:   $repo_root/dist"

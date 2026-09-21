@@ -56,8 +56,14 @@ to be redone.
 See [compact setup and residency](docs/release-v7-exl3-compact.md)
 and the [configuration accounting chart](docs/release-v7-configurations.svg).
 No physical RTX 5090 has been tested; the same-capability grid checks used RTX PRO 6000.
-V8 release images are published as `ghcr.io/tpurtell/ds41rt-coordinator:v8` and
-`ghcr.io/tpurtell/ds41rt-spark-expert:v8` ([digests](docs/release-v8-notes.md)).
+The current published release pair is `ghcr.io/tpurtell/ds41rt-coordinator:v9` and
+`ghcr.io/tpurtell/ds41rt-spark-expert:v9` ([digests and roles](docs/release-v9-notes.md)).
+The v9 Spark image is **universal**: it advertises
+`io.ds41rt.v41.spark_tp_roles=tp2;tp3;tp6` on top of the default TP4 shard, so one
+published pair serves every approved native topology and `./run.sh` selects the role
+from `SPARK_TP`. V8 release images remain published as
+`ghcr.io/tpurtell/ds41rt-coordinator:v8` and `ghcr.io/tpurtell/ds41rt-spark-expert:v8`
+([digests](docs/release-v8-notes.md)).
 These four new-quant campaigns were re-run against the **published release images**,
 so the headline is a published-image measurement rather than a working-tree build; the
 earlier NVFP4 1x prefill attempt that an interrupted campaign left unfinished is now a
@@ -239,13 +245,19 @@ MODEL_REVISION=3431dde3247c13b5957f682b1e3c6fcae2566079
 To use the published images, pull the coordinator image locally and the Spark image on each worker:
 
 ```bash
-docker pull ghcr.io/tpurtell/ds41rt-coordinator:v8
+docker pull ghcr.io/tpurtell/ds41rt-coordinator:v9
 for host in ostrich dodo emu kiwi; do
-  ssh "$host" docker pull ghcr.io/tpurtell/ds41rt-spark-expert:v8
+  ssh "$host" docker pull ghcr.io/tpurtell/ds41rt-spark-expert:v9
 done
 ./run.sh --dry-run
 ./run.sh
 ```
+
+An explicit six-rank example (`examples/configs/tp2ep3-native.config`,
+`tp3ep2-native.config`, `tp6ep1-native.config`) adds `rhea` and `moa` to that loop:
+a default `./build.sh` builds and distributes to the four active ranks only, so the
+Spark image has to reach the fifth and sixth host by pull or by building with that
+`--config`. The coordinator image is x86_64 and runs only on the RTX host.
 
 Building from source exports CUDA kernels on the coordinator GPU and the first Spark. Stop existing serving processes on those build devices to leave GPU memory available, then run:
 

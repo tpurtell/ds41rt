@@ -1,13 +1,25 @@
 #!/usr/bin/env python3
-"""Executable coverage for `build.sh` spark-TP role selection and the
-`write-v41-expert-tp-manifest.py` role table.
+"""Executable coverage for the Spark TP role plan of `build.sh` and `wip.sh`, plus
+the `write-v41-expert-tp-manifest.py` role table.
 
 No hardware, Docker, SSH, cmake or cargo is touched. The test extracts the real
-role-selection block from `build.sh` by its boundary comments, sources the real
+role-selection block from each script by its boundary comments, sources the real
 `scripts/release-common.sh` for `release_die`/`release_spark_topology_explicit`,
 and runs the block in bash under a matrix of configurations. A change to the
-allowlist, the topology map or the multi-role syntax fails here rather than at
+allowlist, the default set or the multi-role syntax fails here rather than at
 release time.
+
+The two producers resolve roles differently on purpose, and both halves are
+asserted:
+
+* `build.sh` resolves the universal release set (`tp2;tp3;tp6`) regardless of the
+  configured topology, so one published image pair serves every approved native
+  topology. Detailed malformed-input coverage lives in
+  `test_release_universal_images.py`.
+* `wip.sh` resolves the *documented subset* for the slot's explicit topology
+  (2→tp2, 3→tp3, 6→tp6, TP4/default→none), because a WIP slot rebuilds on demand
+  for one measured A/B and must not pay for three unrelated exports. Its subset is
+  always contained in the release default.
 
 The manifest half writes a synthetic role export for a requested role and checks
 that the writer accepts the geometry it was told to expect (tp6: intermediate
@@ -29,37 +41,40 @@ WIP = REPO / "wip.sh"
 RELEASE_COMMON = REPO / "scripts" / "release-common.sh"
 MANIFEST = REPO / "scripts" / "write-v41-expert-tp-manifest.py"
 
-# Both scripts resolve the opt-in Spark TP roles from the same inputs with their
-# own variable names (`spark_tp_roles` for build.sh, `wip_spark_tp_roles` for
-# wip.sh) before their dry-run block. wip.sh names the WIP role variable in its
-# usage text earlier in the file, so its block is located from the right.
-BLOCK_START = "# Opt-in replicated-group Spark expert roles."
+UNIVERSAL = "tp2;tp3;tp6"
+
+# Each script keeps its role plan in one contiguous, marker-delimited block before
+# its dry-run exit. wip.sh names the WIP role variable in its usage text earlier in
+# the file, so its block is located from the right.
+BUILD_START = "# release-spark-tp-roles:start"
+WIP_START = "# Opt-in replicated-group Spark expert roles"
 BLOCK_END = "if ((dry_run)); then"
 
 
 def _role_block(script: Path = BUILD, *, variable: str = "spark_tp_roles",
-                last: bool = False, marker: str = BLOCK_START) -> str:
+                last: bool = False, marker: str = BUILD_START) -> str:
     text = script.read_text(encoding="utf-8")
     finder = text.rindex if last else text.index
     start = finder(marker)
     end = text.index(BLOCK_END, start)
     block = text[start:end]
     assert f"{variable}=" in block, f"{script.name} role block moved"
-    # wip.sh names its loop variable `wip_spark_tp_role`, build.sh uses
-    # `spark_tp_role`; both must still carry the validation case.
-    loop_var = "wip_spark_tp_role" if variable.startswith("wip_") else "spark_tp_role"
-    assert f'case "${loop_var}" in' in block, (
-        f"{script.name} role selector moved; update this extractor"
-    )
+    # The block must still validate its own tokens: build.sh canonicalizes through
+    # its helper (loop variable `entry`), wip.sh keeps its inline case
+    # (`wip_spark_tp_role`).
+    guard = ('case "$entry" in' if script == BUILD
+             else f'case "${"wip_" if variable.startswith("wip_") else ""}spark_tp_role" in')
+    assert guard in block, f"{script.name} role selector moved; update this extractor"
     return block
 
 
-def _run_roles(spark_tp: str, override: str | None) -> subprocess.CompletedProcess:
+def _run(script: Path, spark_tp: str, override: str | None, *, variable: str,
+         env_name: str, block: str) -> subprocess.CompletedProcess:
     harness = f"""
-set -uo pipefail
+set -euo pipefail
 source "{RELEASE_COMMON}"
-{_role_block()}
-printf '%s\\n' "${{spark_tp_roles}}"
+{block}
+printf 'ROLES=%s\\n' "${{{variable}}}"
 """
     env = {
         "PATH": "/usr/bin:/bin:/usr/local/bin",
@@ -68,60 +83,51 @@ printf '%s\\n' "${{spark_tp_roles}}"
         # explicit topology always sets it, so mirror that here.
         "SPARK_EP": "1" if spark_tp else "",
     }
-    # An unset override means "derive from the topology"; a non-empty override
-    # is the documented multi-role escape hatch.
-    if override:
-        env["DS41RT_RELEASE_SPARK_TP_ROLES"] = override
+    # An unset override means "use the script's own default"; a set override is the
+    # documented escape hatch, and an empty one is the explicit legacy request.
+    if override is not None:
+        env[env_name] = override
     return subprocess.run(
         ["bash", "-c", harness], capture_output=True, text=True, env=env,
         timeout=60, check=False,
     )
+
+
+def _run_roles(spark_tp: str, override: str | None) -> subprocess.CompletedProcess:
+    return _run(BUILD, spark_tp, override, variable="spark_tp_roles",
+                env_name="DS41RT_RELEASE_SPARK_TP_ROLES", block=_role_block())
 
 
 def _run_wip_roles(spark_tp: str, override: str | None) -> subprocess.CompletedProcess:
-    harness = f"""
-set -uo pipefail
-source "{RELEASE_COMMON}"
-{_role_block(WIP, variable="wip_spark_tp_roles", last=True,
-             marker="# Opt-in replicated-group Spark expert roles")}
-printf '%s\\n' "${{wip_spark_tp_roles}}"
-"""
-    env = {
-        "PATH": "/usr/bin:/bin:/usr/local/bin",
-        "SPARK_TP": spark_tp,
-        "SPARK_EP": "1" if spark_tp else "",
-    }
-    if override:
-        env["DS41RT_WIP_SPARK_TP_ROLES"] = override
-    return subprocess.run(
-        ["bash", "-c", harness], capture_output=True, text=True, env=env,
-        timeout=60, check=False,
-    )
+    return _run(WIP, spark_tp, override, variable="wip_spark_tp_roles",
+                env_name="DS41RT_WIP_SPARK_TP_ROLES",
+                block=_role_block(WIP, variable="wip_spark_tp_roles", last=True,
+                                  marker=WIP_START))
+
+
+def _roles(result: subprocess.CompletedProcess) -> str:
+    assert result.returncode == 0, result.stderr
+    return result.stdout.rstrip().splitlines()[-1].removeprefix("ROLES=")
+
+
+@pytest.mark.parametrize("spark_tp", ["", "2", "3", "4", "6"])
+def test_build_release_default_is_universal(spark_tp) -> None:
+    """No configured topology may narrow what a published image can serve."""
+    assert _roles(_run_roles(spark_tp, None)) == UNIVERSAL
 
 
 @pytest.mark.parametrize(
-    "spark_tp,override,expected",
+    "override,expected",
     [
-        # Default: no explicit topology, no override -> only the implicit TP4.
-        ("", None, ""),
-        # Explicit TP4xEP1 also selects no extra role.
-        ("4", None, ""),
-        # The new explicit TP6 topology selects the tp6 role.
-        ("6", None, "tp6"),
-        # SPARK_TP6 with no override maps to tp6, not to a generic role.
-        ("2", None, "tp2"),
-        ("3", None, "tp3"),
-        # Multi-role escape hatch, including the release combination.
-        (None, "tp2;tp3;tp6", "tp2;tp3;tp6"),
-        (None, "tp6", "tp6"),
-        # The escape hatch wins over the topology mapping.
-        ("4", "tp2;tp3;tp6", "tp2;tp3;tp6"),
+        ("tp2;tp3;tp6", UNIVERSAL),
+        ("tp6;tp2;tp3", UNIVERSAL),
+        ("tp6", "tp6"),
+        ("tp2;tp6", "tp2;tp6"),
+        ("", ""),
     ],
 )
-def test_build_role_selection_matrix(spark_tp, override, expected) -> None:
-    result = _run_roles(spark_tp if spark_tp else "", override)
-    assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == expected
+def test_build_release_subset_escape_hatch(override, expected) -> None:
+    assert _roles(_run_roles("4", override)) == expected
 
 
 def test_build_rejects_an_unknown_role_with_a_clear_error() -> None:
@@ -139,21 +145,20 @@ def test_build_rejects_an_unknown_role_with_a_clear_error() -> None:
         ("6", None, "tp6"),
         ("2", None, "tp2"),
         ("3", None, "tp3"),
-        (None, "tp2;tp3;tp6", "tp2;tp3;tp6"),
-        (None, "tp6", "tp6"),
-        ("4", "tp2;tp3;tp6", "tp2;tp3;tp6"),
+        ("", UNIVERSAL, UNIVERSAL),
+        ("", "tp6", "tp6"),
+        ("4", UNIVERSAL, UNIVERSAL),
     ],
 )
 def test_wip_role_selection_matrix(spark_tp, override, expected) -> None:
-    """wip.sh must resolve the same role plan as build.sh.
+    """wip.sh keeps the per-slot subset plan and the same allowlist.
 
-    Before this, wip.sh accepted only tp2|tp3, so the candidate six-role WIP
-    build aborted at argument validation even though the artifact script and
-    CMake already understood tp6.
+    Before tp6 was accepted here, the candidate six-role WIP build aborted at
+    argument validation even though the artifact script and CMake already
+    understood tp6.
     """
-    result = _run_wip_roles(spark_tp if spark_tp else "", override)
-    assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == expected
+    result = _run_wip_roles(spark_tp, override)
+    assert _roles(result) == expected
 
 
 def test_wip_rejects_an_unknown_role_and_names_the_wip_variable() -> None:
@@ -162,12 +167,17 @@ def test_wip_rejects_an_unknown_role_and_names_the_wip_variable() -> None:
     assert "DS41RT_WIP_SPARK_TP_ROLES accepts only tp2, tp3 and tp6" in result.stderr
 
 
-def test_wip_and_build_agree_on_every_supported_topology() -> None:
+def test_wip_subset_is_always_contained_in_the_release_default() -> None:
+    """A WIP slot may build less than a release, never something else.
+
+    The parity that matters is containment: every role a slot resolves must also be
+    baked into the published image, so a slot result transfers to the release path.
+    """
+    release = set(_roles(_run_roles("", None)).split(";")) - {""}
+    assert release == set(UNIVERSAL.split(";"))
     for spark_tp in ("2", "3", "4", "6"):
-        build = _run_roles(spark_tp, None)
-        wip = _run_wip_roles(spark_tp, None)
-        assert build.returncode == wip.returncode == 0, (spark_tp, build.stderr, wip.stderr)
-        assert build.stdout.strip() == wip.stdout.strip(), spark_tp
+        slot = set(_roles(_run_wip_roles(spark_tp, None)).split(";")) - {""}
+        assert slot <= release, (spark_tp, slot, release)
 
 
 def test_release_and_wip_artifact_scripts_share_the_allowlist() -> None:

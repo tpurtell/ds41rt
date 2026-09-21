@@ -11,6 +11,8 @@ Usage: ./push-containers.sh TAG
 Tags and pushes the current coordinator and Spark inference images to GHCR.
 The supplied release tag and latest are published for both images. The
 coordinator image is local; the Spark image is published from SPARK_0_HOST.
+The Spark image must advertise the V41 expert roles it carries (./build.sh bakes
+the universal tp2;tp3;tp6 set by default); a role-less legacy build is rejected.
 
 Example:
   ./push-containers.sh v4
@@ -40,6 +42,19 @@ coordinator_repository="ghcr.io/tpurtell/ds41rt-coordinator"
 spark_repository="ghcr.io/tpurtell/ds41rt-spark-expert"
 spark_host="$SPARK_0_HOST"
 expected_source="https://github.com/tpurtell/ds41rt"
+
+# The published pair is universal: ./build.sh bakes the TP2/TP3/TP6 Spark expert
+# shards by default on top of the always-built TP4 shard, and the release launcher
+# refuses an explicit SPARK_TP/SPARK_EP topology without the matching role.
+# push-universal-role-guard:start
+push_require_universal_roles() {
+  local advertised="$1" image="$2" role
+  for role in tp2 tp3 tp6; do
+    [[ ";$advertised;" == *";$role;"* ]] ||
+      release_die "$image does not advertise Spark expert role '$role' (advertised: '${advertised:-<none>}'); refusing to publish a legacy or subset build as the universal release pair. Rebuild it with ./build.sh, whose default is tp2;tp3;tp6."
+  done
+}
+# push-universal-role-guard:end
 
 docker info >/dev/null 2>&1 ||
   release_die "local Docker daemon is unavailable"
@@ -91,8 +106,20 @@ REMOTE
 [[ "$spark_source" == "$expected_source" ]] ||
   release_die "$spark_host image is not linked to the release repository: $spark_source"
 
+spark_roles="$(
+  ssh -o BatchMode=yes "$spark_host" bash -s -- \
+    "$SPARK_EXPERT_DOCKER_INFERENCE" <<'REMOTE'
+set -euo pipefail
+docker image inspect \
+  -f '{{index .Config.Labels "io.ds41rt.v41.spark_tp_roles"}}' "$1"
+REMOTE
+)"
+[[ "$spark_roles" != "<no value>" ]] || spark_roles=
+push_require_universal_roles "$spark_roles" "$SPARK_EXPERT_DOCKER_INFERENCE"
+
 echo "Publishing DS41RT containers"
 echo "  revision:    $coordinator_revision"
+echo "  expert roles: $spark_roles"
 echo "  coordinator: $coordinator_repository:$tag"
 echo "  spark:       $spark_repository:$tag (from $spark_host)"
 

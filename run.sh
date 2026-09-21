@@ -131,7 +131,8 @@ fi
 
 for tool in docker ssh curl jq ss nvidia-smi sha256sum python3; do release_need "$tool"; done
 docker info >/dev/null 2>&1 || release_die "local Docker daemon is unavailable"
-docker image inspect "$COORDINATOR_DOCKER_INFERENCE" >/dev/null 2>&1 || release_die "coordinator image is missing: $COORDINATOR_DOCKER_INFERENCE (run ./build.sh)"
+docker image inspect "$COORDINATOR_DOCKER_INFERENCE" >/dev/null 2>&1 ||
+  release_die "coordinator image is missing: $COORDINATOR_DOCKER_INFERENCE (pull the published pair, or build it with a config whose COORDINATOR_DOCKER_INFERENCE names this tag)"
 hf_home="${HF_HOME:-$HOME/.cache/huggingface}"
 release_resolve_local_model_revision "$hf_home"
 release_resolve_coordinator_gpu_identity
@@ -270,21 +271,36 @@ mapfile -t hosts < <(release_spark_values HOST)
 mapfile -t lanes < <(release_spark_values LANE_A)
 spark_exl3_identity=""
 for host in "${hosts[@]}"; do
-  spark_manifest="$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" bash -s -- "$SPARK_EXPERT_DOCKER_INFERENCE" "$engine_commit" "$sparkinfer_commit" "$snapshot_rel" "$model_is_exl3" "$exl3_family_tag" <<'REMOTE'
+  # Every argument below is non-empty on purpose. OpenSSH joins the command
+  # arguments into one remote shell line, so an empty argument is elided and
+  # every later positional shifts; the optional EXL3 family tag therefore
+  # travels as a sentinel and the host name sits ahead of it.
+  spark_manifest="$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" bash -s -- "$SPARK_EXPERT_DOCKER_INFERENCE" "$engine_commit" "$sparkinfer_commit" "$snapshot_rel" "$host" "$model_is_exl3" "${exl3_family_tag:-__none__}" <<'REMOTE'
 set -euo pipefail
-image="$1"; engine="$2"; sparkinfer="$3"; snapshot_rel="$4"
-docker info >/dev/null
-test "$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image")" = "$engine"
-test "$(docker image inspect -f '{{index .Config.Labels "io.ds41rt.sparkinfer.revision"}}' "$image")" = "$sparkinfer"
+image="$1"; engine="$2"; sparkinfer="$3"; snapshot_rel="$4"; host="$5"
+exl3="$6"; exl3_family="${7:-__none__}"
+[[ "$exl3_family" == __none__ ]] && exl3_family=
+# Every failure names the host and the check: this block runs over SSH, so a
+# bare nonzero exit would otherwise surface as an unexplained transport error.
+# Diagnostics go to stderr; stdout stays the EXL3 manifest alone.
+die() { echo "spark preflight on $host: $*" >&2; exit 1; }
+docker info >/dev/null 2>&1 || die "the Docker daemon is unavailable"
+docker image inspect "$image" >/dev/null 2>&1 || die "inference image is missing: $image (pull or distribute it)"
+[[ "$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image")" == "$engine" ]] ||
+  die "$image has another engine revision"
+[[ "$(docker image inspect -f '{{index .Config.Labels "io.ds41rt.sparkinfer.revision"}}' "$image")" == "$sparkinfer" ]] ||
+  die "$image uses another SparkInfer revision"
 hf_home="${HF_HOME:-$HOME/.cache/huggingface}"
-test -d "$hf_home/$snapshot_rel"
-! find "$hf_home/$snapshot_rel" -xtype l -print -quit | grep -q .
-if [[ "$5" == true ]]; then
+[[ -d "$hf_home/$snapshot_rel" ]] || die "model snapshot is missing: $snapshot_rel"
+if find "$hf_home/$snapshot_rel" -xtype l -print -quit | grep -q .; then
+  die "model snapshot has dangling links: $snapshot_rel"
+fi
+if [[ "$exl3" == true ]]; then
   docker run --rm --network none --entrypoint /bin/sh "$image" -c \
-    'if [ -f "/opt/ds41rt/lib/exl3/exl3-'"$6"'/manifest.json" ]; then cat "/opt/ds41rt/lib/exl3/exl3-'"$6"'/manifest.json"; else cat /opt/ds41rt/lib/exl3/manifest.json; fi'
+    'if [ -f "/opt/ds41rt/lib/exl3/exl3-'"$exl3_family"'/manifest.json" ]; then cat "/opt/ds41rt/lib/exl3/exl3-'"$exl3_family"'/manifest.json"; else cat /opt/ds41rt/lib/exl3/manifest.json; fi'
 fi
 REMOTE
-)"
+)" || release_die "Spark host preflight failed on $host (see the messages above)"
   if [[ "$model_is_exl3" == true ]]; then
     identity="$(release_exl3_package_identity "$sparkinfer_commit" <<<"$spark_manifest")"
     [[ "$SPARK_COUNT" != 2 || "$identity" != paired:* ]] ||
@@ -298,18 +314,23 @@ REMOTE
   fi
 done
 
-# An explicit TP2/TP3 topology needs the matching SM121 expert roles baked into
-# the Spark image. A prebuilt legacy image carries no role label and keeps
-# working for the default TP4EP1 path; an explicit topology is refused here,
-# before any service is stopped or replaced.
+# An explicit TP2/TP3/TP6 topology needs the matching SM121 expert role baked
+# into the Spark image. The published universal release pair advertises every
+# extra role at once (label `io.ds41rt.v41.spark_tp_roles=tp2;tp3;tp6`), so one
+# published image pair serves all approved topologies and this launch selects the
+# role it needs. A prebuilt legacy image carries no role label and keeps working
+# for the default TP4EP1 path; an explicit topology is refused here, before any
+# service is stopped or replaced.
+spark_advertised_roles=""
 if [[ -n "$spark_tp_roles_required" ]]; then
   for host in "${hosts[@]}"; do
     advertised_roles="$(
       ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" \
         "docker image inspect -f '{{index .Config.Labels \"io.ds41rt.v41.spark_tp_roles\"}}' '$SPARK_EXPERT_DOCKER_INFERENCE'"
-    )"
+    )" || release_die "$host cannot report the role label of $SPARK_EXPERT_DOCKER_INFERENCE; is the Spark image present on that host?"
     [[ ";$advertised_roles;" == *";$spark_tp_roles_required;"* ]] ||
-      release_die "$host Spark image does not advertise required expert role $spark_tp_roles_required (rebuild with DS41RT_RELEASE_SPARK_TP_ROLES=$spark_tp_roles_required); refusing an unbuilt TP$spark_tp topology"
+      release_die "$host Spark image does not advertise required expert role $spark_tp_roles_required (advertised: ${advertised_roles:-<none>}); refusing an unbuilt TP$spark_tp topology: use the published universal release pair, or rebuild with DS41RT_RELEASE_SPARK_TP_ROLES=$spark_tp_roles_required"
+    [[ -n "$spark_advertised_roles" ]] || spark_advertised_roles="$advertised_roles"
   done
 fi
 
@@ -340,7 +361,7 @@ if ((dry_run)); then
     done < <(release_spark_rank_map)
     echo "  Spark weight admission (workspace/staging NOT accounted; not a feasibility claim): $spark_admission"
     [[ -z "$spark_tp_roles_required" ]] ||
-      echo "  Spark image must advertise V41 expert role: $spark_tp_roles_required"
+      echo "  Spark image must advertise V41 expert role: $spark_tp_roles_required (selected rank advertises: ${spark_advertised_roles:-<unreadable>})"
   fi
   echo "  coordinator memory reservation: ${MEMORY_RESERVATION:-runtime default}"
   echo "  prefill batch tokens: $PREFILL_BATCH_TOKENS; expert capacity: $expert_capacity"

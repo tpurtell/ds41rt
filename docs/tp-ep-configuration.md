@@ -1,14 +1,19 @@
 # Opt-in Spark TP x EP replicated expert groups
 
-Status: **configuration surface is live and hardware-exercised; still not a
-qualified release.** The native `--spark-tp`/`--spark-ep` parsing and wire
-geometry landed and have run on real hardware: the manual G1 flow (four Sparks,
-N20 boundary) and two completed six-rank dual arms (`2rtx6-tp3ep2`,
-`2rtx6-tp2ep3`) that an independent audit accepted for the canonical 372-row
-scope **with strict quality FAIL** (known greedy-drift class; see §3a). The
-default `ds41rt.config`, the release images and the default serving selection
-are unchanged, and **no release image is built or supported for TP3 or six-rank
-EP by this work**.
+Status: **packaged and launchable; still not a qualified release.** The native
+`--spark-tp`/`--spark-ep` parsing and wire geometry landed and have run on real
+hardware: the manual G1 flow (four Sparks, N20 boundary) and two completed
+six-rank dual arms (`2rtx6-tp3ep2`, `2rtx6-tp2ep3`) that an independent audit
+accepted for the canonical 372-row scope **with strict quality FAIL** (known
+greedy-drift class; see §3a). Packaging and qualification are separate claims:
+the published v9 Spark image is **universal** and advertises
+`io.ds41rt.v41.spark_tp_roles=tp2;tp3;tp6` alongside the default TP4 shard
+([release-v9-notes.md](release-v9-notes.md)), so one published pair serves every
+approved topology and `run.sh` selects the role from `SPARK_TP`. Bounded
+final-image functional checks passed for TP6 and the implicit TP4 layout on one
+and two RTX; that is **not** coverage of all five topologies, the canonical
+frozen six-rank qualifier was not run, and no final-image performance number is
+claimed. The default `ds41rt.config` serving selection is unchanged.
 
 Related: [tp-ep-implementation-plan.md](tp-ep-implementation-plan.md) (design
 and phase gates), `examples/configs/README.md` (runnable example files),
@@ -88,13 +93,17 @@ them, matching the other topology-shaping keys.
 > The daemon-side `--spark-tp` / `--spark-ep` parsing, wire fields, TP3 3-plane
 > reduction and six-rank EP assembly have **landed** and been exercised on real
 > hardware. Do not convert that into release support or a qualification claim:
-> the completed runs are audited experiments with a strict quality FAIL, and no
-> release image is built or supported for TP3/six-rank by this work.
+> the completed replicated-group runs are audited experiments with a strict
+> quality FAIL. Packaging is a separate claim from qualification: the published
+> universal v9 Spark image carries the `tp2`/`tp3`/`tp6` roles (§1), so these
+> layouts are launchable from the published pair, and only TP6 and the implicit
+> TP4 layout have bounded final-image functional checks.
 >
 > Entry points differ and do **not** all support the same surface:
-> `run.sh` (release) takes topology from configuration only, and its single-RTX
-> placement handoff is still HELD; `scripts/run-wip.sh` is the legacy four-Spark
-> WIP path and **rejects** explicit `SPARK_TP`/`SPARK_EP`;
+> `run.sh` (release) takes topology from configuration only and hands off the
+> resolved boundary on one RTX as well as two for an explicit local count in
+> 1..=39 (§3); `scripts/run-wip.sh` is the legacy four-Spark WIP path and
+> **rejects** explicit `SPARK_TP`/`SPARK_EP`;
 > `scripts/run-tp-ep-native-candidate.sh` is the candidate six-rank path, which
 > requires explicit topology, accepts 1 or 2 RTX, and is single-rail A-only.
 
@@ -172,14 +181,21 @@ runtime headroom are only known from the expert service startup report.
 - Qualification status: **not qualified**. These are experiment results, not
   release support.
 
-Single-RTX placement in the **release** launcher (`run.sh`) is **held**: the
-release daemon rejects a 1-RTX placement and connects workers before publishing
-its local plan, so a launcher that waited for the plan before starting workers
-would deadlock. This does not block the candidate path: the candidate six-rank
-launcher runs a 1-RTX arm with workers loading from layer 0 (no handoff), which
-is how the tested `six-1rtx6-tp3ep2` arm ran (`--rtx-expert-layers 0`, no
-placement directory, all 40 layers remote). The release single-RTX handoff
-returns only with a coordinated boot-ordering refactor and its own mock test.
+Single-RTX placement in the **release** launcher (`run.sh`) is **implemented**
+for an explicit local count: with `RTX_EXPERT_LAYERS` in 1..=39 and an explicit
+topology, `run.sh` passes `--placement-directory` on one RTX, the coordinator
+publishes its real boundary before anything waits on it (the Spark transport
+connects lazily, so the old deadlock rationale is gone), the launcher reads the
+plan, starts every worker at that layer and only then acknowledges readiness.
+`auto` and `0` on one RTX have no local boundary to hand off and keep the
+historical no-handoff launch: every worker starts at layer 0 and loads all 40
+routed layers, and only an explicit `0` guarantees that all 40 are also
+*dispatched* remotely — under `auto` the coordinator still places local layers
+that those workers have already reserved.
+That is the shape the tested `six-1rtx6-tp3ep2` arm ran (`--rtx-expert-layers 0`,
+no placement directory) and the shape
+`examples/configs/tp3ep2-native.config` pins; `RTX_EXPERT_LAYERS=auto` there
+would let the coordinator keep local layers the workers already reserve.
 
 Daemon-level `TP2EP1` / `TP3EP1` are not launcher-selectable: `SPARK_COUNT=2` is
 the EXL3 compact path and there is no `SPARK_COUNT=3` convention. They stay a
@@ -401,7 +417,8 @@ requires explicit `SPARK_TP`/`SPARK_EP`.
 | Native WIP artifact override on `run.sh` (replaces legacy phase0) | integration `91570601` | manual G1/six-rank native flow used instead; WIP override PENDING |
 | Daemon `--spark-tp` / `--spark-ep` parsing and wire geometry | daemon `6ba87` | landed and exercised on hardware (G1 N20; six-rank dual arms) |
 | Candidate budget | memory `885b` / integration `91570601` | used: `109,119,320,064 B` in all five tested configs; serve gate is CUDA-free based |
-| Single-RTX placement boot-ordering (then re-enable the release 1-RTX handoff) | daemon/integration | HELD for the release launcher; candidate 1-RTX arm ran (workers from layer 0) |
+| Single-RTX placement boot-ordering (then re-enable the release 1-RTX handoff) | daemon/integration | **landed**: `run.sh` opens the handoff on one RTX for an explicit local count in 1..=39 (§3); `auto`/`0` keep the historical no-handoff launch, which is how the candidate 1-RTX arm ran |
+| Release pair that serves every approved topology | build/publish | **landed in v9**: the published Spark image is universal (`io.ds41rt.v41.spark_tp_roles=tp2;tp3;tp6`) and `run.sh` selects/verifies the role per topology; see [release-v9-notes.md](release-v9-notes.md) |
 | Matched TP4 vs TP2×EP2 decode/prefill campaign | performance | PENDING |
 | Six-rank RDMA GID/interface selection (rhea/moa multi-homing) | integration | exercised in the six-rank runs; explicit per-rail selection still required |
 | Independent audit of the completed six-rank dual arms | review | done — accept for the canonical 372-row scope, strict quality FAIL preserved |
@@ -427,6 +444,15 @@ requires explicit `SPARK_TP`/`SPARK_EP`.
   geometry, capacity coverage, artifact hash, missing library) with exit 2;
 - `build.sh --dry-run` and `wip.sh --dry-run` cover a six-host, role-selected,
   official-only plan without invoking Docker/SSH;
+- every example config names the published release pair `ds41rt.config` names
+  (no per-topology local tag can reach a host that only pulled the published
+  images), and the pair carries one release tag on both roles;
+- the real `run.sh` per-host Spark preflight runs through an OpenSSH-style shim
+  that elides empty arguments, so the host name survives an empty EXL3 family
+  tag and a failing check names its host;
+- the real `run.sh` role gate: the universal label satisfies `tp2`/`tp3`/`tp6`,
+  a subset or legacy unlabeled image is refused before any service change, and
+  the default TP4 launch never probes it;
 - `run-wip.sh` rejects the replicated wire on the legacy backend;
 - candidate launcher: matched control flags present, coordinator-only GPU pin
   validation, `DS41RT_NATIVE_LIB`/`RUST_LOG`/runtime-root env before the

@@ -784,7 +784,7 @@ class BuildScopeTest(unittest.TestCase):
         env = dict(os.environ, PATH=f"{stub_bin}{os.pathsep}{os.environ['PATH']}")
         return env, marker
 
-    def test_build_dry_run_six_host_with_explicit_role(self) -> None:
+    def test_build_dry_run_six_host_advertises_universal_roles(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             env, marker = self.stub_path(root)
@@ -794,7 +794,10 @@ class BuildScopeTest(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("build hosts (6)", result.stdout)
-            self.assertIn("V41 Spark expert roles: tp3", result.stdout)
+            # The published Spark image is universal: one build serves every
+            # approved topology, so an explicit TP3 config must not narrow the
+            # built role set to tp3 alone.
+            self.assertIn("V41 Spark expert roles: tp2;tp3;tp6", result.stdout)
             self.assertFalse(marker.exists(), marker.read_text() if marker.exists() else "")
 
     def test_wip_dry_run_six_host_official_only_scope(self) -> None:
@@ -825,7 +828,7 @@ class BuildScopeTest(unittest.TestCase):
         self.assertIn("io.ds41rt.v41.spark_tp_roles", dockerfile)
         self.assertIn("V41_EXPERT_TP_AOT.json", dockerfile)
 
-    def test_run_sh_accepts_actual_placement_gpus_and_holds_single_rtx(self) -> None:
+    def test_run_sh_accepts_actual_placement_gpus_and_opens_single_rtx_handoff(self) -> None:
         release = (ROOT / "run.sh").read_text()
         self.assertIn('--argjson gpus "$RELEASE_RTX_GPUS"', release)
         self.assertIn(".rtx_gpus == $gpus", release)
@@ -839,6 +842,25 @@ class BuildScopeTest(unittest.TestCase):
         # The boundary acknowledgement must not be gated on the RTX count alone.
         self.assertIn('if [[ -n "$placement_directory" ]]; then', release)
         self.assertNotIn("((RELEASE_RTX_GPUS == 2)); then\n  docker exec \"$coordinator\" sh -c 'cp", release)
+
+    def test_run_sh_image_diagnostics_name_the_reference_and_host(self) -> None:
+        release = (ROOT / "run.sh").read_text()
+        # A missing coordinator image is a naming problem, not a build problem:
+        # the message must carry the configured reference and both remedies.
+        self.assertIn("coordinator image is missing: $COORDINATOR_DOCKER_INFERENCE", release)
+        self.assertIn("pull the published pair", release)
+        # A missing Spark image on one rank must identify that rank instead of
+        # surfacing as a bare SSH failure, and the role refusal must show what
+        # the image actually advertises.
+        self.assertIn("inference image is missing: $image", release)
+        self.assertIn("spark preflight on $host", release)
+        self.assertIn("Spark host preflight failed on $host", release)
+        self.assertIn("(advertised: ${advertised_roles:-<none>})", release)
+        self.assertIn("is the Spark image present on that host?", release)
+        # The published images are universal, so the remedy is the published
+        # pair, not only a narrower local rebuild.
+        self.assertIn("use the published universal release pair", release)
+        self.assertIn("selected rank advertises", release)
 
     def test_shared_config_has_no_topology_to_rtx_hardcode(self) -> None:
         common = (ROOT / "scripts/release-common.sh").read_text()
@@ -1255,6 +1277,213 @@ class CandidateLauncherTest(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("unreachable", result.stderr)
             self.assertIn("had one or more failures", result.stderr)
+
+
+
+def run_sh_block(start: str, end: str) -> str:
+    """Extract one literal run.sh block so a test can execute the real code."""
+    source = (ROOT / "run.sh").read_text()
+    return source[source.index(start):source.index(end, source.index(start))]
+
+
+class PublishedImageReferenceTest(unittest.TestCase):
+    """Every example must name the pair that actually exists.
+
+    The launcher resolves COORDINATOR_DOCKER_INFERENCE with a plain
+    `docker image inspect`, so an example that pins an unpublished per-topology
+    tag fails before any topology work, even though the published universal
+    images serve that topology.
+    """
+
+    def published_pair(self) -> tuple[str, str]:
+        values = {}
+        for line in CONFIG.read_text().splitlines():
+            for key in ("COORDINATOR_DOCKER_INFERENCE", "SPARK_EXPERT_DOCKER_INFERENCE"):
+                if line.startswith(f"{key}="):
+                    values[key] = line.split("=", 1)[1]
+        return values["COORDINATOR_DOCKER_INFERENCE"], values["SPARK_EXPERT_DOCKER_INFERENCE"]
+
+    def test_every_example_names_the_published_release_pair(self) -> None:
+        coordinator, spark = self.published_pair()
+        self.assertTrue(coordinator.startswith("ghcr.io/"), coordinator)
+        known = {"tp4ep1-explicit-native.config", "tp2ep2-native.config",
+                 "tp3ep2-native.config", "tp2ep3-native.config", "tp6ep1-native.config"}
+        paths = sorted(EXAMPLES.glob("*.config"))
+        self.assertTrue(known <= {p.name for p in paths},
+                        f"missing examples: {sorted(known - {p.name for p in paths})}")
+        # Every example in the directory, present or later added, must be aligned.
+        for path in paths:
+            with self.subTest(example=path.name):
+                values = dict(
+                    line.split("=", 1)
+                    for line in path.read_text().splitlines()
+                    if line.startswith(("COORDINATOR_DOCKER_INFERENCE=",
+                                        "SPARK_EXPERT_DOCKER_INFERENCE="))
+                )
+                self.assertEqual(values.get("COORDINATOR_DOCKER_INFERENCE"), coordinator)
+                self.assertEqual(values.get("SPARK_EXPERT_DOCKER_INFERENCE"), spark)
+                # One release, one tag: a mixed pair fails the launcher's engine
+                # identity check at startup.
+                self.assertEqual(
+                    values["COORDINATOR_DOCKER_INFERENCE"].rsplit(":", 1)[1],
+                    values["SPARK_EXPERT_DOCKER_INFERENCE"].rsplit(":", 1)[1],
+                )
+
+    def test_no_example_pins_an_unpublished_candidate_tag(self) -> None:
+        for path in sorted(EXAMPLES.glob("*.config")):
+            with self.subTest(example=path.name):
+                for line in path.read_text().splitlines():
+                    if not line.startswith(("COORDINATOR_DOCKER_INFERENCE=",
+                                            "SPARK_EXPERT_DOCKER_INFERENCE=")):
+                        continue
+                    reference = line.split("=", 1)[1]
+                    self.assertIn("/", reference, f"{path.name}: {reference} is a local-only tag")
+                    self.assertNotIn("-candidate", reference, path.name)
+
+
+class SparkHostPreflightTest(unittest.TestCase):
+    """Run run.sh's real per-host SSH preflight through an OpenSSH-style shim.
+
+    OpenSSH joins its command arguments into one remote shell line, so an empty
+    argument is elided and every later positional shifts. The host name therefore
+    has to survive an empty EXL3 family tag, and a failing check has to name the
+    host it ran on. `ssh` is replaced by a shim and `docker` by a PATH stub,
+    because the remote half runs in a child shell that inherits the environment
+    but not shell functions.
+    """
+
+    DOCKER_STUB = """#!/usr/bin/env bash
+if [[ "$1" == info ]]; then exit 0; fi
+if [[ "$1" == image && "$2" == inspect ]]; then
+  if [[ "$*" == *"-f "* ]]; then
+    case "$*" in
+      *image.revision*) printf '%s\\n' "$DS41RT_STUB_ENGINE"; exit 0 ;;
+      *sparkinfer.revision*) printf '%s\\n' "$DS41RT_STUB_SPARKINFER"; exit 0 ;;
+      *) printf '\\n'; exit 0 ;;
+    esac
+  fi
+  if [[ "${DS41RT_STUB_MISSING:-0}" == 1 ]]; then exit 1; fi
+  echo present
+  exit 0
+fi
+echo "docker $*"
+"""
+
+    HARNESS = """set -euo pipefail
+ssh() {{ shift 5; bash -c "$*"; }}
+release_die() {{ echo "die: $*" >&2; exit 1; }}
+SPARK_EXPERT_DOCKER_INFERENCE=registry.example/spark:v9
+engine_commit=engine-revision
+sparkinfer_commit=sparkinfer-revision
+snapshot_rel=hub/models--x--M/snapshots/rev
+host=dodo
+model_is_exl3={exl3}
+exl3_family_tag={family}
+HOME={home}
+unset HF_HOME
+"""
+
+    STATEMENT = None
+
+    @classmethod
+    def statement(cls) -> str:
+        if cls.STATEMENT is None:
+            source = (ROOT / "run.sh").read_text()
+            start = source.index('spark_manifest="$(ssh')
+            end = source.index(' (see the messages above)"', start) + len(' (see the messages above)"')
+            cls.STATEMENT = source[start:end]
+        return cls.STATEMENT
+
+    def preflight(self, *, exl3: str = "false", family: str = '""',
+                  missing: int = 0) -> subprocess.CompletedProcess[str]:
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary)
+            # HF_HOME is unset below, so the remote resolves the snapshot under
+            # $HOME/.cache/huggingface.
+            (home / ".cache/huggingface/hub/models--x--M/snapshots/rev").mkdir(parents=True)
+            stub = home / "bin"
+            stub.mkdir()
+            docker = stub / "docker"
+            docker.write_text(self.DOCKER_STUB)
+            docker.chmod(0o755)
+            script = (self.HARNESS.format(exl3=exl3, family=family, home=str(home))
+                      + self.statement()
+                      + '\nprintf "manifest=[%s]\n" "$spark_manifest"\n')
+            return subprocess.run(
+                ["bash", "-c", script], cwd=ROOT, text=True, capture_output=True, timeout=20,
+                env=dict(os.environ, PATH=f"{stub}{os.pathsep}{os.environ['PATH']}",
+                         DS41RT_STUB_ENGINE="engine-revision",
+                         DS41RT_STUB_SPARKINFER="sparkinfer-revision",
+                         DS41RT_STUB_MISSING=str(missing)),
+            )
+
+    def test_native_empty_family_tag_completes_without_shifting_arguments(self) -> None:
+        result = self.preflight()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "manifest=[]\n")
+
+    def test_failing_check_names_the_host_it_ran_on(self) -> None:
+        # The host now travels ahead of the optional family tag, so an empty
+        # family value cannot elide it: this diagnostic has to name the host the
+        # check ran on, not an empty or shifted value.
+        result = self.preflight(missing=1)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("spark preflight on dodo: inference image is missing", result.stderr)
+        self.assertIn("Spark host preflight failed on dodo", result.stderr)
+
+    def test_exl3_family_tag_reaches_the_manifest_path(self) -> None:
+        result = self.preflight(exl3="true", family='"k23"')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("exl3-k23/manifest.json", result.stdout)
+        self.assertNotIn("exl3-/manifest.json", result.stdout)
+
+    def test_empty_family_exl3_launch_uses_the_legacy_manifest(self) -> None:
+        result = self.preflight(exl3="true")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("exl3-/manifest.json", result.stdout)
+
+
+class SparkRoleGateTest(unittest.TestCase):
+    """The published universal image must satisfy every explicit topology."""
+
+    def gate(self, *, required: str, advertised: str | None, hosts: int = 3,
+             ssh_rc: int = 0) -> subprocess.CompletedProcess[str]:
+        block = run_sh_block('spark_advertised_roles=""', "\n# Zero-Spark deployments")
+        script = f'''set -euo pipefail
+release_die() {{ echo "die: $*" >&2; exit 1; }}
+ssh() {{ [[ {ssh_rc} -eq 0 ]] || {{ echo "No such image" >&2; return 255; }}; printf '%s\\n' '{advertised}'; }}
+hosts=(h0 h1 h2 h3 h4 h5)
+hosts=("${{hosts[@]:0:{hosts}}}")
+spark_tp=2
+spark_tp_roles_required={required!r}
+SPARK_EXPERT_DOCKER_INFERENCE=registry.example/spark:v9
+''' + block + '\nprintf "advertised=%s\\n" "$spark_advertised_roles"\n'
+        return subprocess.run(["bash", "-c", script], cwd=ROOT,
+                              text=True, capture_output=True, timeout=20)
+
+    def test_universal_label_satisfies_every_required_role(self) -> None:
+        for required in ("tp2", "tp3", "tp6"):
+            with self.subTest(required=required):
+                result = self.gate(required=required, advertised="tp2;tp3;tp6")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("advertised=tp2;tp3;tp6", result.stdout)
+
+    def test_subset_and_legacy_labels_are_refused(self) -> None:
+        for required, advertised in (("tp6", "tp2;tp3"), ("tp3", ""), ("tp2", "tp4")):
+            with self.subTest(required=required, advertised=advertised):
+                result = self.gate(required=required, advertised=advertised)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(f"does not advertise required expert role {required}", result.stderr)
+                self.assertIn("published universal release pair", result.stderr)
+
+    def test_legacy_tp4_launch_never_probes_the_role_label(self) -> None:
+        result = self.gate(required="", advertised=None, ssh_rc=255)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_unreadable_label_is_reported_per_host(self) -> None:
+        result = self.gate(required="tp2", advertised=None, hosts=2, ssh_rc=255)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("h0 cannot report the role label", result.stderr)
 
 
 if __name__ == "__main__":

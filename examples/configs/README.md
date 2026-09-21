@@ -32,12 +32,13 @@ tp_rank = global_rank % SPARK_TP
 
 Approved native official layouts:
 
-| File | Hardware | Topology | Status |
-| --- | --- | --- | --- |
-| `tp4ep1-explicit-native.config` | 2 RTX + 4 Spark | TP4 x EP1 = 4 | explicit form of the default; control arm |
-| `tp2ep2-native.config` | 2 RTX + 4 Spark | TP2 x EP2 = 4 | experiment completed; quality not accepted; release not qualified |
-| `tp3ep2-native.config` | 1 RTX + 6 Spark | TP3 x EP2 = 6 | experiment completed (all 40 remote); quality not accepted; release not qualified |
-| `tp2ep3-native.config` | 2 RTX + 6 Spark | TP2 x EP3 = 6 | experiment completed; quality not accepted; release not qualified |
+| File | Hardware | Topology | Spark role | Status |
+| --- | --- | --- | --- | --- |
+| `tp4ep1-explicit-native.config` | 2 RTX + 4 Spark | TP4 x EP1 = 4 | none (legacy shard) | explicit form of the default; control arm |
+| `tp2ep2-native.config` | 2 RTX + 4 Spark | TP2 x EP2 = 4 | `tp2` | experiment completed; quality not accepted; release not qualified |
+| `tp3ep2-native.config` | 1 RTX + 6 Spark | TP3 x EP2 = 6 | `tp3` | experiment completed (all 40 remote); quality not accepted; release not qualified |
+| `tp2ep3-native.config` | 2 RTX + 6 Spark | TP2 x EP3 = 6 | `tp2` | experiment completed; quality not accepted; release not qualified |
+| `tp6ep1-native.config` | 2 RTX + 6 Spark | TP6 x EP1 = 6 | `tp6` | packaged; bounded final-image functional checks passed on 1 and 2 RTX; canonical six-rank qualifier not run |
 
 All five TP×EP experiments have completed, including the dual-TP3 arms; the
 five configurations actually run are recorded under `runs/tp-ep-preflight/`.
@@ -51,17 +52,48 @@ Explicit topologies require the official native checkpoint. EXL3 and NVFP4
 checkpoints are rejected before any service change; their existing non-topology
 paths are unchanged.
 
+## Images and roles
+
+Every example names the **same published release pair** that `ds41rt.config`
+names. The Spark image is universal: it carries the default TP4 shard plus the
+`tp2`, `tp3` and `tp6` replicated-group roles and advertises them as
+`io.ds41rt.v41.spark_tp_roles=tp2;tp3;tp6` (see
+[docs/release-v9-notes.md](../../docs/release-v9-notes.md)). One published pair
+therefore serves every approved topology, and `run.sh` is what selects the mode:
+it derives the needed role from `SPARK_TP`, requires that role in the image label
+of **every** rank, and refuses before any service is stopped or replaced. A
+topology that needs a role the image lacks is rejected even though the tag
+resolves; the legacy default TP4 path never probes the label.
+
+Do not pin a per-topology tag such as `ds41rt-coordinator:tp2ep3-candidate`.
+`build.sh` takes the tag from the config it is given, so a name like that exists
+only on a host where that exact file was built, and `run.sh` fails its image
+check on every other host — the launcher cannot infer a tag from a topology.
+
+Packaging is not qualification. The role check is a compatibility preflight: it
+proves the image carries the shard family this topology asks for, nothing more.
+Neither it nor a passing dry-run accepts the layout on quality, memory or
+throughput; the per-file status above and
+[docs/tp-ep-configuration.md](../../docs/tp-ep-configuration.md) carry that line.
+
+To run a six-rank example, the Spark image must exist on all six ranks: a default
+`./build.sh` builds and distributes to the four active ranks, while building with
+one of the six-rank `--config` files selects all six. Otherwise pull the Spark
+image on `rhea` and `moa` too. The coordinator image is x86_64 and runs only on
+the RTX host.
+
 ## Fifth and sixth Sparks
 
 The six-Spark files use `rhea` (global rank 4) and `moa` (rank 5), connected
 2026-09-20; see [docs/cluster-hosts.md](../../docs/cluster-hosts.md). Under the
 current permission they are ordinary benchmark/development hosts and are **not**
-restricted to a single six-Spark serving set. These examples leave the secondary
-rail (`LANE_B`) unset because the candidate launcher is single-rail A-only by
-design and the legacy `LANE_B` default range is stale; that is a configuration
-choice, not a host restriction. The six-rank experiments have completed but are
-**not accepted as quality results and not release-qualified**; no memory,
-correctness, performance or readiness claim is attached.
+restricted to a single six-Spark serving set. These examples name a secondary
+rail (`LANE_B`) on an isolated subnet with matching host numbers, but the release
+transport still dials `LANE_A` and the candidate launcher is single-rail A-only
+by design; `LANE_B` is unused unless a launch explicitly selects it. The six-rank
+experiments have completed but are **not accepted as quality results and not
+release-qualified**; no memory, correctness, performance or readiness claim is
+attached.
 
 ## Admission
 

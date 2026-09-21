@@ -1,10 +1,12 @@
 # Replicated-group Spark TP2/TP3/TP6 expert shards (native FP8 K32 family, SM121).
 #
-# Opt-in only: `DS41RT_V41_SPARK_TP_ROLES` is empty by default so no Spark
-# TP2/TP3/TP6 object or symbol is compiled or linked and every release default
-# behaves exactly as the historical Spark TP4 shard. When the option lists
-# `tp2`, `tp3` and/or `tp6`, this exports those roles and compiles one distinct
-# symbol family per degree into the same libds41rt_native.so.
+# This option is empty for a bare native configure, so such a build compiles and
+# links no extra object or symbol and behaves exactly as the historical Spark TP4
+# shard. The release path is universal: `./build.sh` resolves the default
+# `tp2;tp3;tp6` (subset only via DS41RT_RELEASE_SPARK_TP_ROLES) and passes it
+# through scripts/build-release-artifacts.sh, so each listed role is exported
+# ahead of runtime and compiled as one distinct symbol family per degree into the
+# same libds41rt_native.so.
 #
 # The exporter runs on the target SM121 device and pre-compiles capacities
 # 1/16/80/256/1024/4096 ahead of runtime. The TP degree is a plan-time role

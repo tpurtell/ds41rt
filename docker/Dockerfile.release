@@ -49,9 +49,10 @@ ARG CUDA_ARCH
 ARG DS41RT_ENGINE_COMMIT=unknown
 ARG DS41RT_SPARKINFER_COMMIT=unknown
 ARG DS41RT_RELEASE_VERSION=unknown
-# Optional replicated-group SM121 expert roles compiled into this image
-# (semicolon list `tp2`/`tp3`). Empty is the release default and keeps the
-# historical Spark TP4 shard unchanged.
+# Replicated-group SM121 expert roles compiled into this image (semicolon list
+# `tp2`/`tp3`/`tp6`). ./build.sh resolves them, universal by default, and passes an
+# empty value for the coordinator: the verification below rejects any role label the
+# built manifest and shipped library do not corroborate.
 ARG DS41RT_V41_SPARK_TP_ROLES=
 
 ENV DS41RT_ROLE=${DS41RT_ROLE}
@@ -113,11 +114,19 @@ COPY scripts/real-full-tcp-serve.sh /opt/ds41rt/scripts/real-full-tcp-serve.sh
 COPY scripts/kernel-cache-identity.py /opt/ds41rt/scripts/kernel-cache-identity.py
 COPY docker/release-entrypoint.sh /usr/local/bin/ds41rt-release-entrypoint
 
+# Bake-time artifact corroboration, inside the existing verification layer: the
+# role manifest is written by scripts/write-v41-expert-tp-manifest.py from the AOT
+# export that was actually built, never from a build-arg, so a library the
+# manifest does not name, or a role set it does not record, is a stale or partial
+# .ds41rt-release-image directory rather than a built image. Existing manifest
+# schema only, no new verifier. Kernel execution and numerical/device
+# qualification remain the hardware gate the release checklist records.
 RUN for exl3_family in /opt/ds41rt/lib/exl3/exl3-k*/; do \
       python3 /opt/ds41rt/python/tools/package_v41_exl3_aot.py verify \
         --package "$exl3_family" --sparkinfer-revision "$DS41RT_SPARKINFER_COMMIT" \
         --role "$DS41RT_ROLE" --runtime "$(python3 -m cutlass.cute.export.aot_config --libdir)/libcute_dsl_runtime.so"; \
     done && \
+    jq -e --arg role "$DS41RT_ROLE" --arg claimed "$DS41RT_V41_SPARK_TP_ROLES" --arg lib "$(sha256sum /opt/ds41rt/lib/libds41rt_native.so | cut -d" " -f1)" '($claimed | split(";") | map(select(. != "")) | sort) as $want | . as $doc | $doc.role == $role and $doc.native_library_sha256 == $lib and (($doc.spark_tp_roles // []) | sort) == $want and (($doc.manifests // {}) | keys | sort) == $want' /opt/ds41rt/share/V41_EXPERT_TP_AOT.json && \
     cmp -s \
       /opt/ds41rt/third_party/sparkinfer/LICENSE \
       /opt/ds41rt/share/SPARKINFER_LICENSE && \
