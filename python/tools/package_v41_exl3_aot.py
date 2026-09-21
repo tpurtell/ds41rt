@@ -101,6 +101,45 @@ def verify(package: Path, revision: str | None = None, runtime: Path | None = No
     return manifest
 
 
+def verify_root(root: Path, revision: str | None = None, runtime: Path | None = None,
+                role: str | None = None) -> list[dict]:
+    """Verify an EXL3 root holding either one flat package or family packages.
+
+    Release images keep a single well-known ``exl3/`` root. A multi-family build
+    nests ``exl3-kXX`` packages beneath it; a direct ``manifest.json`` in the
+    root is the legacy single-family layout. Both are accepted, and this is
+    strict by design:
+
+    * a family directory without ``manifest.json`` is an error, not a silently
+      skipped entry, so one valid package can never mask a broken sibling;
+    * a root carrying both a flat manifest and family packages is rejected as
+      ambiguous rather than verifying only one of them;
+    * every discovered package goes through the unchanged strict single-package
+      ``verify``, and a root yielding no package at all is an error.
+    """
+    flat_manifest = root / 'manifest.json'
+    children = sorted(child for child in root.iterdir() if child.is_dir()) if root.is_dir() else []
+    families = [child for child in children if child.name.startswith('exl3-')]
+    stray = [
+        child for child in children
+        if not child.name.startswith('exl3-') and (child / 'manifest.json').is_file()
+    ]
+    if flat_manifest.is_file() and families:
+        raise ValueError(
+            f'ambiguous EXL3 root has both a flat manifest and family packages: {root}'
+        )
+    if stray:
+        raise ValueError(f'unexpected EXL3 package directory (expected exl3-<bits>): {stray[0]}')
+    if flat_manifest.is_file():
+        return [verify(root, revision, runtime, role)]
+    if not families:
+        raise ValueError(f'no EXL3 package or family manifest under {root}')
+    missing = [family for family in families if not (family / 'manifest.json').is_file()]
+    if missing:
+        raise ValueError(f'EXL3 family is missing its manifest.json: {missing[0]}')
+    return [verify(family, revision, runtime, role) for family in families]
+
+
 def validate_destination(output: Path) -> None:
     if output.is_symlink() or (output.exists() and not output.is_dir()):
         raise ValueError('EXL3 output must be a package directory')
@@ -254,8 +293,14 @@ def main() -> None:
     elif args.command == 'install':
         install_package(args.package, args.output)
     else:
-        manifest = verify(args.package, args.sparkinfer_revision, args.runtime, args.role)
-        print(json.dumps({'verified': True, 'role': manifest['role'], 'variants': len(manifest['variants'])}))
+        manifests = verify_root(args.package, args.sparkinfer_revision, args.runtime, args.role)
+        print(json.dumps({
+            'verified': True,
+            'packages': [
+                {'role': manifest['role'], 'variants': len(manifest['variants'])}
+                for manifest in manifests
+            ],
+        }))
 
 
 if __name__ == '__main__':

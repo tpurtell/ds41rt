@@ -521,10 +521,24 @@ for role in coordinator spark-expert; do
     sha256sum -c XGRAMMAR_SHA256SUMS
   )
 done
+# EXL3 manifests live either flat in the exl3 root (legacy single family) or
+# nested per decoder-tier family (multi-family release images). Collect whichever
+# layout the build produced so the checksum list never names a missing path.
+dist_exl3_manifests=()
+for role in coordinator spark-expert; do
+  if [[ -f "$repo_root/dist/$role/exl3/manifest.json" ]]; then
+    dist_exl3_manifests+=("$role/exl3/manifest.json")
+  else
+    for manifest in "$repo_root/dist/$role"/exl3/exl3-*/manifest.json; do
+      [[ -f "$manifest" ]] || continue
+      dist_exl3_manifests+=("${manifest#"$repo_root/dist/"}")
+    done
+  fi
+done
 (
   cd "$repo_root/dist"
   sha256sum \
-    coordinator/ds41rt coordinator/libds41rt_native.so coordinator/exl3/manifest.json coordinator/V41_EXPERT_AOT.json coordinator/V41_EXPERT_TP_AOT.json coordinator/V41_FP8_AOT.json \
+    coordinator/ds41rt coordinator/libds41rt_native.so coordinator/V41_EXPERT_AOT.json coordinator/V41_EXPERT_TP_AOT.json coordinator/V41_FP8_AOT.json \
     coordinator/THIRD_PARTY_NOTICES.md \
     coordinator/SPARKINFER_PROVENANCE.json \
     coordinator/SPARKINFER_LICENSE \
@@ -532,7 +546,7 @@ done
     coordinator/XGRAMMAR_PROVENANCE.json \
     coordinator/XGRAMMAR_LICENSE \
     coordinator/XGRAMMAR_SHA256SUMS \
-    spark-expert/ds41rt spark-expert/libds41rt_native.so spark-expert/exl3/manifest.json spark-expert/V41_EXPERT_AOT.json spark-expert/V41_EXPERT_TP_AOT.json spark-expert/V41_FP8_AOT.json \
+    spark-expert/ds41rt spark-expert/libds41rt_native.so spark-expert/V41_EXPERT_AOT.json spark-expert/V41_EXPERT_TP_AOT.json spark-expert/V41_FP8_AOT.json \
     spark-expert/THIRD_PARTY_NOTICES.md \
     spark-expert/SPARKINFER_PROVENANCE.json \
     spark-expert/SPARKINFER_LICENSE \
@@ -540,6 +554,7 @@ done
     spark-expert/XGRAMMAR_PROVENANCE.json \
     spark-expert/XGRAMMAR_LICENSE \
     spark-expert/XGRAMMAR_SHA256SUMS \
+    "${dist_exl3_manifests[@]}" \
     "${dist_source_manifest[@]}" >SHA256SUMS
   sha256sum -c SHA256SUMS
 )
