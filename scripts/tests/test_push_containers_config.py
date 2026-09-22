@@ -165,25 +165,25 @@ def _ssh_host(call):
     return None
 
 
-def test_default_config_publishes_the_v10_pair(harness):
+def test_default_config_publishes_the_promoted_pair(harness):
     run, docker_calls, ssh_calls, _ = harness
-    result = run("v10")
+    result = run("v11")
     assert result.returncode == 0, result.stdout + result.stderr
     calls = docker_calls()
     assert _inspected_refs(calls) == [
-        f"{COORDINATOR}:v10",
-        f"{SPARK}:v10",
-        f"{COORDINATOR}:v10",
-        f"{SPARK}:v10",
-        f"{COORDINATOR}:v10",
-        f"{SPARK}:v10",
-        f"{SPARK}:v10",
+        f"{COORDINATOR}:v11",
+        f"{SPARK}:v11",
+        f"{COORDINATOR}:v11",
+        f"{SPARK}:v11",
+        f"{COORDINATOR}:v11",
+        f"{SPARK}:v11",
+        f"{SPARK}:v11",
     ], calls
     assert sorted(_pushed_refs(calls)) == sorted([
-        f"{COORDINATOR}:v10", f"{COORDINATOR}:latest",
-        f"{SPARK}:v10", f"{SPARK}:latest",
+        f"{COORDINATOR}:v11", f"{COORDINATOR}:latest",
+        f"{SPARK}:v11", f"{SPARK}:latest",
     ])
-    assert not [token for call in calls for token in call if "v9" in token]
+    assert not [token for call in calls for token in call if "v10" in token]
     # The remote reads went to the configured Spark through the shared transport.
     assert ssh_calls(), "the Spark image reads must go through release_ssh"
     for call in ssh_calls():
@@ -219,14 +219,14 @@ def test_explicit_v10_config_publishes_the_v10_pair(harness):
 def test_config_selects_images_and_the_tag_argument_stays_independent(harness):
     """The config names the pair; the positional argument is still the tag."""
     run, docker_calls, _, _ = harness
-    result = run("v10-rc1", config=DEFAULT_CONFIG)
+    result = run("v11-rc1", config=DEFAULT_CONFIG)
     assert result.returncode == 0, result.stdout + result.stderr
     calls = docker_calls()
-    # The default config's v10 local images are retagged as the requested tag.
-    assert _inspected_refs(calls)[0] == f"{COORDINATOR}:v10"
+    # The default config's v11 local images are retagged as the requested tag.
+    assert _inspected_refs(calls)[0] == f"{COORDINATOR}:v11"
     assert sorted(_pushed_refs(calls)) == sorted([
-        f"{COORDINATOR}:v10-rc1", f"{COORDINATOR}:latest",
-        f"{SPARK}:v10-rc1", f"{SPARK}:latest",
+        f"{COORDINATOR}:v11-rc1", f"{COORDINATOR}:latest",
+        f"{SPARK}:v11-rc1", f"{SPARK}:latest",
     ])
 
 

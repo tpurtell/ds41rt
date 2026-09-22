@@ -324,12 +324,13 @@ printf '%s\n' "$MODEL_ID" "$MODEL_REVISION" "$EXPERT_FORMAT" "$SPARKINFER_EXL3" 
 
 
 class V10BuildTargetTest(unittest.TestCase):
-    """The explicit v10 build target and the promoted runtime default.
+    """The retained v10 build target and the promoted runtime default.
 
-    `ds41rt.build-v10.config` is retained as the explicit release BUILD target
-    (build.sh derives `release_version` from its coordinator tag). After the v10
-    runtime promotion it is identical to `ds41rt.config`, so a plain
-    `./build.sh` derives the same `v10` tag.
+    `ds41rt.build-v10.config` is retained as an explicit historical release
+    BUILD target (build.sh derives `release_version` from its coordinator tag).
+    The runtime default is now promoted to `v11`, so the retained target
+    deliberately differs from `ds41rt.config`; the promoted pair's own equality
+    assertion lives in `test_promoted_build_config_matches_the_runtime_default`.
 
     The default-pair assertions are deliberately derived from `ds41rt.config`
     rather than hardcoded, so promoting the runtime default to a later release
@@ -359,9 +360,11 @@ class V10BuildTargetTest(unittest.TestCase):
                 return value.strip()
         self.fail(f"{key} not found in {path}")
 
-    def test_build_config_matches_the_runtime_default(self) -> None:
+    def test_promoted_build_config_matches_the_runtime_default(self) -> None:
+        # The promoted release pair: the v11 build target must equal the runtime
+        # default exactly, so a plain `./build.sh` derives the v11 tag.
         base = self.assignments(ROOT / "ds41rt.config")
-        target = self.assignments(self.BUILD_CONFIG)
+        target = self.assignments(ROOT / "ds41rt.build-v11.config")
         self.assertEqual(len(base), len(target))
         self.assertEqual(base, target)
 
@@ -394,18 +397,19 @@ class V10BuildTargetTest(unittest.TestCase):
         for path in examples:
             with self.subTest(example=path.name):
                 text = path.read_text()
-                self.assertIn("COORDINATOR_DOCKER_INFERENCE=ghcr.io/tpurtell/ds41rt-coordinator:v10", text)
-                self.assertIn("SPARK_EXPERT_DOCKER_INFERENCE=ghcr.io/tpurtell/ds41rt-spark-expert:v10", text)
+                self.assertIn("COORDINATOR_DOCKER_INFERENCE=ghcr.io/tpurtell/ds41rt-coordinator:v11", text)
+                self.assertIn("SPARK_EXPERT_DOCKER_INFERENCE=ghcr.io/tpurtell/ds41rt-spark-expert:v11", text)
 
 
 class V11ReleaseBuildTargetTest(unittest.TestCase):
-    """The v11 release build target exists ahead of the runtime promotion.
+    """The promoted v11 release build target.
 
-    `ds41rt.build-v11.config` selects the `v11` tag for the release build before
-    `ds41rt.config` is promoted, so `run.sh` can launch the candidate with
-    `--config ds41rt.build-v11.config`. Its payload must match the runtime
-    default except for the release pair; that exact difference is asserted by
-    `scripts/tests/test_release_helpers.py`, owned by the release executor.
+    `ds41rt.build-v11.config` selects the `v11` tag for the release build and,
+    after promotion, is identical to the runtime default; `run.sh` therefore
+    derives the same `v11` pair with or without `--config
+    ds41rt.build-v11.config`. That equality is asserted by the promoted
+    build-target test above and by `scripts/tests/test_release_helpers.py`,
+    owned by the release executor.
     """
 
     BUILD_CONFIG = ROOT / "ds41rt.build-v11.config"

@@ -182,22 +182,27 @@ def test_v11_build_config_exists_and_names_the_v11_pair() -> None:
     assert values["SPARK_EXPERT_DOCKER_INFERENCE"] == "ghcr.io/tpurtell/ds41rt-spark-expert:v11"
 
 
-def test_v11_build_config_differs_from_runtime_only_in_the_pair() -> None:
-    """build.sh derives the tag from the pair, so this difference is the release."""
+def test_promoted_runtime_default_matches_the_v11_build_target() -> None:
+    """After promotion the v11 build target equals the runtime default exactly.
+
+    build.sh derives the tag from the pair, so equality here is what makes a
+    plain `./build.sh` produce the promoted `v11` release.
+    """
     base = assignments(RUNTIME_CONFIG)
     target = assignments(REPO / "ds41rt.build-v11.config")
     assert len(base) == len(target)
-    differing = [(a, b) for a, b in zip(base, target) if a != b]
-    assert differing == [
-        ("COORDINATOR_DOCKER_INFERENCE=ghcr.io/tpurtell/ds41rt-coordinator:v10",
-         "COORDINATOR_DOCKER_INFERENCE=ghcr.io/tpurtell/ds41rt-coordinator:v11"),
-        ("SPARK_EXPERT_DOCKER_INFERENCE=ghcr.io/tpurtell/ds41rt-spark-expert:v10",
-         "SPARK_EXPERT_DOCKER_INFERENCE=ghcr.io/tpurtell/ds41rt-spark-expert:v11"),
-    ]
+    assert base == target
+
+
+def test_retained_v10_build_target_still_names_the_v10_pair() -> None:
+    """The historical v10 target must not drift with the runtime promotion."""
+    values = dict(line.split("=", 1) for line in assignments(REPO / "ds41rt.build-v10.config"))
+    assert values["COORDINATOR_DOCKER_INFERENCE"] == "ghcr.io/tpurtell/ds41rt-coordinator:v10"
+    assert values["SPARK_EXPERT_DOCKER_INFERENCE"] == "ghcr.io/tpurtell/ds41rt-spark-expert:v10"
 
 
 @pytest.mark.parametrize("config,expected", [
-    ("ds41rt.config", "v10"),
+    ("ds41rt.config", "v11"),
     ("ds41rt.build-v11.config", "v11"),
 ])
 def test_build_dry_run_reports_the_config_tag(config: str, expected: str) -> None:

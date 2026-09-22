@@ -57,8 +57,8 @@ to be redone.
 See [compact setup and residency](docs/release-v7-exl3-compact.md)
 and the [configuration accounting chart](docs/release-v7-configurations.svg).
 No physical RTX 5090 has been tested; the same-capability grid checks used RTX PRO 6000.
-The release pair named by `ds41rt.config` is `ghcr.io/tpurtell/ds41rt-coordinator:v10`
-and `ghcr.io/tpurtell/ds41rt-spark-expert:v10` ([notes, roles and the published
+The release pair named by `ds41rt.config` is `ghcr.io/tpurtell/ds41rt-coordinator:v11`
+and `ghcr.io/tpurtell/ds41rt-spark-expert:v11` ([notes, roles and the published
 registry digests](docs/release-v10-notes.md)); `v10` and `latest` are published
 and each role was anonymous-verified, on an amd64 host for the coordinator and an
 arm64 worker for the Spark image. The v10
@@ -464,9 +464,9 @@ MODEL_REVISION=3431dde3247c13b5957f682b1e3c6fcae2566079
 To use the published images, pull the coordinator image locally and the Spark image on each worker:
 
 ```bash
-docker pull ghcr.io/tpurtell/ds41rt-coordinator:v10
+docker pull ghcr.io/tpurtell/ds41rt-coordinator:v11
 for host in ostrich dodo emu kiwi; do
-  ssh "$host" docker pull ghcr.io/tpurtell/ds41rt-spark-expert:v10
+  ssh "$host" docker pull ghcr.io/tpurtell/ds41rt-spark-expert:v11
 done
 ./run.sh --dry-run
 ./run.sh
