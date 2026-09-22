@@ -37,6 +37,9 @@
 //! token. Callers pass the request's absolute decode position, never a
 //! batch-local row index.
 
+use std::cell::RefCell;
+use std::cmp::Ordering;
+use std::collections::BinaryHeap;
 use thiserror::Error;
 
 /// Upper bound accepted for `temperature` by the serving protocol.
@@ -261,12 +264,166 @@ fn argmax_allowed(
     best.ok_or(TargetSamplingError::EmptyCandidates)
 }
 
+/// Above this survivor count the ordered path uses a stable radix sort instead
+/// of the comparison sort. Chosen so the comparison sort stays within the small
+/// branch's cache-friendly range.
+const ORDERED_SORT_CAP: usize = 8192;
+const RADIX_BITS: u32 = 16;
+const RADIX_BUCKETS: usize = 1 << RADIX_BITS;
+const RADIX_MASK: u32 = RADIX_BUCKETS as u32 - 1;
+
+/// One ranked survivor. The unique token id makes the ranking a total order, so
+/// the sorted permutation is unique and every ordered branch must reproduce it.
+#[derive(Clone, Copy, Debug)]
+struct Ranked {
+    scaled: f32,
+    id: u32,
+}
+
+impl Ranked {
+    /// Strictly better under the served comparator (scaled desc, id asc).
+    fn better_than(self, other: Self) -> bool {
+        match self.scaled.partial_cmp(&other.scaled) {
+            Some(Ordering::Greater) => true,
+            Some(Ordering::Equal) => self.id < other.id,
+            _ => false,
+        }
+    }
+}
+
+/// Min-heap entry whose `Ord` puts the WORST element at the root, so a bounded
+/// capacity-k heap keeps exactly the k best survivors.
+#[derive(Clone, Copy, Debug)]
+struct WorstFirst(Ranked);
+impl PartialEq for WorstFirst {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.scaled == other.0.scaled && self.0.id == other.0.id
+    }
+}
+impl Eq for WorstFirst {}
+impl PartialOrd for WorstFirst {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for WorstFirst {
+    fn cmp(&self, other: &Self) -> Ordering {
+        // Greater == worse, so the max-heap root is the worst candidate.
+        match self.0.scaled.partial_cmp(&other.0.scaled) {
+            Some(Ordering::Less) => Ordering::Greater,
+            Some(Ordering::Greater) => Ordering::Less,
+            Some(Ordering::Equal) => self.0.id.cmp(&other.0.id),
+            None => Ordering::Equal,
+        }
+    }
+}
+
+/// The served ranking comparator, byte-identical to the pre-optimization code:
+/// `partial_cmp` (not `total_cmp`), descending, with an ascending id tie-break.
+fn sort_ranked_descending(ranked: &mut [Ranked]) {
+    ranked.sort_unstable_by(|a, b| {
+        b.scaled
+            .partial_cmp(&a.scaled)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| a.id.cmp(&b.id))
+    });
+}
+
+/// Descending monotone 32-bit key for the radix sort. `-0.0` is canonicalized to
+/// `+0.0` (the comparator treats them equal), then the standard float-to-ordered
+/// map is inverted so larger keys sort first.
+fn descending_radix_key(scaled: f32) -> u32 {
+    let value = if scaled == 0.0 { 0.0 } else { scaled };
+    let bits = value.to_bits();
+    let ascending = if bits & 0x8000_0000 == 0 {
+        bits ^ 0x8000_0000
+    } else {
+        !bits
+    };
+    !ascending
+}
+
+#[derive(Default)]
+struct RadixScratch {
+    temp: Vec<Ranked>,
+    counts: Vec<u32>,
+}
+
+// Per-thread radix scratch. High-water retention is bounded by the largest row
+// sampled on the thread: `temp` holds one `Ranked` (8 B) per survivor (129,280
+// tokens => ~1.03 MiB) and `counts` is 65,536 `u32` (256 KiB), ~1.29 MiB total.
+// The `RefCell` borrow assumes the selector is not re-entered on the same
+// thread; sampling is synchronous and never calls back into itself, so the
+// borrow cannot overlap and the buffers are never observed half-written.
+thread_local! {
+    static RADIX_SCRATCH: RefCell<RadixScratch> = RefCell::new(RadixScratch::default());
+}
+
+/// Stable LSD radix sort over the descending 32-bit key. Input is in token-id
+/// order, so equal keys keep ascending ids and the output equals the comparison
+/// sort's unique permutation.
+fn radix_sort_descending(records: &mut [Ranked]) {
+    let len = records.len();
+    if len < 2 {
+        return;
+    }
+    RADIX_SCRATCH.with(|cell| {
+        let mut scratch = cell.borrow_mut();
+        if scratch.counts.len() < RADIX_BUCKETS {
+            scratch.counts.resize(RADIX_BUCKETS, 0);
+        }
+        let mut temp = std::mem::take(&mut scratch.temp);
+        temp.clear();
+        temp.resize(len, Ranked { scaled: 0.0, id: 0 });
+        radix_scatter(records, &mut temp, &mut scratch.counts, 0);
+        radix_scatter(&temp, records, &mut scratch.counts, RADIX_BITS);
+        scratch.temp = temp;
+    });
+}
+
+fn radix_scatter(src: &[Ranked], dst: &mut [Ranked], counts: &mut [u32], shift: u32) {
+    let buckets = &mut counts[..RADIX_BUCKETS];
+    buckets.fill(0);
+    for record in src {
+        buckets[((descending_radix_key(record.scaled) >> shift) & RADIX_MASK) as usize] += 1;
+    }
+    let mut running = 0u32;
+    for count in buckets.iter_mut() {
+        let bucket = *count;
+        *count = running;
+        running += bucket;
+    }
+    for record in src {
+        let bucket = ((descending_radix_key(record.scaled) >> shift) & RADIX_MASK) as usize;
+        dst[buckets[bucket] as usize] = *record;
+        buckets[bucket] += 1;
+    }
+}
+
+struct RankedSample {
+    id: usize,
+    /// Internals compared by the exactness oracle; unread in production builds.
+    #[cfg_attr(not(test), allow(dead_code))]
+    total: f32,
+    #[cfg_attr(not(test), allow(dead_code))]
+    nucleus_count: usize,
+}
+
 fn sample_allowed(
     params: TargetSamplingParams,
     logits: &[f32],
     allowed: &impl Fn(usize) -> bool,
     uniform: f32,
 ) -> Result<usize, TargetSamplingError> {
+    Ok(sample_allowed_internals(params, logits, allowed, uniform)?.id)
+}
+
+fn sample_allowed_internals(
+    params: TargetSamplingParams,
+    logits: &[f32],
+    allowed: &impl Fn(usize) -> bool,
+    uniform: f32,
+) -> Result<RankedSample, TargetSamplingError> {
     let inv_temperature = 1.0 / params.temperature;
     let mut max_scaled = f32::NEG_INFINITY;
     let mut allowed_count = 0usize;
@@ -299,40 +456,84 @@ fn sample_allowed(
     let survivors = |token: usize| -> bool {
         allowed(token) && logits[token] * inv_temperature >= min_scaled
     };
+    let uniform = MAX_UNIFORM.min(uniform.max(0.0));
 
     // Fast exact path: with no top-k and a disabled top-p nucleus there is
     // nothing to order, so sample the surviving categorical directly.
     if params.top_k.is_none() && params.top_p >= 1.0 {
-        return sample_categorical(
-            logits,
-            &survivors,
-            inv_temperature,
-            max_scaled,
-            MAX_UNIFORM.min(uniform.max(0.0)),
-        );
+        let (id, total) = sample_categorical(logits, &survivors, inv_temperature, max_scaled, uniform)?;
+        return Ok(RankedSample { id, total, nucleus_count: 0 });
     }
 
-    // Ordered path. Rank by scaled logit descending, ties to the lower token id,
-    // matching the native `topk_sort_key` contract.
-    let mut ranked: Vec<(f32, u32)> = Vec::new();
-    for (token, &logit) in logits.iter().enumerate() {
+    let mut survivor_count = 0usize;
+    for token in 0..logits.len() {
         if survivors(token) {
-            ranked.push((logit * inv_temperature, token as u32));
+            survivor_count += 1;
         }
     }
-    ranked.sort_unstable_by(|a, b| {
-        b.0.partial_cmp(&a.0)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| a.1.cmp(&b.1))
-    });
-    if let Some(top_k) = params.top_k {
-        ranked.truncate(top_k.min(ranked.len()));
-    }
-    debug_assert!(!ranked.is_empty(), "best token always survives filters");
 
+    // Branch 1: bounded top-k selection. A capacity-k heap of the k best, then
+    // the served comparator sorts only those k, which equals `full[..k]`.
+    if let Some(top_k) = params.top_k {
+        if top_k < survivor_count {
+            let mut heap: BinaryHeap<WorstFirst> = BinaryHeap::with_capacity(top_k);
+            for token in 0..logits.len() {
+                if !survivors(token) {
+                    continue;
+                }
+                let candidate = Ranked {
+                    scaled: logits[token] * inv_temperature,
+                    id: token as u32,
+                };
+                if heap.len() < top_k {
+                    heap.push(WorstFirst(candidate));
+                } else if candidate.better_than(heap.peek().unwrap().0) {
+                    heap.pop();
+                    heap.push(WorstFirst(candidate));
+                }
+            }
+            let mut ranked: Vec<Ranked> = heap.into_iter().map(|entry| entry.0).collect();
+            sort_ranked_descending(&mut ranked);
+            return Ok(sample_from_ranked(&ranked, max_scaled, params.top_p, uniform));
+        }
+        // `top_k >= survivor_count` truncates nothing; fall through to the full
+        // ordering branches.
+    }
+
+    let mut ranked: Vec<Ranked> = Vec::with_capacity(survivor_count.min(ORDERED_SORT_CAP));
+    for token in 0..logits.len() {
+        if survivors(token) {
+            ranked.push(Ranked {
+                scaled: logits[token] * inv_temperature,
+                id: token as u32,
+            });
+        }
+    }
+
+    if survivor_count <= ORDERED_SORT_CAP {
+        // Branch 2: small sort, unchanged comparator.
+        sort_ranked_descending(&mut ranked);
+    } else {
+        // Branch 3: stable radix sort over the descending key.
+        #[cfg(test)]
+        note_branch3_call();
+        radix_sort_descending(&mut ranked);
+    }
+    Ok(sample_from_ranked(&ranked, max_scaled, params.top_p, uniform))
+}
+
+/// Shared weights/total/nucleus/draw tail used by every ordered branch. The
+/// operation order is byte-identical to the pre-optimization inline block.
+fn sample_from_ranked(
+    ranked: &[Ranked],
+    max_scaled: f32,
+    top_p: f32,
+    uniform: f32,
+) -> RankedSample {
+    debug_assert!(!ranked.is_empty(), "best token always survives filters");
     let mut weights: Vec<f32> = ranked
         .iter()
-        .map(|(scaled, _)| (scaled - max_scaled).exp())
+        .map(|record| (record.scaled - max_scaled).exp())
         .collect();
     let total: f32 = weights.iter().copied().sum();
     let total = total.max(1.0e-20);
@@ -341,7 +542,7 @@ fn sample_allowed(
     }
 
     // top_p nucleus over the (optionally top-k-truncated) ranked list.
-    let top_p = params.top_p.clamp(1.0e-6, 1.0);
+    let top_p = top_p.clamp(1.0e-6, 1.0);
     let mut nucleus_mass = 0.0f32;
     let mut nucleus_count = 0usize;
     for &weight in &weights {
@@ -352,7 +553,7 @@ fn sample_allowed(
         }
     }
     let nucleus_mass = nucleus_mass.max(1.0e-20);
-    let target = MAX_UNIFORM.min(uniform.max(0.0)) * nucleus_mass;
+    let target = uniform * nucleus_mass;
     let mut cumulative = 0.0f32;
     let mut selected = nucleus_count - 1;
     for (rank, &weight) in weights.iter().enumerate().take(nucleus_count) {
@@ -362,7 +563,27 @@ fn sample_allowed(
             break;
         }
     }
-    Ok(ranked[selected].1 as usize)
+    RankedSample {
+        id: ranked[selected].id as usize,
+        total,
+        nucleus_count,
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Test-only count of radix-branch entries on the current test thread.
+    static BRANCH3_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+fn branch3_calls() -> usize {
+    BRANCH3_CALLS.with(std::cell::Cell::get)
+}
+
+#[cfg(test)]
+fn note_branch3_call() {
+    BRANCH3_CALLS.with(|calls| calls.set(calls.get() + 1));
 }
 
 /// Exact categorical draw over an arbitrary allowed subset in token order.
@@ -372,7 +593,7 @@ fn sample_categorical(
     inv_temperature: f32,
     max_scaled: f32,
     uniform: f32,
-) -> Result<usize, TargetSamplingError> {
+) -> Result<(usize, f32), TargetSamplingError> {
     let mut total = 0.0f32;
     for (token, &logit) in logits.iter().enumerate() {
         if allowed(token) {
@@ -390,10 +611,11 @@ fn sample_categorical(
         last = Some(token);
         cumulative += (logit * inv_temperature - max_scaled).exp();
         if target <= cumulative {
-            return Ok(token);
+            return Ok((token, total));
         }
     }
-    last.ok_or(TargetSamplingError::EmptyCandidates)
+    last.map(|token| (token, total))
+        .ok_or(TargetSamplingError::EmptyCandidates)
 }
 
 #[cfg(test)]
@@ -983,5 +1205,560 @@ mod tests {
             assert_eq!(emitted, sequential, "{label}: full sequence diverged");
             assert!(rounds >= 6, "{label}: bonus rounds never exercised a multi-token commit");
         }
+    }
+
+    // -----------------------------------------------------------------
+    // Ordered-path optimization: bit-identity against the pre-change oracle
+    // -----------------------------------------------------------------
+
+    /// Verbatim pre-optimization implementation, retained only as the exactness
+    /// oracle for the optimized branches.
+    struct Reference {
+        token: usize,
+        total: Option<f32>,
+        nucleus_count: Option<usize>,
+        /// Uniform thresholds: rank `j` is selected while `uniform <=
+        /// boundaries[j]`.
+        boundaries: Vec<f32>,
+    }
+
+    fn mask_of(vocab: usize, allowed: impl Fn(usize) -> bool) -> Vec<u32> {
+        let mut mask = vec![0u32; vocab.div_ceil(32)];
+        for token in 0..vocab {
+            if allowed(token) {
+                mask[token / 32] |= 1 << (token % 32);
+            }
+        }
+        mask
+    }
+
+    fn reference_select(
+        params: TargetSamplingParams,
+        logits: &[f32],
+        mask: Option<&[u32]>,
+        uniform: f32,
+    ) -> Result<Reference, TargetSamplingError> {
+        let vocab = logits.len();
+        if vocab == 0 {
+            return Err(TargetSamplingError::EmptyVocabulary);
+        }
+        if let Some(mask) = mask {
+            let expected = vocab.div_ceil(u32::BITS as usize);
+            if mask.len() != expected {
+                return Err(TargetSamplingError::MaskWidth {
+                    actual: mask.len(),
+                    vocab,
+                });
+            }
+        }
+        let allowed = |token: usize| {
+            mask.is_none_or(|words| words[token / 32] & (1u32 << (token % 32)) != 0)
+        };
+        if params.is_greedy() {
+            let mut best = None;
+            let mut maximum = f32::NEG_INFINITY;
+            for (token, &logit) in logits.iter().enumerate() {
+                if !allowed(token) {
+                    continue;
+                }
+                if !logit.is_finite() {
+                    return Err(TargetSamplingError::NonFiniteLogit { token });
+                }
+                if logit > maximum {
+                    maximum = logit;
+                    best = Some(token);
+                }
+            }
+            return best
+                .map(|token| Reference {
+                    token,
+                    total: None,
+                    nucleus_count: None,
+                    boundaries: Vec::new(),
+                })
+                .ok_or(TargetSamplingError::EmptyCandidates);
+        }
+        let inv_temperature = 1.0 / params.temperature;
+        let mut max_scaled = f32::NEG_INFINITY;
+        let mut allowed_count = 0usize;
+        for (token, &logit) in logits.iter().enumerate() {
+            if !allowed(token) {
+                continue;
+            }
+            if !logit.is_finite() {
+                return Err(TargetSamplingError::NonFiniteLogit { token });
+            }
+            allowed_count += 1;
+            max_scaled = max_scaled.max(logit * inv_temperature);
+        }
+        if allowed_count == 0 {
+            return Err(TargetSamplingError::EmptyCandidates);
+        }
+        if !max_scaled.is_finite() {
+            return Err(TargetSamplingError::InvalidParameter("temperature"));
+        }
+        let min_scaled = if params.min_p > 0.0 {
+            max_scaled + params.min_p.ln()
+        } else {
+            f32::NEG_INFINITY
+        };
+        let survivors =
+            |token: usize| allowed(token) && logits[token] * inv_temperature >= min_scaled;
+        let uniform = MAX_UNIFORM.min(uniform.max(0.0));
+        if params.top_k.is_none() && params.top_p >= 1.0 {
+            let mut total = 0.0f32;
+            for token in 0..vocab {
+                if survivors(token) {
+                    total += (logits[token] * inv_temperature - max_scaled).exp();
+                }
+            }
+            let total = total.max(1.0e-20);
+            let target = uniform * total;
+            let mut cumulative = 0.0f32;
+            let mut last = None;
+            for token in 0..vocab {
+                if !survivors(token) {
+                    continue;
+                }
+                last = Some(token);
+                cumulative += (logits[token] * inv_temperature - max_scaled).exp();
+                if target <= cumulative {
+                    return Ok(Reference {
+                        token,
+                        total: Some(total),
+                        nucleus_count: None,
+                        boundaries: Vec::new(),
+                    });
+                }
+            }
+            return last
+                .map(|token| Reference {
+                    token,
+                    total: Some(total),
+                    nucleus_count: None,
+                    boundaries: Vec::new(),
+                })
+                .ok_or(TargetSamplingError::EmptyCandidates);
+        }
+        let mut ranked: Vec<(f32, u32)> = Vec::new();
+        for token in 0..vocab {
+            if survivors(token) {
+                ranked.push((logits[token] * inv_temperature, token as u32));
+            }
+        }
+        ranked.sort_unstable_by(|a, b| {
+            b.0.partial_cmp(&a.0)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.1.cmp(&b.1))
+        });
+        if let Some(top_k) = params.top_k {
+            ranked.truncate(top_k.min(ranked.len()));
+        }
+        let mut weights: Vec<f32> = ranked
+            .iter()
+            .map(|(scaled, _)| (scaled - max_scaled).exp())
+            .collect();
+        let total: f32 = weights.iter().copied().sum();
+        let total = total.max(1.0e-20);
+        for weight in &mut weights {
+            *weight /= total;
+        }
+        let top_p = params.top_p.clamp(1.0e-6, 1.0);
+        let mut nucleus_mass = 0.0f32;
+        let mut nucleus_count = 0usize;
+        for &weight in &weights {
+            nucleus_mass += weight;
+            nucleus_count += 1;
+            if nucleus_mass >= top_p {
+                break;
+            }
+        }
+        let nucleus_mass = nucleus_mass.max(1.0e-20);
+        let mut cumulative = 0.0f32;
+        let mut boundaries = Vec::with_capacity(nucleus_count);
+        for rank in 0..nucleus_count {
+            cumulative += weights[rank];
+            boundaries.push(cumulative / nucleus_mass);
+        }
+        let target = uniform * nucleus_mass;
+        let mut cumulative = 0.0f32;
+        let mut selected = nucleus_count - 1;
+        for rank in 0..nucleus_count {
+            cumulative += weights[rank];
+            if target <= cumulative {
+                selected = rank;
+                break;
+            }
+        }
+        Ok(Reference {
+            token: ranked[selected].1 as usize,
+            total: Some(total),
+            nucleus_count: Some(nucleus_count),
+            boundaries,
+        })
+    }
+
+    fn compare_to_reference(
+        label: &str,
+        params: TargetSamplingParams,
+        logits: &[f32],
+        mask: Option<&[u32]>,
+        uniform: f32,
+    ) {
+        let actual = params.select_token_with_uniform(logits, mask, uniform);
+        match reference_select(params, logits, mask, uniform) {
+            Ok(reference) => {
+                let token = actual.unwrap_or_else(|error| {
+                    panic!("{label} params={params:?} uniform={uniform}: optimized {error}, reference {}", reference.token)
+                });
+                assert_eq!(
+                    token, reference.token,
+                    "{label} params={params:?} uniform={uniform} vocab={}",
+                    logits.len()
+                );
+                // Compare production internals whenever the oracle exposes any
+                // (ordered path: total + nucleus_count; fast path: total only).
+                if reference.nucleus_count.is_some() || reference.total.is_some() {
+                    let allowed = |token: usize| {
+                        mask.is_none_or(|words: &[u32]| {
+                            words[token / 32] & (1u32 << (token % 32)) != 0
+                        })
+                    };
+                    let internals =
+                        sample_allowed_internals(params, logits, &allowed, uniform)
+                            .expect("optimized internals");
+                    if let Some(nucleus_count) = reference.nucleus_count {
+                        assert_eq!(
+                            internals.nucleus_count, nucleus_count,
+                            "{label} params={params:?} uniform={uniform} nucleus_count"
+                        );
+                    }
+                    if let Some(total) = reference.total {
+                        assert_eq!(
+                            internals.total, total,
+                            "{label} params={params:?} uniform={uniform} total"
+                        );
+                    }
+                }
+            }
+            Err(reference_error) => assert_eq!(
+                actual.expect_err("optimized must fail like the reference"),
+                reference_error,
+                "{label} params={params:?} uniform={uniform}"
+            ),
+        }
+    }
+
+    fn adversarial_rows(vocab: usize) -> Vec<(&'static str, Vec<f32>)> {
+        let mut rows: Vec<(&'static str, Vec<f32>)> = Vec::new();
+        rows.push(("all_equal", vec![0.0; vocab]));
+        rows.push((
+            "two_value",
+            (0..vocab)
+                .map(|index| if index % 2 == 0 { 0.0 } else { 5.0 })
+                .collect(),
+        ));
+        rows.push((
+            "geometric",
+            (0..vocab).map(|index| -(index as f32) * 0.25).collect(),
+        ));
+        let mut huge_gap = vec![-1.0f32; vocab];
+        huge_gap[0] = 60.0;
+        rows.push(("huge_gap", huge_gap));
+        let mut dominant = vec![-2.0f32; vocab];
+        dominant[vocab / 2] = 40.0;
+        rows.push(("single_dominant", dominant));
+        let mut ties = vec![0.0f32; vocab];
+        for token in 0..vocab.min(5) {
+            ties[token] = 10.0;
+        }
+        rows.push(("ties_at_max", ties));
+        let mut mixed = vec![0.0f32; vocab];
+        for (index, value) in mixed.iter_mut().enumerate() {
+            *value = match index % 6 {
+                0 => -0.0,
+                1 => 0.0,
+                2 => f32::from_bits(1), // subnormal
+                3 => -(index as f32),
+                4 => (index as f32) * 0.5,
+                _ => -1.0,
+            };
+        }
+        rows.push(("negpos_zero_subnormal", mixed));
+        rows.push((
+            "negative_only",
+            (0..vocab).map(|index| -(1.0 + index as f32 * 0.01)).collect(),
+        ));
+        rows.push(("flat_negative", vec![-3.0; vocab]));
+        rows
+    }
+
+    fn param_grid(vocab: usize) -> Vec<TargetSamplingParams> {
+        let temperatures = [1.0e-5f32, 1.0e-4, 0.2, 0.7, 2.0];
+        let top_ks = [
+            Some(1usize),
+            Some(2),
+            Some(40),
+            vocab.checked_sub(1),
+            Some(vocab),
+            Some(vocab + 1),
+            None,
+        ];
+        let top_ps = [1.0e-6f32, 0.5, 0.9, 0.95, 1.0 - 1.0e-7, 1.0];
+        let min_ps = [0.0f32, 1.0e-6, 0.05, 0.5, 1.0];
+        let mut grid = Vec::new();
+        for temperature in temperatures {
+            for top_k in top_ks {
+                for top_p in top_ps {
+                    for min_p in min_ps {
+                        if let Ok(params) =
+                            TargetSamplingParams::new(temperature, top_p, top_k, min_p, 0)
+                        {
+                            grid.push(params);
+                        }
+                    }
+                }
+            }
+        }
+        grid
+    }
+
+    #[test]
+    fn optimized_paths_are_bit_identical_to_reference_on_adversarial_rows() {
+        let vocab = 33usize;
+        let rows = adversarial_rows(vocab);
+        let grid = param_grid(vocab);
+        let masks: Vec<Option<Vec<u32>>> = vec![
+            None,
+            Some(mask_of(vocab, |token| token < 5)),
+            Some(mask_of(vocab, |token| token % 3 != 0)),
+        ];
+        let uniforms = [0.0f32, 0.25, 0.5, 0.75, MAX_UNIFORM, 1.0];
+        let mut comparisons = 0usize;
+        for (name, logits) in &rows {
+            for params in &grid {
+                for mask in &masks {
+                    for &uniform in &uniforms {
+                        compare_to_reference(name, *params, logits, mask.as_deref(), uniform);
+                        comparisons += 1;
+                    }
+                    // Probe the exact reference cumulative boundaries.
+                    if let Ok(reference) =
+                        reference_select(*params, logits, mask.as_deref(), 0.0)
+                    {
+                        for &boundary in reference.boundaries.iter().take(12) {
+                            for delta in [-1.0e-6f32, 0.0, 1.0e-6] {
+                                let uniform = (boundary + delta).clamp(0.0, MAX_UNIFORM);
+                                compare_to_reference(
+                                    name,
+                                    *params,
+                                    logits,
+                                    mask.as_deref(),
+                                    uniform,
+                                );
+                                comparisons += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert!(
+            comparisons > 50_000,
+            "property sweep covered too few cases: {comparisons}"
+        );
+    }
+
+    #[test]
+    fn large_vocabulary_paths_match_reference_at_boundaries() {
+        for vocab in [1usize, 32, 33, 100, 127, 129_280, 129_281] {
+            let rows = adversarial_rows(vocab);
+            // A reduced grid keeps the 129k-row reference calls tractable.
+            let mut grid = vec![
+                TargetSamplingParams::greedy(),
+                TargetSamplingParams::new(1.0, 1.0, None, 0.0, 0).unwrap(),
+                TargetSamplingParams::new(0.7, 0.9, None, 0.0, 0).unwrap(),
+                TargetSamplingParams::new(0.7, 1.0, Some(40), 0.0, 0).unwrap(),
+                TargetSamplingParams::new(0.7, 0.9, None, 0.05, 0).unwrap(),
+                TargetSamplingParams::new(2.0, 0.999_999_9, None, 0.5, 0).unwrap(),
+            ];
+            if let Some(k) = vocab.checked_sub(1).filter(|k| *k > 0) {
+                grid.push(TargetSamplingParams::new(1.0, 0.95, Some(k), 0.0, 0).unwrap());
+            }
+            for (name, logits) in rows.iter().take(3) {
+                for params in &grid {
+                    for uniform in [0.0f32, 0.5, MAX_UNIFORM] {
+                        compare_to_reference(name, *params, logits, None, uniform);
+                    }
+                }
+            }
+            // Masked variants at this vocabulary width.
+            let mask = mask_of(vocab, |token| token % 2 == 0);
+            for params in grid.iter().take(3) {
+                for uniform in [0.25f32, 0.75] {
+                    compare_to_reference("masked", *params, &rows[0].1, Some(&mask), uniform);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn seeded_profiles_replay_identically_to_reference() {
+        let vocab = 256usize;
+        let logits: Vec<f32> = (0..vocab)
+            .map(|index| {
+                let base = ((index * 37 % 101) as f32) * 0.1 - 5.0;
+                if index < 3 {
+                    base + 20.0
+                } else {
+                    base
+                }
+            })
+            .collect();
+        let profiles = [
+            TargetSamplingParams::new(0.7, 1.0, None, 0.05, 1).unwrap(),
+            TargetSamplingParams::new(0.7, 0.9, None, 0.0, 1).unwrap(),
+            TargetSamplingParams::new(0.2, 0.95, None, 0.0, 1).unwrap(),
+            TargetSamplingParams::new(0.7, 1.0, Some(40), 0.0, 1).unwrap(),
+            TargetSamplingParams::greedy(),
+        ];
+        for params in profiles {
+            for position in 0..64u64 {
+                let uniform = params.random_uniform(position);
+                compare_to_reference("seeded", params, &logits, None, uniform);
+            }
+        }
+    }
+
+    #[test]
+    fn large_ordered_path_is_reached_and_never_silently_capped() {
+        let vocab = ORDERED_SORT_CAP * 2 + 7;
+        let flat = vec![0.0f32; vocab];
+        let ordered = TargetSamplingParams::new(1.0, 0.9, None, 0.0, 0).unwrap();
+        let before = branch3_calls();
+        let token = ordered.select_token(&flat, None, 0).unwrap();
+        let after = branch3_calls();
+        assert!(
+            after > before,
+            "a flat row above the cap must take the radix branch"
+        );
+        assert!(token < vocab);
+
+        // top_p = 1 / no top_k uses the fast path, so the radix branch is not
+        // entered and every token stays reachable.
+        let full = TargetSamplingParams::new(1.0, 1.0, None, 0.0, 0).unwrap();
+        let before = branch3_calls();
+        let mut seen = std::collections::BTreeSet::new();
+        for step in 0..=20_000 {
+            let uniform = step as f32 / 20_000.0;
+            seen.insert(
+                full.select_token_with_uniform(&flat, None, uniform)
+                    .unwrap(),
+            );
+        }
+        assert_eq!(seen.len(), vocab, "flat top_p=1 must reach every token");
+        assert_eq!(
+            branch3_calls(),
+            before,
+            "top_p=1 / no top_k must stay on the fast path"
+        );
+    }
+
+    #[test]
+    fn mask_survivor_counts_around_the_cap_and_empty_mask() {
+        let vocab = ORDERED_SORT_CAP * 2;
+        let flat = vec![0.0f32; vocab];
+        let params = TargetSamplingParams::new(1.0, 0.9, None, 0.0, 0).unwrap();
+        for allowed in [
+            ORDERED_SORT_CAP - 1,
+            ORDERED_SORT_CAP,
+            ORDERED_SORT_CAP + 1,
+            vocab,
+        ] {
+            let mask = mask_of(vocab, |token| token < allowed);
+            assert!(
+                params.select_token(&flat, Some(&mask), 0).is_ok(),
+                "mask with {allowed} survivors must sample"
+            );
+        }
+        let empty = vec![0u32; vocab.div_ceil(32)];
+        assert_eq!(
+            params.select_token(&flat, Some(&empty), 0).unwrap_err(),
+            TargetSamplingError::EmptyCandidates
+        );
+        // Branch choice must follow the survivor count, not the vocabulary.
+        let before = branch3_calls();
+        let small = mask_of(vocab, |token| token < 64);
+        let _ = params.select_token(&flat, Some(&small), 0).unwrap();
+        assert_eq!(
+            branch3_calls(),
+            before,
+            "a small masked survivor set must not use the radix branch"
+        );
+    }
+
+    /// The exact CAP-1 / CAP / CAP+1 handoff on a flat row, compared to the
+    /// oracle on token + total + nucleus_count. This is the only place a
+    /// branch-handoff permutation bug could hide.
+    #[test]
+    fn cap_boundary_oracle_covers_branch_handoff() {
+        let vocab = ORDERED_SORT_CAP + 8;
+        let flat = vec![0.0f32; vocab];
+        let params = TargetSamplingParams::new(1.0, 0.9, None, 0.0, 0).unwrap();
+        for survivors in [
+            ORDERED_SORT_CAP - 1,
+            ORDERED_SORT_CAP,
+            ORDERED_SORT_CAP + 1,
+        ] {
+            let mask = mask_of(vocab, |token| token < survivors);
+            let before = branch3_calls();
+            for uniform in [0.0f32, 0.37, 0.5, 0.93, MAX_UNIFORM] {
+                compare_to_reference("cap", params, &flat, Some(&mask), uniform);
+            }
+            assert_eq!(
+                branch3_calls() > before,
+                survivors > ORDERED_SORT_CAP,
+                "survivors={survivors}: radix branch selection wrong"
+            );
+        }
+    }
+
+    /// CAP < S < V with an interleaved mask (S = 64,640 over the real
+    /// vocabulary): the radix branch must still match the oracle exactly.
+    #[test]
+    fn mid_range_survivor_count_matches_reference() {
+        let vocab = 129_280usize;
+        let flat = vec![0.0f32; vocab];
+        let mask = mask_of(vocab, |token| token % 2 == 0);
+        let params = TargetSamplingParams::new(1.0, 0.9, None, 0.0, 0).unwrap();
+        let before = branch3_calls();
+        for uniform in [0.0f32, 0.41, 0.5, 0.87, MAX_UNIFORM] {
+            compare_to_reference("mid", params, &flat, Some(&mask), uniform);
+        }
+        assert!(
+            branch3_calls() > before,
+            "S > CAP must take the radix branch"
+        );
+    }
+
+    /// `logit = -f32::MAX` is finite but scales to `-inf` at temperature 1e-5;
+    /// `min_p = 0` keeps it. Both the radix (no top_k) and heap (top_k=100)
+    /// branches must match the oracle and not panic.
+    #[test]
+    fn negative_infinity_survivor_ordered_paths_match_reference() {
+        let vocab = ORDERED_SORT_CAP * 2 + 1;
+        let mut logits = vec![0.0f32; vocab];
+        logits[vocab - 1] = -f32::MAX;
+        let radix = TargetSamplingParams::new(1.0e-5, 0.9, None, 0.0, 0).unwrap();
+        let heap = TargetSamplingParams::new(1.0e-5, 0.9, Some(100), 0.0, 0).unwrap();
+        let before = branch3_calls();
+        for uniform in [0.0f32, 0.5, MAX_UNIFORM] {
+            compare_to_reference("-inf-radix", radix, &logits, None, uniform);
+            compare_to_reference("-inf-heap", heap, &logits, None, uniform);
+        }
+        assert!(
+            branch3_calls() > before,
+            "the no-top_k -inf variant must enter the radix branch"
+        );
     }
 }
