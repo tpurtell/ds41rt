@@ -2820,6 +2820,42 @@ type CudaV41TopkSelectAsyncFn = unsafe extern "C" fn(
     scratch: *mut c_void,
     cuda_stream: *mut c_void,
 ) -> Ds41rtStatus;
+/// Chunk-3b K5 nucleus/draw entry point (`ds41rt_cuda_v41_nucleus`).
+type CudaV41NucleusFn = unsafe extern "C" fn(
+    logits: *const f32,
+    rows: usize,
+    vocab: usize,
+    logits_stride: usize,
+    params: *const Ds41rtV41SamplerRow,
+    mask_words: *const u32,
+    mask_words_per_row: usize,
+    rank_order_ids: *const u32,
+    rank_order_capacity: usize,
+    rank_retained_count: *const u32,
+    out_indices: *mut u32,
+    out_status: *mut u32,
+    out_total: *mut f32,
+    out_nucleus_count: *mut u32,
+    scratch: *mut c_void,
+) -> Ds41rtStatus;
+type CudaV41NucleusAsyncFn = unsafe extern "C" fn(
+    logits: *const f32,
+    rows: usize,
+    vocab: usize,
+    logits_stride: usize,
+    params: *const Ds41rtV41SamplerRow,
+    mask_words: *const u32,
+    mask_words_per_row: usize,
+    rank_order_ids: *const u32,
+    rank_order_capacity: usize,
+    rank_retained_count: *const u32,
+    out_indices: *mut u32,
+    out_status: *mut u32,
+    out_total: *mut f32,
+    out_nucleus_count: *mut u32,
+    scratch: *mut c_void,
+    cuda_stream: *mut c_void,
+) -> Ds41rtStatus;
 type CudaLogitsArgmaxF32Fn = unsafe extern "C" fn(
     logits: *const f32,
     out_indices: *mut u32,
@@ -14620,6 +14656,12 @@ impl NativeLibrary {
     /// be one `rows * rank_order_capacity` arena each and
     /// `rank_order_capacity` must cover every row's `top_k`.
     ///
+    /// `params` is the host slice the validator reads; `params_device` is the
+    /// device allocation the kernel dereferences (`params[blockIdx.x]`), one
+    /// 64-byte block per row, validated by `validate_v41_params_device` exactly
+    /// as K1's. A pageable host address is not device-addressable under CUDA's
+    /// documented model even where a driver happens to expose it.
+    ///
     /// See the rank-order contract in `v41_sampling_gpu.h`.
     #[allow(clippy::too_many_arguments)]
     pub unsafe fn cuda_v41_topk_select_async(
@@ -14629,6 +14671,7 @@ impl NativeLibrary {
         vocab: usize,
         logits_stride: usize,
         params: &[Ds41rtV41SamplerRow],
+        params_device: Ds41rtDeviceBuffer,
         mask_words: Option<Ds41rtDeviceBuffer>,
         mask_words_per_row: usize,
         rank_order_ids: Option<Ds41rtDeviceBuffer>,
@@ -14656,6 +14699,7 @@ impl NativeLibrary {
             out_pivot_passes,
             scratch,
         )?;
+        validate_v41_params_device(NAME, params_device, rows)?;
         let kernel_fn: Symbol<CudaV41TopkSelectAsyncFn> =
             unsafe { self.lib.get(b"ds41rt_cuda_v41_topk_select_async")? };
         let status = unsafe {
@@ -14664,7 +14708,7 @@ impl NativeLibrary {
                 rows,
                 vocab,
                 logits_stride,
-                params.as_ptr(),
+                params_device.ptr.cast::<Ds41rtV41SamplerRow>() as *const Ds41rtV41SamplerRow,
                 mask_words
                     .map(|buffer| buffer.ptr.cast::<u32>() as *const u32)
                     .unwrap_or(std::ptr::null()),
@@ -14694,6 +14738,7 @@ impl NativeLibrary {
         vocab: usize,
         logits_stride: usize,
         params: &[Ds41rtV41SamplerRow],
+        params_device: Ds41rtDeviceBuffer,
         mask_words: Option<Ds41rtDeviceBuffer>,
         mask_words_per_row: usize,
         rank_order_ids: Option<Ds41rtDeviceBuffer>,
@@ -14720,6 +14765,7 @@ impl NativeLibrary {
             out_pivot_passes,
             scratch,
         )?;
+        validate_v41_params_device(NAME, params_device, rows)?;
         let kernel_fn: Symbol<CudaV41TopkSelectFn> =
             unsafe { self.lib.get(b"ds41rt_cuda_v41_topk_select")? };
         let status = unsafe {
@@ -14728,7 +14774,7 @@ impl NativeLibrary {
                 rows,
                 vocab,
                 logits_stride,
-                params.as_ptr(),
+                params_device.ptr.cast::<Ds41rtV41SamplerRow>() as *const Ds41rtV41SamplerRow,
                 mask_words
                     .map(|buffer| buffer.ptr.cast::<u32>() as *const u32)
                     .unwrap_or(std::ptr::null()),
@@ -14742,6 +14788,164 @@ impl NativeLibrary {
                 rank_order_capacity,
                 out_retained_count.ptr.cast::<u32>(),
                 out_pivot_passes.ptr.cast::<u32>(),
+                scratch.ptr,
+            )
+        };
+        self.status_to_result(NAME, status)
+    }
+
+    /// Chunk-3b K5: the inclusive-prefix top-p nucleus and the rank-order draw
+    /// on the same stream after K1 and K3/K4. Reads K1's `scratch` and the
+    /// rank-order retained ids K3/K4 wrote (indexed by block row); writes
+    /// `out_indices` (and, when supplied, the diagnostic `out_total` and
+    /// `out_nucleus_count`) indexed by `output_row`. `out_total` and
+    /// `out_nucleus_count` are only written for rows whose `DIAGNOSE` flag is
+    /// set. See the K5 contract in `v41_sampling_gpu.h`.
+    ///
+    /// `params` is the host slice the validator reads; `params_device` is the
+    /// device allocation the kernel dereferences, validated by
+    /// `validate_v41_params_device` (the same contract K1 uses).
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn cuda_v41_nucleus_async(
+        &self,
+        logits: Ds41rtDeviceBuffer,
+        rows: usize,
+        vocab: usize,
+        logits_stride: usize,
+        params: &[Ds41rtV41SamplerRow],
+        params_device: Ds41rtDeviceBuffer,
+        mask_words: Option<Ds41rtDeviceBuffer>,
+        mask_words_per_row: usize,
+        rank_order_ids: Option<Ds41rtDeviceBuffer>,
+        rank_order_capacity: usize,
+        rank_retained_count: Ds41rtDeviceBuffer,
+        out_indices: Ds41rtDeviceBuffer,
+        out_status: Ds41rtDeviceBuffer,
+        out_total: Option<Ds41rtDeviceBuffer>,
+        out_nucleus_count: Option<Ds41rtDeviceBuffer>,
+        scratch: Ds41rtDeviceBuffer,
+        cuda_stream: *mut c_void,
+    ) -> Result<()> {
+        const NAME: &str = "ds41rt_cuda_v41_nucleus_async";
+        validate_v41_nucleus_buffers(
+            NAME,
+            logits,
+            rows,
+            vocab,
+            logits_stride,
+            params,
+            mask_words,
+            mask_words_per_row,
+            rank_order_ids,
+            rank_order_capacity,
+            rank_retained_count,
+            out_indices,
+            out_status,
+            out_total,
+            out_nucleus_count,
+            scratch,
+        )?;
+        validate_v41_params_device(NAME, params_device, rows)?;
+        let kernel_fn: Symbol<CudaV41NucleusAsyncFn> =
+            unsafe { self.lib.get(b"ds41rt_cuda_v41_nucleus_async")? };
+        let status = unsafe {
+            kernel_fn(
+                logits.ptr.cast::<f32>() as *const f32,
+                rows,
+                vocab,
+                logits_stride,
+                params_device.ptr.cast::<Ds41rtV41SamplerRow>() as *const Ds41rtV41SamplerRow,
+                mask_words
+                    .map(|buffer| buffer.ptr.cast::<u32>() as *const u32)
+                    .unwrap_or(std::ptr::null()),
+                mask_words_per_row,
+                rank_order_ids
+                    .map(|buffer| buffer.ptr.cast::<u32>() as *const u32)
+                    .unwrap_or(std::ptr::null()),
+                rank_order_capacity,
+                rank_retained_count.ptr.cast::<u32>() as *const u32,
+                out_indices.ptr.cast::<u32>(),
+                out_status.ptr.cast::<u32>(),
+                out_total
+                    .map(|buffer| buffer.ptr.cast::<f32>())
+                    .unwrap_or(std::ptr::null_mut()),
+                out_nucleus_count
+                    .map(|buffer| buffer.ptr.cast::<u32>())
+                    .unwrap_or(std::ptr::null_mut()),
+                scratch.ptr,
+                cuda_stream,
+            )
+        };
+        self.status_to_result(NAME, status)
+    }
+
+    /// Blocking form of [`Self::cuda_v41_nucleus_async`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn cuda_v41_nucleus(
+        &self,
+        logits: Ds41rtDeviceBuffer,
+        rows: usize,
+        vocab: usize,
+        logits_stride: usize,
+        params: &[Ds41rtV41SamplerRow],
+        params_device: Ds41rtDeviceBuffer,
+        mask_words: Option<Ds41rtDeviceBuffer>,
+        mask_words_per_row: usize,
+        rank_order_ids: Option<Ds41rtDeviceBuffer>,
+        rank_order_capacity: usize,
+        rank_retained_count: Ds41rtDeviceBuffer,
+        out_indices: Ds41rtDeviceBuffer,
+        out_status: Ds41rtDeviceBuffer,
+        out_total: Option<Ds41rtDeviceBuffer>,
+        out_nucleus_count: Option<Ds41rtDeviceBuffer>,
+        scratch: Ds41rtDeviceBuffer,
+    ) -> Result<()> {
+        const NAME: &str = "ds41rt_cuda_v41_nucleus";
+        validate_v41_nucleus_buffers(
+            NAME,
+            logits,
+            rows,
+            vocab,
+            logits_stride,
+            params,
+            mask_words,
+            mask_words_per_row,
+            rank_order_ids,
+            rank_order_capacity,
+            rank_retained_count,
+            out_indices,
+            out_status,
+            out_total,
+            out_nucleus_count,
+            scratch,
+        )?;
+        validate_v41_params_device(NAME, params_device, rows)?;
+        let kernel_fn: Symbol<CudaV41NucleusFn> =
+            unsafe { self.lib.get(b"ds41rt_cuda_v41_nucleus")? };
+        let status = unsafe {
+            kernel_fn(
+                logits.ptr.cast::<f32>() as *const f32,
+                rows,
+                vocab,
+                logits_stride,
+                params_device.ptr.cast::<Ds41rtV41SamplerRow>() as *const Ds41rtV41SamplerRow,
+                mask_words
+                    .map(|buffer| buffer.ptr.cast::<u32>() as *const u32)
+                    .unwrap_or(std::ptr::null()),
+                mask_words_per_row,
+                rank_order_ids
+                    .map(|buffer| buffer.ptr.cast::<u32>() as *const u32)
+                    .unwrap_or(std::ptr::null()),
+                rank_order_capacity,
+                rank_retained_count.ptr.cast::<u32>() as *const u32,
+                out_indices.ptr.cast::<u32>(),
+                out_status.ptr.cast::<u32>(),
+                out_total
+                    .map(|buffer| buffer.ptr.cast::<f32>())
+                    .unwrap_or(std::ptr::null_mut()),
+                out_nucleus_count
+                    .map(|buffer| buffer.ptr.cast::<u32>())
+                    .unwrap_or(std::ptr::null_mut()),
                 scratch.ptr,
             )
         };
@@ -18319,6 +18523,102 @@ fn validate_v41_params_device(context: &str, params_device: Ds41rtDeviceBuffer,
     Ok(())
 }
 
+/// Shared validation for the chunk-3b K5 entry points: the K1 buffer contract,
+/// the optional rank-order arenas (read-only here), and the required
+/// `rank_retained_count`/`out_indices`/`out_status` buffers. `out_total` and
+/// `out_nucleus_count` are optional (design D3) and are only checked when
+/// supplied.
+///
+/// K5 consumes K3/K4's `out_retained_count` and the rank-order arena **by block
+/// row** while `out_*` are keyed by `output_row`; a non-identity `output_row`
+/// mapping would pair a row with another row's retained count. The nucleus entry
+/// point therefore requires `params[r].output_row == r` for every row. K1/K2/K3/
+/// K4 keep supporting scattered `output_row`; only K5's consumption is affected.
+#[allow(clippy::too_many_arguments)]
+fn validate_v41_nucleus_buffers(
+    context: &str,
+    logits: Ds41rtDeviceBuffer,
+    rows: usize,
+    vocab: usize,
+    logits_stride: usize,
+    params: &[Ds41rtV41SamplerRow],
+    mask_words: Option<Ds41rtDeviceBuffer>,
+    mask_words_per_row: usize,
+    rank_order_ids: Option<Ds41rtDeviceBuffer>,
+    rank_order_capacity: usize,
+    rank_retained_count: Ds41rtDeviceBuffer,
+    out_indices: Ds41rtDeviceBuffer,
+    out_status: Ds41rtDeviceBuffer,
+    out_total: Option<Ds41rtDeviceBuffer>,
+    out_nucleus_count: Option<Ds41rtDeviceBuffer>,
+    scratch: Ds41rtDeviceBuffer,
+) -> Result<()> {
+    validate_v41_sampling_buffers(
+        context,
+        logits,
+        rows,
+        vocab,
+        logits_stride,
+        params,
+        mask_words,
+        mask_words_per_row,
+        scratch,
+        scratch,
+        scratch,
+        scratch,
+        None,
+        None,
+        scratch,
+    )?;
+    for (row, params) in params.iter().enumerate() {
+        if params.output_row as usize != row {
+            anyhow::bail!(
+                "{context} row {row} has output_row {}, but the nucleus entry point requires \
+                 output_row == block row: K5 consumes K3/K4's rank_retained_count and rank-order \
+                 arena by block row while out_* are written by output_row",
+                params.output_row
+            );
+        }
+    }
+    validate_u32_buffer_values(&format!("{context} rank_retained_count"), rank_retained_count, rows)?;
+    validate_u32_buffer_values(&format!("{context} out_indices"), out_indices, rows)?;
+    validate_u32_buffer_values(&format!("{context} out_status"), out_status, rows)?;
+    if let Some(total) = out_total {
+        validate_f32_buffer_values(&format!("{context} out_total"), total, rows)?;
+    }
+    if let Some(nucleus) = out_nucleus_count {
+        validate_u32_buffer_values(&format!("{context} out_nucleus_count"), nucleus, rows)?;
+    }
+    match rank_order_ids {
+        None => {
+            if rank_order_capacity != 0 {
+                anyhow::bail!(
+                    "{context} rank_order_capacity is {rank_order_capacity} but no rank-order \
+                     arena was supplied"
+                );
+            }
+        }
+        Some(ids) => {
+            if rank_order_capacity == 0 {
+                anyhow::bail!(
+                    "{context} a rank-order arena was supplied with a zero per-row capacity"
+                );
+            }
+            let values =
+                checked_row_values(&format!("{context} rank_order_ids"), rows, rank_order_capacity)?;
+            validate_u32_buffer_values(&format!("{context} rank_order_ids"), ids, values)?;
+            let max_top_k = params.iter().map(|params| params.top_k).max().unwrap_or(0) as usize;
+            if rank_order_capacity < max_top_k {
+                anyhow::bail!(
+                    "{context} rank_order_capacity {rank_order_capacity} is below the batch's \
+                     maximum top_k {max_top_k}"
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
 fn validate_v41_sampling_buffers(
     context: &str,
     logits: Ds41rtDeviceBuffer,
@@ -18971,6 +19271,62 @@ mod tests {
             DS41RT_V41_SAMPLER_NO_MASK_ROW,
         );
         validate_v41(3, 129_280, 129_280, &params, false, 0).expect("valid unconstrained batch");
+    }
+
+    #[test]
+    fn v41_nucleus_validator_requires_identity_output_row() {
+        // K5 consumes K3/K4's `rank_retained_count` and the rank-order arena by
+        // BLOCK row while writing `out_*` by `output_row`. A swapped pair (one
+        // row truncating under `top_k`) would pair a row with another row's
+        // retained count, so the nucleus validator must reject it and the
+        // identity mapping must pass.
+        let rows = 2usize;
+        let vocab = 100usize;
+        let capacity = 4usize;
+        let make_params = |output_rows: [u32; 2]| -> Vec<Ds41rtV41SamplerRow> {
+            output_rows
+                .iter()
+                .map(|output_row| Ds41rtV41SamplerRow {
+                    temperature: 1.0,
+                    top_p: 0.9,
+                    min_p: 0.0,
+                    top_k: capacity as u32,
+                    mask_row: DS41RT_V41_SAMPLER_NO_MASK_ROW,
+                    flags: DS41RT_V41_SAMPLER_FLAG_NO_MASK,
+                    output_row: *output_row,
+                    ln_min_p: f32::NEG_INFINITY,
+                    ..Ds41rtV41SamplerRow::default()
+                })
+                .collect()
+        };
+        let run_validator = |params: &[Ds41rtV41SamplerRow]| {
+            validate_v41_nucleus_buffers(
+                "test K5",
+                synthetic_device_buffer(0x10_0000, rows * vocab * 4),
+                rows,
+                vocab,
+                vocab,
+                params,
+                None,
+                0,
+                Some(synthetic_device_buffer(0x20_0000, rows * capacity * 4)),
+                capacity,
+                synthetic_device_buffer(0x30_0000, rows * 4),
+                synthetic_device_buffer(0x40_0000, rows * 4),
+                synthetic_device_buffer(0x50_0000, rows * 4),
+                None,
+                None,
+                synthetic_device_buffer(0x60_0000, rows * 64),
+            )
+        };
+        let permuted = make_params([1, 0]);
+        let error = run_validator(&permuted).expect_err("a permuted output_row must be rejected");
+        assert!(
+            error.to_string().contains("output_row == block row"),
+            "unexpected error: {error}"
+        );
+        let identity = make_params([0, 1]);
+        run_validator(&identity).expect("the identity output_row mapping validates");
     }
 
     #[test]
@@ -19908,6 +20264,7 @@ mod tests {
                 vocab,
                 vocab,
                 params,
+                params_buffer,
                 mask_buffer,
                 if mask_buffer.is_some() { words } else { 0 },
                 rank_ids,
@@ -29374,5 +29731,450 @@ mod tests {
             }
         }
         Ok(())
+    }
+    /// Chunk-3b FFI oracle: drive K1 -> K3/K4 -> K5 through the C ABI and
+    /// compare the final token against the **production** CPU sampler
+    /// (`ds41rt_core::TargetSamplingParams::select_token`) on identical logits,
+    /// masks, params, seeds and positions. Every device output is pre-filled
+    /// with `0xDEADBEEF`, so a kernel that never ran cannot pass. Rows whose two
+    /// f32 accumulation orders pick different tokens (the declared §6.3c
+    /// residual) are counted and reported, not asserted away; the test asserts
+    /// the device token is one of the CPU's ordered survivors and, on the
+    /// deterministic rows, that it matches exactly.
+    ///
+    /// `#[ignore]` convention: this test needs a GPU and a built native library,
+    /// so it does not run in the default `cargo test` sweep (the design §12.2
+    /// pattern). Run it explicitly with the library path:
+    ///
+    /// ```text
+    /// DS41RT_NATIVE_LIB=/path/to/libds41rt_native.so \
+    ///   cargo test -p ds41rt-ffi -- --ignored v41_sampler
+    /// ```
+    ///
+    /// The loader is deliberately loud: an explicit `--ignored` run with a
+    /// missing library FAILS (`load_device_test_library` errors); it never skips
+    /// silently.
+    #[test]
+    #[ignore = "requires a GPU and a built libds41rt_native.so; run with --ignored"]
+    fn v41_sampler_device_nucleus_ordered_matches_cpu_oracle() -> Result<()> {
+        let library = load_device_test_library()?;
+
+        // ---- small deterministic rows, vocab 8 ----
+        let vocab = 8_usize;
+        let rows = 6_usize;
+        let words = vocab.div_ceil(32);
+        let logits: Vec<f32> = vec![
+            2.0, 1.0, 0.5, 0.0, -1.0, -2.0, -3.0, -4.0, // row 0: strict prefix at top_p=1
+            8.0, 0.0, -8.0, -16.0, -24.0, -32.0, -40.0, -48.0, // row 1: peaked, wide margins
+            3.0, 3.0, 3.0, 0.0, 0.0, 0.0, -5.0, -9.0,   // row 2: tie group at the top
+            6.0, 0.0, -6.0, -12.0, -18.0, -24.0, -30.0, -36.0, // row 3: peaked + top_k 4
+            8.0, 5.0, 0.0, -5.0, -10.0, -15.0, -20.0, -25.0, // row 4: masked, top_p 0.5
+            0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0,     // row 5: sparse mask + top_k 3
+        ];
+        let mask: Vec<u32> = vec![
+            u32::MAX,
+            u32::MAX,
+            u32::MAX,
+            u32::MAX,
+            u32::MAX,
+            (1 << 1) | (1 << 4) | (1 << 7),
+        ];
+        // A deterministic, non-vacuous mask for row 4: it removes two of the
+        // three top tokens, so the masked winner differs from the unmasked one.
+        let mut mask = mask;
+        mask[4] = (1 << 0) | (1 << 2) | (1 << 3) | (1 << 5);
+        let params = vec![
+            /* `top_p < 1` keeps this row on the ordered path; `top_p = 1.0` with
+             * `top_k` disabled would be the disjoint K2 fast path, which K5 must
+             * not touch (and does not write a diagnostic for). */
+            v41_nucleus_row(0, 1.0, 0.9, 0, 0.0, DS41RT_V41_SAMPLER_NO_MASK_ROW, DS41RT_V41_SAMPLER_FLAG_NO_MASK, 1, 0),
+            v41_nucleus_row(1, 0.7, 0.9, 0, 0.0, DS41RT_V41_SAMPLER_NO_MASK_ROW, DS41RT_V41_SAMPLER_FLAG_NO_MASK, 20_260_922, 7),
+            v41_nucleus_row(2, 0.7, 1.0, 5, 0.0, DS41RT_V41_SAMPLER_NO_MASK_ROW, DS41RT_V41_SAMPLER_FLAG_NO_MASK, 0xDEAD_BEEF, 11),
+            v41_nucleus_row(3, 0.7, 0.9, 4, 0.0, DS41RT_V41_SAMPLER_NO_MASK_ROW, DS41RT_V41_SAMPLER_FLAG_NO_MASK, 987_654_321, 0),
+            v41_nucleus_row(4, 1.0, 0.5, 0, 0.0, 4, 0, 5, 3),
+            v41_nucleus_row(5, 1.0, 1.0, 3, 0.0, 5, 0, 29, 2),
+        ];
+        let capacity = 8_usize;
+        let run = run_v41_nucleus_batch(&library, &logits, rows, vocab, &params, Some(&mask), capacity)?;
+        assert!(
+            run.status.iter().all(|status| *status == DS41RT_V41_SAMPLER_STATUS_OK),
+            "every valid K5 row must leave the caller-visible status at OK, got {:?}",
+            run.status
+        );
+        let mut exact = 0_usize;
+        let mut divergences = Vec::new();
+        for row in 0..rows {
+            let row_logits = &logits[row * vocab..(row + 1) * vocab];
+            let row_mask = if params[row].flags & DS41RT_V41_SAMPLER_FLAG_NO_MASK != 0 {
+                None
+            } else {
+                Some(&mask[row * words..(row + 1) * words])
+            };
+            assert_ne!(
+                run.ids[row], 0xDEAD_BEEF,
+                "row {row} out_indices was written by K5"
+            );
+            let oracle = ds41rt_core::TargetSamplingParams::new(
+                params[row].temperature,
+                params[row].top_p,
+                if params[row].top_k == 0 { None } else { Some(params[row].top_k as usize) },
+                params[row].min_p,
+                params[row].seed,
+            )
+            .expect("oracle params")
+            .select_token(row_logits, row_mask, params[row].position)
+            .expect("oracle selection") as u32;
+            assert_ne!(run.total[row], -123.0, "row {row} out_total was written");
+            assert_ne!(run.nucleus_count[row], 0xDEAD_BEEF, "row {row} nucleus written");
+            if run.ids[row] == oracle {
+                exact += 1;
+            } else {
+                // The declared accumulation-order residual, not a filter bug:
+                // the device token must still be one of the CPU's ordered
+                // survivors.
+                let ordered = ordered_ids(row_logits, params[row].temperature, params[row].top_k, row_mask);
+                assert!(
+                    ordered.contains(&run.ids[row]),
+                    "row {row} divergent token {} is not an ordered survivor",
+                    run.ids[row]
+                );
+                divergences.push((row, run.ids[row], oracle));
+            }
+        }
+        assert_eq!(exact, rows, "deterministic small rows must match exactly; divergences {divergences:?}");
+
+        // ---- tie group with an exact-k cut: the nucleus must stay inside the
+        // retained list ----
+        let tie_vocab = 256_usize;
+        let mut tie_logits = vec![0.0f32; tie_vocab];
+        for token in 3..tie_vocab {
+            tie_logits[token] = -1.0;
+        }
+        tie_logits[0] = 4.0;
+        tie_logits[1] = 3.0;
+        tie_logits[2] = 2.0;
+        let tie_params = vec![v41_nucleus_row(
+            0, 0.7, 0.9, 40, 0.0, DS41RT_V41_SAMPLER_NO_MASK_ROW, DS41RT_V41_SAMPLER_FLAG_NO_MASK, 7, 5,
+        )];
+        let tie = run_v41_nucleus_batch(
+            &library,
+            &tie_logits,
+            1,
+            tie_vocab,
+            &tie_params,
+            None,
+            40,
+        )?;
+        let tie_oracle = ds41rt_core::TargetSamplingParams::new(0.7, 0.9, Some(40), 0.0, 7)
+            .expect("tie params")
+            .select_token(&tie_logits, None, 5)
+            .expect("tie oracle") as u32;
+        assert_ne!(tie.ids[0], 0xDEAD_BEEF, "tie row wrote a token");
+        assert!(tie.nucleus_count[0] >= 1 && tie.nucleus_count[0] <= 40, "tie nucleus in range");
+        assert!(
+            tie.ranked[..40].contains(&tie.ids[0]),
+            "tie token {} is inside the retained list",
+            tie.ids[0]
+        );
+        assert_eq!(
+            tie.ids[0], tie_oracle,
+            "tie row matches the production sampler exactly"
+        );
+        Ok(())
+    }
+
+    /// One `Ds41rtV41SamplerRow` with an explicit `top_p` (the chunk-3a helper
+    /// fixes it at 1.0).
+    #[allow(clippy::too_many_arguments)]
+    /// The loud per-row failure path through the FFI: `top_k = 300` with
+    /// `survivor_count = 400` is a retained list wider than `kBlock` (256), so
+    /// K5 cannot sample it. Before the fix the entry point returned OK and left
+    /// `out_indices` at the caller's sentinel, so a caller reading only the
+    /// returned status believed success. Now K5 writes `INTERNAL` to the same
+    /// caller-visible per-row status K1 uses.
+    ///
+    /// `#[ignore]` convention: needs a GPU and a built native library.
+    #[test]
+    #[ignore = "requires a GPU and a built libds41rt_native.so; run with --ignored"]
+    fn v41_sampler_device_nucleus_reports_internal_for_unsupported_rows() -> Result<()> {
+        let library = load_device_test_library()?;
+        let vocab = 400_usize;
+        let logits: Vec<f32> = (0..vocab).map(|token| -0.01 * token as f32).collect();
+        let params = vec![v41_nucleus_row(
+            0,
+            0.7,
+            0.9,
+            300,
+            0.0,
+            DS41RT_V41_SAMPLER_NO_MASK_ROW,
+            DS41RT_V41_SAMPLER_FLAG_NO_MASK,
+            5,
+            1,
+        )];
+        let run = run_v41_nucleus_batch(&library, &logits, 1, vocab, &params, None, 300)?;
+        assert_eq!(
+            run.status[0], DS41RT_V41_SAMPLER_STATUS_INTERNAL,
+            "a retained list wider than kBlock must reach out_status"
+        );
+        assert_eq!(
+            run.ids[0], 0xDEAD_BEEF,
+            "the failed row must leave out_indices unwritten"
+        );
+        Ok(())
+    }
+
+    fn v41_nucleus_row(
+        output_row: u32,
+        temperature: f32,
+        top_p: f32,
+        top_k: u32,
+        min_p: f32,
+        mask_row: u32,
+        flags: u32,
+        seed: u64,
+        position: u64,
+    ) -> Ds41rtV41SamplerRow {
+        Ds41rtV41SamplerRow {
+            seed,
+            position,
+            temperature,
+            top_p,
+            min_p,
+            top_k,
+            mask_row,
+            flags: flags | DS41RT_V41_SAMPLER_FLAG_DIAGNOSE,
+            output_row,
+            ln_min_p: if min_p > 0.0 { min_p.ln() } else { f32::NEG_INFINITY },
+            ..Ds41rtV41SamplerRow::default()
+        }
+    }
+
+    /// The CPU's ordered survivor ids (scaled descending, id ascending), used
+    /// only to bound a residual divergence.
+    fn ordered_ids(logits: &[f32], temperature: f32, top_k: u32, mask: Option<&[u32]>) -> Vec<u32> {
+        let inv = 1.0f32 / temperature;
+        let mut ranked: Vec<(f32, u32)> = logits
+            .iter()
+            .enumerate()
+            .filter(|(token, _)| {
+                mask.is_none_or(|words| words[token / 32] & (1 << (token % 32)) != 0)
+            })
+            .map(|(token, &value)| (value * inv, token as u32))
+            .collect();
+        ranked.sort_unstable_by(|a, b| {
+            b.0.partial_cmp(&a.0)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.1.cmp(&b.1))
+        });
+        let take = if top_k == 0 || top_k as usize >= ranked.len() {
+            ranked.len()
+        } else {
+            top_k as usize
+        };
+        ranked.into_iter().take(take).map(|(_, id)| id).collect()
+    }
+
+    /// Outputs of one K1 + K3/K4 + K5 batch through the C ABI. `ranked` is
+    /// `rows * capacity`; the diagnostic outputs are parsed from the K5 stage.
+    struct NucleusRun {
+        ranked: Vec<u32>,
+        ids: Vec<u32>,
+        status: Vec<u32>,
+        total: Vec<f32>,
+        nucleus_count: Vec<u32>,
+    }
+
+    /// Drive K1 then K3/K4 then K5 through the FFI. Every K5 output is
+    /// pre-filled with `0xDEADBEEF` / `-123.0f`, so a kernel that never ran
+    /// cannot satisfy an equality assertion with stale memory.
+    #[allow(clippy::too_many_arguments)]
+    fn run_v41_nucleus_batch(
+        library: &NativeLibrary,
+        logits: &[f32],
+        rows: usize,
+        vocab: usize,
+        params: &[Ds41rtV41SamplerRow],
+        mask: Option<&[u32]>,
+        capacity: usize,
+    ) -> Result<NucleusRun> {
+        assert_eq!(params.len(), rows);
+        assert_eq!(logits.len(), rows * vocab);
+        let words = vocab.div_ceil(32);
+        if let Some(mask) = mask {
+            assert_eq!(mask.len(), rows * words);
+        }
+        let logits_buffer = library.alloc_device_buffer(rows * vocab * 4)?;
+        let params_buffer = library.alloc_device_buffer(rows * DS41RT_V41_SAMPLER_PARAM_BYTES)?;
+        let mask_buffer = match mask {
+            Some(_) => Some(library.alloc_device_buffer(rows * words * 4)?),
+            None => None,
+        };
+        let ids = library.alloc_device_buffer(rows * 4)?;
+        let status = library.alloc_device_buffer(rows * 4)?;
+        let detail = library.alloc_device_buffer(rows * 4)?;
+        let scores = library.alloc_device_buffer(rows * 4)?;
+        let scratch = library.alloc_device_buffer(rows * DS41RT_V41_SAMPLER_SCRATCH_BYTES)?;
+        let retained = library.alloc_device_buffer(rows * 4)?;
+        let passes = library.alloc_device_buffer(rows * 4)?;
+        let rank_ids = match capacity {
+            0 => None,
+            _ => Some(library.alloc_device_buffer(rows * capacity * 4)?),
+        };
+        let rank_scratch = match capacity {
+            0 => None,
+            _ => Some(library.alloc_device_buffer(rows * capacity * 8)?),
+        };
+        let out_total = library.alloc_device_buffer(rows * 4)?;
+        let out_nucleus = library.alloc_device_buffer(rows * 4)?;
+
+        let result = (|| -> Result<NucleusRun> {
+            let sentinel: Vec<u8> = (0..rows).flat_map(|_| 0xDEAD_BEEFu32.to_ne_bytes()).collect();
+            library.copy_h2d(retained, &sentinel)?;
+            library.copy_h2d(passes, &sentinel)?;
+            library.copy_h2d(ids, &sentinel)?;
+            library.copy_h2d(out_nucleus, &sentinel)?;
+            let negative: Vec<u8> = (0..rows).flat_map(|_| (-123.0f32).to_ne_bytes()).collect();
+            library.copy_h2d(out_total, &negative)?;
+            if let Some(rank_ids) = rank_ids {
+                let arena: Vec<u8> =
+                    (0..rows * capacity).flat_map(|_| 0xDEAD_BEEFu32.to_ne_bytes()).collect();
+                library.copy_h2d(rank_ids, &arena)?;
+            }
+            let mut logits_bytes = Vec::with_capacity(logits.len() * 4);
+            for value in logits {
+                logits_bytes.extend_from_slice(&value.to_ne_bytes());
+            }
+            library.copy_h2d(logits_buffer, &logits_bytes)?;
+            if let (Some(mask), Some(mask_buffer)) = (mask, mask_buffer) {
+                let mut mask_bytes = Vec::with_capacity(mask.len() * 4);
+                for value in mask {
+                    mask_bytes.extend_from_slice(&value.to_ne_bytes());
+                }
+                library.copy_h2d(mask_buffer, &mask_bytes)?;
+            }
+            let param_bytes: Vec<u8> = unsafe {
+                std::slice::from_raw_parts(
+                    params.as_ptr().cast::<u8>(),
+                    params.len() * DS41RT_V41_SAMPLER_PARAM_BYTES,
+                )
+                .to_vec()
+            };
+            library.copy_h2d(params_buffer, &param_bytes)?;
+            library.cuda_v41_target_sample(
+                logits_buffer,
+                rows,
+                vocab,
+                vocab,
+                params,
+                params_buffer,
+                mask_buffer,
+                if mask_buffer.is_some() { words } else { 0 },
+                ids,
+                status,
+                detail,
+                scores,
+                None,
+                None,
+                scratch,
+            )?;
+            library.cuda_v41_topk_select(
+                logits_buffer,
+                rows,
+                vocab,
+                vocab,
+                params,
+                params_buffer,
+                mask_buffer,
+                if mask_buffer.is_some() { words } else { 0 },
+                rank_ids,
+                rank_scratch,
+                capacity,
+                retained,
+                passes,
+                scratch,
+            )?;
+            library.cuda_v41_nucleus(
+                logits_buffer,
+                rows,
+                vocab,
+                vocab,
+                params,
+                params_buffer,
+                mask_buffer,
+                if mask_buffer.is_some() { words } else { 0 },
+                rank_ids,
+                capacity,
+                retained,
+                ids,
+                status,
+                Some(out_total),
+                Some(out_nucleus),
+                scratch,
+            )?;
+            let read_u32 = |buffer: Ds41rtDeviceBuffer, count: usize| -> Result<Vec<u32>> {
+                let mut bytes = vec![0_u8; count * 4];
+                library.copy_d2h(&mut bytes, buffer)?;
+                Ok((0..count)
+                    .map(|index| {
+                        u32::from_ne_bytes(bytes[index * 4..index * 4 + 4].try_into().unwrap())
+                    })
+                    .collect())
+            };
+            let read_f32 = |buffer: Ds41rtDeviceBuffer, count: usize| -> Result<Vec<f32>> {
+                let mut bytes = vec![0_u8; count * 4];
+                library.copy_d2h(&mut bytes, buffer)?;
+                Ok((0..count)
+                    .map(|index| {
+                        f32::from_ne_bytes(bytes[index * 4..index * 4 + 4].try_into().unwrap())
+                    })
+                    .collect())
+            };
+            Ok(NucleusRun {
+                ranked: match rank_ids {
+                    Some(rank_ids) => read_u32(rank_ids, rows * capacity)?,
+                    None => Vec::new(),
+                },
+                ids: read_u32(ids, rows)?,
+                status: read_u32(status, rows)?,
+                total: read_f32(out_total, rows)?,
+                nucleus_count: read_u32(out_nucleus, rows)?,
+            })
+        })();
+
+        let mut logits_buffer = logits_buffer;
+        let mut params_buffer = params_buffer;
+        let mut mask_buffer = mask_buffer;
+        let mut ids = ids;
+        let mut status = status;
+        let mut detail = detail;
+        let mut scores = scores;
+        let mut scratch = scratch;
+        let mut retained = retained;
+        let mut passes = passes;
+        let mut rank_ids = rank_ids;
+        let mut rank_scratch = rank_scratch;
+        let mut out_total = out_total;
+        let mut out_nucleus = out_nucleus;
+        library.free_device_buffer(&mut logits_buffer)?;
+        library.free_device_buffer(&mut params_buffer)?;
+        if let Some(mut buffer) = mask_buffer.take() {
+            library.free_device_buffer(&mut buffer)?;
+        }
+        library.free_device_buffer(&mut ids)?;
+        library.free_device_buffer(&mut status)?;
+        library.free_device_buffer(&mut detail)?;
+        library.free_device_buffer(&mut scores)?;
+        library.free_device_buffer(&mut scratch)?;
+        library.free_device_buffer(&mut retained)?;
+        library.free_device_buffer(&mut passes)?;
+        if let Some(mut buffer) = rank_ids.take() {
+            library.free_device_buffer(&mut buffer)?;
+        }
+        if let Some(mut buffer) = rank_scratch.take() {
+            library.free_device_buffer(&mut buffer)?;
+        }
+        library.free_device_buffer(&mut out_total)?;
+        library.free_device_buffer(&mut out_nucleus)?;
+        result
     }
 }

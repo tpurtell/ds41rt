@@ -63,6 +63,12 @@ void require_cuda(cudaError_t status, const char* action) {
   }
 }
 
+/* Additive overload so the chunk-3b loud-status test can pass a composed
+ * `std::string`; every pre-existing `const char*` call is unchanged. */
+void require_cuda(cudaError_t status, const std::string& action) {
+  require_cuda(status, action.c_str());
+}
+
 /* Chunk-2 shorthand; identical to the `std::numeric_limits` spellings used
  * above. */
 float inf() { return std::numeric_limits<float>::infinity(); }
@@ -2156,6 +2162,213 @@ void test_k2_fallback_unreachable_like_cpu() {
             << ")\n";
 }
 
+/* P0-1 regression: a K2 draw must never select a token whose weight is exactly
+ * zero. The witness (vocab 2048, `T = 1`, `top_k = 0`, `top_p = 1`, `min_p = 0`,
+ * `logits[0] = 0`, `logits[8..15] = -17`, everything else `-200`, seed
+ * `0x9216a62488dbaa7b`, position 0 -> the uniform is `MAX_UNIFORM`) has each
+ * tail weight `expf(-17) = 4.1399378e-8`, below half an ulp of 1.0. The pre-fix
+ * kernel's tree prefix handed segment 2 a start already past `target`
+ * (`inclusive[1] = 1.00000036 >= target = 1.00000024`), so it "crossed" at its
+ * first survivor -- token 16, whose weight is `expf(-200) = 0` -- while the CPU
+ * sequential oracle returns token 0. The fixed kernel's consistent segment
+ * prefix plus the `cumulative_before < target` minimality guard makes that
+ * structurally impossible; this test asserts the selected weight is strictly
+ * positive. Mutant M6 (the pre-fix K2 walk) fails it. */
+void test_k2_zero_weight_invariant() {
+  ++g_cases;
+  const size_t vocab = 2048;
+  std::vector<float> logits(vocab, -200.0f);
+  logits[0] = 0.0f;
+  for (int token = 8; token <= 15; ++token) {
+    logits[static_cast<size_t>(token)] = -17.0f;
+  }
+  const uint64_t seed = 0x9216a62488dbaa7bull;
+  const uint64_t position = 0ull;
+  const uint32_t sentinel = 0xDEADBEEFu;
+  const std::vector<ds41rt_v41_sampler_row_t> params = {
+      fast_row(0, 1.0f, 0.0f, -inf(), seed, position, DS41RT_V41_SAMPLER_NO_MASK_ROW,
+               DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+  };
+  K1 k = make_k1(1, vocab, false, true);
+  require_cuda(cudaMemcpy(k.logits, logits.data(), logits.size() * sizeof(float),
+                          cudaMemcpyHostToDevice), "K2 witness logits h2d");
+  require_cuda(cudaMemcpy(k.params, params.data(), sizeof(params[0]),
+                          cudaMemcpyHostToDevice), "K2 witness params h2d");
+  std::vector<uint32_t> host_ids(1u, sentinel);
+  require_cuda(cudaMemcpy(k.ids, host_ids.data(), sizeof(uint32_t),
+                          cudaMemcpyHostToDevice), "K2 witness ids h2d");
+  expect(ds41rt_cuda_v41_target_sample(k.logits, 1, vocab, vocab, k.params, nullptr, 0u,
+                                       k.ids, k.status, k.detail, k.scores, k.total,
+                                       k.nucleus, k.scratch) == DS41RT_STATUS_OK,
+         "K2 witness: launch");
+  uint32_t id = sentinel;
+  uint32_t status = sentinel;
+  require_cuda(cudaMemcpy(&id, k.ids, sizeof(uint32_t), cudaMemcpyDeviceToHost),
+               "K2 witness ids d2h");
+  require_cuda(cudaMemcpy(&status, k.status, sizeof(uint32_t), cudaMemcpyDeviceToHost),
+               "K2 witness status d2h");
+  const RefFast cpu = cpu_fast_reference(logits.data(), vocab, nullptr, true, 1.0f, 0.0f,
+                                         -inf(), seed, position);
+  expect(cpu.crossed, "K2 witness: the CPU port crosses (its last fallback is unreachable)");
+  expect(cpu.total == 1.0f, "K2 witness: the CPU sequential total loses every sub-half-ulp tail");
+  expect(cpu.token == 0u, "K2 witness: the CPU crosses at token 0");
+  expect(status == DS41RT_V41_SAMPLER_STATUS_OK, "K2 witness: K2 reported OK");
+  expect(id != sentinel && id < vocab, "K2 witness: K2 wrote an in-vocab token");
+  /* `T = 1` and `max_scaled = logits[0] = 0`, so the weight is `expf(logit)`.
+   * Token 16 is the pre-fix zero-weight pick; its weight really is zero, so the
+   * positive-weight assertion below is a genuine structural guard. */
+  expect(std::exp(logits[16]) == 0.0f,
+         "K2 witness: token 16 has exactly zero weight (the pre-fix pick)");
+  const float weight = std::exp(logits[id]);
+  if (!(weight > 0.0f)) {
+    std::cerr << "K2 zero-weight violation: device token " << id << " weight " << weight
+              << "\n";
+  }
+  /* Qualified (adversarial review rev4 N2): this claim holds for `target > 0`
+   * only. The `u == 0` (`target == 0`) path legitimately selects the FIRST
+   * survivor, whose weight may be exactly zero -- device-confirmed (seed 310147,
+   * position 0 -> token 0, weight 0) and matched by the production CPU sampler,
+   * which adds the weight before testing `target <= cumulative`. */
+  expect(weight > 0.0f,
+         "P0-1: for target > 0 the K2 draw never selects a zero-weight token "
+         "(the target == 0 path selects the first survivor, which may have "
+         "weight 0 and matches the production CPU sampler)");
+  expect(id != 16u, "P0-1: the K2 draw no longer selects the zero-weight token 16");
+  free_k1(&k);
+  std::cout << "ok  K2 zero-weight invariant (device token " << id << ", weight " << weight
+            << ", CPU token " << cpu.token << ")\n";
+}
+
+/* N1 regression (adversarial review rev4): PIN the K2 bracketing-segment
+ * saturation fallback on the device-confirmed vocab-1024 witness.
+ *
+ * *** KNOWN, DOCUMENTED DEVIATION -- PINNED DELIBERATELY. ***
+ * Do not "fix" this corner silently: the behaviour asserted below is the
+ * documented residual described in `runs/chunk3b-scratch/REPORT.md` §2.2/§6
+ * (rev5) and in the adversarial review N1, and any change here is a
+ * chunk-6-candidate mapping change that must be re-measured on the 120-cell
+ * grid, not a drive-by product fix.
+ *
+ * Row (kBlock = 256, so segment 1 = tokens 4..7): `logits[0] = 0` (weight 1),
+ * `logits[4] = ln(0.4*2^-23)`, `logits[5] = ln(1.4*2^-23)`,
+ * `logits[6] = logits[7] = ln(0.4*2^-23)`, everything else -1e9. The
+ * segment-level fold gives `C(2) = 1 + 3 ulp`, but the bracketing segment's
+ * in-segment walk uses a different f32 association and saturates at
+ * `1 + 1 ulp`: token 5's weight rounds the walk up to `1 + 1 ulp`, and tokens
+ * 6/7 (0.4 ulp each, below half an ulp of `1 + 1 ulp`) round back down. Hence:
+ *
+ *   - `u = 0.9999997615814209` (mantissa 16777212 on the 2^-24 grid):
+ *     `target = 1 + 1 ulp` and token 5 is the GENUINE first crossing;
+ *   - `u = 0.99999988079071045` (mantissa 16777214, the LARGER uniform):
+ *     `target = 1 + 2 ulp`; the in-segment walk never reaches it, so the
+ *     saturation fallback reports the segment's FIRST positive-weight survivor,
+ *     token 4 -- a BACKWARD step (token 4 < token 5) whose cumulative
+ *     `W(4) = 1.0` is strictly BELOW the target.
+ *
+ * The fallback answer is therefore neither the minimum index satisfying the
+ * threshold nor monotone in u; it is only guaranteed to be a positive-weight
+ * survivor (a 983,040-draw validity scan found 0 zero-weight / non-survivor
+ * selections, and the affected range is the last few ulps of the uniform,
+ * ~1e-7 of the mass). Both exact tokens are asserted so any future change to
+ * this corner breaks this test loudly.
+ *
+ * The uniforms are reached through the production seed path: the seeds below
+ * are the smallest whose bit-identical SplitMix64 mapping
+ * (`host_target_uniform`, the host port of `random_uniform`) yields the wanted
+ * 24-bit mantissas at position 0 (same brute-force technique that found seed
+ * 310147 for u = 0); the mapping assertions pin that correspondence. */
+void test_k2_saturation_fallback_witness_pinned() {
+  ++g_cases;
+  const size_t vocab = 1024;
+  const uint64_t seed_low_u = 34442741ull;  /* mantissa 16777212 -> u = 0.9999997615814209 */
+  const uint64_t seed_high_u = 11753212ull; /* mantissa 16777214 -> u = 0.99999988079071045 */
+  const uint32_t mantissa_low_u = 16777212u;
+  const uint32_t mantissa_high_u = 16777214u;
+  const float u_low = static_cast<float>(mantissa_low_u) * (1.0f / 16777216.0f);
+  const float u_high = static_cast<float>(mantissa_high_u) * (1.0f / 16777216.0f);
+  /* The hard-coded seeds must reproduce the witness uniforms bit for bit. */
+  expect(host_target_uniform(seed_low_u, 0ull) == u_low,
+         "saturation witness: seed 34442741 maps to mantissa 16777212");
+  expect(host_target_uniform(seed_high_u, 0ull) == u_high,
+         "saturation witness: seed 11753212 maps to mantissa 16777214");
+  expect(u_low < u_high,
+         "saturation witness: the two uniforms are ordered (u_low < u_high)");
+
+  std::vector<float> logits(vocab, -1.0e9f);
+  logits[0] = 0.0f;
+  const double ulp = std::ldexp(1.0, -23);
+  logits[4] = static_cast<float>(std::log(0.4 * ulp));
+  logits[5] = static_cast<float>(std::log(1.4 * ulp));
+  logits[6] = logits[4];
+  logits[7] = logits[4];
+  /* Both witness tokens are survivors with strictly positive f32 weights. */
+  expect(std::exp(logits[4]) > 0.0f && std::exp(logits[5]) > 0.0f,
+         "saturation witness: tokens 4 and 5 have positive weights");
+
+  const std::vector<float> rows = repeat_row(logits, 2);
+  const std::vector<ds41rt_v41_sampler_row_t> params = {
+      fast_row(0, 1.0f, 0.0f, -inf(), seed_low_u, 0ull, DS41RT_V41_SAMPLER_NO_MASK_ROW,
+               DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+      fast_row(1, 1.0f, 0.0f, -inf(), seed_high_u, 0ull, DS41RT_V41_SAMPLER_NO_MASK_ROW,
+               DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+  };
+  K1 k = make_k1(2, vocab, false, true);
+  require_cuda(cudaMemcpy(k.logits, rows.data(), rows.size() * sizeof(float),
+                          cudaMemcpyHostToDevice), "saturation witness logits h2d");
+  require_cuda(cudaMemcpy(k.params, params.data(), 2 * sizeof(params[0]),
+                          cudaMemcpyHostToDevice), "saturation witness params h2d");
+  const std::vector<uint32_t> sentinels(2u, 0xDEADBEEFu);
+  require_cuda(cudaMemcpy(k.ids, sentinels.data(), 2 * sizeof(uint32_t),
+                          cudaMemcpyHostToDevice), "saturation witness ids h2d");
+  expect(ds41rt_cuda_v41_target_sample(k.logits, 2, vocab, vocab, k.params, nullptr, 0u,
+                                       k.ids, k.status, k.detail, k.scores, k.total,
+                                       k.nucleus, k.scratch) == DS41RT_STATUS_OK,
+         "saturation witness: launch");
+  std::vector<uint32_t> ids(2), status(2);
+  require_cuda(cudaMemcpy(ids.data(), k.ids, 2 * sizeof(uint32_t), cudaMemcpyDeviceToHost),
+               "saturation witness ids d2h");
+  require_cuda(cudaMemcpy(status.data(), k.status, 2 * sizeof(uint32_t),
+                          cudaMemcpyDeviceToHost), "saturation witness status d2h");
+  expect(status[0] == DS41RT_V41_SAMPLER_STATUS_OK && status[1] == DS41RT_V41_SAMPLER_STATUS_OK,
+         "saturation witness: both draws report OK");
+  /* The pinned behaviour: u_low -> token 5 (genuine crossing), u_high -> token 4
+   * (saturation fallback's first positive-weight survivor). */
+  expect(ids[0] == 5u,
+         "saturation witness: u = 0.9999997615814209 selects token 5 (pinned; "
+         "see REPORT.md §2.2/§6 -- documented deviation)");
+  expect(ids[1] == 4u,
+         "saturation witness: u = 0.99999988079071045 selects token 4 (pinned; "
+         "the saturation fallback answers with the bracketing segment's first "
+         "positive-weight survivor, which lies below the target)");
+  /* The explicit non-monotonicity: the LARGER uniform selects the SMALLER token.
+   * Known, documented deviation -- not a bug to fix in this revision. */
+  expect(ids[1] < ids[0],
+         "saturation witness: the mapping is NON-MONOTONE in u at the pinned "
+         "witness (documented residual, rev4 adversarial review N1)");
+  for (int r = 0; r < 2; ++r) {
+    const float weight = std::exp(logits[ids[static_cast<size_t>(r)]]);
+    expect(weight > 0.0f,
+           "saturation witness: every pinned selection has positive f32 weight");
+  }
+  /* The production CPU oracle crosses at token 0 for BOTH uniforms (its
+   * sequential total is 1 + 1 ulp, putting both targets below 1.0): the device's
+   * 5-then-4 answers are part of the same documented fast-path deviation, not a
+   * CPU-parity failure introduced by this test. */
+  const RefFast cpu_low = cpu_fast_reference(logits.data(), vocab, nullptr, true, 1.0f, 0.0f,
+                                             -inf(), seed_low_u, 0ull);
+  const RefFast cpu_high = cpu_fast_reference(logits.data(), vocab, nullptr, true, 1.0f, 0.0f,
+                                              -inf(), seed_high_u, 0ull);
+  expect(cpu_low.crossed && cpu_high.crossed,
+         "saturation witness: the CPU port crosses on both uniforms");
+  expect(cpu_low.token == 0u && cpu_high.token == 0u,
+         "saturation witness: the CPU port crosses at token 0 for both uniforms "
+         "(the device's 5-then-4 answers are the documented fast-path deviation)");
+  free_k1(&k);
+  std::cout << "ok  K2 saturation fallback pinned (mantissa " << mantissa_low_u << " -> token "
+            << ids[0] << "; mantissa " << mantissa_high_u << " -> token " << ids[1]
+            << "; backward step is the documented residual)\n";
+}
+
 /* ====================================================================== */
 /* Chunk 3a: K3 pivot selection + K4 exact-k membership (design §4.3-4.4)  */
 /* ====================================================================== */
@@ -2991,6 +3204,1792 @@ void test_k3_k4_randomized_rows() {
             << ", capacity " << capacity << "\n";
 }
 
+/* ====================================================================== */
+/* Chunk 3b: K5 inclusive-prefix top-p nucleus + rank-order draw          */
+/* (design §4.5-§4.6, §12.3-§12.4, §12.8; contract §1.3)                  */
+/* ====================================================================== */
+
+/* Host port of the production ordered path's tail, `sample_from_ranked`
+ * (`target_sampling.rs:527-571`). `ranked` is the CPU's ranked list in exact
+ * rank order (scaled descending, id ascending); `total` is the CPU's
+ * un-normalized weight total. The port reproduces the CPU's operation order
+ * exactly: no `top_p >= 1.0` shortcut, clamp to `[1e-6, 1]`, the inclusive
+ * `>=` prefix break, the `1e-20` floors, and `selected = nucleus_count - 1` as
+ * the initialized fallback. */
+struct RefOrdered {
+  uint32_t token = 0u;
+  float total = 0.0f;
+  uint32_t nucleus_count = 0u;
+  uint32_t nucleus_crossing = 0u;
+  bool fallback_used = false;
+  bool nucleus_full_set = false;
+};
+
+RefOrdered host_ordered_tail(const std::vector<std::pair<float, uint32_t>>& ranked,
+                             float max_scaled, float top_p, float uniform) {
+  RefOrdered out;
+  /* `ranked` is never empty on the ordered path: the best survivor always
+   * survives every filter (`target_sampling.rs:533`). */
+  std::vector<float> weights;
+  weights.reserve(ranked.size());
+  for (const std::pair<float, uint32_t>& entry : ranked) {
+    weights.push_back(std::exp(entry.first - max_scaled));
+  }
+  float total = 0.0f;
+  for (float weight : weights) {
+    total += weight;
+  }
+  if (total < 1.0e-20f) {
+    total = 1.0e-20f;
+  }
+  for (float& weight : weights) {
+    weight /= total;
+  }
+  const float clamped = std::fmin(std::fmax(top_p, 1.0e-6f), 1.0f);
+  float nucleus_mass = 0.0f;
+  size_t nucleus_count = 0;
+  for (float weight : weights) {
+    nucleus_mass += weight;
+    ++nucleus_count;
+    if (nucleus_mass >= clamped) {
+      break;
+    }
+  }
+  out.fallback_used = (nucleus_count == weights.size()) && (nucleus_mass < clamped);
+  out.nucleus_full_set = (nucleus_count == weights.size());
+  if (nucleus_mass < 1.0e-20f) {
+    nucleus_mass = 1.0e-20f;
+  }
+  const float target = uniform * nucleus_mass;
+  size_t selected = nucleus_count - 1;
+  float cumulative = 0.0f;
+  for (size_t rank = 0; rank < nucleus_count; ++rank) {
+    cumulative += weights[rank];
+    if (target <= cumulative) {
+      selected = rank;
+      break;
+    }
+  }
+  out.token = ranked[selected].second;
+  out.total = total;
+  out.nucleus_count = static_cast<uint32_t>(nucleus_count);
+  out.nucleus_crossing = static_cast<uint32_t>(nucleus_count - 1);
+  return out;
+}
+
+/* Host port of the CPU's ordered branch selection (`target_sampling.rs:477-522`
+ * plus the shared tail): the bounded-heap top-k path when `top_k <
+ * survivor_count`, the full survivor ordering otherwise, and the K2 fast-path
+ * branch (`top_k` disabled and `top_p >= 1.0`) which K5 must not touch. */
+struct RefOrderedRow {
+  bool greedy = false;
+  bool k2_fast_path = false;
+  bool ok = false;
+  uint32_t status = DS41RT_V41_SAMPLER_STATUS_OK;
+  uint32_t survivor_count = 0;
+  uint32_t domain_count = 0; /* K5's `S`: top_k when materialized, else survivors */
+  uint32_t token = 0;
+  float total = 0.0f;
+  uint32_t nucleus_count = 0;
+  /* The CPU's crossing rank (`nucleus_count - 1`): the rank whose inclusive
+   * prefix first reaches `top_p`. Used to classify a device token that differs
+   * from the production token as an adjacent-crossing boundary flip. */
+  uint32_t nucleus_crossing = 0;
+  bool fallback_used = false;
+  bool nucleus_full_set = false;
+  /* The CPU's ranked survivors, so a divergence can be classified rather than
+   * dismissed. */
+  std::vector<std::pair<float, uint32_t>> ranked;
+};
+
+/* The CPU's FLOAT32 normalized inclusive prefix through `id` in the ranked
+ * list -- `Σ_{rank <= r(id)} fl(w_rank / total)` with
+ * `w_rank = expf(first_rank - first_0)`, the same left-to-right f32
+ * accumulation `sample_from_ranked` performs (`target_sampling.rs:534-551`).
+ * This is the quantity the boundary exception must compare against `top_p`.
+ * The previous double-precision helper returned a DIFFERENT number (for 12 equal
+ * weights it returned exactly `1.0` where the CPU's f32 prefix is
+ * `0.99999988079071045`), so it could accept a several-rank miss whenever the
+ * double value sat within slack of `top_p`. */
+float host_cumulative_through_f32(const RefOrderedRow& row, uint32_t id) {
+  float total = row.total;
+  if (total < 1.0e-20f) {
+    total = 1.0e-20f;
+  }
+  float running = 0.0f;
+  for (size_t rank = 0; rank < row.ranked.size(); ++rank) {
+    running += std::exp(row.ranked[rank].first - row.ranked[0].first) / total;
+    if (row.ranked[rank].second == id) {
+      return running;
+    }
+  }
+  return running;
+}
+
+
+RefOrderedRow host_ordered_reference(const float* logits, size_t vocab,
+                                     const uint32_t* mask_words,
+                                     size_t mask_words_per_row, float temperature,
+                                     float top_p, uint32_t top_k, float min_p,
+                                     float ln_min_p, uint32_t flags, uint64_t seed,
+                                     uint64_t position) {
+  RefOrderedRow out;
+  const bool unconstrained = mask_words == nullptr || mask_words_per_row == 0u;
+  const auto allowed = [&](size_t token) {
+    return unconstrained || ((mask_words[token / 32u] >> (token % 32u)) & 1u) != 0u;
+  };
+  out.greedy = is_greedy(temperature, top_k) ||
+               (flags & DS41RT_V41_SAMPLER_FLAG_GREEDY) != 0u;
+  if (out.greedy) {
+    return out;
+  }
+  const float inv = 1.0f / temperature;
+  float max_scaled = -std::numeric_limits<float>::infinity();
+  size_t allowed_count = 0;
+  for (size_t token = 0; token < vocab; ++token) {
+    if (!allowed(token)) {
+      continue;
+    }
+    if (!std::isfinite(logits[token])) {
+      out.status = DS41RT_V41_SAMPLER_STATUS_NONFINITE_LOGIT;
+      return out;
+    }
+    ++allowed_count;
+    max_scaled = std::fmax(max_scaled, logits[token] * inv);
+  }
+  if (allowed_count == 0u) {
+    out.status = DS41RT_V41_SAMPLER_STATUS_EMPTY_CANDIDATES;
+    return out;
+  }
+  if (!std::isfinite(max_scaled)) {
+    out.status = DS41RT_V41_SAMPLER_STATUS_INVALID_TEMPERATURE;
+    return out;
+  }
+  const float min_scaled = min_p > 0.0f ? max_scaled + ln_min_p
+                                        : -std::numeric_limits<float>::infinity();
+  size_t survivor_count = 0u;
+  for (size_t token = 0; token < vocab; ++token) {
+    if (allowed(token) && logits[token] * inv >= min_scaled) {
+      ++survivor_count;
+    }
+  }
+  out.ok = true;
+  out.survivor_count = static_cast<uint32_t>(survivor_count);
+  if (top_k == 0u && top_p >= 1.0f) {
+    /* The disjoint K2 fast path; K5 is not allowed to overwrite its id. */
+    out.k2_fast_path = true;
+    return out;
+  }
+  if (survivor_count == 0u) {
+    out.ok = false;
+    return out;
+  }
+  const float uniform =
+      host_clamp_uniform(host_target_uniform(seed, position));
+
+  /* Branch 1: bounded capacity-`top_k` selection (`:477-497`). */
+  if (top_k != 0u && static_cast<size_t>(top_k) < survivor_count) {
+    std::vector<std::pair<float, uint32_t>> ranked;
+    ranked.reserve(top_k);
+    for (size_t token = 0; token < vocab; ++token) {
+      if (!allowed(token) || !(logits[token] * inv >= min_scaled)) {
+        continue;
+      }
+      const float scaled = logits[token] * inv;
+      const uint32_t id = static_cast<uint32_t>(token);
+      if (ranked.size() < top_k) {
+        ranked.emplace_back(scaled, id);
+        continue;
+      }
+      /* Worst = lowest scaled, then highest id (the CPU's `WorstFirst`). */
+      size_t worst = 0;
+      for (size_t i = 1; i < ranked.size(); ++i) {
+        if (ranked[i].first < ranked[worst].first ||
+            (ranked[i].first == ranked[worst].first &&
+             ranked[i].second > ranked[worst].second)) {
+          worst = i;
+        }
+      }
+      if (scaled > ranked[worst].first ||
+          (scaled == ranked[worst].first && id < ranked[worst].second)) {
+        ranked[worst] = {scaled, id};
+      }
+    }
+    std::sort(ranked.begin(), ranked.end(),
+              [](const std::pair<float, uint32_t>& a,
+                 const std::pair<float, uint32_t>& b) {
+                if (a.first != b.first) {
+                  return a.first > b.first;
+                }
+                return a.second < b.second;
+              });
+    out.domain_count = static_cast<uint32_t>(ranked.size());
+    const RefOrdered tail = host_ordered_tail(ranked, max_scaled, top_p, uniform);
+    out.token = tail.token;
+    out.total = tail.total;
+    out.nucleus_count = tail.nucleus_count;
+    out.nucleus_crossing = tail.nucleus_crossing;
+    out.fallback_used = tail.fallback_used;
+    out.nucleus_full_set = tail.nucleus_full_set;
+    out.ranked = std::move(ranked);
+    return out;
+  }
+
+  /* Branches 2/3: order every survivor, then the shared tail (`:503-522`). */
+  std::vector<std::pair<float, uint32_t>> ranked;
+  ranked.reserve(survivor_count);
+  for (size_t token = 0; token < vocab; ++token) {
+    if (allowed(token) && logits[token] * inv >= min_scaled) {
+      ranked.emplace_back(logits[token] * inv, static_cast<uint32_t>(token));
+    }
+  }
+  std::sort(ranked.begin(), ranked.end(),
+            [](const std::pair<float, uint32_t>& a,
+               const std::pair<float, uint32_t>& b) {
+              if (a.first != b.first) {
+                return a.first > b.first;
+              }
+              return a.second < b.second;
+            });
+  out.domain_count = static_cast<uint32_t>(ranked.size());
+  const RefOrdered tail = host_ordered_tail(ranked, max_scaled, top_p, uniform);
+  out.token = tail.token;
+  out.total = tail.total;
+  out.nucleus_count = tail.nucleus_count;
+  out.nucleus_crossing = tail.nucleus_crossing;
+  out.fallback_used = tail.fallback_used;
+  out.nucleus_full_set = tail.nucleus_full_set;
+  out.ranked = std::move(ranked);
+  return out;
+}
+
+/* A row block with an explicit `top_p` (the shared `row` helper fixes it at
+ * 1.0, and K5's whole point is the ordered `top_p`). */
+ds41rt_v41_sampler_row_t k5_row(uint32_t output_row, float temperature, float top_p,
+                                uint32_t top_k, float min_p, float ln_min_p,
+                                uint32_t mask_row, uint32_t flags, uint64_t seed,
+                                uint64_t position) {
+  ds41rt_v41_sampler_row_t value = {};
+  value.seed = seed;
+  value.position = position;
+  value.temperature = temperature;
+  value.top_p = top_p;
+  value.min_p = min_p;
+  value.top_k = top_k;
+  value.mask_row = mask_row;
+  value.flags = flags;
+  value.output_row = output_row;
+  value.ln_min_p = ln_min_p;
+  return value;
+}
+
+/* One K1 + K3/K4 + K5 run with its device buffers. */
+struct K5Run {
+  K1 k1;
+  TopkBuffers topk;
+  uint32_t* ids = nullptr;
+  float* total = nullptr;
+  uint32_t* nucleus = nullptr;
+  size_t rows = 0;
+  size_t capacity = 0;
+};
+
+K5Run make_k5_run(size_t rows, size_t vocab, size_t capacity, bool with_mask) {
+  K5Run run;
+  run.rows = rows;
+  run.capacity = capacity;
+  run.k1 = make_k1(rows, vocab, with_mask, false);
+  run.topk = make_topk_buffers(rows, capacity);
+  alloc_device(&run.ids, rows * sizeof(uint32_t), "k5 ids");
+  alloc_device(&run.total, rows * sizeof(float), "k5 total");
+  alloc_device(&run.nucleus, rows * sizeof(uint32_t), "k5 nucleus");
+  return run;
+}
+
+void free_k5_run(K5Run* run) {
+  free_topk_buffers(&run->topk);
+  cudaFree(run->ids);
+  cudaFree(run->total);
+  cudaFree(run->nucleus);
+  free_k1(&run->k1);
+  *run = K5Run{};
+}
+
+/* Drive K1 -> K3/K4 -> K5 and assert the exact final token, the exact
+ * `out_nucleus_count` and (with a tolerance for the device `expf`) `out_total`
+ * against `host_ordered_reference`. Every output is pre-filled with a sentinel,
+ * so a kernel that never ran cannot pass; the K2 fast-path rows must keep
+ * K2's id and the greedy rows K1's.
+ *
+ * `describe` appends the fallback/nucleus shape of every compared row to the
+ * run's counters, which the caller prints as the MEASURED coverage evidence. */
+/* Aggregate K5 measurements: how many ordered rows were compared, how many
+ * matched the production CPU sampler's token exactly, and how many of the
+ * rest are one-rank boundary flips (a different f32 accumulation order landing
+ * on the adjacent crossing). Every row must be one of the latter two. */
+/* The window (in ranks) around the CPU crossing inside which a device token is
+ * attributed to the accumulation-order residual rather than a filter bug. */
+constexpr uint32_t KP_CROSSING_WINDOW = 4u;
+
+struct K5Stats {
+  size_t compared = 0;
+  size_t exact = 0;
+  size_t boundary_flip = 0;
+  /* Largest measured CDF error between a divergent device token and the CPU's
+   * own token: `|f32_cumulative_through(device) - f32_cumulative_through(cpu)|`.
+   * This is the §6.3c accumulation residual expressed as a probability, and it
+   * is asserted against `kK5CdfErrorBound` for every ordered row. */
+  double max_cdf_error = 0.0;
+  /* Defect-sensitive counters. `nucleus_mismatch` counts ordered rows whose
+   * device `out_nucleus_count` differs from the production nucleus at all --
+   * incremented OUTSIDE the `strict_nucleus` gate, so a relaxed profile still
+   * measures it; `outside_nucleus` counts rows whose token is not inside the CPU
+   * nucleus; `max_rank_displacement` is the largest |device rank - CPU rank|
+   * observed in the CPU's ranked order. Any nonzero value in the first two, or a
+   * displacement above the asserted window, fails the run (see `run_k5_case`). */
+  size_t nucleus_mismatch = 0;
+  size_t outside_nucleus = 0;
+  size_t max_rank_displacement = 0;
+  /* Rows whose nucleus differs by exactly one rank while the CPU's own FLOAT32
+   * normalized prefix at the device's crossing is within `kK5BoundarySlack` of
+   * the clamped `top_p` -- the accepted k-scale f32 boundary drift. */
+  size_t nucleus_boundary = 0;
+  /* The true largest |device nucleus - CPU nucleus| seen, recorded on every
+   * ordered row (previously hard-coded to 1 and never read). */
+  size_t max_nucleus_delta = 0;
+  /* Ordered rows whose production reference reported `fallback_used` (the CPU
+   * consumed every weight without crossing); asserted > 0 by the fallback test
+   * so the fallback path is measured, not merely printed. */
+  size_t fallback_rows = 0;
+};
+
+/* The tolerance for accepting a one-rank nucleus difference as the k-scale f32
+ * normalization drift (measured: ~1.3e-6 on the 36-token `tied@k40+top_p` case;
+ * a wrong crossing is off by a whole rank's mass, >= 1e-3 on these grids). */
+constexpr double kK5BoundarySlack = 1.0e-5;
+
+/* The measured CDF-error bound for a divergent token. Both engines are
+ * internally consistent f32 draws of the same distribution, so a divergent token
+ * must sit at (almost) the same CDF location; measured on the wide 129,280-token
+ * rows the error is one rank's mass (~1/129,280 = 7.7e-6) or less. `1e-3` is two
+ * orders of magnitude above that measured envelope and still far below a
+ * filter/set error. */
+constexpr double kK5CdfErrorBound = 1.0e-3;
+
+/* The measured nucleus-count envelope for the 129,280-token served rows. Near
+ * the `top_p` crossing each rank contributes only ~1/129,280 = 7.7e-6 of the
+ * mass, so the two accumulation orders' ~2e-4 relative difference moves the
+ * crossing by tens of ranks: the device `top_p = 0.9` survivor row measures a
+ * delta of 28. This is a MEASURED bound on the wide rows, not a blanket
+ * relaxation -- the token, its rank window, its membership in the DEVICE
+ * nucleus and the CDF error are all still asserted. */
+constexpr size_t kK5WideNucleusDeltaBound = 64u;
+
+/* `strict_nucleus` now gates ONLY the exact nucleus-count equality assertion.
+ * Every ordered row always asserts: the real `|device nucleus - CPU nucleus|`
+ * is recorded (`K5Stats::nucleus_mismatch`, `max_nucleus_delta`), the token is
+ * inside the CPU nucleus, the token is inside the DEVICE-reported nucleus, the
+ * divergent token is within `KP_CROSSING_WINDOW` ranks of the CPU's token, and
+ * the measured CDF error is within `kK5CdfErrorBound`. The wide 129,280-token
+ * rows pass `false` for the exact-count assertion only; their token, rank and
+ * CDF checks are the same as every other row. */
+void run_k5_case(const std::vector<float>& logits, size_t rows, size_t vocab,
+                 const std::vector<ds41rt_v41_sampler_row_t>& params,
+                 const std::vector<uint32_t>& mask, bool with_mask,
+                 bool strict_mask_bits, size_t capacity, const char* label,
+                 K5Stats* stats, bool strict_nucleus = true,
+                 std::vector<uint32_t>* nucleus_trace = nullptr,
+                 std::vector<uint32_t>* retained_trace = nullptr) {
+  ++g_cases;
+  const std::string tag(label);
+  expect(params.size() == rows, tag + ": one param block per row");
+  K5Run run = make_k5_run(rows, vocab, capacity, with_mask);
+  require_cuda(cudaMemcpy(run.k1.logits, logits.data(), logits.size() * sizeof(float),
+                          cudaMemcpyHostToDevice), "k5 logits h2d");
+  require_cuda(cudaMemcpy(run.k1.params, params.data(),
+                          params.size() * sizeof(ds41rt_v41_sampler_row_t),
+                          cudaMemcpyHostToDevice), "k5 params h2d");
+  std::vector<uint32_t> device_mask = mask;
+  if (with_mask) {
+    if (strict_mask_bits) {
+      for (size_t r = 0; r < rows; ++r) {
+        ds41rt_v41_sampler_clear_remainder(device_mask.data() + r * run.k1.words, vocab);
+      }
+    }
+    require_cuda(cudaMemcpy(run.k1.mask, device_mask.data(),
+                            device_mask.size() * sizeof(uint32_t),
+                            cudaMemcpyHostToDevice), "k5 mask h2d");
+  }
+  /* K1 then K2 (K2 is a no-op for every ordered row here). */
+  expect(ds41rt_cuda_v41_target_sample(
+             run.k1.logits, rows, vocab, vocab, run.k1.params,
+             with_mask ? run.k1.mask : nullptr, with_mask ? run.k1.words : 0u,
+             run.k1.ids, run.k1.status, run.k1.detail, run.k1.scores, nullptr, nullptr,
+             run.k1.scratch) == DS41RT_STATUS_OK,
+         tag + ": K1 launch");
+  /* K3/K4 with a fully sentineled arena. */
+  const uint32_t sentinel = 0xDEADBEEFu;
+  std::vector<uint32_t> host_ids(rows * capacity, sentinel);
+  std::vector<uint64_t> host_scratch(rows * capacity, 0ull);
+  std::vector<uint32_t> host_retained(rows, sentinel);
+  std::vector<uint32_t> host_passes(rows, sentinel);
+  if (capacity > 0) {
+    require_cuda(cudaMemcpy(run.topk.rank_ids, host_ids.data(),
+                            rows * capacity * sizeof(uint32_t), cudaMemcpyHostToDevice),
+                 "k5 rank ids h2d");
+    require_cuda(cudaMemcpy(run.topk.rank_scratch, host_scratch.data(),
+                            rows * capacity * sizeof(uint64_t), cudaMemcpyHostToDevice),
+                 "k5 rank scratch h2d");
+  }
+  require_cuda(cudaMemcpy(run.topk.retained, host_retained.data(),
+                          rows * sizeof(uint32_t), cudaMemcpyHostToDevice),
+               "k5 retained h2d");
+  require_cuda(cudaMemcpy(run.topk.passes, host_passes.data(), rows * sizeof(uint32_t),
+                          cudaMemcpyHostToDevice),
+               "k5 passes h2d");
+  expect(ds41rt_cuda_v41_topk_select(
+             run.k1.logits, rows, vocab, vocab, run.k1.params,
+             with_mask ? run.k1.mask : nullptr, with_mask ? run.k1.words : 0u,
+             capacity > 0 ? run.topk.rank_ids : nullptr,
+             capacity > 0 ? run.topk.rank_scratch : nullptr, capacity,
+             run.topk.retained, run.topk.passes, run.k1.scratch) == DS41RT_STATUS_OK,
+         tag + ": topk launch");
+  /* K5 with sentineled outputs. */
+  std::vector<uint32_t> host_out_ids(rows, sentinel);
+  std::vector<float> host_out_total(rows, -123.0f);
+  std::vector<uint32_t> host_out_nucleus(rows, sentinel);
+  require_cuda(cudaMemcpy(run.ids, host_out_ids.data(), rows * sizeof(uint32_t),
+                          cudaMemcpyHostToDevice), "k5 out ids h2d");
+  require_cuda(cudaMemcpy(run.total, host_out_total.data(), rows * sizeof(float),
+                          cudaMemcpyHostToDevice), "k5 out total h2d");
+  require_cuda(cudaMemcpy(run.nucleus, host_out_nucleus.data(), rows * sizeof(uint32_t),
+                          cudaMemcpyHostToDevice), "k5 out nucleus h2d");
+  expect(ds41rt_cuda_v41_nucleus(
+             run.k1.logits, rows, vocab, vocab, run.k1.params,
+             with_mask ? run.k1.mask : nullptr, with_mask ? run.k1.words : 0u,
+             capacity > 0 ? run.topk.rank_ids : nullptr, capacity, run.topk.retained,
+             run.ids, run.k1.status, run.total, run.nucleus,
+             run.k1.scratch) == DS41RT_STATUS_OK,
+         tag + ": nucleus launch");
+  require_cuda(cudaDeviceSynchronize(), "k5 kernel");
+
+  std::vector<uint32_t> retained(rows);
+  require_cuda(cudaMemcpy(retained.data(), run.topk.retained, rows * sizeof(uint32_t),
+                          cudaMemcpyDeviceToHost), "k5 retained d2h");
+
+  std::vector<uint32_t> ids(rows, sentinel);
+  std::vector<float> totals(rows, -123.0f);
+  std::vector<uint32_t> nucleus(rows, sentinel);
+  require_cuda(cudaMemcpy(ids.data(), run.ids, rows * sizeof(uint32_t),
+                          cudaMemcpyDeviceToHost), "k5 ids d2h");
+  require_cuda(cudaMemcpy(totals.data(), run.total, rows * sizeof(float),
+                          cudaMemcpyDeviceToHost), "k5 total d2h");
+  require_cuda(cudaMemcpy(nucleus.data(), run.nucleus, rows * sizeof(uint32_t),
+                          cudaMemcpyDeviceToHost), "k5 nucleus d2h");
+  if (nucleus_trace != nullptr) {
+    *nucleus_trace = nucleus;
+  }
+  if (retained_trace != nullptr) {
+    *retained_trace = retained;
+  }
+
+  for (size_t r = 0; r < rows; ++r) {
+    const ds41rt_v41_sampler_row_t& p = params[r];
+    const std::string row_tag = tag + " row " + std::to_string(r);
+    const bool unconstrained = (p.flags & DS41RT_V41_SAMPLER_FLAG_NO_MASK) != 0u ||
+                               p.mask_row == DS41RT_V41_SAMPLER_NO_MASK_ROW;
+    const uint32_t* row_mask = (with_mask && !unconstrained)
+        ? device_mask.data() + static_cast<size_t>(p.mask_row) * run.k1.words
+        : nullptr;
+    const size_t row_words = (row_mask != nullptr) ? run.k1.words : 0u;
+    const RefOrderedRow expected = host_ordered_reference(
+        logits.data() + r * vocab, vocab, row_mask, row_words, p.temperature, p.top_p,
+        p.top_k, p.min_p, p.ln_min_p, p.flags, p.seed, p.position);
+    if (expected.greedy || expected.k2_fast_path) {
+      /* K5 must not have touched the row: the sentinel survives. */
+      expect(ids[r] == sentinel, row_tag + ": non-ordered row left untouched by K5");
+      expect(nucleus[r] == sentinel, row_tag + ": non-ordered nucleus untouched");
+      expect(totals[r] == -123.0f, row_tag + ": non-ordered total untouched");
+      continue;
+    }
+    expect(expected.ok, row_tag + ": host reference reached the ordered path");
+    if (stats != nullptr) {
+      ++stats->compared;
+      if (expected.fallback_used) {
+        ++stats->fallback_rows;
+      }
+    }
+    expect(ids[r] != sentinel, row_tag + ": K5 wrote the token");
+    /* The token must be an element of the CPU's ordered set (a filter bug would
+     * pick a masked or non-surviving token), and its rank in that order is the
+     * only meaningful way to bound a divergence: two engines that differ by a
+     * few ranks pick different ids but the same distribution, while a
+     * rank-domain bug (the survivor domain keyed by token order) lands at an
+     * arbitrary probability rank. */
+    size_t device_rank = expected.ranked.size();
+    for (size_t rank = 0; rank < expected.ranked.size(); ++rank) {
+      if (expected.ranked[rank].second == ids[r]) {
+        device_rank = rank;
+        break;
+      }
+    }
+    size_t cpu_rank = expected.ranked.size();
+    for (size_t rank = 0; rank < expected.ranked.size(); ++rank) {
+      if (expected.ranked[rank].second == expected.token) {
+        cpu_rank = rank;
+        break;
+      }
+    }
+    expect(device_rank < expected.ranked.size(),
+           row_tag + ": device token is in the CPU's ordered set");
+    expect(cpu_rank < expected.ranked.size(),
+           row_tag + ": CPU token is in its own ranked order");
+    const size_t rank_distance = device_rank > cpu_rank ? device_rank - cpu_rank
+                                                        : cpu_rank - device_rank;
+    if (stats != nullptr && rank_distance > stats->max_rank_displacement) {
+      stats->max_rank_displacement = rank_distance;
+    }
+    /* The nucleus is the CPU's rank prefix, so every selected token -- exact or
+     * divergent -- must sit inside it. */
+    if (device_rank >= expected.nucleus_count) {
+      if (stats != nullptr) {
+        ++stats->outside_nucleus;
+      }
+      std::cerr << "nucleus detail " << row_tag << ": device token " << ids[r]
+                << " rank " << device_rank << " is outside the CPU nucleus of "
+                << expected.nucleus_count << " ranks (crossing "
+                << expected.nucleus_crossing << ")\n";
+    }
+    expect(device_rank < expected.nucleus_count,
+           row_tag + ": device token rank is inside the CPU nucleus");
+    /* The device's own nucleus must match the production nucleus. The REAL
+     * count difference is recorded on every ordered row, outside the
+     * `strict_nucleus` gate, so a relaxed profile still measures it; the
+     * exact-equality assertion is what `strict_nucleus` gates. A difference is
+     * accepted as the k-scale f32 boundary drift only when it is exactly ONE
+     * rank AND the CPU's own FLOAT32 normalized prefix at the device crossing
+     * rank is within `kK5BoundarySlack` of the clamped `top_p`. A several-rank
+     * difference is never accepted. `max_nucleus_delta` is the true maximum,
+     * not a hard-coded constant. */
+    const uint32_t nucleus_delta =
+        (nucleus[r] > expected.nucleus_count) ? (nucleus[r] - expected.nucleus_count)
+                                              : (expected.nucleus_count - nucleus[r]);
+    if (stats != nullptr) {
+      if (nucleus_delta > stats->max_nucleus_delta) {
+        stats->max_nucleus_delta = nucleus_delta;
+      }
+      if (nucleus_delta != 0u) {
+        ++stats->nucleus_mismatch;
+      }
+    }
+    bool nucleus_ok = (nucleus_delta == 0u);
+    bool boundary_exception = false;
+    if (!nucleus_ok && nucleus_delta == 1u && !expected.fallback_used &&
+        nucleus[r] >= 1u && nucleus[r] <= expected.domain_count) {
+      const float crossed = host_cumulative_through_f32(
+          expected, expected.ranked[nucleus[r] - 1u].second);
+      const float clamped_top_p = std::fmin(std::fmax(p.top_p, 1.0e-6f), 1.0f);
+      boundary_exception =
+          std::fabs(crossed - clamped_top_p) <= static_cast<float>(kK5BoundarySlack);
+      nucleus_ok = boundary_exception;
+    }
+    if (stats != nullptr && boundary_exception) {
+      ++stats->nucleus_boundary;
+    }
+    if (!nucleus_ok) {
+      std::cerr << "nucleus detail " << row_tag << ": device nucleus " << nucleus[r]
+                << " CPU nucleus " << expected.nucleus_count << " delta " << nucleus_delta
+                << " (cpu crossing " << expected.nucleus_crossing << ", domain "
+                << expected.domain_count << ", top_p " << p.top_p << ", top_k " << p.top_k
+                << ", fallback " << (expected.fallback_used ? 1 : 0) << ")\n";
+    }
+    expect(!strict_nucleus || nucleus_ok,
+           row_tag +
+               ": device nucleus matches production (or is one rank off at the f32 boundary)");
+    /* The selected token's rank must also lie inside the nucleus the DEVICE
+     * reported, not only inside the CPU's. This is asserted for every ordered
+     * row, independent of `strict_nucleus`: a relaxed profile may tolerate a
+     * count difference, but never a token outside its own device nucleus. */
+    if (nucleus[r] != sentinel && device_rank < expected.ranked.size()) {
+      expect(device_rank < nucleus[r],
+             row_tag + ": device token rank is inside the DEVICE nucleus");
+    }
+    if (ids[r] == expected.token) {
+      if (stats != nullptr) {
+        ++stats->exact;
+      }
+    } else {
+      /* The declared accumulation-order/`expf` residual can move the *crossing
+       * rank* and therefore the drawn rank. The CPU sums the ranked normalized
+       * weights sequentially in f32; on rows with a wide dynamic range that
+       * walk saturates (once the running sum is ~1.0 every later term rounds to
+       * zero), while the device's fixed segmented tree keeps accumulating the
+       * true tail. Both are internally consistent f32 draws of the same
+       * distribution; which token they pick is §6.3c's measured residual, not a
+       * filter property. What *is* assertable, and is asserted here: the device
+       * token is one of the CPU's ranked survivors (so no masked or
+       * non-surviving token can pass), and it lies inside the nucleus the
+       * device itself reported. The exact-match count and the measured CDF
+       * deviation are reported by the caller. */
+      const float cdf_device = host_cumulative_through_f32(expected, ids[r]);
+      const float cdf_cpu = host_cumulative_through_f32(expected, expected.token);
+      const double cdf_error = std::fabs(static_cast<double>(cdf_device) -
+                                         static_cast<double>(cdf_cpu));
+      if (stats != nullptr) {
+        ++stats->boundary_flip;
+        if (cdf_error > stats->max_cdf_error) {
+          stats->max_cdf_error = cdf_error;
+        }
+      }
+      expect(nucleus[r] != sentinel, row_tag + ": divergent row still wrote a nucleus");
+      /* The two engines are f32 draws of the same distribution, so a divergent
+       * token must still sit at (almost) the same CDF location; this is the
+       * MEASURED residual bound, enforced for every ordered row (including the
+       * relaxed wide profiles that used to skip it entirely). */
+      expect(cdf_error <= kK5CdfErrorBound,
+             row_tag + ": divergent token is within the measured CDF-error bound");
+      /* A divergent token is only attributable to the declared f32
+       * accumulation residual when it sits within `KP_CROSSING_WINDOW` ranks of
+       * the CPU's own selected rank. The window is asserted for EVERY ordered
+       * row, wide profiles included (they used to pass `strict_nucleus=false`
+       * and skip it); the measured wide-row displacement is 1, well inside it.
+       * `KP_CROSSING_WINDOW` was previously declared and never used, which let a
+       * survivor domain keyed by token order (arbitrary probability rank) pass. */
+      if (rank_distance > KP_CROSSING_WINDOW) {
+        std::cerr << "window detail " << row_tag << ": device rank " << device_rank
+                  << " vs CPU rank " << cpu_rank << " (distance " << rank_distance
+                  << ", window " << KP_CROSSING_WINDOW << ")\n";
+      }
+      expect(rank_distance <= KP_CROSSING_WINDOW,
+             row_tag + ": divergent token is within KP_CROSSING_WINDOW ranks of the CPU rank");
+      if (capacity == 0u || retained[r] == 0u) {
+        /* Survivor domain: the rank must be inside the reported nucleus. */
+        expect(nucleus[r] >= 1u && nucleus[r] <= expected.domain_count,
+               row_tag + ": divergent nucleus count is inside the domain");
+      }
+    }
+    /* `total` differs only by the declared `expf` residual (§6.3b): every
+     * `w_r` differs by 1-2 ulp and the two accumulation orders differ, so the
+     * relative error of a `count`-term sum grows with the term count. The
+     * bound below is `2e-6 * log2(count)`, the measured envelope for the
+     * widest 129,280-token rows; the observed maximum is reported by the
+     * caller through the run counters. */
+    const float relative = std::fabs(totals[r] - expected.total) /
+                           std::fmax(expected.total, 1.0e-30f);
+    /* `n` f32 terms accumulated in different orders can differ by
+     * `O(n * 2^-24)` of the total even with identical inputs; measured on the
+     * 129,280-wide rows the relative difference is ~3.4e-4, so the allowance is
+     * a flat 5e-3 -- three orders of magnitude tighter than the `count*eps`
+     * bound and still ~10x the observed envelope. */
+    const float allowance = 5.0e-3f;
+    if (relative > allowance) {
+      std::cerr << "total mismatch " << row_tag << " device=" << totals[r]
+                << " cpu=" << expected.total << " rel=" << relative
+                << " allowance=" << allowance
+                << " survivors=" << expected.survivor_count
+                << " domain=" << expected.domain_count
+                << " top_p=" << p.top_p << " top_k=" << p.top_k
+                << " T=" << p.temperature << " seed=" << p.seed
+                << " pos=" << p.position << "\n";
+    }
+    expect(relative <= allowance, row_tag + ": total within the expf residual");
+    /* The token is inside the nucleus by construction. */
+    if (capacity > 0 && retained[r] > 0u) {
+      size_t rank = 0u;
+      bool found = false;
+      std::vector<uint32_t> row_ids(capacity, sentinel);
+      require_cuda(cudaMemcpy(row_ids.data(),
+                              run.topk.rank_ids + r * capacity,
+                              capacity * sizeof(uint32_t), cudaMemcpyDeviceToHost),
+                   "k5 rank ids d2h");
+      for (size_t i = 0; i < retained[r]; ++i) {
+        if (row_ids[i] == ids[r]) {
+          rank = i;
+          found = true;
+          break;
+        }
+      }
+      expect(found, row_tag + ": token is in the retained set");
+      expect(rank < expected.nucleus_count,
+             row_tag + ": token rank is inside the CPU nucleus");
+      /* The retained domain has a device-reported nucleus too; use it, not the
+       * CPU's count, for the membership assertion. */
+      if (nucleus[r] != sentinel) {
+        expect(rank < nucleus[r],
+               row_tag + ": token rank is inside the DEVICE retained nucleus");
+      }
+    }
+  }
+  free_k5_run(&run);
+}
+
+/* The `top_p = 1.0` strict prefix, in two parts.
+ *
+ * (a) A row with a deep tail that underflows: `expf(-200)` is a subnormal
+ * (~1e-87) and the normalized tail weights divide to exactly `0.0f`, so the
+ * f32 running prefix reaches `1.0` several ranks before the last survivor and
+ * the CPU nucleus is a **strict prefix**. That is the case the removed
+ * "nucleus = all of S" shortcut got wrong. On this row the device's answer is
+ * checked exactly against the production CPU sampler.
+ *
+ * (b) The rounded `top_p = 1.0` prefix that sits at the declared `expf`
+ * residual. The CPU computes `p_0 = w_0 / total` with Rust's `f32::exp`; a
+ * dominant rank with a ~1e-9 tail can make `p_0` round to exactly `1.0f` on one
+ * engine and to the next f32 below on the other. That is a *measured
+ * divergence*, not a defect, and the design explicitly forbids asserting it
+ * away: this part pins the structural property that both engines must keep
+ * (the nucleus is at least rank 0 and at most the ordered set, and the selected
+ * token is inside the nucleus) and prints the measured split. */
+void test_k5_strict_prefix_at_top_p_one() {
+  /* (a) deep-tail underflow: stable, exact. */
+  {
+    const size_t vocab = 8;
+    std::vector<float> logits(vocab, -200.0f);
+    logits[0] = 0.0f;
+    const RefOrderedRow witness = host_ordered_reference(
+        logits.data(), vocab, nullptr, 0u, 1.0f, 1.0f, 8u, 0.0f, -inf(),
+        DS41RT_V41_SAMPLER_FLAG_NO_MASK, 1ull, 0ull);
+    expect(witness.ok, "strict-prefix witness (a): the ordered path runs");
+    expect(witness.domain_count == 8u, "strict-prefix witness (a): eight ordered survivors");
+    expect(witness.nucleus_count < witness.domain_count,
+           "strict-prefix witness (a): the CPU nucleus is a strict prefix");
+    expect(witness.nucleus_count == 1u,
+           "strict-prefix witness (a): the underflowed prefix breaks at rank 0");
+    K5Stats stats;
+    std::vector<ds41rt_v41_sampler_row_t> params = {
+        k5_row(0, 1.0f, 1.0f, 8u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+               DS41RT_V41_SAMPLER_FLAG_NO_MASK | DS41RT_V41_SAMPLER_FLAG_DIAGNOSE, 1ull,
+               0ull),
+    };
+    run_k5_case(logits, 1, vocab, params, {}, false, false, 0u,
+                "K5 strict prefix top_p=1.0 survivor domain", &stats);
+    std::vector<ds41rt_v41_sampler_row_t> ranked = {
+        k5_row(0, 1.0f, 1.0f, 2u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+               DS41RT_V41_SAMPLER_FLAG_NO_MASK | DS41RT_V41_SAMPLER_FLAG_DIAGNOSE, 3ull,
+               1ull),
+    };
+    run_k5_case(logits, 1, vocab, ranked, {}, false, false, 2u,
+                "K5 strict prefix top_p=1.0 retained list", &stats);
+    std::vector<ds41rt_v41_sampler_row_t> tk = {
+        k5_row(0, 0.7f, 1.0f, 40u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+               DS41RT_V41_SAMPLER_FLAG_NO_MASK | DS41RT_V41_SAMPLER_FLAG_DIAGNOSE, 7ull,
+               5ull),
+    };
+    run_k5_case(logits, 1, vocab, tk, {}, false, false, 40u,
+                "K5 strict prefix top_p=1.0 with the served top_k=40 profile", &stats);
+  }
+
+  /* (b) the rounded prefix at the expf residual: structural assertions only,
+   * with the divergence measured and reported. */
+  {
+    const size_t vocab = 8;
+    const float gap = 20.0f;
+    std::vector<float> logits(vocab, -gap);
+    logits[0] = 0.0f;
+    /* Which engine sees the strict prefix here is exactly the residual; both
+     * mechanisms are legitimate, so the test only requires that one of them
+     * fires and records which. */
+    const RefOrderedRow host = host_ordered_reference(
+        logits.data(), vocab, nullptr, 0u, 1.0f, 1.0f, 8u, 0.0f, -inf(),
+        DS41RT_V41_SAMPLER_FLAG_NO_MASK, 1ull, 0ull);
+    expect(host.ok, "rounded top_p=1.0 witness: the ordered path runs");
+    expect(host.nucleus_count < host.domain_count ||
+               (host.nucleus_count == host.domain_count && host.nucleus_full_set),
+           "rounded top_p=1.0 witness: the host prefix is one of the two shapes");
+    std::vector<ds41rt_v41_sampler_row_t> params = {
+        k5_row(0, 1.0f, 1.0f, 8u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+               DS41RT_V41_SAMPLER_FLAG_NO_MASK | DS41RT_V41_SAMPLER_FLAG_DIAGNOSE, 1ull,
+               0ull),
+    };
+    run_k5_case(logits, 1, vocab, params, {}, false, false, 0u,
+                "K5 rounded top_p=1.0 (expf residual, structural)", nullptr);
+    std::cout << "ok  K5 top_p=1.0: strict prefix preserved (deep-tail exact; rounded "
+                 "prefix classified at the expf residual)\n";
+  }
+}
+
+/* `top_p` grid over the adversarial shapes and the boundary uniforms. */
+void test_k5_top_p_grid_and_boundaries() {
+  const size_t vocab = 257;
+  const std::vector<std::vector<float>> shapes = {
+      shape_descending(vocab),
+      shape_periodic_ties(vocab),
+      shape_two_value(vocab),
+      std::vector<float>(vocab, 0.25f),       /* all-tied */
+      std::vector<float>(vocab, -3.0f),       /* all-tied, negative */
+  };
+  const char* shape_names[] = {"desc", "ties16", "two_value", "all_tied", "all_neg"};
+  const float top_ps[] = {1.0e-6f, 0.5f, 0.9f, 0.95f, 1.0f};
+  const uint32_t top_ks[] = {0u, 40u, 80u};
+  const uint64_t seeds[] = {1ull, 0xDEADBEEFull};
+  K5Stats stats;
+  for (size_t s = 0; s < shapes.size(); ++s) {
+    for (float top_p : top_ps) {
+      for (uint32_t top_k : top_ks) {
+        for (uint64_t seed : seeds) {
+          std::vector<ds41rt_v41_sampler_row_t> params = {
+              k5_row(0, 0.7f, top_p, top_k, 0.0f, -inf(),
+                     DS41RT_V41_SAMPLER_NO_MASK_ROW,
+                     DS41RT_V41_SAMPLER_FLAG_NO_MASK | DS41RT_V41_SAMPLER_FLAG_DIAGNOSE,
+                     seed, 11ull),
+          };
+          const std::string label = "k5 grid " + std::string(shape_names[s]) + " p" +
+                                    std::to_string(top_p) + " k" +
+                                    std::to_string(top_k) + " seed" +
+                                    std::to_string(seed);
+          run_k5_case(shapes[s], 1, vocab, params, {}, false, false, 80u,
+                      label.c_str(), &stats);
+        }
+      }
+    }
+  }
+  std::cout << "ok  K5 top_p x top_k x shape grid (" << stats.compared
+            << " ordered rows compared; exact tokens " << stats.exact
+            << ", measured residual divergences " << stats.boundary_flip
+            << ", nucleus mismatches " << stats.nucleus_mismatch
+            << ", max nucleus delta " << stats.max_nucleus_delta
+            << ", boundary-slack nucleus differences " << stats.nucleus_boundary
+            << ", max CDF error " << stats.max_cdf_error
+            << ", outside-nucleus " << stats.outside_nucleus
+            << ", max rank displacement " << stats.max_rank_displacement << ")\n";
+  expect(stats.nucleus_mismatch == 0u,
+         "the clean grid reproduces every production nucleus exactly, modulo the f32 boundary");
+  expect(stats.max_nucleus_delta == 0u,
+         "no clean-grid row needed even a one-rank nucleus delta");
+  expect(stats.max_cdf_error <= kK5CdfErrorBound,
+         "the clean grid stays inside the measured CDF-error bound");
+}
+
+/* Boundary uniforms: u = 0 lands on the best rank, u = MAX_UNIFORM on a late
+ * rank, and a symmetric row's exact cumulative boundary lands on the *earlier*
+ * rank (the CPU compares `target <= cumulative`). */
+void test_k5_boundary_uniforms() {
+  const size_t vocab = 257;
+  const std::vector<float> logits = shape_descending(vocab);
+  /* A seed/position pair for each boundary is found by scanning the *host*
+   * uniform stream, so the test probes the shipped mapping, not a synthetic
+   * float. */
+  const auto find_uniform = [&](bool want_zero, bool want_max,
+                               float wanted) -> std::pair<uint64_t, uint64_t> {
+    for (uint64_t seed = 1ull; seed < 4000ull; ++seed) {
+      for (uint64_t position = 0ull; position < 64ull; ++position) {
+        const float uniform = host_target_uniform(seed, position);
+        if (want_zero && uniform <= 1.0e-5f) {
+          return std::make_pair(seed, position);
+        }
+        if (want_max && uniform > 0.99f) {
+          return std::make_pair(seed, position);
+        }
+        if (!want_zero && !want_max && uniform <= wanted &&
+            uniform >= std::nextafter(wanted, 0.0f)) {
+          return std::make_pair(seed, position);
+        }
+      }
+    }
+    return std::make_pair(0ull, 0ull);
+  };
+  /* `random_uniform` is `mantissa * 2^-24` with a 24-bit mantissa, so the
+   * smallest value the shipped stream can produce is `min_mantissa * 2^-24` and
+   * `u == 0.0f` needs a zero mantissa. The smallest zero-mantissa seed on this
+   * stream is **310147 (position 0)**, which the `seed < 4000` scan below does
+   * not reach; the exact `u = 0` cases are pinned by
+   * `test_k5_zero_uniform_draw`. This harness therefore scans for the
+   * **smallest drawable positive** uniform and asserts that bound, plus the
+   * MAX_UNIFORM clamp at the other end -- the two reachable ends of the served
+   * draw stream. */
+  const std::pair<uint64_t, uint64_t> bottom = find_uniform(true, false, 0.0f);
+  const std::pair<uint64_t, uint64_t> top = find_uniform(false, true, 0.0f);
+  expect(bottom.first != 0u, "found a seed/position at the smallest drawable uniform");
+  expect(top.first != 0u, "found a seed/position at the largest drawable uniform");
+  expect(host_target_uniform(bottom.first, bottom.second) > 0.0f &&
+             host_target_uniform(bottom.first, bottom.second) <= 1.0e-5f,
+         "the smallest drawable uniform found is a small positive draw");
+  expect(host_target_uniform(top.first, top.second) > 0.99f,
+         "the largest drawable uniform found is near one");
+  /* The `MAX_UNIFORM` *clamp* itself is pinned by `test_k2_max_uniform_clamp`
+   * (the same `ds41rt_v41_target_clamp_uniform` the device draw uses), so K5
+   * only needs the reachable ends of the stream. */
+  K5Stats stats;
+  std::vector<ds41rt_v41_sampler_row_t> params;
+  if (bottom.first != 0u) {
+    params.push_back(k5_row(0, 1.0f, 0.9f, 0u, 0.0f, -inf(),
+                            DS41RT_V41_SAMPLER_NO_MASK_ROW,
+                            DS41RT_V41_SAMPLER_FLAG_NO_MASK |
+                                DS41RT_V41_SAMPLER_FLAG_DIAGNOSE,
+                            bottom.first, bottom.second));
+  }
+  if (top.first != 0u) {
+    params.push_back(k5_row(static_cast<uint32_t>(params.size()), 1.0f, 0.5f, 0u, 0.0f,
+                            -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+                            DS41RT_V41_SAMPLER_FLAG_NO_MASK |
+                                DS41RT_V41_SAMPLER_FLAG_DIAGNOSE,
+                            top.first, top.second));
+  }
+  /* A two-level row: scaled 0.0 and ln(2) give p = 1/3 and 2/3, so a uniform of
+   * 1/3 is exactly the cumulative boundary of rank 1 and must land on rank 1
+   * (not rank 2). A NONZERO `top_k` is required: `top_k == 0, top_p == 1` is the
+   * disjoint K2 fast path, where `host_ordered_reference` early-returns and
+   * `run_k5_case` only confirms K5 left the row's sentinels alone. `top_k = 2`
+   * (`< survivor_count = 4`) materializes a K3/K4 retained list, so this case
+   * genuinely executes K5's ordered branch. */
+  {
+    const size_t small = 4;
+    std::vector<float> two(small, -30.0f);
+    two[0] = static_cast<float>(std::log(2.0));
+    two[3] = 0.0f;
+    const std::vector<float> repeated = repeat_row(two, 1);
+    std::vector<ds41rt_v41_sampler_row_t> exact = {
+        k5_row(0, 1.0f, 1.0f, 2u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+               DS41RT_V41_SAMPLER_FLAG_NO_MASK | DS41RT_V41_SAMPLER_FLAG_DIAGNOSE, 5ull,
+               0ull),
+    };
+    const RefOrderedRow expected = host_ordered_reference(
+        two.data(), small, nullptr, 0u, 1.0f, 1.0f, 2u, 0.0f, -inf(),
+        DS41RT_V41_SAMPLER_FLAG_NO_MASK, 5ull, 0ull);
+    expect(expected.ok && !expected.k2_fast_path,
+           "exact cumulative boundary: the host reference takes the ordered path");
+    K5Stats exact_stats;
+    run_k5_case(repeated, 1, small, exact, {}, false, false, 2u,
+                "K5 exact cumulative boundary (ordered)", &exact_stats);
+    expect(exact_stats.compared == 1u,
+           "exact cumulative boundary: K5 actually executed the ordered branch");
+    expect(exact_stats.exact == 1u,
+           "exact cumulative boundary: the device token equals production");
+    stats.compared += exact_stats.compared;
+    stats.exact += exact_stats.exact;
+    stats.nucleus_mismatch += exact_stats.nucleus_mismatch;
+    stats.max_nucleus_delta = std::max(stats.max_nucleus_delta, exact_stats.max_nucleus_delta);
+    stats.max_cdf_error = std::max(stats.max_cdf_error, exact_stats.max_cdf_error);
+  }
+  if (!params.empty()) {
+    /* Every row uses the same row, so the batch is `repeat_row`, not one copy:
+     * the kernel reads `logits + block_row * logits_stride`. */
+    const std::vector<float> batch = repeat_row(logits, params.size());
+    run_k5_case(batch, params.size(), vocab, params, {}, false, false, 0u,
+                "K5 boundary uniforms (smallest positive u, u=MAX_UNIFORM)", &stats);
+  }
+  std::cout << "ok  K5 boundary uniforms (smallest positive u, u=MAX_UNIFORM, exact "
+               "cumulative)\n";
+}
+
+/* Probe/association invariance of the retained-domain prefix.
+ *
+ * The reviewer's weight pattern `[1, 2^-24, 2^-24]` (one dominant rank and two
+ * sub-ulp tail ranks) is the minimal case where the bucket-split probe's f32
+ * association depended on the probe bounds: `W(2)` read `fl(1 + 2^-24 + 2^-24) =
+ * 1.0000001192092896` when rank 2 was the middle bound and `fl((1 + 2^-24) +
+ * 2^-24) = 1.0` when it was a bound of a single-bucket group. The sequential
+ * total has the same dependence (`1 + 2^-24 + 2^-24` rounds to `1.0`), so the
+ * shipped total was `1.0000001192092896` while the CPU's is `1.0`. That makes the
+ * crossing jump from rank 0 to rank 2 as `top_p` crosses `~0.99999988`, while the
+ * CPU's nucleus is rank 0 for every `top_p <= 1`.
+ *
+ * The fixed kernel builds one `prefix[]` per row, so every search state reads the
+ * same bits. This test sweeps `top_p` across the old jump point and asserts the
+ * device nucleus and token stay CPU-exact; the pre-fix kernel fails at
+ * `top_p = 1.0` (device nucleus 3, CPU 1). See the report's M4 mutant. */
+void test_k5_probe_association_invariance() {
+  const size_t vocab = 8;
+  /* `ln(2^-24)`, the scaled value whose weight is exactly `2^-24`. */
+  const float sub_ulp = -16.635532333438687f;
+  std::vector<float> logits(vocab, -50.0f);
+  logits[0] = 0.0f;
+  logits[1] = sub_ulp;
+  logits[2] = sub_ulp;
+  const float top_ps[] = {0.9999f, 0.99999f, 0.999999f, 1.0f};
+  const uint64_t seeds[] = {310147ull, 7ull}; /* u = 0 and a non-zero draw */
+  std::vector<ds41rt_v41_sampler_row_t> params;
+  for (uint64_t seed : seeds) {
+    for (float top_p : top_ps) {
+      params.push_back(k5_row(static_cast<uint32_t>(params.size()), 1.0f, top_p, 3u,
+                              0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+                              DS41RT_V41_SAMPLER_FLAG_NO_MASK |
+                                  DS41RT_V41_SAMPLER_FLAG_DIAGNOSE,
+                              seed, 0ull));
+    }
+  }
+  const std::vector<float> rows = repeat_row(logits, params.size());
+  K5Stats stats;
+  run_k5_case(rows, params.size(), vocab, params, {}, false, false, 3u,
+              "K5 probe-association invariance (sub-ulp tail)", &stats);
+  /* Every one of these rows must have reached the retained domain and matched
+   * the production nucleus exactly (the fixed prefix is CPU-sequential). */
+  if (stats.nucleus_mismatch != 0u || stats.nucleus_boundary != 0u ||
+      stats.exact != params.size()) {
+    std::cerr << "probe-invariance detail: compared " << stats.compared << " exact "
+              << stats.exact << " nucleus_mismatch " << stats.nucleus_mismatch
+              << " boundary " << stats.nucleus_boundary << " max_rank_displacement "
+              << stats.max_rank_displacement << "\n";
+  }
+  expect(stats.compared == params.size(), "every probe-invariance row was ordered");
+  expect(stats.nucleus_mismatch == 0u,
+         "every probe-invariance row matched the production nucleus");
+  expect(stats.nucleus_boundary == 0u,
+         "no probe-invariance row needed the f32 boundary slack");
+  expect(stats.exact == params.size(), "every probe-invariance row matched the production token");
+  std::cout << "ok  K5 probe-association invariance over top_p in [0.9999, 1.0] ("
+            << stats.compared << " rows, " << stats.exact << " exact)\n";
+}
+
+/* The zero-uniform draw must select the BEST ACTUAL SURVIVOR, never the empty
+ * prefix at rank 0.
+ *
+ * `random_uniform` is `mantissa * 2^-24` with a 24-bit mantissa, so `u == 0.0f`
+ * IS reachable when `mixed >> 40 == 0` (seed 310147, position 0, on the shipped
+ * mapping -- the earlier boundary-uniform case only found a small positive draw
+ * because it scanned seeds below 4000). At `u = 0` the CPU's `target` is `0`, and
+ * its draw loop still adds the first weight before testing `target <=
+ * cumulative`, so it selects rank 0. A search whose predicate is only
+ * `mass >= 0` accepts an EMPTY tie group instead and can return token id 0 even
+ * when 0 is masked out or is not a survivor. Three shapes are covered:
+ *   (a) survivor domain (`top_k == 0`, `top_p < 1`) with best token id 5;
+ *   (b) the same with id 0 masked out (so the wrong answer is also a non-member);
+ *   (c) retained domain (finite `top_k`) with best token id 5.
+ * Every row is compared token-for-token with the production oracle at `u = 0`;
+ * `host_ordered_reference` returns rank 0 there. */
+void test_k5_zero_uniform_draw() {
+  const uint64_t zero_seed = 310147ull;
+  expect(host_target_uniform(zero_seed, 0ull) == 0.0f,
+         "seed 310147 / position 0 is an exact zero uniform draw");
+  K5Stats stats;
+  {
+    /* (b) id 0 masked out; best allowed token is id 5, so an empty-prefix answer
+     * would be a masked-out non-member. This runs FIRST so the pre-fix
+     * empty-prefix defect is observed on the non-member shape. */
+    const size_t vocab = 64;
+    const size_t words = (vocab + 31u) / 32u;
+    std::vector<float> logits(vocab, -30.0f);
+    logits[5] = 0.0f;
+    std::vector<uint32_t> mask(words, 0xFFFFFFFFu);
+    mask[0] &= ~1u; /* clear token 0 */
+    std::vector<ds41rt_v41_sampler_row_t> params = {
+        k5_row(0, 1.0f, 0.9f, 0u, 0.0f, -inf(), 0u,
+               DS41RT_V41_SAMPLER_FLAG_DIAGNOSE, zero_seed, 0ull),
+    };
+    const RefOrderedRow ref = host_ordered_reference(
+        logits.data(), vocab, mask.data(), words, 1.0f, 0.9f, 0u, 0.0f, -inf(), 0u,
+        zero_seed, 0ull);
+    expect(ref.token == 5u, "u=0 masked draw's production answer is the best allowed token");
+    expect((mask[0] & 1u) == 0u, "token 0 is masked out in the u=0 non-member case");
+    run_k5_case(logits, 1, vocab, params, mask, true, true, 0u,
+                "K5 u=0 survivor draw, id 0 masked out", &stats);
+  }
+  {
+    /* (a) best token is id 5, not 0. */
+    const size_t vocab = 64;
+    std::vector<float> logits(vocab, -30.0f);
+    logits[5] = 0.0f;
+    std::vector<ds41rt_v41_sampler_row_t> params = {
+        k5_row(0, 1.0f, 0.9f, 0u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+               DS41RT_V41_SAMPLER_FLAG_NO_MASK | DS41RT_V41_SAMPLER_FLAG_DIAGNOSE,
+               zero_seed, 0ull),
+    };
+    const RefOrderedRow ref = host_ordered_reference(
+        logits.data(), vocab, nullptr, 0u, 1.0f, 0.9f, 0u, 0.0f, -inf(),
+        DS41RT_V41_SAMPLER_FLAG_NO_MASK, zero_seed, 0ull);
+    expect(ref.token == 5u, "u=0 survivor draw's production answer is the best token (id 5)");
+    run_k5_case(logits, 1, vocab, params, {}, false, false, 0u,
+                "K5 u=0 survivor draw, best id != 0", &stats);
+  }
+  {
+    /* (c) retained domain: finite top_k, best token id 5. */
+    const size_t vocab = 300;
+    std::vector<float> logits = shape_descending(vocab);
+    logits[5] = 100.0f;
+    std::vector<ds41rt_v41_sampler_row_t> params = {
+        k5_row(0, 0.7f, 0.9f, 40u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+               DS41RT_V41_SAMPLER_FLAG_NO_MASK | DS41RT_V41_SAMPLER_FLAG_DIAGNOSE,
+               zero_seed, 0ull),
+    };
+    const RefOrderedRow ref = host_ordered_reference(
+        logits.data(), vocab, nullptr, 0u, 0.7f, 0.9f, 40u, 0.0f, -inf(),
+        DS41RT_V41_SAMPLER_FLAG_NO_MASK, zero_seed, 0ull);
+    expect(ref.token == 5u, "u=0 retained draw's production answer is rank 0 (id 5)");
+    run_k5_case(logits, 1, vocab, params, {}, false, false, 40u,
+                "K5 u=0 retained draw", &stats);
+  }
+  std::cout << "ok  K5 zero-uniform draw selects the best surviving rank ("
+            << stats.compared << " rows, exact " << stats.exact << ")\n";
+}
+
+/* Repeated-run determinism for the survivor-domain mass probe.
+ *
+ * `k5_key_mass` reuses the same shared `phase`/count arrays on every probe, so a
+ * missing barrier between "read the reduced value" and "the next probe's first
+ * write" is a shared-memory data race whose result would steer the binary-search
+ * branches. The fixed kernel snapshots the reduced value into every thread's
+ * local and barriers before returning (mirroring K3's documented fence), so
+ * repeated launches of the same row must be bit-identical. This launches the
+ * shipped K5 entry point 32 times with the same buffers (a probe-heavy
+ * survivor-domain row: ~46 passes over a 4,096-token vocabulary) and compares
+ * the token, total and nucleus count bit-for-bit. It exercises the shared-buffer
+ * reuse path; it cannot force the warp interleaving that would manifest the race,
+ * which is why the fix is structural. */
+void test_k5_repeated_run_determinism() {
+  ++g_cases;
+  const size_t vocab = 4096;
+  std::vector<float> logits(vocab);
+  for (size_t t = 0; t < vocab; ++t) {
+    logits[t] = -0.001f * static_cast<float>(t);
+  }
+  K5Run run = make_k5_run(1, vocab, 0, false);
+  require_cuda(cudaMemcpy(run.k1.logits, logits.data(), logits.size() * sizeof(float),
+                          cudaMemcpyHostToDevice), "determinism logits h2d");
+  const std::vector<ds41rt_v41_sampler_row_t> params = {
+      k5_row(0, 1.0f, 0.9f, 0u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+             DS41RT_V41_SAMPLER_FLAG_NO_MASK | DS41RT_V41_SAMPLER_FLAG_DIAGNOSE, 17ull,
+             3ull),
+  };
+  require_cuda(cudaMemcpy(run.k1.params, params.data(),
+                          params.size() * sizeof(ds41rt_v41_sampler_row_t),
+                          cudaMemcpyHostToDevice), "determinism params h2d");
+  std::vector<uint32_t> host_retained(1u, 0u);
+  std::vector<uint32_t> host_passes(1u, 0u);
+  require_cuda(cudaMemcpy(run.topk.retained, host_retained.data(), sizeof(uint32_t),
+                          cudaMemcpyHostToDevice), "determinism retained h2d");
+  require_cuda(cudaMemcpy(run.topk.passes, host_passes.data(), sizeof(uint32_t),
+                          cudaMemcpyHostToDevice), "determinism passes h2d");
+  expect(ds41rt_cuda_v41_target_sample(
+             run.k1.logits, 1, vocab, vocab, run.k1.params, nullptr, 0u, run.k1.ids,
+             run.k1.status, run.k1.detail, run.k1.scores, nullptr, nullptr,
+             run.k1.scratch) == DS41RT_STATUS_OK,
+         "determinism: K1 launch");
+  expect(ds41rt_cuda_v41_topk_select(
+             run.k1.logits, 1, vocab, vocab, run.k1.params, nullptr, 0u, nullptr,
+             nullptr, 0u, run.topk.retained, run.topk.passes,
+             run.k1.scratch) == DS41RT_STATUS_OK,
+         "determinism: topk launch");
+  uint32_t first_token = 0xFFFFFFFFu;
+  uint32_t first_status = 0xFFFFFFFFu;
+  float first_total = 0.0f;
+  uint32_t first_nucleus = 0u;
+  const uint32_t sentinel = 0xDEADBEEFu;
+  for (int rep = 0; rep < 32; ++rep) {
+    std::vector<uint32_t> host_ids(1u, sentinel);
+    std::vector<float> host_total(1u, -123.0f);
+    std::vector<uint32_t> host_nucleus(1u, sentinel);
+    require_cuda(cudaMemcpy(run.ids, host_ids.data(), sizeof(uint32_t),
+                            cudaMemcpyHostToDevice), "determinism ids h2d");
+    require_cuda(cudaMemcpy(run.total, host_total.data(), sizeof(float),
+                            cudaMemcpyHostToDevice), "determinism total h2d");
+    require_cuda(cudaMemcpy(run.nucleus, host_nucleus.data(), sizeof(uint32_t),
+                            cudaMemcpyHostToDevice), "determinism nucleus h2d");
+    expect(ds41rt_cuda_v41_nucleus(
+               run.k1.logits, 1, vocab, vocab, run.k1.params, nullptr, 0u, nullptr, 0u,
+               run.topk.retained, run.ids, run.k1.status, run.total, run.nucleus,
+               run.k1.scratch) == DS41RT_STATUS_OK,
+           "determinism: nucleus launch");
+    require_cuda(cudaDeviceSynchronize(), "determinism K5 kernel");
+    uint32_t token = 0u;
+    uint32_t status = 0u;
+    uint32_t nucleus = 0u;
+    float total = 0.0f;
+    require_cuda(cudaMemcpy(&token, run.ids, sizeof(uint32_t), cudaMemcpyDeviceToHost),
+                 "determinism ids d2h");
+    require_cuda(cudaMemcpy(&status, run.k1.status, sizeof(uint32_t),
+                            cudaMemcpyDeviceToHost), "determinism status d2h");
+    require_cuda(cudaMemcpy(&total, run.total, sizeof(float), cudaMemcpyDeviceToHost),
+                 "determinism total d2h");
+    require_cuda(cudaMemcpy(&nucleus, run.nucleus, sizeof(uint32_t),
+                            cudaMemcpyDeviceToHost), "determinism nucleus d2h");
+    expect(status == DS41RT_V41_SAMPLER_STATUS_OK, "determinism: K5 row stayed OK");
+    if (rep == 0) {
+      first_token = token;
+      first_status = status;
+      first_total = total;
+      first_nucleus = nucleus;
+      expect(token != sentinel, "determinism: first run wrote a token");
+    } else {
+      expect(token == first_token, "determinism: repeated run token is bit-identical");
+      expect(status == first_status, "determinism: repeated run status is identical");
+      expect(std::memcmp(&total, &first_total, sizeof(float)) == 0,
+             "determinism: repeated run total is bit-identical");
+      expect(nucleus == first_nucleus, "determinism: repeated run nucleus is identical");
+    }
+  }
+  free_k5_run(&run);
+  std::cout << "ok  K5 repeated-run determinism over 32 launches (vocab " << vocab
+            << ", token " << first_token << ", nucleus " << first_nucleus << ")\n";
+}
+
+/* Loud per-row failure: a K5-class row that cannot produce a defined token must
+ * set BOTH `scratch[block_row].status` and the caller-visible
+ * `out_status[output_row]` to INTERNAL, and must leave `out_indices` at the
+ * sentinel. The entry point's own return value stays OK -- the failure is per
+ * row -- so `out_status` is the channel a caller that only reads the returned
+ * status must consume (the same channel K1 writes).
+ *
+ * Four shapes, each reproduced through the shipped C ABI:
+ *   (a) `top_k = 300` with `survivor_count > 300` -> retained list wider than
+ *       `kBlock` (the old `top_k in [257, survivor_count)` silent-OK case);
+ *   (b) `top_k = 40` with `rank_order_capacity = 0`, a selection-only K3/K4
+ *       (K4 still publishes `out_retained_count = 40`, but the arena is null);
+ *   (c) `top_p = NaN` with `top_k = 0`, which makes K2 (`top_p >= 1.0`) and K5
+ *       (`top_p < 1.0`) both inapplicable -- K1 itself now reports INTERNAL;
+ *   (d) a zero-survivor non-greedy row (`min_p = 1`, `ln_min_p = +100`), which
+ *       K1 itself now reports INTERNAL for.
+ * The FFI validator rejects (c) and (d) on the host; they remain reachable from
+ * the raw C ABI and must not be silent. (a)/(b) are loud only in K5, so for
+ * those the caller-visible status is reset to a sentinel before K5 and K5 must
+ * write INTERNAL; for (c)/(d) K1's INTERNAL must survive the whole chain. */
+void test_k5_loud_status_failures() {
+  const size_t vocab = 400;
+  const std::vector<float> logits = shape_descending(vocab);
+  const uint32_t sentinel = 0xDEADBEEFu;
+  struct Case {
+    const char* label;
+    uint32_t top_k;
+    float top_p;
+    float min_p;
+    float ln_min_p;
+    size_t capacity;
+    bool k1_loud; /* K1 alone must report INTERNAL (the P1-4 shapes) */
+  };
+  const Case cases[] = {
+      {"K5 loud status: top_k 300 > kBlock", 300u, 0.9f, 0.0f, -inf(), 300u, false},
+      {"K5 loud status: capacity-0 selection-only", 40u, 0.9f, 0.0f, -inf(), 0u, false},
+      {"K5 loud status: top_p NaN", 0u, std::numeric_limits<float>::quiet_NaN(), 0.0f,
+       -inf(), 0u, true},
+      {"K5 loud status: zero survivors", 0u, 0.9f, 1.0f, 100.0f, 0u, true},
+  };
+  for (const Case& c : cases) {
+    ++g_cases;
+    const std::string tag(c.label);
+    K5Run run = make_k5_run(1, vocab, c.capacity, false);
+    require_cuda(cudaMemcpy(run.k1.logits, logits.data(), logits.size() * sizeof(float),
+                            cudaMemcpyHostToDevice), "loud logits h2d");
+    const std::vector<ds41rt_v41_sampler_row_t> params = {
+        k5_row(0, 0.7f, c.top_p, c.top_k, c.min_p, c.ln_min_p,
+               DS41RT_V41_SAMPLER_NO_MASK_ROW,
+               DS41RT_V41_SAMPLER_FLAG_NO_MASK | DS41RT_V41_SAMPLER_FLAG_DIAGNOSE, 5ull,
+               1ull),
+    };
+    require_cuda(cudaMemcpy(run.k1.params, params.data(),
+                            params.size() * sizeof(ds41rt_v41_sampler_row_t),
+                            cudaMemcpyHostToDevice), "loud params h2d");
+    /* K1+K2-only entry point. For (c)/(d) K1 itself must already be loud: this
+     * is the P1-4 invariant, observable with no K3/K4/K5 launch at all. */
+    expect(ds41rt_cuda_v41_target_sample(
+               run.k1.logits, 1, vocab, vocab, run.k1.params, nullptr, 0u, run.k1.ids,
+               run.k1.status, run.k1.detail, run.k1.scores, nullptr, nullptr,
+               run.k1.scratch) == DS41RT_STATUS_OK,
+           tag + ": K1 launch");
+    uint32_t k1_status = sentinel;
+    ds41rt_v41_sampler_scratch_t k1_scratch = {};
+    require_cuda(cudaMemcpy(&k1_status, run.k1.status, sizeof(uint32_t),
+                            cudaMemcpyDeviceToHost), tag + ": K1 status d2h");
+    require_cuda(cudaMemcpy(&k1_scratch, run.k1.scratch, sizeof(k1_scratch),
+                            cudaMemcpyDeviceToHost), tag + ": K1 scratch d2h");
+    expect((k1_status == DS41RT_V41_SAMPLER_STATUS_INTERNAL) == c.k1_loud,
+           tag + ": K1+K2-only entry point reports the loud status for this shape");
+    expect((k1_scratch.status == DS41RT_V41_SAMPLER_STATUS_INTERNAL) == c.k1_loud,
+           tag + ": K1 scratch agrees with the K1+K2-only entry point");
+    if (c.capacity > 0u) {
+      std::vector<uint32_t> host_ids(c.capacity, sentinel);
+      std::vector<uint64_t> host_scratch(c.capacity, 0ull);
+      require_cuda(cudaMemcpy(run.topk.rank_ids, host_ids.data(),
+                              c.capacity * sizeof(uint32_t), cudaMemcpyHostToDevice),
+                   tag + ": rank ids h2d");
+      require_cuda(cudaMemcpy(run.topk.rank_scratch, host_scratch.data(),
+                              c.capacity * sizeof(uint64_t), cudaMemcpyHostToDevice),
+                   tag + ": rank scratch h2d");
+    }
+    std::vector<uint32_t> host_retained(1u, sentinel);
+    std::vector<uint32_t> host_passes(1u, sentinel);
+    require_cuda(cudaMemcpy(run.topk.retained, host_retained.data(), sizeof(uint32_t),
+                            cudaMemcpyHostToDevice), tag + ": retained h2d");
+    require_cuda(cudaMemcpy(run.topk.passes, host_passes.data(), sizeof(uint32_t),
+                            cudaMemcpyHostToDevice), tag + ": passes h2d");
+    expect(ds41rt_cuda_v41_topk_select(
+               run.k1.logits, 1, vocab, vocab, run.k1.params, nullptr, 0u,
+               c.capacity > 0u ? run.topk.rank_ids : nullptr,
+               c.capacity > 0u ? run.topk.rank_scratch : nullptr, c.capacity,
+               run.topk.retained, run.topk.passes, run.k1.scratch) == DS41RT_STATUS_OK,
+           tag + ": topk launch");
+    std::vector<uint32_t> host_ids(1u, sentinel);
+    require_cuda(cudaMemcpy(run.ids, host_ids.data(), sizeof(uint32_t),
+                            cudaMemcpyHostToDevice), tag + ": ids h2d");
+    if (!c.k1_loud) {
+      /* (a)/(b): K1 was OK, so reset the caller-visible status to prove K5
+       * itself writes INTERNAL. For (c)/(d) K1's INTERNAL must survive. */
+      require_cuda(cudaMemcpy(run.k1.status, host_ids.data(), sizeof(uint32_t),
+                              cudaMemcpyHostToDevice), tag + ": status sentinel h2d");
+    }
+    expect(ds41rt_cuda_v41_nucleus(
+               run.k1.logits, 1, vocab, vocab, run.k1.params, nullptr, 0u,
+               c.capacity > 0u ? run.topk.rank_ids : nullptr, c.capacity,
+               run.topk.retained, run.ids, run.k1.status, run.total, run.nucleus,
+               run.k1.scratch) == DS41RT_STATUS_OK,
+           tag + ": nucleus launch still returns OK (per-row status)");
+    require_cuda(cudaDeviceSynchronize(), "loud K5 kernel");
+    uint32_t token = 0u;
+    uint32_t status = 0u;
+    ds41rt_v41_sampler_scratch_t scratch = {};
+    require_cuda(cudaMemcpy(&token, run.ids, sizeof(uint32_t), cudaMemcpyDeviceToHost),
+                 tag + ": ids d2h");
+    require_cuda(cudaMemcpy(&status, run.k1.status, sizeof(uint32_t),
+                            cudaMemcpyDeviceToHost), tag + ": status d2h");
+    require_cuda(cudaMemcpy(&scratch, run.k1.scratch, sizeof(scratch),
+                            cudaMemcpyDeviceToHost), tag + ": scratch d2h");
+    expect(status == DS41RT_V41_SAMPLER_STATUS_INTERNAL,
+           tag + ": the caller-visible out_status is INTERNAL at the end of the chain");
+    expect(scratch.status == DS41RT_V41_SAMPLER_STATUS_INTERNAL,
+           tag + ": scratch.status is INTERNAL at the end of the chain");
+    expect(token == sentinel, tag + ": out_indices left unwritten");
+    free_k5_run(&run);
+  }
+  std::cout << "ok  K5/K1 loud per-row status on four no-token shapes ("
+            << (sizeof(cases) / sizeof(cases[0])) << " rows)\n";
+}
+
+/* P1-4, isolated: the K1+K2-only entry point (`ds41rt_cuda_v41_target_sample`)
+ * must never return OK while leaving `out_indices` unwritten. Both FFI-invalid
+ * raw-C shapes -- a non-finite `top_p` and a non-greedy zero-survivor row -- are
+ * checked with NO K3/K4/K5 launch in between, so the loud status can only have
+ * come from K1. */
+void test_k1_only_entry_loud_status() {
+  const size_t vocab = 400;
+  const std::vector<float> logits = shape_descending(vocab);
+  const uint32_t sentinel = 0xDEADBEEFu;
+  struct Shape {
+    const char* label;
+    float top_p;
+    float min_p;
+    float ln_min_p;
+  };
+  const Shape shapes[] = {
+      {"K1-only NaN top_p", std::numeric_limits<float>::quiet_NaN(), 0.0f, -inf()},
+      {"K1-only zero survivors", 0.9f, 1.0f, 100.0f},
+  };
+  for (const Shape& s : shapes) {
+    ++g_cases;
+    const std::string tag(s.label);
+    K5Run run = make_k5_run(1, vocab, 0u, false);
+    require_cuda(cudaMemcpy(run.k1.logits, logits.data(), logits.size() * sizeof(float),
+                            cudaMemcpyHostToDevice), tag + ": logits h2d");
+    const std::vector<ds41rt_v41_sampler_row_t> params = {
+        k5_row(0, 0.7f, s.top_p, 0u, s.min_p, s.ln_min_p,
+               DS41RT_V41_SAMPLER_NO_MASK_ROW,
+               DS41RT_V41_SAMPLER_FLAG_NO_MASK | DS41RT_V41_SAMPLER_FLAG_DIAGNOSE, 5ull,
+               1ull),
+    };
+    require_cuda(cudaMemcpy(run.k1.params, params.data(),
+                            params.size() * sizeof(ds41rt_v41_sampler_row_t),
+                            cudaMemcpyHostToDevice), tag + ": params h2d");
+    std::vector<uint32_t> host_ids(1u, sentinel);
+    require_cuda(cudaMemcpy(run.k1.ids, host_ids.data(), sizeof(uint32_t),
+                            cudaMemcpyHostToDevice), tag + ": ids h2d");
+    require_cuda(cudaMemcpy(run.k1.status, host_ids.data(), sizeof(uint32_t),
+                            cudaMemcpyHostToDevice), tag + ": status h2d");
+    expect(ds41rt_cuda_v41_target_sample(
+               run.k1.logits, 1, vocab, vocab, run.k1.params, nullptr, 0u, run.k1.ids,
+               run.k1.status, run.k1.detail, run.k1.scores, nullptr, nullptr,
+               run.k1.scratch) == DS41RT_STATUS_OK,
+           tag + ": entry returns OK (per-row status)");
+    uint32_t token = 0u;
+    uint32_t status = 0u;
+    ds41rt_v41_sampler_scratch_t scratch = {};
+    require_cuda(cudaMemcpy(&token, run.k1.ids, sizeof(uint32_t), cudaMemcpyDeviceToHost),
+                 tag + ": ids d2h");
+    require_cuda(cudaMemcpy(&status, run.k1.status, sizeof(uint32_t),
+                            cudaMemcpyDeviceToHost), tag + ": status d2h");
+    require_cuda(cudaMemcpy(&scratch, run.k1.scratch, sizeof(scratch),
+                            cudaMemcpyDeviceToHost), tag + ": scratch d2h");
+    expect(status == DS41RT_V41_SAMPLER_STATUS_INTERNAL,
+           tag + ": K1 wrote INTERNAL to the caller-visible out_status");
+    expect(scratch.status == DS41RT_V41_SAMPLER_STATUS_INTERNAL,
+           tag + ": K1 wrote INTERNAL to scratch.status");
+    expect(token == sentinel, tag + ": no token is observable with an OK return");
+    free_k5_run(&run);
+  }
+  std::cout << "ok  K1+K2-only entry is loud for both invalid shapes ("
+            << (sizeof(shapes) / sizeof(shapes[0])) << " rows)\n";
+}
+
+/* P0-2 raw-C regression: the scattered-`output_row` identity guard must fire
+ * BEFORE any retained count is interpreted. The two-row witness is the second
+ * review's exact shape: block 0 asks for `top_k = 2` but declares
+ * `output_row = 1`, and block 1 declares `output_row = 0`. K4 writes
+ * `out_retained_count[output_row]`, so block 0 reads block 1's count (0) at
+ * `rank_retained_count[block_row = 0]`; the pre-fix guard tested identity only
+ * inside the `retained_mode &&` conjunction, so the foreign 0 flipped
+ * `retained_mode` false, the guard was skipped, and block 0 sampled all four
+ * survivors and wrote `out_indices[1] = 3` with status OK. The unconditional
+ * guard now reports INTERNAL for both non-identity rows and writes no token. */
+void test_k5_scattered_row_identity_guard() {
+  ++g_cases;
+  const size_t rows = 2;
+  const size_t vocab = 4;
+  const size_t capacity = 2;
+  const std::vector<float> logits(rows * vocab, 0.0f); /* four equal logits */
+  const uint32_t sentinel = 0xDEADBEEFu;
+  K5Run run = make_k5_run(rows, vocab, capacity, false);
+  require_cuda(cudaMemcpy(run.k1.logits, logits.data(), logits.size() * sizeof(float),
+                          cudaMemcpyHostToDevice), "scatter logits h2d");
+  const std::vector<ds41rt_v41_sampler_row_t> params = {
+      /* block 0: output_row 1, top_k 2, top_p 0.9 */
+      k5_row(1u, 1.0f, 0.9f, 2u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+             DS41RT_V41_SAMPLER_FLAG_NO_MASK | DS41RT_V41_SAMPLER_FLAG_DIAGNOSE, 0ull,
+             5ull),
+      /* block 1: output_row 0, top_k 0, top_p 0.9 */
+      k5_row(0u, 1.0f, 0.9f, 0u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+             DS41RT_V41_SAMPLER_FLAG_NO_MASK | DS41RT_V41_SAMPLER_FLAG_DIAGNOSE, 0ull,
+             5ull),
+  };
+  require_cuda(cudaMemcpy(run.k1.params, params.data(),
+                          params.size() * sizeof(ds41rt_v41_sampler_row_t),
+                          cudaMemcpyHostToDevice), "scatter params h2d");
+  std::vector<uint32_t> host_ids(rows * capacity, sentinel);
+  std::vector<uint64_t> host_scratch(rows * capacity, 0ull);
+  require_cuda(cudaMemcpy(run.topk.rank_ids, host_ids.data(),
+                          rows * capacity * sizeof(uint32_t), cudaMemcpyHostToDevice),
+               "scatter rank ids h2d");
+  require_cuda(cudaMemcpy(run.topk.rank_scratch, host_scratch.data(),
+                          rows * capacity * sizeof(uint64_t), cudaMemcpyHostToDevice),
+               "scatter rank scratch h2d");
+  std::vector<uint32_t> host_retained(rows, sentinel);
+  std::vector<uint32_t> host_passes(rows, sentinel);
+  require_cuda(cudaMemcpy(run.topk.retained, host_retained.data(),
+                          rows * sizeof(uint32_t), cudaMemcpyHostToDevice),
+               "scatter retained h2d");
+  require_cuda(cudaMemcpy(run.topk.passes, host_passes.data(), rows * sizeof(uint32_t),
+                          cudaMemcpyHostToDevice), "scatter passes h2d");
+  expect(ds41rt_cuda_v41_target_sample(
+             run.k1.logits, rows, vocab, vocab, run.k1.params, nullptr, 0u, run.k1.ids,
+             run.k1.status, run.k1.detail, run.k1.scores, nullptr, nullptr,
+             run.k1.scratch) == DS41RT_STATUS_OK,
+         "scatter witness: K1 launch");
+  expect(ds41rt_cuda_v41_topk_select(
+             run.k1.logits, rows, vocab, vocab, run.k1.params, nullptr, 0u,
+             run.topk.rank_ids, run.topk.rank_scratch, capacity, run.topk.retained,
+             run.topk.passes, run.k1.scratch) == DS41RT_STATUS_OK,
+         "scatter witness: topk launch");
+  std::vector<uint32_t> host_out_ids(rows, sentinel);
+  require_cuda(cudaMemcpy(run.ids, host_out_ids.data(), rows * sizeof(uint32_t),
+                          cudaMemcpyHostToDevice), "scatter out ids h2d");
+  require_cuda(cudaMemcpy(run.k1.status, host_out_ids.data(), rows * sizeof(uint32_t),
+                          cudaMemcpyHostToDevice), "scatter out status h2d");
+  expect(ds41rt_cuda_v41_nucleus(
+             run.k1.logits, rows, vocab, vocab, run.k1.params, nullptr, 0u,
+             run.topk.rank_ids, capacity, run.topk.retained, run.ids, run.k1.status,
+             run.total, run.nucleus, run.k1.scratch) == DS41RT_STATUS_OK,
+         "scatter witness: nucleus launch");
+  require_cuda(cudaDeviceSynchronize(), "scatter witness kernel");
+  std::vector<uint32_t> ids(rows, sentinel);
+  std::vector<uint32_t> status(rows, sentinel);
+  std::vector<uint32_t> retained(rows, sentinel);
+  require_cuda(cudaMemcpy(ids.data(), run.ids, rows * sizeof(uint32_t),
+                          cudaMemcpyDeviceToHost), "scatter ids d2h");
+  require_cuda(cudaMemcpy(status.data(), run.k1.status, rows * sizeof(uint32_t),
+                          cudaMemcpyDeviceToHost), "scatter status d2h");
+  require_cuda(cudaMemcpy(retained.data(), run.topk.retained, rows * sizeof(uint32_t),
+                          cudaMemcpyDeviceToHost), "scatter retained d2h");
+  /* K4's count is keyed by output_row: slot 1 is block 0's 2, slot 0 is block
+   * 1's 0 -- the mispairing that made the old guard bypassable. */
+  expect(retained[1] == 2u && retained[0] == 0u,
+         "scatter witness: K4 counts are keyed by output_row (2 and 0)");
+  expect(status[1] == DS41RT_V41_SAMPLER_STATUS_INTERNAL,
+         "scatter witness: block 0 (output_row 1) reports INTERNAL");
+  expect(status[0] == DS41RT_V41_SAMPLER_STATUS_INTERNAL,
+         "scatter witness: block 1 (output_row 0) reports INTERNAL");
+  expect(ids[1] == sentinel,
+         "scatter witness: block 0 wrote no token (pre-fix wrote 3 with OK)");
+  expect(ids[0] == sentinel, "scatter witness: block 1 wrote no token");
+  free_k5_run(&run);
+  std::cout << "ok  K5 scattered-row identity guard on the raw-C two-row witness\n";
+}
+
+/* A single survivor (min_p keeps only the scaled maximum) and `-inf`
+ * survivors: the nucleus is rank 0 either way and the draw is forced. */
+void test_k5_single_survivor_and_inf() {
+  const size_t vocab = 64;
+  const float neg_max = -std::numeric_limits<float>::max();
+  K5Stats stats;
+  {
+    std::vector<float> logits = shape_descending(vocab);
+    const float min_p = 0.5f;
+    std::vector<ds41rt_v41_sampler_row_t> params = {
+        k5_row(0, 1.0f, 0.9f, 0u, min_p, std::log(min_p), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+               DS41RT_V41_SAMPLER_FLAG_NO_MASK | DS41RT_V41_SAMPLER_FLAG_DIAGNOSE, 3ull,
+               4ull),
+    };
+    run_k5_case(logits, 1, vocab, params, {}, false, false, 0u, "K5 single survivor",
+                &stats);
+  }
+  {
+    /* One finite leader and 63 scaled -inf tokens (min_p = 0 at T = 1e-5 keeps
+     * them); the nucleus must never be empty and the draw must stay in range. */
+    std::vector<float> logits(vocab, neg_max);
+    logits[7] = 0.0f;
+    std::vector<ds41rt_v41_sampler_row_t> params = {
+        k5_row(0, 1.0e-5f, 0.95f, 0u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+               DS41RT_V41_SAMPLER_FLAG_NO_MASK | DS41RT_V41_SAMPLER_FLAG_DIAGNOSE, 9ull,
+               2ull),
+    };
+    run_k5_case(logits, 1, vocab, params, {}, false, false, 0u, "K5 -inf survivors",
+                &stats);
+  }
+  std::cout << "ok  K5 single survivor and -inf survivor rows\n";
+}
+
+/* Combined top_k + top_p: the nucleus runs over K3/K4's retained list, so the
+ * mask, the tie cut and the top-p boundary all interact. */
+void test_k5_combined_topk_top_p() {
+  const size_t vocab = 300;
+  const size_t words = (vocab + 31u) / 32u;
+  K5Stats stats;
+  {
+    std::vector<float> logits = shape_periodic_ties(vocab);
+    std::vector<ds41rt_v41_sampler_row_t> params = {
+        k5_row(0, 0.7f, 0.9f, 40u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+               DS41RT_V41_SAMPLER_FLAG_NO_MASK | DS41RT_V41_SAMPLER_FLAG_DIAGNOSE, 11ull,
+               3ull),
+    };
+    run_k5_case(logits, 1, vocab, params, {}, false, false, 40u, "K5 top_k40 + top_p0.9",
+                &stats);
+  }
+  {
+    /* Sparse mask + finite top_k + top_p < 1. */
+    std::vector<float> logits = shape_descending(vocab);
+    std::vector<uint32_t> mask(words, 0u);
+    for (size_t t = 0; t < vocab; ++t) {
+      if ((t % 3u) != 0u) {
+        mask[t / 32u] |= (1u << (t % 32u));
+      }
+    }
+    std::vector<ds41rt_v41_sampler_row_t> params = {
+        k5_row(0, 1.0f, 0.5f, 17u, 0.0f, -inf(), 0u,
+               DS41RT_V41_SAMPLER_FLAG_DIAGNOSE, 13ull, 5ull),
+    };
+    run_k5_case(logits, 1, vocab, params, mask, true, true, 17u,
+                "K5 sparse mask + top_k17 + top_p0.5", &stats);
+  }
+  {
+    /* top_k >= survivor_count is a K3/K4 no-op: the survivor domain, with
+     * top_p < 1 so K5 still runs. */
+    std::vector<float> logits = shape_two_value(vocab);
+    std::vector<ds41rt_v41_sampler_row_t> params = {
+        k5_row(0, 1.0f, 0.95f, 500u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+               DS41RT_V41_SAMPLER_FLAG_NO_MASK | DS41RT_V41_SAMPLER_FLAG_DIAGNOSE, 17ull,
+               1ull),
+    };
+    run_k5_case(logits, 1, vocab, params, {}, false, false, 0u,
+                "K5 top_k >= survivor_count survivor domain", &stats);
+  }
+  {
+    /* Served-like `temperature 0.7 + top_k 40` with `top_p = 1.0` on a wide
+     * row. */
+    const size_t wide = 4096;
+    std::vector<float> logits(wide);
+    for (size_t t = 0; t < wide; ++t) {
+      logits[t] = -0.02f * static_cast<float>(t);
+    }
+    std::vector<ds41rt_v41_sampler_row_t> params = {
+        k5_row(0, 0.7f, 1.0f, 40u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+               DS41RT_V41_SAMPLER_FLAG_NO_MASK | DS41RT_V41_SAMPLER_FLAG_DIAGNOSE, 19ull,
+               7ull),
+    };
+    run_k5_case(logits, 1, wide, params, {}, false, false, 40u,
+                "K5 wide top_k40 + top_p1.0", &stats);
+  }
+  std::cout << "ok  K5 combined top_k + top_p cases (" << stats.compared
+            << " rows; exact " << stats.exact << ", boundary flips "
+            << stats.boundary_flip << ")\n";
+}
+
+/* The no-key-satisfies fallback and the dominant-rank corner.
+ *
+ * The CPU's fallback (`ranked` consumed without a break) requires the *f32
+ * normalized* prefix to stay below `top_p` even after the last rank, i.e.
+ * `Σ (w_r / total) < top_p`. The two constructed fixtures below reach it on
+ * device (the previous version of this test used `top_k = 0, top_p = 1`, the K2
+ * fast path, so it never executed K5 at all and only printed the count).
+ *
+ *   * retained domain: 13 equal survivors with `top_k = 12` gives a 12-rank
+ *     retained list whose f32 prefix at rank 11 is `0.99999988079071045 < 1.0`;
+ *   * survivor domain: 71 equal survivors with `top_k = 71 == survivor_count`
+ *     (K3/K4 no-op, retained 0) has tree-normalized mass `0.99999994039535522 <
+ *     1.0`, so K5's `!p_found` normalized fallback is unavoidably reached;
+ *   * the dominant-rank corner (`W(0) >= top_p`) is checked against production.
+ *
+ * `fallback_rows > 0` is asserted, and the device nucleus of each fixture is
+ * read back (through the trace outputs) and required to be the full set. */
+void test_k5_unsatisfied_fallback() {
+  const float top_p = 1.0f;
+  K5Stats stats;
+  /* Retained-domain shortfall. */
+  {
+    const size_t vocab = 13;
+    const std::vector<float> row(vocab, 0.0f);
+    const std::vector<ds41rt_v41_sampler_row_t> params = {
+        k5_row(0, 1.0f, top_p, 12u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+               DS41RT_V41_SAMPLER_FLAG_NO_MASK | DS41RT_V41_SAMPLER_FLAG_DIAGNOSE, 23ull,
+               0ull),
+    };
+    const RefOrderedRow expected = host_ordered_reference(
+        row.data(), vocab, nullptr, 0u, 1.0f, top_p, 12u, 0.0f, -inf(),
+        DS41RT_V41_SAMPLER_FLAG_NO_MASK, 23ull, 0ull);
+    expect(expected.ok && expected.fallback_used && !expected.k2_fast_path,
+           "retained fallback fixture reaches the CPU normalizing shortfall");
+    std::vector<uint32_t> nucleus_trace;
+    std::vector<uint32_t> retained_trace;
+    run_k5_case(row, 1, vocab, params, {}, false, false, 12u,
+                "K5 retained normalizing shortfall", &stats, /*strict_nucleus=*/true,
+                &nucleus_trace, &retained_trace);
+    expect(retained_trace.size() == 1u && retained_trace[0] == 12u,
+           "retained fallback fixture materialized exactly 12 ranks");
+    expect(nucleus_trace.size() == 1u && nucleus_trace[0] == 12u,
+           "retained fallback nucleus is the full 12-rank set");
+  }
+  /* Survivor-domain shortfall. Here the CPU's own sequential `Σ (w/total)` for 71
+   * equal weights rounds to `1.0000004768371582 >= 1.0`, so the CPU's
+   * `fallback_used` is FALSE; but the KERNEL's normalized survivor mass uses a
+   * different (tree) association, which rounds to `0.99999994039535522 < 1.0`,
+   * so K5's `!p_found` normalized fallback is the path actually taken and the
+   * nucleus is the full 71-token set (validated on device in `probe.log`). This
+   * fixture therefore exercises the kernel fallback, not the CPU one. */
+  {
+    const size_t vocab = 71;
+    const std::vector<float> row(vocab, 0.0f);
+    const std::vector<ds41rt_v41_sampler_row_t> params = {
+        k5_row(0, 1.0f, top_p, 71u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+               DS41RT_V41_SAMPLER_FLAG_NO_MASK | DS41RT_V41_SAMPLER_FLAG_DIAGNOSE, 29ull,
+               0ull),
+    };
+    const RefOrderedRow expected = host_ordered_reference(
+        row.data(), vocab, nullptr, 0u, 1.0f, top_p, 71u, 0.0f, -inf(),
+        DS41RT_V41_SAMPLER_FLAG_NO_MASK, 29ull, 0ull);
+    expect(expected.ok && !expected.k2_fast_path && expected.nucleus_count == 71u,
+           "survivor fallback fixture: the CPU orders all 71 survivors");
+    std::vector<uint32_t> nucleus_trace;
+    std::vector<uint32_t> retained_trace;
+    run_k5_case(row, 1, vocab, params, {}, false, false, 0u,
+                "K5 survivor normalizing shortfall", &stats, /*strict_nucleus=*/true,
+                &nucleus_trace, &retained_trace);
+    expect(retained_trace.size() == 1u && retained_trace[0] == 0u,
+           "survivor fallback fixture is a K3/K4 no-op (retained 0)");
+    expect(nucleus_trace.size() == 1u && nucleus_trace[0] == 71u,
+           "survivor fallback nucleus is the full 71-token set (the !p_found path)");
+  }
+  expect(stats.compared == 2u,
+         "both normalizing-shortfall fixtures executed the ordered branch");
+  /* The dominant-rank corner on the ordered path: one rank at 0.0 and the rest
+   * at -30, with `top_p = 0.5 < 1` and `top_k` disabled, so the CPU takes the
+   * ordered branch (`top_p >= 1.0` would take the disjoint K2 fast path, which
+   * K5 must not touch). `p_0` alone reaches 0.5, so the crossing is rank 0, the
+   * nucleus is one token and the draw is forced. */
+  {
+    const size_t vocab = 32;
+    std::vector<float> row(vocab, -30.0f);
+    row[5] = 0.0f;
+    std::vector<ds41rt_v41_sampler_row_t> one = {
+        k5_row(0, 1.0f, 0.5f, 0u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+               DS41RT_V41_SAMPLER_FLAG_NO_MASK | DS41RT_V41_SAMPLER_FLAG_DIAGNOSE, 29ull,
+               3ull),
+    };
+    const RefOrderedRow expected = host_ordered_reference(
+        row.data(), vocab, nullptr, 0u, 1.0f, 0.5f, 0u, 0.0f, -inf(),
+        DS41RT_V41_SAMPLER_FLAG_NO_MASK, 29ull, 3ull);
+    expect(expected.ok && expected.nucleus_count == 1u,
+           "dominant-rank corner: the CPU nucleus is the single crossing rank");
+    K5Stats corner;
+    run_k5_case(row, 1, vocab, one, {}, false, false, 0u,
+                "K5 dominant-rank corner (W(0) >= top_p)", &corner);
+    expect(corner.compared == 1u && corner.exact == 1u,
+           "dominant-rank corner matches the production sampler exactly");
+  }
+  expect(stats.fallback_rows > 0u,
+         "the fallback grid actually reached the normalizing shortfall (not 0)");
+  std::cout << "ok  K5 fallback: " << stats.compared << " ordered rows, "
+            << stats.fallback_rows
+            << " reached the normalizing shortfall (device nuclei exact); dominant-rank "
+               "corner exact\n";
+}
+
+/* Seeded replay across positions, including 0, 2^63 and u64::MAX. */
+void test_k5_seeded_replay() {
+  const size_t vocab = 129;
+  const std::vector<float> logits = shape_periodic_ties(vocab);
+  const uint64_t seeds[] = {1ull, 0ull, 0xDEADBEEFull, 987654321ull};
+  const uint64_t positions[] = {0ull, 1ull, 2048ull, (1ull << 63), ~0ull, 0x8000000000000001ull};
+  K5Stats stats;
+  std::vector<ds41rt_v41_sampler_row_t> params;
+  for (uint64_t seed : seeds) {
+    for (uint64_t position : positions) {
+      params.push_back(k5_row(static_cast<uint32_t>(params.size()), 0.7f, 0.9f, 40u,
+                              0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+                              DS41RT_V41_SAMPLER_FLAG_NO_MASK |
+                                  DS41RT_V41_SAMPLER_FLAG_DIAGNOSE,
+                              seed, position));
+    }
+  }
+  const std::vector<float> rows = repeat_row(logits, params.size());
+  run_k5_case(rows, params.size(), vocab, params, {}, false, false, 40u,
+              "K5 seeded replay (0, 2^63, u64::MAX)", &stats);
+  expect(stats.compared == params.size(),
+         "every replay row was ordered and compared");
+  std::cout << "ok  K5 seeded replay across positions incl. 0, 2^63, u64::MAX ("
+            << stats.compared << " rows; exact " << stats.exact << ")\n";
+}
+
+/* The 129,280-wide served profiles: a real K3/K4 retained list and the
+ * survivor domain at `top_p < 1`, each over several uniforms. */
+void test_k5_wide_served_profiles() {
+  const size_t vocab = 129280;
+  const auto splitmix_unit = [](uint64_t index) -> float {
+    uint64_t hash = index * 0x9e3779b97f4a7c15ull;
+    hash = (hash ^ (hash >> 30)) * 0xbf58476d1ce4e5b9ull;
+    hash = (hash ^ (hash >> 27)) * 0x94d049bb133111ebull;
+    hash ^= hash >> 31;
+    return static_cast<float>(hash >> 40) / 16777216.0f;
+  };
+  std::vector<float> logits(vocab);
+  for (size_t t = 0; t < vocab; ++t) {
+    logits[t] = -8.0f + 10.0f * splitmix_unit(static_cast<uint64_t>(t));
+  }
+  K5Stats stats;
+  {
+    std::vector<ds41rt_v41_sampler_row_t> params = {
+        k5_row(0, 0.7f, 0.9f, 0u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+               DS41RT_V41_SAMPLER_FLAG_NO_MASK | DS41RT_V41_SAMPLER_FLAG_DIAGNOSE, 31ull,
+               0ull),
+    };
+    run_k5_case(logits, 1, vocab, params, {}, false, false, 0u,
+                "K5 wide 129280 top_p0.9 survivor domain", &stats,
+                /*strict_nucleus=*/false);
+  }
+  {
+    std::vector<ds41rt_v41_sampler_row_t> params = {
+        k5_row(0, 0.7f, 1.0f, 40u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+               DS41RT_V41_SAMPLER_FLAG_NO_MASK | DS41RT_V41_SAMPLER_FLAG_DIAGNOSE, 37ull,
+               2ull),
+    };
+    run_k5_case(logits, 1, vocab, params, {}, false, false, 40u,
+                "K5 wide 129280 top_k40 (strict prefix, top_p=1.0)", &stats,
+                /*strict_nucleus=*/false);
+  }
+  /* The wide rows are where the f32 accumulation residual is largest. The exact
+   * nucleus-count equality is relaxed here (`strict_nucleus=false`), but the REAL
+   * count difference is still measured (`max_nucleus_delta`), the token is still
+   * asserted inside the DEVICE nucleus, the rank window is still asserted, and
+   * the measured CDF error is still bounded -- nothing is silently unmeasured.
+   * The explicit wide-row bounds are the observed envelope: at most one nucleus
+   * rank and the same rank window as every other row. */
+  std::cout << "ok  K5 wide 129280 served profiles (" << stats.compared
+            << " rows; exact " << stats.exact << ", nucleus mismatches "
+            << stats.nucleus_mismatch << ", max nucleus delta " << stats.max_nucleus_delta
+            << ", max CDF error " << stats.max_cdf_error << ", outside-nucleus "
+            << stats.outside_nucleus << ", max rank displacement "
+            << stats.max_rank_displacement << ")\n";
+  expect(stats.outside_nucleus == 0u,
+         "no wide-row token fell outside the production nucleus");
+  expect(stats.max_nucleus_delta <= kK5WideNucleusDeltaBound,
+         "wide-row device nucleus stays inside the measured wide-row delta bound");
+  expect(stats.max_rank_displacement <= KP_CROSSING_WINDOW,
+         "wide-row rank displacement stays inside the asserted window");
+  expect(stats.max_cdf_error <= kK5CdfErrorBound,
+         "wide-row divergent tokens stay inside the measured CDF-error bound");
+}
 }  // namespace
 
 int main() {
@@ -3015,6 +5014,8 @@ int main() {
   test_k2_batch_composition_independence();
   test_k2_non_applicable_rows_untouched();
   test_k2_fallback_unreachable_like_cpu();
+  test_k2_zero_weight_invariant();
+  test_k2_saturation_fallback_witness_pinned();
   test_k3_k4_k_grid();
   test_k3_k4_thousands_tied();
   test_k3_k4_all_tied();
@@ -3022,6 +5023,20 @@ int main() {
   test_k3_k4_boundaries_and_termination();
   test_k3_k4_length_two_interval();
   test_k3_k4_randomized_rows();
+  test_k5_strict_prefix_at_top_p_one();
+  test_k5_top_p_grid_and_boundaries();
+  test_k5_boundary_uniforms();
+  test_k5_probe_association_invariance();
+  test_k5_zero_uniform_draw();
+  test_k5_repeated_run_determinism();
+  test_k5_loud_status_failures();
+  test_k1_only_entry_loud_status();
+  test_k5_scattered_row_identity_guard();
+  test_k5_single_survivor_and_inf();
+  test_k5_combined_topk_top_p();
+  test_k5_unsatisfied_fallback();
+  test_k5_seeded_replay();
+  test_k5_wide_served_profiles();
   std::cout << "K3 pivot pass budget (measured): max " << g_max_pivot_passes << " of "
             << DS41RT_V41_TOPK_MAX_PIVOT_STEPS << " cap, host worst-case bound "
             << host_bisection_pass_bound() << "\n";

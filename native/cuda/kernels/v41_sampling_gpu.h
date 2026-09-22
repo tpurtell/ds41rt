@@ -27,11 +27,15 @@
  * Chunk 2 adds K2 (`v41_sample_categorical_kernel`): the fast-path categorical
  * draw for rows with `top_k` disabled and `top_p >= 1.0` (the temperature-only
  * and `min_p`-only profiles), the device port of the `(seed, position)` draw,
- * the inclusive ascending-token-order prefix scan, and the CPU's no-crossing
- * `last`-survivor fallback. Both accumulation orders are compiled: the shipped
- * default is the fixed-tree segmented scan, and
- * `DS41RT_V41_K2_SEQUENTIAL_COMBINE` selects the strictly sequential
- * token-order combine evaluated by the chunk-2 measurement.
+ * the **consistent sequential segment prefix** (chunk-3b `P0-1`: one
+ * non-decreasing fold `C(i+1) = fl(C(i) + local(i))` over the per-segment
+ * masses, replacing the fixed-tree inclusive scan whose cross-segment
+ * association could hand a segment a start prefix already past `target`), the
+ * ascending-token-order crossing scan with the `cumulative_before < target`
+ * minimality rule, and the CPU's no-crossing `last`-survivor fallback. Both
+ * accumulation orders are compiled: the shipped default is the sequential
+ * segment prefix above, and `DS41RT_V41_K2_SEQUENTIAL_COMBINE` selects the
+ * strictly sequential token-order combine evaluated by the chunk-2 measurement.
  */
 #ifndef DS41RT_V41_SAMPLING_GPU_H
 #define DS41RT_V41_SAMPLING_GPU_H
@@ -372,6 +376,130 @@ ds41rt_status_t ds41rt_cuda_v41_topk_select(
     uint64_t* rank_order_scratch, size_t rank_order_capacity,
     uint32_t* out_retained_count, uint32_t* out_pivot_passes,
     ds41rt_v41_sampler_scratch_t* scratch);
+
+/* ====================================================================== */
+/* Chunk 3b: K5 inclusive-prefix top-p nucleus + rank-order draw          */
+/* (design §4.5, §4.6, Appendix A.1)                                      */
+/* ====================================================================== */
+
+/* K5 is a THIRD kernel on the same stream after K1 and K3/K4. It consumes
+ * K1's `scratch` and the chunk-3a rank-ordered retained list and writes the
+ * final sampled token for every **ordered** row.
+ *
+ * Ordered row (the "K5 row class" of design §4.6): K1 `status == OK`, not
+ * greedy (`temperature < 1e-5 || top_k == 1`), and `top_k != 0 || top_p < 1.0`.
+ * Three sub-cases, all of which the CPU routes through the ordered
+ * `sample_from_ranked` tail (`target_sampling.rs:503-522`, `:527-571`):
+ *   1. `top_k != 0 && top_k < survivor_count` — K3/K4 materialized exactly
+ *      `top_k` rank-ordered ids, and the set `S` is that list;
+ *   2. `top_k >= survivor_count` — K3/K4 were a no-op, `S` is every survivor;
+ *   3. `top_k == 0` (disabled) with `top_p < 1.0` — `S` is every survivor.
+ * The disjoint K2 fast path (`top_k == 0 && top_p >= 1.0`) is untouched: those
+ * rows are not touched by K5 and keep K2's id.
+ *
+ * `rank_retained_count[r]` is K3/K4's `out_retained_count` for block row `r`
+ * (0 for a no-op row). When it is non-zero K5 uses the rank-ordered list at
+ * `rank_order_ids + r * rank_order_capacity` -- entries are indexed by BLOCK
+ * row, exactly as K3/K4 write them; every other output is indexed by
+ * `output_row` like the rest of the ABI. `rank_order_ids` may be null when no
+ * row materialized a list. K4 publishes `out_retained_count` by `output_row`
+ * while this kernel consumes it (and the arena) by block row, so the nucleus
+ * entry point requires the identity mapping `params[r].output_row == r`; the FFI
+ * validator rejects a non-identity batch and the kernel reports `INTERNAL` for
+ * ANY K5-class raw-C caller whose `output_row != block_row` -- unconditionally,
+ * BEFORE it interprets `rank_retained_count`, so a foreign count of 0 cannot
+ * flip `retained_mode` false and slip past the check. The chunk-4 integrator
+ * must keep the mapping identity (the daemon already asserts it in
+ * `v41_target_head.rs`).
+ *
+ * `out_total[r]` and `out_nucleus_count[r]` are written only when
+ * `params[r].flags` has `DS41RT_V41_SAMPLER_FLAG_DIAGNOSE`; both may be null.
+ * `out_total` is the CPU's `RankedSample.total` (the floored, un-normalized
+ * weight total over `S`), `out_nucleus_count` is the CPU's `nucleus_count`.
+ *
+ * `out_status` is the SAME per-row status channel K1 uses and may be null. K5
+ * writes `INTERNAL` there, for a K5-class row that cannot produce a defined
+ * token: a retained list wider than `kBlock` (256) or not materialized
+ * (`rank_order_ids == nullptr`), ANY non-identity `output_row` (checked
+ * unconditionally before the retained count is read), a non-finite `top_p`, or a
+ * `survivor_count == 0` row. `scratch[r].status` carries the same value; the
+ * entry point's own return value stays OK because the failure is per row. A
+ * caller that passes `out_status` therefore cannot mistake a silent no-token for
+ * success. **K1 additionally reports `INTERNAL` for a non-finite `top_p` and for
+ * a non-greedy zero-survivor row**, so even the K1+K2-only
+ * `ds41rt_cuda_v41_target_sample[_async]` entry point -- which never launches
+ * K3/K4/K5 -- cannot return OK with an unwritten `out_indices` for those two
+ * shapes (the FFI validator rejects them on the host; this is the raw-C path).
+ *
+ * Both boundaries find the CPU's boundaries. The mass arithmetic defaults to the
+ * CPU's literal per-token normalization (`DS41RT_V41_K5_NORMALIZED_MASS=1`): one
+ * f32 division `w_t / total` per token, accumulated in the kernel's own order,
+ * with the `top_p` / `uniform * nucleus_mass` thresholds. The `=0` build uses
+ * the algebraically equivalent `Sum w >= threshold * total` form instead. The
+ * two differ in f32 rounding; the chunk-3b report measures 11.42 % -> 0.00 %
+ * retained-domain token mismatch in favor of the normalized default.
+ *
+ * Retained domain (case 1): K4's list is already in exact CPU rank order. The
+ * inclusive prefix `W(rank)` is built ONCE per row into a fixed array, so a rank
+ * has one f32 association and the monotone-predicate binary searches are
+ * probe-invariant; the crossing and the draw read the same bits. `k <= kBlock`
+ * is required because the per-rank weights live in one shared table; a wider
+ * retained list is reported as `INTERNAL` rather than sampled from a partial
+ * set.
+ *
+ * Survivor domain (cases 2 and 3): K3/K4 are no-ops, so the boundary is
+ * `K_p` = largest total-order key `(order_key(scaled) << 32) | ~id` with
+ * `M(K_p) >= threshold` (design §4.5 "Boundary primitive"). It is found in two
+ * binary searches -- the ordered value first, then the token id inside the
+ * boundary tie group -- so a boundary costs
+ * `<= 2 + ceil(log2(value range)) + ceil(log2(id range))` passes and the draw
+ * reuses the top-p search's `(value, id)` as lower bounds. The mass predicate
+ * additionally requires a strictly positive mass, so a zero-uniform draw
+ * (`target == 0`) still selects the best actual survivor instead of an empty
+ * prefix. The no-crossing fallback reports the full survivor set.
+ *
+ * `DS41RT_V41_NUCLEUS_MAX_PASSES` is the documented cap for the *retained*
+ * domain's `ceil(log2(k))` search; the wider survivor-domain key search is
+ * bounded by `2 + 32 + 32` passes per boundary and is the cost the design's
+ * chunk-6/7 pass-reduction work targets. `rank_order_capacity`/
+ * `rank_retained_count` are never written.
+ *
+ * The design's "no key satisfies `M(K) >= top_p`" fallback is DEAD CODE in the
+ * un-normalized build: every `w_t > 0`, the best survivor attains `max_scaled`
+ * so `w_best = expf(0) = 1` and `total >= 1`, and `fl(top_p * total) <= total`
+ * for `top_p <= 1`, so the whole-set key always satisfies the predicate. In the
+ * normalized build the CPU's `Sigma (w/total)` can round below `top_p`, which is
+ * exactly the CPU's *consumed every weight* case: the nucleus is the full set
+ * and the draw still runs over it.
+ *
+ * K5 writes `scratch[r].status`/`out_status[r] = INTERNAL` for a raw-C call whose
+ * `rank_retained_count[r]` exceeds `rank_order_capacity` or `kBlock`, whose
+ * retained arena is null, whose `output_row != r` (any K5-class row, checked
+ * before the count is read), whose `top_p` is non-finite, or whose row has no
+ * survivor. Every other status is K1's, unchanged. K1 itself writes INTERNAL
+ * for a non-finite `top_p` or a non-greedy zero-survivor row, so the K1+K2-only
+ * entry point is loud for those shapes too.
+ *
+ * Like K3/K4 these entry points are additive: K1, K2 and K3/K4 are
+ * byte-for-byte unchanged.
+ */
+#define DS41RT_V41_NUCLEUS_MAX_PASSES 32u
+
+ds41rt_status_t ds41rt_cuda_v41_nucleus_async(
+    const float* logits, size_t rows, size_t vocab, size_t logits_stride,
+    const ds41rt_v41_sampler_row_t* params, const uint32_t* mask_words,
+    size_t mask_words_per_row, const uint32_t* rank_order_ids,
+    size_t rank_order_capacity, const uint32_t* rank_retained_count,
+    uint32_t* out_indices, uint32_t* out_status, float* out_total,
+    uint32_t* out_nucleus_count, ds41rt_v41_sampler_scratch_t* scratch,
+    void* cuda_stream);
+ds41rt_status_t ds41rt_cuda_v41_nucleus(
+    const float* logits, size_t rows, size_t vocab, size_t logits_stride,
+    const ds41rt_v41_sampler_row_t* params, const uint32_t* mask_words,
+    size_t mask_words_per_row, const uint32_t* rank_order_ids,
+    size_t rank_order_capacity, const uint32_t* rank_retained_count,
+    uint32_t* out_indices, uint32_t* out_status, float* out_total,
+    uint32_t* out_nucleus_count, ds41rt_v41_sampler_scratch_t* scratch);
 
 #ifdef __cplusplus
 } /* extern "C" */
