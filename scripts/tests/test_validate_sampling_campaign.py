@@ -48,6 +48,8 @@ REQUEST_FIELDS = {
 MODEL = "deepseek-ai/DeepSeek-V4.1-Flash"
 SEED = 20260922
 NONCE_SEED = 79001
+# Fixed per profile across its repeats, distinct across profiles (cache safety).
+NONCE_BY_PROFILE = {profile: 79101 + index for index, profile in enumerate(PROFILES)}
 SEGMENT_SECONDS = 0.9
 
 IDENTITY = {
@@ -98,7 +100,7 @@ def _profile_request(profile, model, max_tokens):
 
 def _report(profile, repeat, start_ns, completion_tokens=11, diagnostics_passed=True,
             weighted_passed=True, corpus_sha=CORPUS_SHA, identity=None, identity_sha=None,
-            nonce_seed=NONCE_SEED, repeats=3, encoding="strict", extra_diagnostics=(),
+            nonce_seed=None, repeats=3, encoding="strict", extra_diagnostics=(),
             model=MODEL):
     greedy = profile == "greedy"
     request_fields = REQUEST_FIELDS[profile]
@@ -106,6 +108,7 @@ def _report(profile, repeat, start_ns, completion_tokens=11, diagnostics_passed=
                  if greedy else dict(request_fields))
     identity = IDENTITY if identity is None else copy.deepcopy(identity)
     identity_sha = IDENTITY_SHA if identity_sha is None else identity_sha
+    nonce_seed = NONCE_BY_PROFILE[profile] if nonce_seed is None else nonce_seed
     samples = []
     ns = start_ns
     for case in WEIGHTED:
@@ -507,13 +510,49 @@ def test_request_max_tokens_must_equal_metadata_and_corpus_for_weighted_and_coun
     assert "min_tokens" in _failures(_validate(documents))
 
 
-def test_nonce_seed_and_repeat_count_mismatch_fail() -> None:
+def test_nonce_seed_is_fixed_within_a_profile() -> None:
     documents = campaign()
     for document, _, path in documents:
         if path == "greedy-r2.json":
             document["nonce_seed"] = 12345
-    assert "identity differs" in _failures(_validate(documents))
+    failures = _failures(_validate(documents))
+    assert "within-profile vector" in failures and "nonce_seed" in failures
 
+
+def test_nonce_seed_must_be_distinct_across_profiles() -> None:
+    documents = campaign()
+    for document, _, _ in documents:
+        document["nonce_seed"] = NONCE_SEED  # one seed shared by every profile
+    result = _validate(documents)
+    assert not result["passed"]
+    assert "pairwise distinct" in _failures(result)
+
+
+def _single_profile_documents():
+    return [d for d in campaign() if d[2].startswith("greedy-")]
+
+
+@pytest.mark.parametrize("bad_nonce", [None, [79101], {"seed": 79101}, True, "79101", 79101.0])
+def test_single_profile_nonce_must_be_an_int(bad_nonce) -> None:
+    """A lone profile must still fail on a non-int nonce (set() of one value passes)."""
+    documents = _single_profile_documents()
+    for document, _, _ in documents:
+        document["nonce_seed"] = bad_nonce
+    result = _validate(documents, profiles=("greedy",), repeats=3)
+    assert not result["passed"]
+    assert "nonce_seed must be an integer" in _failures(result)
+
+
+def test_single_profile_missing_nonce_fails() -> None:
+    documents = _single_profile_documents()
+    for document, _, _ in documents:
+        document.pop("nonce_seed")
+    result = _validate(documents, profiles=("greedy",), repeats=3)
+    assert not result["passed"]
+    assert "nonce_seed must be an integer" in _failures(result)
+
+
+def test_repeat_count_mismatch_fails() -> None:
     documents = campaign()
     for document, _, path in documents:
         if path == "greedy-r2.json":

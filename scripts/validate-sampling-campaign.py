@@ -17,9 +17,10 @@ timings instead of trusting the report's own summary. Gates (hard unless noted):
 * cases         every selected weighted case present, timed and passed, with a
                 positive completion-token count and identical case order;
 * identity      model, base_url, tokenizer/corpus hashes, source revision,
-                harness hash, nonce seed, repeat count and per-case weights equal
-                across all files; a non-empty identity snapshot is mandatory and
-                must be pinned by ``--expect-identity-sha``;
+                harness hash, repeat count and per-case weights equal across all
+                files (nonce_seed is NOT global; see the seed rule); a non-empty
+                identity snapshot is mandatory and must be pinned by
+                ``--expect-identity-sha``;
 * identity body the original identity FILE's raw SHA-256 equals both the expected
                 SHA and every ``provenance.identity_sha256``, and every embedded
                 ``provenance.identity`` is DEEP-EQUAL to the parsed file (no
@@ -37,6 +38,9 @@ timings instead of trusting the report's own summary. Gates (hard unless noted):
                 at all) and the report model; no fixed length or forced EOS;
 * seed          every stochastic profile has one shared EXPLICIT non-null seed;
                 greedy carries none and says ``greedy-ignores-seed``;
+                ``nonce_seed`` is fixed across a profile's repeats and PAIRWISE
+                DISTINCT across profiles so no profile reuses another's prompts
+                or prefix cache;
 * natural       ``decode_length_policy.fixed_decode_tokens`` is null everywhere
                 and the corpus fixture is mandatory (``--corpus`` defaults to the
                 frozen release corpus): every wired sample, counting included,
@@ -155,7 +159,6 @@ def _identity(document):
         'source_revision': provenance.get('source_revision'),
         'harness_sha256': (provenance.get('harness') or {}).get('sha256'),
         'selected_cases': sorted(document.get('selected_cases') or []),
-        'nonce_seed': document.get('nonce_seed'),
         'repeats': document.get('repeats'),
         'encoding': (document.get('sampling') or {}).get('encoding'),
     }
@@ -176,6 +179,9 @@ def _vector_scope(document):
         'seed_source': sampling.get('seed_source'),
         'greedy': sampling.get('greedy'),
         'decode_length_policy': document.get('decode_length_policy'),
+        # Fixed within a profile; must be distinct across profiles so no profile
+        # reuses another profile's prompts (and therefore its prefix cache).
+        'nonce_seed': document.get('nonce_seed'),
     }
 
 
@@ -489,6 +495,26 @@ def validate(documents, profiles=DEFAULT_PROFILES, repeats=3, identity_required=
         elif scopes[key].get('seed_source') != 'explicit':
             failures.append(f"{key}: stochastic seed_source should be 'explicit', got "
                             f"{scopes[key].get('seed_source')!r}")
+
+    # nonce_seed is fixed within a profile (checked by the vector scope) and
+    # pairwise distinct across profiles, so no profile reuses another profile's
+    # prompts and therefore its prefix cache.
+    nonce_by_profile = {}
+    for key in sorted(scopes):
+        nonce_by_profile.setdefault(key[0], scopes[key].get('nonce_seed'))
+    nonce_values = [nonce_by_profile[profile] for profile in profiles
+                    if profile in nonce_by_profile]
+    if len(nonce_values) == len(profiles):
+        # Type-check first: `type(x) is int` excludes bool, and a missing/None or
+        # list/dict value must fail cleanly rather than reaching set() or sorting.
+        invalid = {profile: nonce_by_profile.get(profile) for profile in profiles
+                   if type(nonce_by_profile.get(profile)) is not int}
+        if invalid:
+            failures.append("nonce_seed must be an integer for every profile, got "
+                            f"{invalid}")
+        elif len(set(nonce_values)) != len(nonce_values):
+            failures.append("nonce_seed must be pairwise distinct across profiles, got "
+                            f"{ {profile: nonce_by_profile.get(profile) for profile in profiles} }")
 
     # Natural budgets: no fixed length anywhere.
     for key in sorted(by_key):
