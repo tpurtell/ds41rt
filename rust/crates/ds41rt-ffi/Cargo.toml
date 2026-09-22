@@ -8,3 +8,10 @@ repository.workspace = true
 [dependencies]
 anyhow.workspace = true
 libloading.workspace = true
+
+[dev-dependencies]
+# The chunk-1 device test compares the FFI-driven kernel against the production
+# CPU sampler, which is the frozen correctness oracle
+# (`ds41rt_core::TargetSamplingParams`). `ds41rt-core` does not depend on
+# `ds41rt-ffi`, so this is not a dependency cycle, and it is test-only.
+ds41rt-core = { path = "../ds41rt-core" }

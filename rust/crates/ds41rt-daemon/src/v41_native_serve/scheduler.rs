@@ -1,11 +1,12 @@
 use super::speculative::DraftChain;
 use super::*;
 use crate::v41_target_pass::VerificationTarget;
+use crate::v41_target_head::TargetSamplingRowRequest;
 mod independent;
 mod admission;
 mod layout;
 use layout::ServingTarget;
-use super::scores::BatchScores;
+use super::scores::{BatchScores, VOCAB};
 use crate::v41_backbone_cache::CacheLease;
 use crate::v41_requests::RequestBatch;
 use super::prefix::{ImageKeys, PrefixCache, SnapshotKind};
@@ -386,6 +387,259 @@ pub(super) fn serve<'w, 'a, P: ServingTarget<'w, 'a>>(lib: &'a NativeLibrary, ar
     Ok(())
 }
 
+/// Per-row parameters and greedy flags for one sampled round.
+struct SamplingPlan {
+    rows: Vec<TargetSamplingRowRequest>,
+    greedy: Vec<bool>,
+}
+
+/// One member's sampling inputs for a round, resolved from `Active` by the
+/// caller so the planner itself is a pure function of its arguments.
+#[derive(Clone)]
+struct SamplingMember {
+    params: ds41rt_core::TargetSamplingParams,
+    base_position: u64,
+    /// Per row: the grammar mask, or `None` when the grammar allows every
+    /// token. `needs_mask` is a per-row property, so it decides that row's
+    /// `NO_MASK` flag — a constrained request whose grammar is exhausted on a
+    /// later row must not have the previous row's grammar applied to it.
+    row_masks: Vec<Option<Vec<u32>>>,
+}
+
+/// Build the per-row parameter blocks for one round.
+///
+/// `position(offset + index)` is the row's absolute emitted-token index, so a
+/// row's draw and its greedy decision never depend on the batch layout.
+///
+/// `mask_row` is simply the row's ordinal: the mask arena is `rows x
+/// ceil(vocab/32)` and indexed by row, with `NO_MASK` rows carrying the
+/// `0xFFFFFFFF` sentinel. Keeping the two a single flat mapping means no
+/// ordinal remapping can silently pair a row with another row's grammar.
+fn build_target_sampling_plan(members: &[SamplingMember], inputs: &[Vec<u32>],
+) -> Result<SamplingPlan> {
+    let mut plan = SamplingPlan { rows: Vec::new(), greedy: Vec::new() };
+    for (meta, input) in members.iter().zip(inputs) {
+        let params = meta.params;
+        ensure!(
+            meta.row_masks.len() == input.len(),
+            "sampling row masks differ from the member's rows"
+        );
+        for index in 0..input.len() {
+            let greedy = params.is_greedy();
+            let output_row = u32::try_from(plan.rows.len()).context("sampled row index overflow")?;
+            let needs_mask = meta.row_masks[index].is_some();
+            // `STRICT_FINITE` is set for masked and greedy rows, which are
+            // exactly the rows whose finiteness must be checked before the mask
+            // test (`scores.rs::argmax`). A stochastic unmasked row stays
+            // permissive, which is what the validator also requires.
+            let mut flags = 0u32;
+            if needs_mask || greedy {
+                flags |= ds41rt_ffi::DS41RT_V41_SAMPLER_FLAG_STRICT_FINITE;
+            }
+            if greedy {
+                flags |= ds41rt_ffi::DS41RT_V41_SAMPLER_FLAG_GREEDY;
+            }
+            let mask_row = if needs_mask {
+                output_row
+            } else {
+                flags |= ds41rt_ffi::DS41RT_V41_SAMPLER_FLAG_NO_MASK;
+                ds41rt_ffi::DS41RT_V41_SAMPLER_NO_MASK_ROW
+            };
+            plan.rows.push(TargetSamplingRowRequest {
+                row: target_sampling_row(params, meta.base_position + index as u64, mask_row,
+                    flags, output_row),
+                greedy,
+            });
+            plan.greedy.push(greedy);
+        }
+    }
+    Ok(plan)
+}
+
+/// Resolve one row's parameter block from the request's sampling parameters.
+///
+/// The host does every disabled-encoding resolution here, so the kernel's
+/// branch is a plain test (design §5.1):
+/// * `top_k = None` -> `0` (disabled); `Some(k)` passes through, including
+///   `k > vocab`, which the kernel treats as a no-op;
+/// * `min_p = 0` -> `ln_min_p = -inf`, so the device's single add produces
+///   `-inf` and the survivor predicate keeps the whole allowed row;
+/// * otherwise `ln_min_p` is the **same** Rust `f32::ln` the CPU sampler
+///   evaluates, so the threshold comparison is bit-identical (design §6.3a).
+fn target_sampling_row(params: ds41rt_core::TargetSamplingParams, position: u64,
+    mask_row: u32, flags: u32, output_row: u32,
+) -> ds41rt_ffi::Ds41rtV41SamplerRow {
+    ds41rt_ffi::Ds41rtV41SamplerRow {
+        seed: params.seed(),
+        position,
+        temperature: params.temperature(),
+        top_p: params.top_p(),
+        min_p: params.min_p(),
+        top_k: params.top_k().map_or(0, |k| k as u32),
+        mask_row,
+        flags,
+        output_row,
+        ln_min_p: if params.min_p() > 0.0 { params.min_p().ln() } else { f32::NEG_INFINITY },
+        ..ds41rt_ffi::Ds41rtV41SamplerRow::default()
+    }
+}
+
+/// Fill the host mask arena: exactly one `ceil(vocab/32)`-word row per batch
+/// row, indexed by row ordinal, so `mask_row == row` is the only mapping.
+///
+/// `row_masks[member][index]` is that row's grammar mask, or `None` when the
+/// grammar allows every token. A `None` row's arena slice stays zero and is
+/// never read (the plan marks it `NO_MASK`), so it can never inherit a
+/// neighbour's grammar.
+///
+/// The §5.3 remainder rule (clear every bit `>= vocab` of the final word) is
+/// applied by [`TargetSamplingWave::upload`] immediately before the H2D copy.
+fn build_sampling_masks(row_masks: &[Vec<Option<Vec<u32>>>], arena: &mut [u32]) -> Result<()> {
+    let words_per_row = VOCAB.div_ceil(32);
+    let rows: usize = row_masks.iter().map(Vec::len).sum();
+    ensure!(arena.len() >= rows * words_per_row, "grammar mask arena is too small");
+    let mut row = 0usize;
+    for member in row_masks {
+        for mask in member {
+            if let Some(mask) = mask {
+                ensure!(mask.len() == words_per_row, "grammar mask extent differs");
+                let start = row * words_per_row;
+                arena[start..start + words_per_row].copy_from_slice(mask);
+            }
+            row += 1;
+        }
+    }
+    ensure!(row == rows, "grammar mask arena row count differs");
+    Ok(())
+}
+
+/// Gate the device-selected terminal on both the round shape and the layout's
+/// capability.
+///
+/// A layout whose [`VerificationTarget::supports_sampled_terminal`] is false
+/// (chunk 1: `DistributedTargetPass`) keeps the CPU path even for an all-greedy
+/// round, because routing it into the terminal would fail the whole lane on
+/// `execute_shared_sampled`'s default "no device-selected sampling terminal".
+fn use_sampled_terminal(supports_terminal: bool, fully_greedy: bool) -> bool {
+    supports_terminal && fully_greedy
+}
+
+/// Whether this round can use the device terminal.
+///
+/// Chunk 1 routes **greedy rows only** through K1 and leaves stochastic rows on
+/// the CPU path, so a round is device-selected exactly when every row is
+/// greedy. A constrained greedy row is included: it is a masked argmax, which
+/// is what K1 computes, and the commit path consumes the device's id.
+fn round_is_fully_greedy<'a>(active: &[Option<Active<'a>>], members: &[usize]) -> bool {
+    !members.is_empty()
+        && members.iter().all(|&slot| {
+            active[slot]
+                .as_ref()
+                .is_some_and(|request| request.job.sampling.is_greedy())
+        })
+}
+
+/// Scope of the device terminal in chunk 1: **all-greedy rounds** (any mix of
+/// unconstrained and constrained members) are device-selected. Any round that
+/// contains a stochastic member stays entirely on the existing CPU path and
+/// downloads its full rows for every member, greedy ones included. Removing
+/// that qualifier is chunk 2's job, not this chunk's.
+///
+/// Everything one sampled round needs, built once per lane round.
+struct SamplingRound {
+    plan: SamplingPlan,
+    arena: Vec<u32>,
+    /// Rows whose full logits must be downloaded for the CPU-side trace. The
+    /// `ds41rt::logit_trace` target logs `top_two`, which only the raw row
+    /// provides, so a traced round downloads every row exactly as the
+    /// pre-device path did (design §8.5/R15).
+    trace_rows: Vec<usize>,
+}
+
+/// Build the per-row plan and the host mask arena for a fully greedy round.
+///
+/// `trace` mirrors the commit-side `ds41rt::logit_trace` gate so both sides
+/// agree on which rows are downloaded.
+fn build_sampling_round<'a>(active: &[Option<Active<'a>>], members: &[usize],
+    inputs: &[Vec<u32>], trace: bool,
+) -> Result<SamplingRound> {
+    let mut resolved: Vec<SamplingMember> = Vec::with_capacity(members.len());
+    for (&slot, input) in members.iter().zip(inputs) {
+        let request = active[slot].as_ref().unwrap();
+        let row_masks = match request.constraint.as_ref() {
+            Some(constraint) => constraint.prepare_verification_masks(input)?,
+            None => vec![None; input.len()],
+        };
+        resolved.push(SamplingMember {
+            params: request.job.sampling,
+            base_position: request.generated as u64,
+            row_masks,
+        });
+    }
+    let plan = build_target_sampling_plan(&resolved, inputs)?;
+    let rows: usize = inputs.iter().map(Vec::len).sum();
+    let mut arena = vec![0u32; rows * VOCAB.div_ceil(32)];
+    let row_masks: Vec<Vec<Option<Vec<u32>>>> =
+        resolved.iter().map(|member| member.row_masks.clone()).collect();
+    build_sampling_masks(&row_masks, &mut arena)?;
+    let trace_rows = if trace { (0..rows).collect() } else { Vec::new() };
+    Ok(SamplingRound { plan, arena, trace_rows })
+}
+
+/// Run the device-selected terminal and assemble the selection batch.
+///
+/// This is entered only for an **all-greedy** round, so no row needs the CPU
+/// sampler. An untraced round therefore downloads nothing beyond the small
+/// ids/scores/status vectors K1 produced, and its rows carry ids but no logits.
+/// A traced round downloads every row (`SamplingRound::trace_rows`) because
+/// `ds41rt::logit_trace` logs `top_two`.
+///
+/// A round containing any stochastic member never reaches here: it stays on the
+/// CPU path and downloads every member's rows, greedy ones included. That
+/// qualifier is exact for chunk 1 and is chunk 2's to remove.
+async fn execute_sampled_rows<'a>(pass: &mut TargetPass<'_, 'a>,
+    requests: &Requests<'a>, batch: &mut RequestBatch, transport: &mut NativeTp4Wave<'a>,
+    round: &SamplingRound,
+) -> Result<BatchScores> {
+    let selected: Vec<_> = (0..batch.cache()?.positions().len()).collect();
+    unsafe {
+        pass.execute_sampled(requests, batch, transport, 0, &selected, &round.plan.rows,
+            Some(&round.arena), VOCAB.div_ceil(32)).await?;
+    }
+    let sampled = pass.sampled_rows()?;
+    ensure!(sampled.rows() == round.plan.rows.len(), "sampled row count differs from the plan");
+    sampled.check_status(&(0..sampled.rows()).collect::<Vec<_>>())?;
+    // Untraced all-greedy rounds download nothing; a traced round downloads
+    // only the rows the trace itself logs.
+    if round.trace_rows.is_empty() {
+        return BatchScores::from_sampled(&sampled, &round.plan.greedy);
+    }
+    let bytes = pass.download_sampled_rows(&sampled, &round.trace_rows).await?;
+    sampled.with_full_logits(&round.trace_rows, bytes)
+}
+
+/// Independent-lane twin of [`execute_sampled_rows`]: the lane already holds
+/// the shared request bank behind a `RefCell`, so it uses the cooperative
+/// terminal and only downloads the rows the CPU still needs.
+async fn execute_shared_sampled_rows<'a, P: VerificationTarget<'a> + ?Sized>(
+    pass: &mut P, requests: &std::cell::RefCell<&mut Requests<'a>>,
+    batch: &mut RequestBatch, transport: &mut P::Transport, round: &SamplingRound,
+) -> Result<BatchScores> {
+    let selected: Vec<_> = (0..batch.cache()?.positions().len()).collect();
+    unsafe {
+        pass.execute_shared_sampled(requests, batch, transport, 0, &selected, &round.plan.rows,
+            Some(&round.arena), VOCAB.div_ceil(32)).await?;
+    }
+    let sampled = pass.sampled_rows()?;
+    ensure!(sampled.rows() == round.plan.rows.len(), "sampled row count differs from the plan");
+    sampled.check_status(&(0..sampled.rows()).collect::<Vec<_>>())?;
+    if round.trace_rows.is_empty() {
+        return BatchScores::from_sampled(&sampled, &round.plan.greedy);
+    }
+    let bytes = pass.download_sampled_rows(&sampled, &round.trace_rows).await?;
+    sampled.with_full_logits(&round.trace_rows, bytes)
+}
+
 async fn execute_logits<'a>(lib: &'a NativeLibrary, pass: &mut TargetPass<'_, 'a>,
     requests: &Requests<'a>, batch: &mut Option<RequestBatch>, transport: &mut NativeTp4Wave<'a>,
     capture_routes: bool, compact: bool,
@@ -468,6 +722,44 @@ fn single_lane_round<'w, 'a>(lib: &'a NativeLibrary, runtime: &tokio::runtime::R
             draft.trace_cost_forecast(batch_id, &candidates);
         }
     }
+    // Chunk-1 scope: an **all-greedy** round (any mix of unconstrained and
+    // constrained members) is selected on the device. A round containing any
+    // stochastic member stays entirely on the existing CPU path below and
+    // downloads full rows for every member, greedy ones included — that
+    // qualifier is what makes the residency claim exact, and removing it is
+    // chunk 2's job. A traced round still takes this path, but
+    // `SamplingRound::trace_rows` then downloads every row for `top_two`.
+    if !compact && round_is_fully_greedy(active, members) {
+        let round = build_sampling_round(active, members, &inputs,
+            tracing::enabled!(target: "ds41rt::logit_trace", tracing::Level::DEBUG))?;
+        let next = runtime.block_on(execute_sampled_rows(pass, requests,
+            batch.as_mut().unwrap(), transport, &round));
+        // Reuse the shared tail below by re-entering the same control flow.
+        let next = match next {
+            Ok(next) => next,
+            Err(error) => {
+                if let Some(batch) = &mut batch { pass.discard(batch)?; }
+                return Err(error);
+            }
+        };
+        let (accepted, emitted, emissions) = commit_lane(lib, lane, pass, requests, active, members,
+            &inputs, &mut batch, &next, draft.as_deref_mut(), capture_routes, 0,
+            SampleSource::DeviceSelected)?;
+        for (&slot, tokens) in members.iter().zip(emissions) {
+            let request = active[slot].as_mut().unwrap();
+            if let Err(error) = request.emit(&tokens) {
+                let _ = request.job.events.blocking_send(Err(format!("{error:#}").into()));
+                request.finished = true;
+            }
+        }
+        tracing::debug!(target: "ds41rt::timing", speculative,
+            requests=members.len(), lane0=if lane == 0 { members.len() } else { 0 },
+            lane1=if lane == 1 { members.len() } else { 0 },
+            proposed=inputs.iter().map(|r| r.len()-1).sum::<usize>(), accepted, emitted,
+            draft_us, prepare_us, verify_us=started.elapsed().as_micros() as u64 - prepared_us,
+            total_us=started.elapsed().as_micros() as u64, "native scheduler round");
+        return Ok(());
+    }
     let next = runtime.block_on(execute_logits(lib, pass, requests, &mut batch, transport, capture_routes, compact));
     let executed_us = started.elapsed().as_micros() as u64;
     let result = (|| -> Result<()> {
@@ -476,7 +768,8 @@ fn single_lane_round<'w, 'a>(lib: &'a NativeLibrary, runtime: &tokio::runtime::R
             requests=members.len(), rows=inputs.iter().map(Vec::len).sum::<usize>(),
             prepared_us, verify_us=executed_us-prepared_us, "verification round cost");
         let (accepted, emitted, emissions) = commit_lane(lib, lane, pass, requests, active, members,
-            &inputs, &mut batch, &next, draft.as_deref_mut(), capture_routes, executed_us-prepared_us)?;
+            &inputs, &mut batch, &next, draft.as_deref_mut(), capture_routes,
+            executed_us-prepared_us, SampleSource::CpuRecomputed)?;
         for (&slot, tokens) in members.iter().zip(emissions) {
             let request = active[slot].as_mut().unwrap();
             if let Err(error) = request.emit(&tokens) {
@@ -523,11 +816,62 @@ struct CommitDecision {
     accepted: Vec<u32>,
     emissions: Vec<Vec<u32>>,
     next_after_commit: Vec<Option<TokenScores>>,
-    frontier_downloads: Vec<(usize, usize)>,
+    frontier_downloads: Vec<(usize, usize, Option<Vec<u32>>)>,
 }
+/// The per-row target selection of a round.
+///
+/// `DeviceSelected` means K1 produced the id for every row (masked or not), so
+/// the commit path must **consume** those ids: re-deriving them from logits
+/// would need the full rows the device path deliberately did not download.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SampleSource {
+    DeviceSelected,
+    CpuRecomputed,
+}
+
+/// The selected token for one request's rows.
+///
+/// For `DeviceSelected` the ids are exactly `next.best[offset..offset+len]`,
+/// which is the slice K1 filled: the device applies the grammar mask itself, so
+/// a constrained row consumes its masked id instead of re-running the masked
+/// argmax (which would fail, because no logits were downloaded).
+fn selected_target_rows(next: &BatchScores, offset: usize, len: usize,
+    source: SampleSource,
+) -> Result<std::borrow::Cow<'_, [u32]>> {
+    use std::borrow::Cow;
+    ensure!(
+        offset + len <= next.best.len(),
+        "target selection rows are outside the batch"
+    );
+    Ok(match source {
+        SampleSource::DeviceSelected => Cow::Borrowed(&next.best[offset..offset + len]),
+        SampleSource::CpuRecomputed => Cow::Owned(next.best[offset..offset + len].to_vec()),
+    })
+}
+
+/// One request's target selection.
+///
+/// `recompute` is the CPU selection (masked argmax, target sample, or cached
+/// id). It is consulted **only** for [`SampleSource::CpuRecomputed`]; a
+/// device-selected round must never call it, because that path needs full
+/// logits the device path deliberately did not download. Keeping the two
+/// separate is what makes that property testable rather than incidental.
+fn select_target_row<F>(next: &BatchScores, offset: usize, len: usize, source: SampleSource,
+    recompute: F,
+) -> Result<std::borrow::Cow<'_, [u32]>>
+where
+    F: FnOnce() -> Result<Vec<u32>>,
+{
+    match source {
+        SampleSource::DeviceSelected => selected_target_rows(next, offset, len, source),
+        SampleSource::CpuRecomputed => Ok(std::borrow::Cow::Owned(recompute()?)),
+    }
+}
+
 fn prepare_commit_lane<'a, C: DraftChain<'a>>(lane: usize,
     requests: &Requests<'a>, active: &[Option<Active<'a>>], members: &[usize], inputs: &[Vec<u32>],
     next: &BatchScores, draft: Option<&DraftRuntime<'_, 'a, C>>, verify_us: u64,
+    source: SampleSource,
 ) -> Result<CommitDecision> {
     let mut accepted_drafts = 0u32;
     let mut emitted = 0usize;
@@ -545,20 +889,30 @@ fn prepare_commit_lane<'a, C: DraftChain<'a>>(lane: usize,
         // sample-and-match rule: a draft is accepted while it equals the target
         // sample, and the first mismatch emits the target sample. The emitted
         // token is always the target draw, so speculation cannot bias p.
-        let sampled;
-        let selected: &[u32] = if let Some(state) = request.constraint.as_ref() {
-            sampled = if params.is_greedy() {
-                state.select_verification(next, offset, input)?
+        // A device-selected round consumes K1's ids directly; every other round
+        // keeps the existing per-row CPU selection, which is passed in as a
+        // closure so the device path can never reach it.
+        debug_assert!(
+            source == SampleSource::CpuRecomputed || params.is_greedy(),
+            "device selection is only claimed for greedy rounds"
+        );
+        let selected = select_target_row(next, offset, input.len(), source, || {
+            let state = request.constraint.as_ref();
+            if params.is_greedy() {
+                match state {
+                    Some(state) => state.select_verification(next, offset, input),
+                    None => Ok(next.best[offset..offset + input.len()].to_vec()),
+                }
             } else {
-                state.select_verification_sampled(next, offset, input, params, base_position)?
-            };
-            &sampled
-        } else if params.is_greedy() {
-            &next.best[offset..offset + input.len()]
-        } else {
-            sampled = sample_target_rows(next, offset, input, params, base_position)?;
-            &sampled
-        };
+                match state {
+                    Some(state) => {
+                        state.select_verification_sampled(next, offset, input, params, base_position)
+                    }
+                    None => sample_target_rows(next, offset, input, params, base_position),
+                }
+            }
+        })?;
+        let selected: &[u32] = &selected;
         let decision = ds41rt_core::verify_dspark_greedy(input,
             selected, 1, request.job.max_tokens - request.generated)
             .map_err(anyhow::Error::msg)?;
@@ -598,7 +952,17 @@ fn prepare_commit_lane<'a, C: DraftChain<'a>>(lane: usize,
         next_after_commit.push(if finishing && next.has_full_logits() {
             Some(next.retain(frontier)?)
         } else {
-            if finishing { frontier_downloads.push((next_after_commit.len(), frontier)); }
+            if finishing {
+                // The frontier belongs to this member's own hypothetical
+                // prefix, so a constrained row retains against its grammar
+                // mask rather than the plain argmax.
+                let row_in_round = frontier - offset;
+                let mask = match request.constraint.as_ref() {
+                    Some(state) => state.prepare_verification_mask_row(input, row_in_round)?,
+                    None => None,
+                };
+                frontier_downloads.push((next_after_commit.len(), frontier, mask));
+            }
             None
         });
         offset += input.len(); accepted.push(decision.accepted_inputs); emissions.push(decision.emitted);
@@ -631,12 +995,15 @@ fn commit_lane<'w, 'a>(lib: &'a NativeLibrary, lane: usize, pass: &mut TargetPas
     active: &mut [Option<Active<'a>>], members: &[usize], inputs: &[Vec<u32>],
     owned_batch: &mut Option<RequestBatch>, next: &BatchScores,
     mut draft: Option<&mut DraftRuntime<'_, 'a>>, capture_routes: bool, verify_us: u64,
+    source: SampleSource,
 ) -> Result<(u32, usize, Vec<Vec<u32>>)> {
     let Some(batch) = owned_batch else { return Ok((0, 0, Vec::new())); };
     let mut decision = prepare_commit_lane(lane, requests, active, members, inputs,
-        next, draft.as_deref(), verify_us)?;
-    for (member, row) in decision.frontier_downloads.drain(..) {
-        decision.next_after_commit[member] = Some(next.retain_from_device(lib, pass.output(batch)?.logits, row)?);
+        next, draft.as_deref(), verify_us, source)?;
+    for (member, row, mask) in decision.frontier_downloads.drain(..) {
+        let mask = mask.as_deref();
+        decision.next_after_commit[member] =
+            Some(next.retain_from_device(lib, pass.output(batch)?.logits, row, mask)?);
     }
     if let Some(draft) = draft.as_deref_mut() { draft.commit_batch(pass, requests, batch, &decision.accepted)?; }
     else { pass.commit(requests, batch, &decision.accepted)?; }
@@ -688,5 +1055,270 @@ mod sampling_tests {
             .map(|index| batch.sample(2 + index, None, params, (2 + index) as u64).unwrap())
             .collect();
         assert_ne!(b, row_keyed, "offset-keyed draws must not match emitted-index draws");
+    }
+
+    /// P0-A seam: a device-selected round consumes K1's ids for **every** row,
+    /// constrained or not, and never reaches the CPU recompute. Re-deriving a
+    /// masked row needs logits the device path deliberately did not download, so
+    /// this is what keeps a constrained greedy round from failing at commit.
+    #[test]
+    fn device_selected_rows_consume_ids_without_downloading_logits() {
+        // Six greedy rows: rows 1 and 4 are constrained, the rest are not.
+        let greedy = vec![true; 6];
+        let ids: Vec<u32> = vec![5, 3, 7, 1, 4, 2];
+        let scores: Vec<f32> = vec![1.0; 6];
+        let logits = ds41rt_ffi::Ds41rtDeviceBuffer {
+            ptr: std::ptr::null_mut(),
+            bytes: 0,
+            ..Default::default()
+        };
+        let sampled = crate::v41_target_head::SampledTargetRows {
+            ids: ids.clone(),
+            scores,
+            status: vec![0u32; 6],
+            status_detail: vec![0u32; 6],
+            logits,
+        };
+        let next = BatchScores::from_sampled(&sampled, &greedy).unwrap();
+
+        // The device path returns exactly K1's ids and must not invoke the CPU
+        // selection, whose failure is the "requires full logits" error below.
+        let selected = select_target_row(&next, 0, 6, SampleSource::DeviceSelected, || {
+            Err(anyhow::anyhow!("the device path must not recompute a row"))
+        })
+        .unwrap();
+        assert_eq!(&selected[..], &ids[..]);
+        // Borrowed, not copied: the ids already live in the batch.
+        assert!(matches!(selected, std::borrow::Cow::Borrowed(_)));
+
+        // A batch built from device ids has no row bytes, so the CPU recompute
+        // the pre-fix commit code used is exactly what fails here.
+        let err = next.select(1, Some(&[0xFFFF_FFFFu32])).unwrap_err();
+        assert!(err.to_string().contains("requires full logits"), "unexpected error: {err}");
+
+        // The same seam still serves the CPU path when it is the source.
+        let cpu = select_target_row(&next, 0, 6, SampleSource::CpuRecomputed, || Ok(vec![42; 6]))
+            .unwrap();
+        assert_eq!(&cpu[..], &[42u32; 6]);
+
+        // Sensitivity: the CPU closure must not be called for a device round.
+        let mut called = false;
+        let _ = select_target_row(&next, 0, 1, SampleSource::DeviceSelected, || {
+            called = true;
+            Ok(vec![0])
+        });
+        assert!(!called, "device-selected rows must not consult the CPU recompute");
+    }
+
+    /// A layout without the sampled terminal keeps the CPU path even for an
+    /// all-greedy round. Routing it into the terminal would fail the whole lane
+    /// on `execute_shared_sampled`'s default bail, which is the regression the
+    /// capability gate fixes; the gate is what decides the route.
+    #[test]
+    fn layouts_without_the_sampled_terminal_keep_the_cpu_path() {
+        // Chunk 1's two layouts, as a property of the type.
+        assert!(
+            <crate::v41_target_pass::TargetPass<'static, 'static> as
+                crate::v41_target_pass::VerificationTarget<'static>>::SUPPORTS_SAMPLED_TERMINAL,
+            "TargetPass implements the sampled terminal"
+        );
+        assert!(
+            !<crate::v41_target_pass::DistributedTargetPass<'static, 'static> as
+                crate::v41_target_pass::VerificationTarget<'static>>::SUPPORTS_SAMPLED_TERMINAL,
+            "the distributed layout has no sampled terminal in chunk 1"
+        );
+        // The gate: capability AND round shape.
+        assert!(use_sampled_terminal(true, true));
+        assert!(!use_sampled_terminal(false, true), "no terminal -> CPU fallback");
+        assert!(!use_sampled_terminal(true, false), "stochastic round -> CPU path");
+        assert!(!use_sampled_terminal(false, false));
+    }
+
+    /// DEFECT-3 seam: `needs_mask` is per **row**, so a row whose grammar
+    /// allows every token must be marked `NO_MASK` and get a zeroed arena row.
+    /// An early masked row followed by an unmasked one (and the reverse) is the
+    /// sequence that a reused mask buffer corrupts.
+    #[test]
+    fn per_row_needs_mask_marks_unmasked_rows_and_leaves_their_arena_zero() {
+        use ds41rt_core::TargetSamplingParams;
+        let words = VOCAB.div_ceil(32);
+        let pattern = |tag: u32| {
+            let mut mask = vec![0u32; words];
+            mask[0] = tag;
+            mask[words - 1] = tag ^ 0xFFFF_FFFF;
+            mask
+        };
+        // Member 0: row 0 masked, rows 1-2 masked, row 3 needs no mask.
+        // Member 1: row 0 needs no mask, row 1 masked.
+        let row_masks: Vec<Vec<Option<Vec<u32>>>> = vec![
+            vec![Some(pattern(0xA1)), Some(pattern(0xA2)), Some(pattern(0xA3)), None],
+            vec![None, Some(pattern(0xB1))],
+        ];
+        let members: Vec<SamplingMember> = row_masks
+            .iter()
+            .map(|masks| SamplingMember {
+                params: TargetSamplingParams::greedy(),
+                base_position: 0,
+                row_masks: masks.clone(),
+            })
+            .collect();
+        let inputs: Vec<Vec<u32>> = vec![vec![0, 1, 2, 3], vec![4, 5]];
+        let plan = build_target_sampling_plan(&members, &inputs).unwrap();
+        // `NO_MASK` is decided per row, not per member.
+        let no_mask: Vec<bool> = plan
+            .rows
+            .iter()
+            .map(|request| {
+                request.row.flags & ds41rt_ffi::DS41RT_V41_SAMPLER_FLAG_NO_MASK != 0
+            })
+            .collect();
+        assert_eq!(no_mask, vec![false, false, false, true, true, false]);
+        for (row, request) in plan.rows.iter().enumerate() {
+            if no_mask[row] {
+                assert_eq!(request.row.mask_row, ds41rt_ffi::DS41RT_V41_SAMPLER_NO_MASK_ROW);
+            } else {
+                assert_eq!(request.row.mask_row as usize, row);
+            }
+        }
+        // The arena carries exactly the masked rows at their own ordinals, and a
+        // zeroed row for every `None`, so no row can inherit a neighbour's bits.
+        let mut arena = vec![0u32; 6 * words];
+        build_sampling_masks(&row_masks, &mut arena).unwrap();
+        for (row, expected) in [(0usize, 0xA1u32), (1, 0xA2), (2, 0xA3), (5, 0xB1)] {
+            assert_eq!(arena[row * words], expected, "arena row {row}");
+            assert_eq!(arena[row * words + words - 1], expected ^ 0xFFFF_FFFF, "arena row {row}");
+        }
+        for row in [3usize, 4] {
+            assert!(
+                arena[row * words..(row + 1) * words].iter().all(|word| *word == 0),
+                "unmasked arena row {row} must stay zeroed"
+            );
+        }
+    }
+
+    /// P0-B seam: the mask arena is `rows x words`, indexed by row ordinal, so a
+    /// round that mixes unconstrained and constrained members lands each mask on
+    /// its own row. Packing only the constrained rows (the pre-fix staging)
+    /// shifts every mask after the first unconstrained member.
+    #[test]
+    fn mask_arena_is_indexed_by_row_ordinal_for_mixed_rounds() {
+        let words = VOCAB.div_ceil(32);
+        // Two unconstrained members, then a constrained one, then two more
+        // unconstrained ones, then a constrained one.
+        let row_masks: Vec<Vec<Option<Vec<u32>>>> = vec![
+            vec![None, None],
+            vec![None],
+            vec![Some(pattern(20)), Some(pattern(21)), Some(pattern(22))],
+            vec![None],
+            vec![None, None],
+            vec![Some(pattern(50))],
+        ];
+        let mut arena = vec![0u32; 10 * words];
+        build_sampling_masks(&row_masks, &mut arena).unwrap();
+        // `pattern(tag)` puts `0xAA00 + tag` in word 0 and `0xBB00 + tag` in word 1.
+        // Global row ordinals: member 2 starts at row 3, member 5 at row 9.
+        for (ordinal, tag) in [(3usize, 20u32), (4, 21), (5, 22), (9, 50)] {
+            assert_eq!(arena[ordinal * words], 0xAA00 + tag, "mask row {ordinal}");
+            assert_eq!(arena[ordinal * words + 1], 0xBB00 + tag, "mask row {ordinal}");
+        }
+        // Sensitivity: packing only the constrained rows would place the fourth
+        // constrained row (tag 50) at ordinal 3, so a shifted arena cannot pass.
+        assert_eq!(arena[3 * words], 0xAA00 + 20, "mask row 3 must be member 2's first row");
+        assert_ne!(arena[3 * words], 0xAA00 + 50, "ordinal packing must not be contiguous");
+        // Every unconstrained ordinal is zeroed and therefore never read.
+        for ordinal in [0usize, 1, 2, 6, 7, 8] {
+            assert!(arena[ordinal * words..(ordinal + 1) * words].iter().all(|word| *word == 0),
+                "NO_MASK row {ordinal} must stay zeroed");
+        }
+    }
+
+    /// A two-word mask pattern that is recognisable per row.
+    fn pattern(tag: u32) -> Vec<u32> {
+        let mut mask = vec![0u32; VOCAB.div_ceil(32)];
+        mask[0] = 0xAA00 + tag;
+        mask[1] = 0xBB00 + tag;
+        mask
+    }
+
+    /// P3: the plan is per row — absolute position, row-ordinal `mask_row`, the
+    /// `NO_MASK` sentinel, and `STRICT_FINITE` on greedy/constrained rows only.
+    #[test]
+    fn plan_flags_and_positions_are_per_row_and_self_consistent() {
+        use ds41rt_core::TargetSamplingParams;
+        let greedy = TargetSamplingParams::greedy();
+        let stochastic = TargetSamplingParams::new(0.7, 0.9, Some(40), 0.05, 11).unwrap();
+        let members = vec![
+            SamplingMember { params: stochastic, base_position: 100, row_masks: vec![None; 3] },
+            SamplingMember {
+                params: greedy,
+                base_position: 7,
+                row_masks: vec![Some(pattern(1)), Some(pattern(2))],
+            },
+        ];
+        let inputs = vec![vec![0, 1, 2], vec![3, 4]];
+        let plan = build_target_sampling_plan(&members, &inputs).unwrap();
+        assert_eq!(plan.rows.len(), 5);
+        assert_eq!(plan.greedy, vec![false, false, false, true, true]);
+        // Positions are absolute per member and never reset by the batch layout.
+        assert_eq!(plan.rows.iter().map(|r| r.row.position).collect::<Vec<_>>(),
+            vec![100, 101, 102, 7, 8]);
+        // Row ordinals are the mask row for constrained rows, the sentinel else.
+        assert_eq!(plan.rows.iter().map(|r| r.row.mask_row).collect::<Vec<_>>(),
+            vec![
+                ds41rt_ffi::DS41RT_V41_SAMPLER_NO_MASK_ROW,
+                ds41rt_ffi::DS41RT_V41_SAMPLER_NO_MASK_ROW,
+                ds41rt_ffi::DS41RT_V41_SAMPLER_NO_MASK_ROW,
+                3,
+                4,
+            ]);
+        assert_eq!(plan.rows.iter().map(|r| r.row.output_row).collect::<Vec<_>>(),
+            vec![0, 1, 2, 3, 4]);
+        // The unconstrained stochastic rows carry NO_MASK and stay permissive;
+        // the constrained greedy rows carry STRICT_FINITE and GREEDY. No row has
+        // both NO_MASK and a real mask row.
+        for (index, request) in plan.rows.iter().enumerate() {
+            let flags = request.row.flags;
+            let no_mask = flags & ds41rt_ffi::DS41RT_V41_SAMPLER_FLAG_NO_MASK != 0;
+            let strict = flags & ds41rt_ffi::DS41RT_V41_SAMPLER_FLAG_STRICT_FINITE != 0;
+            assert_eq!(no_mask, index < 3, "row {index} NO_MASK");
+            assert_eq!(strict, index >= 3, "row {index} STRICT_FINITE");
+        }
+    }
+
+    /// Host side of the device ABI: disabled encodings are resolved here, and
+    /// `ln_min_p` is the exact host threshold the kernel adds.
+    #[test]
+    fn target_sampling_row_resolves_disabled_encodings_and_min_p_threshold() {
+        use ds41rt_core::TargetSamplingParams;
+        let greedy = TargetSamplingParams::greedy().with_seed(7);
+        let row = target_sampling_row(
+            greedy,
+            0,
+            ds41rt_ffi::DS41RT_V41_SAMPLER_NO_MASK_ROW,
+            ds41rt_ffi::DS41RT_V41_SAMPLER_FLAG_NO_MASK,
+            0,
+        );
+        assert_eq!(row.temperature, 0.0);
+        assert_eq!(row.top_p, 1.0);
+        assert_eq!(row.top_k, 0, "None must be encoded as the disabled zero");
+        assert_eq!(row.min_p, 0.0);
+        assert_eq!(row.seed, 7);
+        assert_eq!(row.ln_min_p.to_bits(), f32::NEG_INFINITY.to_bits());
+
+        let filtered = TargetSamplingParams::new(0.7, 0.9, Some(40), 0.05, 4242).unwrap();
+        let row = target_sampling_row(
+            filtered,
+            100,
+            0,
+            ds41rt_ffi::DS41RT_V41_SAMPLER_FLAG_STRICT_FINITE,
+            3,
+        );
+        assert_eq!(row.position, 100);
+        assert_eq!(row.temperature, 0.7);
+        assert_eq!(row.top_p, 0.9);
+        assert_eq!(row.top_k, 40);
+        assert_eq!(row.output_row, 3);
+        // The device never calls logf, so this must be the host f32::ln bits.
+        assert_eq!(row.ln_min_p.to_bits(), 0.05f32.ln().to_bits());
     }
 }

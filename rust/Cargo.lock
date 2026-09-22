@@ -804,6 +804,7 @@ name = "ds41rt-ffi"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "ds41rt-core",
  "libloading",
 ]
 

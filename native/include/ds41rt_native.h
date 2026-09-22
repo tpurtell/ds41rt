@@ -1711,6 +1711,14 @@ ds41rt_status_t ds41rt_cuda_logits_sample_topk_topp_f32_cub_async(
 ds41rt_status_t ds41rt_cuda_pack_nibbles(const uint8_t* codes, uint8_t* packed, size_t count);
 ds41rt_status_t ds41rt_cuda_unpack_nibbles(const uint8_t* packed, uint8_t* codes, size_t count);
 
+
+/* V4.1 GPU target-sampler device ABI: the 64-byte per-row parameter block,
+ * the packed constraint-mask layout and the K1 entry points. Defined once in
+ * cuda/kernels/v41_sampling_gpu.h and shared with the kernel source. The
+ * relative spelling keeps `native/include` as the only include root this
+ * header needs. */
+#include "../cuda/kernels/v41_sampling_gpu.h"
+
 #ifdef __cplusplus
 }
 #endif

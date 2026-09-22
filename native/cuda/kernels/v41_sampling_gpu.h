@@ -1,0 +1,221 @@
+/* GPU target-sampler device ABI (ds41rt v4.1, `serve-native`).
+ *
+ * This header is the single definition of the sampler's device-side contract:
+ * the 64-byte per-row parameter block of `docs/gpu-sampling-design.md` §5.1,
+ * the packed constraint-mask layout of §5.2/§5.3, the per-row scratch layout,
+ * the per-row status codes of §5.4, and the C ABI entry-point declarations.
+ *
+ * It is included by `native/cuda/kernels/v41_sampling_gpu.cu` (the kernel) and
+ * by `native/include/ds41rt_native.h` (the public ABI), so the two can never
+ * disagree; it is mirrored by `rust/crates/ds41rt-ffi/src/lib.rs`, which
+ * test-pins `sizeof`/offsets/alignment of `ds41rt_v41_sampler_row_t`.
+ *
+ * Algorithm provenance: the mask predicate, the scale-then-compare order, the
+ * `min_p` threshold and the lowest-id tie rule are ports of the frozen CPU
+ * filter chain (`rust/crates/ds41rt-core/src/target_sampling.rs`), which is the
+ * correctness oracle. The argmax/block-reduce structure is ported from the
+ * legacy device argmax (`native/cuda/kernels/sampling.cu`,
+ * `logits_argmax_f32_kernel`), which itself cites TRT-LLM; the FlashInfer
+ * headers are a reference for the later chunks (K2/K3/K5) only, never a build
+ * dependency.
+ *
+ * Chunk 1 implements K1 only: mask application first, finiteness discipline,
+ * temperature scaling, scaled maximum, the `min_p` survivor count and the
+ * greedy / constrained-greedy device argmax. `k`-selection and top-p land in
+ * later chunks; the scratch and arena regions they need are already allocated.
+ */
+#ifndef DS41RT_V41_SAMPLING_GPU_H
+#define DS41RT_V41_SAMPLING_GPU_H
+
+#include "ds41rt_native.h"
+
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* ---- Per-row flags (§5.1, plus the resolved D9/§5.3 unconstrained bit) ---- */
+/* bit0: greedy row. The host resolves `temperature < 1e-5 || top_k == 1`; the
+ *       kernel re-derives it and ORs the two, so a host bug cannot silently
+ *       turn a stochastic row greedy. */
+#define DS41RT_V41_SAMPLER_FLAG_GREEDY 0x1u
+/* bit1: diagnose. Optional `out_total`/`out_nucleus_count` are written. */
+#define DS41RT_V41_SAMPLER_FLAG_DIAGNOSE 0x2u
+/* bit2: the mask row has no meaningful bits -- an unconstrained row
+ *       (`fill_bitmask` reported `needs_mask == false`, or no mask at all).
+ *       The kernel then treats every token `t < vocab` as allowed and never
+ *       reads the mask arena.
+ *
+ *       APPROVED design deviation (recorded in the chunk-1 report so the design
+ *       doc can be updated). The design's §5.1 assigns bit2 to "mask
+ *       remainder-masked", but §5.2 wants `mask_row = 0xFFFFFFFF` for an
+ *       unconstrained row and §5.3 says there is no all-ones fill in the native
+ *       path, so nothing told the kernel to skip mask reads. `needs_mask ==
+ *       false` is the production signal (`constraints.rs`). The remainder rule
+ *       stays unconditional and host-enforced: the host always zeroes bits
+ *       `>= vocab` of the final word before upload
+ *       (`ds41rt_v41_sampler_clear_remainder`), so a whole-word reader is safe
+ *       regardless of this bit. */
+#define DS41RT_V41_SAMPLER_FLAG_NO_MASK 0x4u
+/* bit3: CPU-oracle cross-check (diagnostic only; unused in production). */
+#define DS41RT_V41_SAMPLER_FLAG_ORACLE_CROSSCHECK 0x8u
+/* bit4: strict whole-row finiteness for a row that would otherwise take the
+ *       permissive stochastic branch. Greedy rows are strict unconditionally
+ *       (the kernel derives strictness from `greedy`), so the host sets this bit
+ *       on greedy and constrained rows only and leaves a stochastic row
+ *       permissive. It mirrors `scores.rs::argmax`'s
+ *       `ensure!(value.is_finite())`, which runs before the mask test for
+ *       greedy/constrained rows, so such a row rejects a non-finite logit even
+ *       when that token is masked out. */
+#define DS41RT_V41_SAMPLER_FLAG_STRICT_FINITE 0x10u
+
+/* ---- Per-row status codes (§5.4). Host-side rank = the integer value. ---- */
+#define DS41RT_V41_SAMPLER_STATUS_OK 0u
+#define DS41RT_V41_SAMPLER_STATUS_EMPTY_CANDIDATES 1u
+#define DS41RT_V41_SAMPLER_STATUS_NONFINITE_LOGIT 2u
+#define DS41RT_V41_SAMPLER_STATUS_INVALID_TEMPERATURE 3u
+#define DS41RT_V41_SAMPLER_STATUS_MASK_WIDTH 4u
+#define DS41RT_V41_SAMPLER_STATUS_INTERNAL 5u
+
+/* `out_status_detail` for status 2 carries the offending token id; the design
+ * text writes a plain `0` when there is none, but token 0 is a real token, so a
+ * caller could not tell "no detail" from "token 0". The kernel writes the
+ * UINT32_MAX sentinel instead and the host normalizes it to 0 before it is
+ * observable. APPROVED design deviation (recorded in the chunk-1 report so the
+ * design doc can be updated). */
+#define DS41RT_V41_SAMPLER_NO_DETAIL 0xFFFFFFFFu
+
+/* `mask_row` sentinel: an unconstrained row. The kernel treats this sentinel as
+ * unconstrained even when `FLAG_NO_MASK` is absent, so a raw-C caller that only
+ * follows `docs/gpu-sampling-design.md` §5.2 (which names the sentinel but not
+ * the flag) still cannot index the arena out of bounds. The host-side validator
+ * is stricter and requires the flag to agree with the sentinel. */
+#define DS41RT_V41_SAMPLER_NO_MASK_ROW 0xFFFFFFFFu
+
+/* ---- 64-byte per-row parameter block (§5.1), natural alignment ---- */
+typedef struct ds41rt_v41_sampler_row_s {
+  uint64_t seed;        /* +0  served request seed, two's complement */
+  uint64_t position;    /* +8  absolute emitted-token index */
+  float    temperature; /* +16 validated range 0..=2 */
+  float    top_p;       /* +20 validated (0,1]; >= 1.0 means disabled */
+  float    min_p;       /* +24 validated [0,1]; 0.0 means disabled */
+  uint32_t top_k;       /* +28 0 = Option::None (disabled); 1 = greedy;
+                               k > vocab = no-op */
+  uint32_t mask_row;    /* +32 index into the mask arena; 0xFFFFFFFF =
+                               unconstrained */
+  uint32_t flags;       /* +36 DS41RT_V41_SAMPLER_FLAG_* */
+  uint32_t output_row;  /* +40 row index into logits/out_* */
+  float    ln_min_p;    /* +44 HOST-precomputed ln(min_p); -inf when min_p == 0.
+                               Hard requirement: the device never calls logf. */
+  uint32_t reserved0;   /* +48 must be 0 */
+  uint32_t reserved1;   /* +52 must be 0 */
+  uint64_t reserved2;   /* +56 must be 0 */
+} ds41rt_v41_sampler_row_t; /* exactly 64 B */
+
+/* ---- `params` residency ---- */
+/* `params` MUST point at device memory holding `rows` consecutive
+ * `ds41rt_v41_sampler_row_t` blocks: the kernel dereferences
+ * `params[blockIdx.x]` on device. A pageable host address is not
+ * device-addressable under CUDA's documented model, even on a platform whose
+ * driver happens to expose it, so the host must H2D-copy the block first. The
+ * shipped `TargetSamplingWave` uploads into `param_device` and launches that
+ * buffer; the FFI wrapper takes the device buffer separately from the host
+ * slice it validates. */
+
+/* ---- Per-row K1 scratch, 64-byte stride (§11.1) ---- */
+typedef struct ds41rt_v41_sampler_scratch_s {
+  float    max_scaled;        /* +0  max over ALLOWED tokens (stochastic) */
+  float    inv_temperature;   /* +4  1.0f / temperature, exactly as the CPU */
+  uint32_t allowed_count;     /* +8  allowed tokens (0 -> EMPTY_CANDIDATES) */
+  uint32_t survivor_count;    /* +12 allowed tokens with scaled >= min_scaled */
+  uint32_t kth_value_bits;    /* +16 K3, later chunk */
+  uint32_t above_count;       /* +20 K3, later chunk */
+  uint32_t nonfinite_token;   /* +24 lowest offending id, or NO_DETAIL */
+  uint32_t status;            /* +28 one of DS41RT_V41_SAMPLER_STATUS_* */
+  uint32_t status_detail;     /* +32 token id / actual width / NO_DETAIL */
+  uint32_t reserved0;         /* +36 must be 0 */
+  uint64_t reserved1;         /* +40 must be 0 */
+  uint32_t reserved2;         /* +48 must be 0 */
+  uint32_t reserved3;         /* +52 must be 0 */
+  uint64_t reserved4;         /* +56 must be 0 */
+} ds41rt_v41_sampler_scratch_t; /* exactly 64 B */
+
+/* Byte layout of one row's scratch region. Exposed as macros so the Rust
+ * planner and the C ABI test can pin the same numbers. */
+#define DS41RT_V41_SAMPLER_SCRATCH_BYTES 64u
+#define DS41RT_V41_SAMPLER_PARAM_BYTES 64u
+
+/* Number of packed u32 mask words for a vocabulary: `ceil(vocab / 32)` (§5.2).
+ * The host must additionally zero the bits `>= vocab` of the final word before
+ * upload (§5.3 rule 2); every kernel loop is bounded by `vocab` (rule 1), so a
+ * token id `>= vocab` can never be produced (rule 3). */
+static inline size_t ds41rt_v41_sampler_mask_words(size_t vocab) {
+  return (vocab + 31u) / 32u;
+}
+
+/* Apply §5.3 rule 2 to a host mask row in place: clear every bit `>= vocab` of
+ * the final word. `words` must be `ds41rt_v41_sampler_mask_words(vocab)`. */
+static inline void ds41rt_v41_sampler_clear_remainder(uint32_t* words, size_t vocab) {
+  const size_t remainder = vocab % 32u;
+  if (remainder == 0u || vocab == 0u) {
+    return;
+  }
+  words[(vocab - 1u) / 32u] &= (uint32_t{1} << remainder) - 1u;
+}
+
+/* Lower `16 * DS41RT_V41_SAMPLER_ROW_PARAM_OFFSET_<field>` is the field's byte
+ * offset inside `ds41rt_v41_sampler_row_t`; the Rust ABI test pins these. */
+#define DS41RT_V41_SAMPLER_ROW_PARAM_OFFSET_SEED 0u
+#define DS41RT_V41_SAMPLER_ROW_PARAM_OFFSET_POSITION 8u
+#define DS41RT_V41_SAMPLER_ROW_PARAM_OFFSET_TEMPERATURE 16u
+#define DS41RT_V41_SAMPLER_ROW_PARAM_OFFSET_TOP_P 20u
+#define DS41RT_V41_SAMPLER_ROW_PARAM_OFFSET_MIN_P 24u
+#define DS41RT_V41_SAMPLER_ROW_PARAM_OFFSET_TOP_K 28u
+#define DS41RT_V41_SAMPLER_ROW_PARAM_OFFSET_MASK_ROW 32u
+#define DS41RT_V41_SAMPLER_ROW_PARAM_OFFSET_FLAGS 36u
+#define DS41RT_V41_SAMPLER_ROW_PARAM_OFFSET_OUTPUT_ROW 40u
+#define DS41RT_V41_SAMPLER_ROW_PARAM_OFFSET_LN_MIN_P 44u
+#define DS41RT_V41_SAMPLER_ROW_PARAM_OFFSET_RESERVED0 48u
+#define DS41RT_V41_SAMPLER_ROW_PARAM_OFFSET_RESERVED1 52u
+#define DS41RT_V41_SAMPLER_ROW_PARAM_OFFSET_RESERVED2 56u
+
+/* ---- C ABI entry points (§5.4) ----
+ *
+ * `logits` is `rows` contiguous f32 rows of `vocab` values with row stride
+ * `logits_stride` floats (>= vocab). `params` is `rows` 64-byte blocks.
+ * `mask_words` is nullable; when non-null it is `rows * mask_words_per_row`
+ * packed u32 words and `mask_words_per_row` must equal
+ * `ds41rt_v41_sampler_mask_words(vocab)`.
+ *
+ * `out_indices`, `out_status`, `out_status_detail`, `out_scores` and
+ * `scratch` are required; `out_total` and `out_nucleus_count` may be null.
+ * Each is `rows` elements (scratch is `rows * 64` bytes).
+ *
+ * `out_status_detail` reports the offending token id for
+ * `NONFINITE_LOGIT`, the provided word count for `MASK_WIDTH`, and the
+ * `DS41RT_V41_SAMPLER_NO_DETAIL` sentinel otherwise.
+ *
+ * The kernel is graph-capture legal: one CTA per row, intra-CTA
+ * `__syncthreads()` only, no grid sync, no host callback, no per-call
+ * allocation. It must be compiled without `-use_fast_math` and without FTZ.
+ */
+ds41rt_status_t ds41rt_cuda_v41_target_sample_async(
+    const float* logits, size_t rows, size_t vocab, size_t logits_stride,
+    const ds41rt_v41_sampler_row_t* params, const uint32_t* mask_words,
+    size_t mask_words_per_row, uint32_t* out_indices, uint32_t* out_status,
+    uint32_t* out_status_detail, float* out_scores, float* out_total,
+    uint32_t* out_nucleus_count, ds41rt_v41_sampler_scratch_t* scratch,
+    void* cuda_stream);
+ds41rt_status_t ds41rt_cuda_v41_target_sample(
+    const float* logits, size_t rows, size_t vocab, size_t logits_stride,
+    const ds41rt_v41_sampler_row_t* params, const uint32_t* mask_words,
+    size_t mask_words_per_row, uint32_t* out_indices, uint32_t* out_status,
+    uint32_t* out_status_detail, float* out_scores, float* out_total,
+    uint32_t* out_nucleus_count, ds41rt_v41_sampler_scratch_t* scratch);
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
+
+#endif /* DS41RT_V41_SAMPLING_GPU_H */

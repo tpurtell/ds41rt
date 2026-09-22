@@ -8,7 +8,7 @@ use crate::v41_experts::coordinator::NativeTp4Wave;
 use crate::v41_index_lane::IndexLane;
 use crate::v41_requests::{RequestBatch, Requests};
 use crate::v41_target_embedding::TargetEmbeddingWave;
-use crate::v41_target_head::{TargetHeadWave, TargetLogits};
+use crate::v41_target_head::{SampledTargetRows, TargetHeadWave, TargetLogits, TargetSamplingRowRequest};
 use anyhow::{ensure, Context, Result};
 use std::time::{Duration, Instant};
 mod taps;
@@ -53,6 +53,16 @@ impl<'a> RequestAccess<'a> for std::cell::RefCell<&mut Requests<'a>> {
     fn with_requests<T>(&self, operation: impl FnOnce(&Requests<'a>) -> T) -> T {
         operation(&self.borrow())
     }
+}
+
+/// Which head terminal `execute_phase` should run for a decode/verification
+/// pass. The compact greedy lane keeps its own terminal byte-for-byte; the
+/// regular terminal returns the logits for the CPU path; the sampled terminal
+/// runs the v4.1 GPU target-sampler after the head graph.
+enum HeadTerminal<'m> {
+    Regular,
+    Greedy,
+    Sampled { requests: &'m [TargetSamplingRowRequest], masks: Option<&'m [u32]>, mask_words: usize },
 }
 
 #[derive(Default, Debug, PartialEq, Eq)]
@@ -107,6 +117,9 @@ pub(crate) struct TargetPass<'w, 'a> {
     taps: TargetTapWave<'a>,
     engram_timeout: Duration,
     state: State,
+    /// Per-row selections from the last [`HeadTerminal::Sampled`] pass. `None`
+    /// for every other terminal.
+    sampled: Option<SampledTargetRows>,
 }
 impl<'w, 'a> TargetPass<'w, 'a> {
     pub fn set_route_capture(&mut self, enabled: bool) {
@@ -144,6 +157,7 @@ impl<'w, 'a> TargetPass<'w, 'a> {
             taps,
             engram_timeout,
             state: State::Idle,
+            sampled: None,
         })
     }
     /// # Safety
@@ -160,7 +174,7 @@ impl<'w, 'a> TargetPass<'w, 'a> {
         selected: &[usize],
     ) -> Result<TargetLogits<'_>> {
         ensure!(batch.cache()?.stage() == CacheStage::Full, "ordinary target execute requires full phase");
-        unsafe { self.execute_phase(requests, batch, transport, placement, selected, None, None, false).await?; }
+        unsafe { self.execute_phase(requests, batch, transport, placement, selected, None, None, HeadTerminal::Regular).await?; }
         self.head.output()
     }
     /// Execute one full verification while allowing unrelated request commits
@@ -171,26 +185,61 @@ impl<'w, 'a> TargetPass<'w, 'a> {
         transport: &mut NativeTp4Wave<'a>, placement: u64, selected: &[usize],
     ) -> Result<TargetLogits<'_>> {
         ensure!(batch.cache()?.stage() == CacheStage::Full, "shared target execute requires full phase");
-        unsafe { self.execute_phase(requests, batch, transport, placement, selected, None, None, false).await?; }
+        unsafe { self.execute_phase(requests, batch, transport, placement, selected, None, None, HeadTerminal::Regular).await?; }
         self.head.output()
     }
     pub async unsafe fn execute_greedy(&mut self, requests: &Requests<'a>, batch: &mut RequestBatch,
         transport: &mut NativeTp4Wave<'a>, placement: u64, selected: &[usize]) -> Result<Vec<(u32, f32)>> {
         ensure!(batch.cache()?.stage() == CacheStage::Full, "greedy target execute requires full phase");
-        unsafe { self.execute_phase(requests, batch, transport, placement, selected, None, None, true).await?; }
+        unsafe { self.execute_phase(requests, batch, transport, placement, selected, None, None, HeadTerminal::Greedy).await?; }
         self.head.greedy_output()
     }
     pub async unsafe fn execute_shared_greedy(&mut self,
         requests: &std::cell::RefCell<&mut Requests<'a>>, batch: &mut RequestBatch,
         transport: &mut NativeTp4Wave<'a>, placement: u64, selected: &[usize]) -> Result<Vec<(u32, f32)>> {
         ensure!(batch.cache()?.stage() == CacheStage::Full, "shared greedy target execute requires full phase");
-        unsafe { self.execute_phase(requests, batch, transport, placement, selected, None, None, true).await?; }
+        unsafe { self.execute_phase(requests, batch, transport, placement, selected, None, None, HeadTerminal::Greedy).await?; }
         self.head.greedy_output()
+    }
+    /// Run one verification pass and select every row on the device with the
+    /// v4.1 target-sampler. The caller names the per-row parameters and, for
+    /// constrained rows, the packed mask arena; `sampled_rows` then exposes the
+    /// device's choices.
+    pub async unsafe fn execute_sampled(&mut self, requests: &Requests<'a>,
+        batch: &mut RequestBatch, transport: &mut NativeTp4Wave<'a>, placement: u64,
+        selected: &[usize], sampling: &[TargetSamplingRowRequest], masks: Option<&[u32]>,
+        mask_words: usize) -> Result<()> {
+        ensure!(batch.cache()?.stage() == CacheStage::Full, "sampled target execute requires full phase");
+        let terminal = HeadTerminal::Sampled { requests: sampling, masks, mask_words };
+        unsafe { self.execute_phase(requests, batch, transport, placement, selected, None, None, terminal).await?; }
+        ensure!(self.sampled.is_some(), "sampled target pass published no rows");
+        Ok(())
+    }
+    /// The cooperative (independent-lane) twin of [`Self::execute_sampled`].
+    pub async unsafe fn execute_shared_sampled(&mut self,
+        requests: &std::cell::RefCell<&mut Requests<'a>>, batch: &mut RequestBatch,
+        transport: &mut NativeTp4Wave<'a>, placement: u64, selected: &[usize],
+        sampling: &[TargetSamplingRowRequest], masks: Option<&[u32]>, mask_words: usize,
+    ) -> Result<()> {
+        ensure!(batch.cache()?.stage() == CacheStage::Full, "shared sampled target execute requires full phase");
+        let terminal = HeadTerminal::Sampled { requests: sampling, masks, mask_words };
+        unsafe { self.execute_phase(requests, batch, transport, placement, selected, None, None, terminal).await?; }
+        ensure!(self.sampled.is_some(), "shared sampled target pass published no rows");
+        Ok(())
+    }
+    /// Take the device-selected rows published by [`Self::execute_sampled`].
+    pub fn sampled_rows(&mut self) -> Result<SampledTargetRows> {
+        self.sampled.take().context("target pass has no sampled rows")
+    }
+    /// Download full logits for a subset of the sampled rows, in the same order.
+    pub async fn download_sampled_rows(&mut self, rows: &SampledTargetRows,
+        selection: &[usize]) -> Result<Vec<u8>> {
+        self.head.download_sampled_rows(rows, selection).await
     }
     pub async unsafe fn execute_encoder(&mut self, requests: &Requests<'a>, batch: &mut RequestBatch,
         transport: &mut NativeTp4Wave<'a>, placement: u64, suffix: &mut EncoderSuffix<'a>) -> Result<()> {
         ensure!(batch.cache()?.stage() == CacheStage::Encoder, "encoder execute phase differs");
-        unsafe { self.execute_phase(requests, batch, transport, placement, &[], Some(suffix), None, false).await }
+        unsafe { self.execute_phase(requests, batch, transport, placement, &[], Some(suffix), None, HeadTerminal::Regular).await }
     }
     pub async unsafe fn execute_encoder_replay(
         &mut self,
@@ -213,7 +262,7 @@ impl<'w, 'a> TargetPass<'w, 'a> {
                 &[],
                 Some(suffix),
                 None,
-                false,
+                HeadTerminal::Regular,
             )
             .await
         }
@@ -240,7 +289,7 @@ impl<'w, 'a> TargetPass<'w, 'a> {
                 selected,
                 None,
                 Some(encoder),
-                false,
+                HeadTerminal::Regular,
             )
             .await?;
         }
@@ -248,7 +297,8 @@ impl<'w, 'a> TargetPass<'w, 'a> {
     }
     async unsafe fn execute_phase(&mut self, requests: &impl RequestAccess<'a>, batch: &mut RequestBatch,
         transport: &mut NativeTp4Wave<'a>, placement: u64, selected: &[usize],
-        mut suffix: Option<&mut EncoderSuffix<'a>>, encoder: Option<&BlockOutput<'_>>, greedy: bool) -> Result<()> {
+        mut suffix: Option<&mut EncoderSuffix<'a>>, encoder: Option<&BlockOutput<'_>>,
+        terminal: HeadTerminal<'_>) -> Result<()> {
         requests.with_requests(|requests| requests.validate(batch))?;
         let id = batch.cache()?.identity();
         let rows = batch.cache()?.positions().len();
@@ -275,6 +325,7 @@ impl<'w, 'a> TargetPass<'w, 'a> {
             "invalid target head row selection"
         );
         self.state.begin()?;
+        self.sampled = None;
         let mut guard = BatchGuard {
             batch,
             completed: false,
@@ -403,12 +454,26 @@ impl<'w, 'a> TargetPass<'w, 'a> {
         } else {
             self.taps.output(guard.batch.cache()?)?;
             let output = self.lane.output()?;
-            if greedy {
-                unsafe { self.head.execute_block_greedy(&output, selected, requests.cooperative_completion()).await?; }
-            } else if requests.cooperative_completion() {
-                unsafe { self.head.execute_block_cooperative(&output, selected).await?; }
-            } else {
-                unsafe { self.head.execute_block(&output, selected)?; }
+            match terminal {
+                HeadTerminal::Greedy => {
+                    unsafe { self.head.execute_block_greedy(&output, selected, requests.cooperative_completion()).await?; }
+                }
+                HeadTerminal::Regular => {
+                    if requests.cooperative_completion() {
+                        unsafe { self.head.execute_block_cooperative(&output, selected).await?; }
+                    } else {
+                        unsafe { self.head.execute_block(&output, selected)?; }
+                    }
+                }
+                HeadTerminal::Sampled { requests: rows, masks, mask_words } => {
+                    let sampled = unsafe {
+                        self.head
+                            .execute_block_sampled(&output, selected, rows, masks, mask_words,
+                                requests.cooperative_completion())
+                            .await?
+                    };
+                    self.sampled = Some(sampled);
+                }
             }
             self.state = State::Ready(id);
         }
@@ -501,6 +566,7 @@ impl<'w, 'a> TargetPass<'w, 'a> {
     /// Call only after execution future/borrowed outputs and transport consumers
     /// have been dropped. Request admission survives discarded private proposals.
     pub fn discard(&mut self, batch: &mut RequestBatch) -> Result<()> {
+        self.sampled = None;
         batch.cancel();
         self.taps.reset();
         self.state = State::Running;

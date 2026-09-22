@@ -134,10 +134,20 @@ async fn lane<'a, P: VerificationTarget<'a>, C: DraftChain<'a>>(lane: usize, lib
                         request.constraint.is_none() && request.job.sampling.is_greedy()
                     });
                 drop(active_borrow);
+                // An all-greedy lane round (unconstrained and/or constrained)
+                // is selected on the device; a round with any stochastic member
+                // stays entirely on the existing CPU path.
+                let mut source = SampleSource::CpuRecomputed;
                 let next = if compact {
                     BatchScores::from_greedy(unsafe {
                         pass.execute_shared_greedy(requests, current, transport, 0, &selected).await?
                     })?
+                } else if use_sampled_terminal(P::SUPPORTS_SAMPLED_TERMINAL,
+                    round_is_fully_greedy(&active.borrow(), &members)) {
+                    let round = build_sampling_round(&active.borrow(), &members, &inputs,
+                        tracing::enabled!(target: "ds41rt::logit_trace", tracing::Level::DEBUG))?;
+                    source = SampleSource::DeviceSelected;
+                    execute_shared_sampled_rows(pass, requests, current, transport, &round).await?
                 } else {
                     unsafe { pass.execute_shared(requests, current, transport, 0, &selected).await?; }
                     BatchScores::new(pass.download_logits(current, &selected).await?)?
@@ -147,14 +157,16 @@ async fn lane<'a, P: VerificationTarget<'a>, C: DraftChain<'a>>(lane: usize, lib
                     requests=members.len(), rows=selected.len(), prepared_us, verify_us,
                     "verification round cost");
                 let mut decision = prepare_commit_lane(lane, &requests.borrow(),
-                    &active.borrow(), &members, &inputs, &next, draft.borrow().as_deref(), verify_us)?;
+                    &active.borrow(), &members, &inputs, &next, draft.borrow().as_deref(),
+                    verify_us, source)?;
                 if !decision.frontier_downloads.is_empty() {
-                    let rows: Vec<_> = decision.frontier_downloads.iter().map(|&(_, row)| row).collect();
+                    let rows: Vec<_> = decision.frontier_downloads.iter().map(|&(_, row, _)| row).collect();
                     let bytes = pass.download_logits(batch.as_ref().unwrap(), &rows).await?;
                     ensure!(bytes.len() == rows.len() * scores::ROW_BYTES, "retained frontier download extent differs");
-                    for ((member, row), bytes) in decision.frontier_downloads.drain(..)
+                    for ((member, row, mask), bytes) in decision.frontier_downloads.drain(..)
                         .zip(bytes.chunks_exact(scores::ROW_BYTES)) {
-                        decision.next_after_commit[member] = Some(next.retain_downloaded(row, bytes)?);
+                        decision.next_after_commit[member] =
+                            Some(next.retain_downloaded_with(row, bytes, mask.as_deref())?);
                     }
                 }
                 let committed: Result<()> = async {

@@ -46,3 +46,8 @@ reports/quantization/router-replay-inputs/*.bin
 run-agent.sh
 native/build-nvfp4-share/
 runs/
+
+# Local native build trees are machine-specific and never committable.
+native/build-sampling/
+# SQLite WAL/SHM sidecars of local benchmark/telemetry databases.
+data/*.sqlite-*

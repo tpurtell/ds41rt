@@ -72,6 +72,110 @@ pub const DS41RT_ROUTE_SHARD_LOCAL_F32: u32 = 1;
 pub const DS41RT_ROUTE_SHARD_LOCAL_BF16: u32 = 2;
 pub const DS41RT_CUDA_ROUTER_TOPK_MAX_K: usize = 64;
 pub const DS41RT_CUDA_SAMPLE_TOPK_MAX_K: usize = 64;
+
+/// Per-row status codes of the v4.1 GPU target-sampler
+/// (`native/cuda/kernels/v41_sampling_gpu.h` §5.4). The integer values are the
+/// device ABI, not an enum: they are what `out_status` carries.
+pub const DS41RT_V41_SAMPLER_STATUS_OK: u32 = 0;
+pub const DS41RT_V41_SAMPLER_STATUS_EMPTY_CANDIDATES: u32 = 1;
+pub const DS41RT_V41_SAMPLER_STATUS_NONFINITE_LOGIT: u32 = 2;
+pub const DS41RT_V41_SAMPLER_STATUS_INVALID_TEMPERATURE: u32 = 3;
+pub const DS41RT_V41_SAMPLER_STATUS_MASK_WIDTH: u32 = 4;
+pub const DS41RT_V41_SAMPLER_STATUS_INTERNAL: u32 = 5;
+
+/// `out_status_detail` sentinel for "no detail". Token 0 is a real token, so
+/// the device cannot use 0 as the absent marker; the host normalizes this to 0
+/// before it is observable (approved design deviation, see the header).
+pub const DS41RT_V41_SAMPLER_NO_DETAIL: u32 = u32::MAX;
+
+/// Per-row flags of `ds41rt_v41_sampler_row_t`.
+pub const DS41RT_V41_SAMPLER_FLAG_GREEDY: u32 = 0x1;
+pub const DS41RT_V41_SAMPLER_FLAG_DIAGNOSE: u32 = 0x2;
+/// An unconstrained row: the kernel treats every token `< vocab` as allowed and
+/// does not read the mask arena (approved redefinition of design §5.1 bit2).
+pub const DS41RT_V41_SAMPLER_FLAG_NO_MASK: u32 = 0x4;
+pub const DS41RT_V41_SAMPLER_FLAG_ORACLE_CROSSCHECK: u32 = 0x8;
+/// Strict whole-row finiteness for a row that would otherwise take the
+/// permissive stochastic branch. Greedy rows are strict unconditionally; the
+/// host sets this bit on greedy and constrained rows only, and the validator
+/// rejects it on a row that is neither.
+pub const DS41RT_V41_SAMPLER_FLAG_STRICT_FINITE: u32 = 0x10;
+
+/// Every flag bit this chunk's ABI defines.
+pub const DS41RT_V41_SAMPLER_FLAG_KNOWN_MASK: u32 = DS41RT_V41_SAMPLER_FLAG_GREEDY
+    | DS41RT_V41_SAMPLER_FLAG_DIAGNOSE
+    | DS41RT_V41_SAMPLER_FLAG_NO_MASK
+    | DS41RT_V41_SAMPLER_FLAG_ORACLE_CROSSCHECK
+    | DS41RT_V41_SAMPLER_FLAG_STRICT_FINITE;
+
+/// Per-row K1 scratch stride in bytes (design §11.1).
+pub const DS41RT_V41_SAMPLER_SCRATCH_BYTES: usize = 64;
+
+/// Size of the per-row parameter block in bytes (design §5.1).
+pub const DS41RT_V41_SAMPLER_PARAM_BYTES: usize = 64;
+
+/// 64-byte per-row parameter block, exactly as declared in
+/// `native/cuda/kernels/v41_sampling_gpu.h`. Field order, sizes and natural
+/// alignment are pinned by tests; `#[repr(C)]` is the ABI.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Ds41rtV41SamplerRow {
+    pub seed: u64,
+    pub position: u64,
+    pub temperature: f32,
+    pub top_p: f32,
+    pub min_p: f32,
+    pub top_k: u32,
+    pub mask_row: u32,
+    pub flags: u32,
+    pub output_row: u32,
+    /// Host-precomputed `min_p.ln()`; the device never calls `logf`.
+    pub ln_min_p: f32,
+    pub reserved0: u32,
+    pub reserved1: u32,
+    pub reserved2: u64,
+}
+
+impl Default for Ds41rtV41SamplerRow {
+    fn default() -> Self {
+        Self {
+            seed: 0,
+            position: 0,
+            temperature: 0.0,
+            top_p: 1.0,
+            min_p: 0.0,
+            top_k: 0,
+            mask_row: DS41RT_V41_SAMPLER_NO_MASK_ROW,
+            flags: 0,
+            output_row: 0,
+            ln_min_p: f32::NEG_INFINITY,
+            reserved0: 0,
+            reserved1: 0,
+            reserved2: 0,
+        }
+    }
+}
+
+/// `mask_row` sentinel for an unconstrained row.
+pub const DS41RT_V41_SAMPLER_NO_MASK_ROW: u32 = u32::MAX;
+
+/// Packed mask words for a vocabulary: `ceil(vocab / 32)` (design §5.2).
+pub const fn ds41rt_v41_sampler_mask_words(vocab: usize) -> usize {
+    vocab.div_ceil(32)
+}
+
+/// Clear every mask bit `>= vocab` in the final word before upload
+/// (design §5.3 rule 2). A no-op when the vocabulary is a multiple of 32.
+pub fn ds41rt_v41_sampler_clear_remainder(words: &mut [u32], vocab: usize) {
+    let remainder = vocab % 32;
+    if remainder == 0 || vocab == 0 {
+        return;
+    }
+    if let Some(last) = words.get_mut((vocab - 1) / 32) {
+        *last &= (1u32 << remainder) - 1;
+    }
+}
+
 pub const DS41RT_CUDA_MLA_FP8_DS_NOPE_VALUES: usize = 512;
 pub const DS41RT_CUDA_MLA_FP8_DS_ROPE_VALUES: usize = 64;
 pub const DS41RT_CUDA_MLA_FP8_DS_PROJECTED_VALUES: usize =
@@ -2645,6 +2749,41 @@ type CudaLmHeadSampleTopKToppBf16CubAsyncFn = unsafe extern "C" fn(
     temperature: f32,
     top_k: usize,
     top_p: f32,
+    cuda_stream: *mut c_void,
+) -> Ds41rtStatus;
+/// K1 entry points of the v4.1 GPU target-sampler
+/// (`native/cuda/kernels/v41_sampling_gpu.h`).
+type CudaV41TargetSampleFn = unsafe extern "C" fn(
+    logits: *const f32,
+    rows: usize,
+    vocab: usize,
+    logits_stride: usize,
+    params: *const Ds41rtV41SamplerRow,
+    mask_words: *const u32,
+    mask_words_per_row: usize,
+    out_indices: *mut u32,
+    out_status: *mut u32,
+    out_status_detail: *mut u32,
+    out_scores: *mut f32,
+    out_total: *mut f32,
+    out_nucleus_count: *mut u32,
+    scratch: *mut c_void,
+) -> Ds41rtStatus;
+type CudaV41TargetSampleAsyncFn = unsafe extern "C" fn(
+    logits: *const f32,
+    rows: usize,
+    vocab: usize,
+    logits_stride: usize,
+    params: *const Ds41rtV41SamplerRow,
+    mask_words: *const u32,
+    mask_words_per_row: usize,
+    out_indices: *mut u32,
+    out_status: *mut u32,
+    out_status_detail: *mut u32,
+    out_scores: *mut f32,
+    out_total: *mut f32,
+    out_nucleus_count: *mut u32,
+    scratch: *mut c_void,
     cuda_stream: *mut c_void,
 ) -> Ds41rtStatus;
 type CudaLogitsArgmaxF32Fn = unsafe extern "C" fn(
@@ -14291,6 +14430,153 @@ impl NativeLibrary {
         self.status_to_result("ds41rt_cuda_lm_head_sample_topk_topp_bf16_cub_async", status)
     }
 
+    /// Launch the v4.1 GPU target-sampler's K1 on `cuda_stream` and return
+    /// immediately. Buffers must follow `v41_sampling_gpu.h`; every buffer is
+    /// validated first, mirroring `validate_logits_argmax_buffers`.
+    ///
+    /// `params` is the host-side parameter block used for validation;
+    /// `params_device` is the device allocation K1 actually reads, one 64-byte
+    /// block per row. Passing a host pointer as `params_device` is not
+    /// supported: a pageable host address is not device-addressable, even where
+    /// a given driver happens to expose it.
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn cuda_v41_target_sample_async(
+        &self,
+        logits: Ds41rtDeviceBuffer,
+        rows: usize,
+        vocab: usize,
+        logits_stride: usize,
+        params: &[Ds41rtV41SamplerRow],
+        params_device: Ds41rtDeviceBuffer,
+        mask_words: Option<Ds41rtDeviceBuffer>,
+        mask_words_per_row: usize,
+        out_indices: Ds41rtDeviceBuffer,
+        out_status: Ds41rtDeviceBuffer,
+        out_status_detail: Ds41rtDeviceBuffer,
+        out_scores: Ds41rtDeviceBuffer,
+        out_total: Option<Ds41rtDeviceBuffer>,
+        out_nucleus_count: Option<Ds41rtDeviceBuffer>,
+        scratch: Ds41rtDeviceBuffer,
+        cuda_stream: *mut c_void,
+    ) -> Result<()> {
+        const NAME: &str = "ds41rt_cuda_v41_target_sample_async";
+        validate_v41_sampling_buffers(
+            NAME,
+            logits,
+            rows,
+            vocab,
+            logits_stride,
+            params,
+            mask_words,
+            mask_words_per_row,
+            out_indices,
+            out_status,
+            out_status_detail,
+            out_scores,
+            out_total,
+            out_nucleus_count,
+            scratch,
+        )?;
+        validate_v41_params_device(NAME, params_device, rows)?;
+        let kernel_fn: Symbol<CudaV41TargetSampleAsyncFn> =
+            unsafe { self.lib.get(b"ds41rt_cuda_v41_target_sample_async")? };
+        let status = unsafe {
+            kernel_fn(
+                logits.ptr.cast::<f32>() as *const f32,
+                rows,
+                vocab,
+                logits_stride,
+                params_device.ptr.cast::<Ds41rtV41SamplerRow>() as *const Ds41rtV41SamplerRow,
+                mask_words
+                    .map(|buffer| buffer.ptr.cast::<u32>() as *const u32)
+                    .unwrap_or(std::ptr::null()),
+                mask_words_per_row,
+                out_indices.ptr.cast::<u32>(),
+                out_status.ptr.cast::<u32>(),
+                out_status_detail.ptr.cast::<u32>(),
+                out_scores.ptr.cast::<f32>(),
+                out_total
+                    .map(|buffer| buffer.ptr.cast::<f32>())
+                    .unwrap_or(std::ptr::null_mut()),
+                out_nucleus_count
+                    .map(|buffer| buffer.ptr.cast::<u32>())
+                    .unwrap_or(std::ptr::null_mut()),
+                scratch.ptr,
+                cuda_stream,
+            )
+        };
+        self.status_to_result(NAME, status)
+    }
+
+    /// Blocking form of [`Self::cuda_v41_target_sample_async`], matching the
+    /// synchronizing convention of `sampling.cu`'s `*_f32` entry points.
+    #[allow(clippy::too_many_arguments)]
+    pub fn cuda_v41_target_sample(
+        &self,
+        logits: Ds41rtDeviceBuffer,
+        rows: usize,
+        vocab: usize,
+        logits_stride: usize,
+        params: &[Ds41rtV41SamplerRow],
+        params_device: Ds41rtDeviceBuffer,
+        mask_words: Option<Ds41rtDeviceBuffer>,
+        mask_words_per_row: usize,
+        out_indices: Ds41rtDeviceBuffer,
+        out_status: Ds41rtDeviceBuffer,
+        out_status_detail: Ds41rtDeviceBuffer,
+        out_scores: Ds41rtDeviceBuffer,
+        out_total: Option<Ds41rtDeviceBuffer>,
+        out_nucleus_count: Option<Ds41rtDeviceBuffer>,
+        scratch: Ds41rtDeviceBuffer,
+    ) -> Result<()> {
+        const NAME: &str = "ds41rt_cuda_v41_target_sample";
+        validate_v41_sampling_buffers(
+            NAME,
+            logits,
+            rows,
+            vocab,
+            logits_stride,
+            params,
+            mask_words,
+            mask_words_per_row,
+            out_indices,
+            out_status,
+            out_status_detail,
+            out_scores,
+            out_total,
+            out_nucleus_count,
+            scratch,
+        )?;
+        validate_v41_params_device(NAME, params_device, rows)?;
+        let kernel_fn: Symbol<CudaV41TargetSampleFn> =
+            unsafe { self.lib.get(b"ds41rt_cuda_v41_target_sample")? };
+        let status = unsafe {
+            kernel_fn(
+                logits.ptr.cast::<f32>() as *const f32,
+                rows,
+                vocab,
+                logits_stride,
+                params_device.ptr.cast::<Ds41rtV41SamplerRow>() as *const Ds41rtV41SamplerRow,
+                mask_words
+                    .map(|buffer| buffer.ptr.cast::<u32>() as *const u32)
+                    .unwrap_or(std::ptr::null()),
+                mask_words_per_row,
+                out_indices.ptr.cast::<u32>(),
+                out_status.ptr.cast::<u32>(),
+                out_status_detail.ptr.cast::<u32>(),
+                out_scores.ptr.cast::<f32>(),
+                out_total
+                    .map(|buffer| buffer.ptr.cast::<f32>())
+                    .unwrap_or(std::ptr::null_mut()),
+                out_nucleus_count
+                    .map(|buffer| buffer.ptr.cast::<u32>())
+                    .unwrap_or(std::ptr::null_mut()),
+                scratch.ptr,
+            )
+        };
+        self.status_to_result(NAME, status)
+    }
+
     pub fn cuda_logits_argmax_f32(
         &self,
         logits: Ds41rtDeviceBuffer,
@@ -17832,6 +18118,209 @@ fn validate_lm_head_sample_topk_topp_bf16_cub_buffers(
     )
 }
 
+/// Validate the buffers and per-row parameter block for the v4.1 GPU
+/// target-sampler (design §5.4) before a launch.
+///
+/// Mirrors `TargetSamplingParams::new` (`target_sampling.rs:108-134`) per row
+/// and the buffer-extent checks of `validate_logits_argmax_buffers`. Device
+/// pointers are passed as `Ds41rtDeviceBuffer` values whose `ptr` field is the
+/// raw address, so the same code validates real device allocations and the
+/// synthetic addresses used by the FFI tests.
+#[allow(clippy::too_many_arguments)]
+/// The kernel dereferences the parameter block on device, so the launched
+/// pointer must be a device allocation of one 64-byte block per row. The host
+/// slice the wrapper also takes is the validator's input and is never launched.
+fn validate_v41_params_device(context: &str, params_device: Ds41rtDeviceBuffer,
+    rows: usize,
+) -> Result<()> {
+    if params_device.ptr.is_null() {
+        anyhow::bail!("{context} params must point at device memory");
+    }
+    let needed = rows
+        .checked_mul(DS41RT_V41_SAMPLER_PARAM_BYTES)
+        .context("v4.1 sampler parameter extent overflow")?;
+    if params_device.bytes < needed {
+        anyhow::bail!(
+            "{context} params device buffer holds {} bytes, need {needed}",
+            params_device.bytes
+        );
+    }
+    Ok(())
+}
+
+fn validate_v41_sampling_buffers(
+    context: &str,
+    logits: Ds41rtDeviceBuffer,
+    rows: usize,
+    vocab: usize,
+    logits_stride: usize,
+    params: &[Ds41rtV41SamplerRow],
+    mask_words: Option<Ds41rtDeviceBuffer>,
+    mask_words_per_row: usize,
+    out_indices: Ds41rtDeviceBuffer,
+    out_status: Ds41rtDeviceBuffer,
+    out_status_detail: Ds41rtDeviceBuffer,
+    out_scores: Ds41rtDeviceBuffer,
+    out_total: Option<Ds41rtDeviceBuffer>,
+    out_nucleus_count: Option<Ds41rtDeviceBuffer>,
+    scratch: Ds41rtDeviceBuffer,
+) -> Result<()> {
+    if rows == 0 {
+        anyhow::bail!("{context} rows must be positive");
+    }
+    if vocab == 0 {
+        anyhow::bail!("{context} vocab must be positive");
+    }
+    if vocab > u32::MAX as usize {
+        anyhow::bail!("{context} vocab must fit in u32 output indices");
+    }
+    if logits_stride < vocab {
+        anyhow::bail!(
+            "{context} logits_stride {logits_stride} is smaller than vocab {vocab}"
+        );
+    }
+    if params.len() != rows {
+        anyhow::bail!(
+            "{context} params must hold one block per row: have {}, need {rows}",
+            params.len()
+        );
+    }
+    let expected_words = vocab.div_ceil(32);
+    match (mask_words, mask_words_per_row) {
+        (Some(_), 0) => anyhow::bail!("{context} mask_words require a positive mask_words_per_row"),
+        (None, 0) => {}
+        (None, provided) => anyhow::bail!(
+            "{context} mask_words_per_row must be 0 when no mask buffer is supplied, got {provided}"
+        ),
+        (Some(_), provided) if provided != expected_words => anyhow::bail!(
+            "{context} mask_words_per_row must equal ceil(vocab/32) = {expected_words}, got {provided}"
+        ),
+        (Some(_), _) => {}
+    }
+    for (row, params) in params.iter().enumerate() {
+        if !params.temperature.is_finite() || !(0.0..=2.0).contains(&params.temperature) {
+            anyhow::bail!(
+                "{context} row {row} temperature must be finite and in [0, 2], got {}",
+                params.temperature
+            );
+        }
+        if !params.top_p.is_finite() || params.top_p <= 0.0 || params.top_p > 1.0 {
+            anyhow::bail!(
+                "{context} row {row} top_p must be finite and in (0, 1], got {}",
+                params.top_p
+            );
+        }
+        if !params.min_p.is_finite() || !(0.0..=1.0).contains(&params.min_p) {
+            anyhow::bail!(
+                "{context} row {row} min_p must be finite and in [0, 1], got {}",
+                params.min_p
+            );
+        }
+        // The device never calls `logf`; `ln_min_p` is the host-precomputed
+        // threshold. `min_p == 0` must ship `-inf`, otherwise a row silently
+        // gets a finite min_p threshold the caller did not ask for.
+        if params.min_p == 0.0 {
+            if !params.ln_min_p.is_infinite() || params.ln_min_p > 0.0 {
+                anyhow::bail!(
+                    "{context} row {row} min_p is 0, so ln_min_p must be -inf, got {}",
+                    params.ln_min_p
+                );
+            }
+        } else {
+            let expected = params.min_p.ln();
+            if !params.ln_min_p.is_finite() || params.ln_min_p != expected {
+                anyhow::bail!(
+                    "{context} row {row} ln_min_p must be f32::ln(min_p) = {expected}, got {}",
+                    params.ln_min_p
+                );
+            }
+        }
+        if params.reserved0 != 0 || params.reserved1 != 0 || params.reserved2 != 0 {
+            anyhow::bail!("{context} row {row} reserved fields must be zero");
+        }
+        if (params.flags & !DS41RT_V41_SAMPLER_FLAG_KNOWN_MASK) != 0 {
+            anyhow::bail!(
+                "{context} row {row} flags contain unknown bits: {:#x}",
+                params.flags
+            );
+        }
+        // `STRICT_FINITE` opts a row into the whole-row finiteness check the
+        // greedy and constrained paths always perform. It is meaningless for a
+        // plainly stochastic, unconstrained row, and the host does not set it
+        // there: requiring greedy or a real mask keeps the header, the host, the
+        // kernel and this validator telling the same story.
+        if (params.flags & DS41RT_V41_SAMPLER_FLAG_STRICT_FINITE) != 0 {
+            let greedy = params.temperature < 1e-5
+                || params.top_k == 1
+                || (params.flags & DS41RT_V41_SAMPLER_FLAG_GREEDY) != 0;
+            let masked = (params.flags & DS41RT_V41_SAMPLER_FLAG_NO_MASK) == 0;
+            if !greedy && !masked {
+                anyhow::bail!(
+                    "{context} row {row} sets STRICT_FINITE but is neither greedy nor masked"
+                );
+            }
+        }
+        if params.output_row as usize >= rows {
+            anyhow::bail!(
+                "{context} row {row} output_row {} is outside the {rows}-row output",
+                params.output_row
+            );
+        }
+        if (params.flags & DS41RT_V41_SAMPLER_FLAG_NO_MASK) != 0 {
+            // A row marked unconstrained must say so in `mask_row`: a caller
+            // that set a real index would believe the row is constrained while
+            // the kernel ignores the mask.
+            if params.mask_row != DS41RT_V41_SAMPLER_NO_MASK_ROW {
+                anyhow::bail!(
+                    "{context} row {row} is unconstrained, so mask_row must be {:#x}, got {:#x}",
+                    DS41RT_V41_SAMPLER_NO_MASK_ROW,
+                    params.mask_row
+                );
+            }
+        } else {
+            if mask_words.is_none() {
+                anyhow::bail!(
+                    "{context} row {row} is masked but no mask buffer was supplied"
+                );
+            }
+            let arena_row = params.mask_row as usize;
+            if arena_row >= rows {
+                anyhow::bail!(
+                    "{context} row {row} mask_row {arena_row} is outside the {rows}-row mask arena"
+                );
+            }
+        }
+    }
+    let logits_values = checked_row_values(&format!("{context} logits"), rows, logits_stride)?;
+    validate_f32_buffer_values(&format!("{context} logits"), logits, logits_values)?;
+    if let Some(mask_words) = mask_words {
+        let values = checked_row_values(
+            &format!("{context} mask_words"),
+            rows,
+            mask_words_per_row,
+        )?;
+        validate_u32_buffer_values(&format!("{context} mask_words"), mask_words, values)?;
+    }
+    validate_u32_buffer_values(&format!("{context} out_indices"), out_indices, rows)?;
+    validate_u32_buffer_values(&format!("{context} out_status"), out_status, rows)?;
+    validate_u32_buffer_values(&format!("{context} out_status_detail"), out_status_detail, rows)?;
+    validate_f32_buffer_values(&format!("{context} out_scores"), out_scores, rows)?;
+    if let Some(out_total) = out_total {
+        validate_f32_buffer_values(&format!("{context} out_total"), out_total, rows)?;
+    }
+    if let Some(out_nucleus_count) = out_nucleus_count {
+        validate_u32_buffer_values(
+            &format!("{context} out_nucleus_count"),
+            out_nucleus_count,
+            rows,
+        )?;
+    }
+    let scratch_bytes = rows
+        .checked_mul(DS41RT_V41_SAMPLER_SCRATCH_BYTES)
+        .with_context(|| format!("{context} scratch byte count overflows usize"))?;
+    validate_device_buffer_bytes(&format!("{context} scratch"), scratch, scratch_bytes)
+}
+
 fn validate_logits_argmax_buffers(
     context: &str,
     logits: Ds41rtDeviceBuffer,
@@ -18037,6 +18526,40 @@ mod tests {
         Ok(Some(library))
     }
 
+    /// Load the native library for a test that must actually run device code.
+    ///
+    /// Unlike [`load_test_library`] this never skips: a test whose entire point
+    /// is a device/CPU comparison must fail when no library is present, not pass
+    /// without running. `DS41RT_NATIVE_LIB` names a local build (how this work
+    /// was verified); without it the default `native/build/` path must exist.
+    fn load_device_test_library() -> Result<NativeLibrary> {
+        let path = match std::env::var_os("DS41RT_NATIVE_LIB") {
+            Some(explicit) => {
+                let path = std::path::PathBuf::from(explicit);
+                anyhow::ensure!(
+                    path.is_file(),
+                    "DS41RT_NATIVE_LIB points at {} which does not exist",
+                    path.display()
+                );
+                path
+            }
+            None => {
+                let path = native_library_path().context(
+                    "the v4.1 sampler device test needs a native library; build native/ or set \
+                     DS41RT_NATIVE_LIB to a libds41rt_native.so",
+                )?;
+                anyhow::ensure!(
+                    path.is_file(),
+                    "the v4.1 sampler device test needs {} to exist",
+                    path.display()
+                );
+                path
+            }
+        };
+        let library = unsafe { NativeLibrary::load(path)? };
+        Ok(library)
+    }
+
     fn synthetic_device_buffer(address: usize, bytes: usize) -> Ds41rtDeviceBuffer {
         Ds41rtDeviceBuffer {
             ptr: address as *mut c_void,
@@ -18044,6 +18567,493 @@ mod tests {
             device_id: 0,
             flags: 0,
         }
+    }
+
+    /* ---- v4.1 GPU target-sampler: ABI pin + validator ---- */
+
+    /// The device ABI is a 64-byte struct with natural alignment. These offsets
+    /// are the design's §5.1 table; a field reorder or a size change must fail
+    /// here before it can silently corrupt a launch.
+    #[test]
+    fn v41_sampler_row_abi_layout_is_pinned() {
+        use std::mem::{align_of, offset_of, size_of};
+        assert_eq!(size_of::<Ds41rtV41SamplerRow>(), 64);
+        assert_eq!(DS41RT_V41_SAMPLER_PARAM_BYTES, 64);
+        assert_eq!(DS41RT_V41_SAMPLER_SCRATCH_BYTES, 64);
+        assert_eq!(align_of::<Ds41rtV41SamplerRow>(), 8);
+        assert_eq!(offset_of!(Ds41rtV41SamplerRow, seed), 0);
+        assert_eq!(offset_of!(Ds41rtV41SamplerRow, position), 8);
+        assert_eq!(offset_of!(Ds41rtV41SamplerRow, temperature), 16);
+        assert_eq!(offset_of!(Ds41rtV41SamplerRow, top_p), 20);
+        assert_eq!(offset_of!(Ds41rtV41SamplerRow, min_p), 24);
+        assert_eq!(offset_of!(Ds41rtV41SamplerRow, top_k), 28);
+        assert_eq!(offset_of!(Ds41rtV41SamplerRow, mask_row), 32);
+        assert_eq!(offset_of!(Ds41rtV41SamplerRow, flags), 36);
+        assert_eq!(offset_of!(Ds41rtV41SamplerRow, output_row), 40);
+        assert_eq!(offset_of!(Ds41rtV41SamplerRow, ln_min_p), 44);
+        assert_eq!(offset_of!(Ds41rtV41SamplerRow, reserved0), 48);
+        assert_eq!(offset_of!(Ds41rtV41SamplerRow, reserved1), 52);
+        assert_eq!(offset_of!(Ds41rtV41SamplerRow, reserved2), 56);
+        // The documented flag bits and status codes are part of the ABI too.
+        assert_eq!(DS41RT_V41_SAMPLER_FLAG_GREEDY, 0x1);
+        assert_eq!(DS41RT_V41_SAMPLER_FLAG_DIAGNOSE, 0x2);
+        assert_eq!(DS41RT_V41_SAMPLER_FLAG_NO_MASK, 0x4);
+        assert_eq!(DS41RT_V41_SAMPLER_FLAG_ORACLE_CROSSCHECK, 0x8);
+        assert_eq!(DS41RT_V41_SAMPLER_FLAG_STRICT_FINITE, 0x10);
+        assert_eq!(DS41RT_V41_SAMPLER_STATUS_OK, 0);
+        assert_eq!(DS41RT_V41_SAMPLER_STATUS_EMPTY_CANDIDATES, 1);
+        assert_eq!(DS41RT_V41_SAMPLER_STATUS_NONFINITE_LOGIT, 2);
+        assert_eq!(DS41RT_V41_SAMPLER_STATUS_INVALID_TEMPERATURE, 3);
+        assert_eq!(DS41RT_V41_SAMPLER_STATUS_MASK_WIDTH, 4);
+        assert_eq!(DS41RT_V41_SAMPLER_STATUS_INTERNAL, 5);
+        assert_eq!(DS41RT_V41_SAMPLER_NO_DETAIL, u32::MAX);
+        assert_eq!(DS41RT_V41_SAMPLER_NO_MASK_ROW, u32::MAX);
+        assert_eq!(DS41RT_V41_SAMPLER_FLAG_KNOWN_MASK, 0x1F);
+        // A default block is a valid unconstrained greedy row.
+        let default = Ds41rtV41SamplerRow::default();
+        assert_eq!(default.flags, 0);
+        assert_eq!(default.mask_row, DS41RT_V41_SAMPLER_NO_MASK_ROW);
+        assert!(default.ln_min_p.is_infinite() && default.ln_min_p < 0.0);
+    }
+
+    /// `ceil(vocab/32)` and the §5.3 remainder rule, pinned on the vocabularies
+    /// the design names plus the official checkpoint.
+    #[test]
+    fn v41_sampler_mask_width_and_remainder_rule() {
+        assert_eq!(ds41rt_v41_sampler_mask_words(1), 1);
+        assert_eq!(ds41rt_v41_sampler_mask_words(32), 1);
+        assert_eq!(ds41rt_v41_sampler_mask_words(33), 2);
+        assert_eq!(ds41rt_v41_sampler_mask_words(100), 4);
+        assert_eq!(ds41rt_v41_sampler_mask_words(127), 4);
+        assert_eq!(ds41rt_v41_sampler_mask_words(129_280), 4_040);
+        assert_eq!(ds41rt_v41_sampler_mask_words(129_281), 4_041);
+
+        // A checkpoint-width vocabulary has no remainder: leaving the final word
+        // alone is the whole rule.
+        let mut aligned = vec![u32::MAX; 1];
+        ds41rt_v41_sampler_clear_remainder(&mut aligned, 32);
+        assert_eq!(aligned, vec![u32::MAX]);
+
+        // vocab 33: bit 0 of the final word is the first out-of-range bit.
+        let mut words = vec![u32::MAX; 2];
+        ds41rt_v41_sampler_clear_remainder(&mut words, 33);
+        assert_eq!(words, vec![u32::MAX, 1]);
+
+        // vocab 127: 31 real bits in word 3, so only bit 31 is cleared.
+        let mut words = vec![u32::MAX; 4];
+        ds41rt_v41_sampler_clear_remainder(&mut words, 127);
+        assert_eq!(words, vec![u32::MAX, u32::MAX, u32::MAX, 0x7FFF_FFFF]);
+
+        // vocab 129281: 1 real bit in the fifth word.
+        let mut words = vec![u32::MAX; 4041];
+        ds41rt_v41_sampler_clear_remainder(&mut words, 129_281);
+        assert_eq!(words[4040], 1);
+        assert!(words[..4040].iter().all(|word| *word == u32::MAX));
+    }
+
+    fn v41_params(rows: usize, flags: u32, mask_row: u32) -> Vec<Ds41rtV41SamplerRow> {
+        (0..rows)
+            .map(|row| Ds41rtV41SamplerRow {
+                temperature: 0.0,
+                top_p: 1.0,
+                min_p: 0.0,
+                top_k: 0,
+                mask_row,
+                flags,
+                output_row: row as u32,
+                ..Ds41rtV41SamplerRow::default()
+            })
+            .collect()
+    }
+
+    /// Shorthand for the validator under test.
+    #[allow(clippy::too_many_arguments)]
+    fn validate_v41(
+        rows: usize,
+        vocab: usize,
+        logits_stride: usize,
+        params: &[Ds41rtV41SamplerRow],
+        with_mask: bool,
+        mask_words_per_row: usize,
+    ) -> Result<()> {
+        let words = if with_mask {
+            vocab.div_ceil(32)
+        } else {
+            0
+        };
+        let row_bytes = rows.max(1) * 4096;
+        validate_v41_sampling_buffers(
+            "test v4.1 sampler",
+            synthetic_device_buffer(0x10_0000, rows.max(1) * logits_stride.max(vocab) * 4),
+            rows,
+            vocab,
+            logits_stride,
+            params,
+            with_mask.then(|| synthetic_device_buffer(0x20_0000, rows.max(1) * words * 4)),
+            mask_words_per_row,
+            synthetic_device_buffer(0x30_0000, rows.max(1) * 4),
+            synthetic_device_buffer(0x31_0000, rows.max(1) * 4),
+            synthetic_device_buffer(0x32_0000, rows.max(1) * 4),
+            synthetic_device_buffer(0x33_0000, rows.max(1) * 4),
+            Some(synthetic_device_buffer(0x34_0000, rows.max(1) * 4)),
+            Some(synthetic_device_buffer(0x35_0000, rows.max(1) * 4)),
+            synthetic_device_buffer(0x36_0000, rows.max(1) * 64 + row_bytes * 0),
+        )
+    }
+
+    #[test]
+    fn v41_sampler_validator_accepts_a_well_formed_unconstrained_batch() {
+        let params = v41_params(
+            3,
+            DS41RT_V41_SAMPLER_FLAG_GREEDY
+                | DS41RT_V41_SAMPLER_FLAG_NO_MASK
+                | DS41RT_V41_SAMPLER_FLAG_STRICT_FINITE,
+            DS41RT_V41_SAMPLER_NO_MASK_ROW,
+        );
+        validate_v41(3, 129_280, 129_280, &params, false, 0).expect("valid unconstrained batch");
+    }
+
+    #[test]
+    fn v41_sampler_validator_rejects_malformed_batches() {
+        let vocab = 100_usize;
+        let words = 4_usize;
+        let unconstrained = v41_params(
+            2,
+            DS41RT_V41_SAMPLER_FLAG_NO_MASK,
+            DS41RT_V41_SAMPLER_NO_MASK_ROW,
+        );
+
+        // rows / vocab / stride extents.
+        assert!(validate_v41(0, vocab, vocab, &[], false, 0).is_err());
+        assert!(validate_v41(2, 0, 0, &unconstrained, false, 0).is_err());
+        assert!(validate_v41(2, vocab, vocab - 1, &unconstrained, false, 0).is_err());
+        // One parameter block per row.
+        assert!(validate_v41(2, vocab, vocab, &unconstrained[..1], false, 0).is_err());
+        assert!(validate_v41(1, vocab, vocab, &unconstrained, false, 0).is_err());
+
+        // Mask presence and width.
+        assert!(validate_v41(2, vocab, vocab, &unconstrained, false, words).is_err());
+        // The exact shape a sampled launch produced when it passed the wave's own
+        // (always non-zero) mask width with no staged arena: the shipped
+        // vocabulary's 4040 words and no mask buffer. This is the pair the
+        // launch must keep at (None, 0) for an all-unconstrained round.
+        let shipped_vocab = 129_280_usize;
+        let shipped_words = shipped_vocab.div_ceil(32);
+        assert_eq!(shipped_words, 4040);
+        let shipped_unconstrained =
+            v41_params(2, DS41RT_V41_SAMPLER_FLAG_NO_MASK, DS41RT_V41_SAMPLER_NO_MASK_ROW);
+        assert!(
+            validate_v41(2, shipped_vocab, shipped_vocab, &shipped_unconstrained, false,
+                shipped_words).is_err(),
+            "a non-zero mask width with no mask buffer must be rejected"
+        );
+        // And the consistent pair is accepted.
+        assert!(validate_v41(2, shipped_vocab, shipped_vocab, &shipped_unconstrained, false, 0)
+            .is_ok());
+        let masked = v41_params(2, DS41RT_V41_SAMPLER_FLAG_STRICT_FINITE, 0);
+        assert!(validate_v41(2, vocab, vocab, &masked, true, words).is_ok());
+        assert!(validate_v41(2, vocab, vocab, &masked, true, words - 1).is_err());
+        assert!(validate_v41(2, vocab, vocab, &masked, true, words + 1).is_err());
+        assert!(validate_v41(2, vocab, vocab, &masked, true, 0).is_err());
+        assert!(validate_v41(2, vocab, vocab, &masked, false, 0).is_err());
+        // mask_row must index the arena when the row is masked.
+        let out_of_arena = v41_params(2, DS41RT_V41_SAMPLER_FLAG_STRICT_FINITE, 2);
+        assert!(validate_v41(2, vocab, vocab, &out_of_arena, true, words).is_err());
+        // A NO_MASK row must not claim a real mask row (a caller that did could
+        // believe it is constrained when the device ignores the mask).
+        let conflicting = v41_params(
+            2,
+            DS41RT_V41_SAMPLER_FLAG_NO_MASK,
+            DS41RT_V41_SAMPLER_NO_MASK_ROW,
+        );
+        let mut conflicting = conflicting;
+        conflicting[1].mask_row = 0;
+        assert!(validate_v41(2, vocab, vocab, &conflicting, false, 0).is_err());
+        // STRICT_FINITE is only meaningful for a greedy or constrained row. A
+        // stochastic, unconstrained row must not claim it, or the header, the
+        // host, the kernel and this validator would disagree about the mode.
+        let stochastic_unconstrained = v41_params(2, 0, 0);
+        let mut strict_stochastic = stochastic_unconstrained;
+        strict_stochastic[1].flags |= DS41RT_V41_SAMPLER_FLAG_STRICT_FINITE;
+        strict_stochastic[1].temperature = 0.8;
+        strict_stochastic[1].mask_row = DS41RT_V41_SAMPLER_NO_MASK_ROW;
+        strict_stochastic[1].flags |= DS41RT_V41_SAMPLER_FLAG_NO_MASK;
+        assert!(validate_v41(2, vocab, vocab, &strict_stochastic, true, words).is_err());
+        // The same row is accepted once it is greedy, which is where the host
+        // sets the bit.
+        let mut greedy_strict = strict_stochastic.clone();
+        greedy_strict[1].flags |= DS41RT_V41_SAMPLER_FLAG_GREEDY;
+        assert!(validate_v41(2, vocab, vocab, &greedy_strict, true, words).is_ok());
+        // Or once it is constrained (a real mask row, no NO_MASK).
+        let mut masked_strict = strict_stochastic;
+        masked_strict[1].flags &= !DS41RT_V41_SAMPLER_FLAG_NO_MASK;
+        masked_strict[1].mask_row = 1;
+        assert!(validate_v41(2, vocab, vocab, &masked_strict, true, words).is_ok());
+
+        // Parameter range checks per row.
+        let mut params = unconstrained.clone();
+        params[1].temperature = 2.5;
+        assert!(validate_v41(2, vocab, vocab, &params, false, 0).is_err());
+        let mut params = unconstrained.clone();
+        params[1].temperature = f32::NAN;
+        assert!(validate_v41(2, vocab, vocab, &params, false, 0).is_err());
+        let mut params = unconstrained.clone();
+        params[1].top_p = 0.0;
+        assert!(validate_v41(2, vocab, vocab, &params, false, 0).is_err());
+        let mut params = unconstrained.clone();
+        params[1].top_p = 1.5;
+        assert!(validate_v41(2, vocab, vocab, &params, false, 0).is_err());
+        let mut params = unconstrained.clone();
+        params[1].min_p = 1.5;
+        assert!(validate_v41(2, vocab, vocab, &params, false, 0).is_err());
+        let mut params = unconstrained.clone();
+        params[1].min_p = f32::NAN;
+        assert!(validate_v41(2, vocab, vocab, &params, false, 0).is_err());
+
+        // ln_min_p is the device's only min_p threshold: it must be the host
+        // f32::ln for an enabled min_p and -inf when min_p is disabled.
+        let mut params = unconstrained.clone();
+        params[0].min_p = 0.05;
+        params[0].ln_min_p = f32::NEG_INFINITY;
+        assert!(validate_v41(2, vocab, vocab, &params, false, 0).is_err());
+        let mut params = unconstrained.clone();
+        params[0].min_p = 0.05;
+        params[0].ln_min_p = 0.05_f32.ln();
+        assert!(validate_v41(2, vocab, vocab, &params, false, 0).is_ok());
+        let mut params = unconstrained.clone();
+        params[0].min_p = 0.05;
+        params[0].ln_min_p = f32::from_bits(0.05_f32.ln().to_bits() + 1);
+        assert!(validate_v41(2, vocab, vocab, &params, false, 0).is_err());
+        let mut params = unconstrained.clone();
+        params[0].min_p = 0.0;
+        params[0].ln_min_p = 0.0;
+        assert!(validate_v41(2, vocab, vocab, &params, false, 0).is_err());
+
+        // Reserved fields, unknown flags and output_row bounds.
+        let mut params = unconstrained.clone();
+        params[0].reserved0 = 1;
+        assert!(validate_v41(2, vocab, vocab, &params, false, 0).is_err());
+        let mut params = unconstrained.clone();
+        params[0].reserved2 = 1;
+        assert!(validate_v41(2, vocab, vocab, &params, false, 0).is_err());
+        let mut params = unconstrained.clone();
+        params[0].flags |= 0x8000_0000;
+        assert!(validate_v41(2, vocab, vocab, &params, false, 0).is_err());
+        let mut params = unconstrained.clone();
+        params[1].output_row = 2;
+        assert!(validate_v41(2, vocab, vocab, &params, false, 0).is_err());
+    }
+
+    #[test]
+    fn v41_sampler_validator_rejects_short_buffers() {
+        let vocab = 33_usize;
+        let words = 2_usize;
+        let params = v41_params(
+            2,
+            DS41RT_V41_SAMPLER_FLAG_NO_MASK,
+            DS41RT_V41_SAMPLER_NO_MASK_ROW,
+        );
+        let logits = synthetic_device_buffer(0x10_0000, 2 * vocab * 4);
+        let mask = synthetic_device_buffer(0x20_0000, 2 * words * 4);
+        let out = synthetic_device_buffer(0x30_0000, 2 * 4);
+        let scratch = synthetic_device_buffer(0x40_0000, 2 * DS41RT_V41_SAMPLER_SCRATCH_BYTES);
+        let run = |logits, mask, out, scratch| {
+            validate_v41_sampling_buffers(
+                "test v4.1 sampler",
+                logits,
+                2,
+                vocab,
+                vocab,
+                &params,
+                Some(mask),
+                words,
+                out,
+                out,
+                out,
+                out,
+                Some(out),
+                Some(out),
+                scratch,
+            )
+        };
+        run(logits, mask, out, scratch).expect("exact extents are valid");
+        assert!(run(synthetic_device_buffer(0x10_0000, 2 * vocab * 4 - 4), mask, out, scratch).is_err());
+        assert!(run(logits, synthetic_device_buffer(0x20_0000, 2 * words * 4 - 4), out, scratch).is_err());
+        assert!(run(logits, mask, synthetic_device_buffer(0x30_0000, 2 * 4 - 4), out).is_err());
+        assert!(
+            run(logits, mask, out, synthetic_device_buffer(0x40_0000, 2 * 64 - 4)).is_err()
+        );
+        // A null scratch pointer is rejected like any other required buffer.
+        assert!(run(logits, mask, out, Ds41rtDeviceBuffer::default()).is_err());
+    }
+
+    /// End-to-end ABI check: build the parameter block in Rust, drive the
+    /// shipped device kernel through the FFI wrapper, and require the device id
+    /// to equal the production CPU oracle exactly (design §12.2).
+    #[test]
+    fn v41_sampler_device_greedy_matches_cpu_oracle() -> Result<()> {
+        let library = load_device_test_library()?;
+        // Five tiny rows, exercising ties, a mask, and a strict-finites row.
+        let vocab = 6_usize;
+        let rows = 5_usize;
+        let words = vocab.div_ceil(32);
+        let logits: Vec<f32> = vec![
+            -0.5, 0.1, 0.8, 0.0, 0.8, -0.2, // row 0: tie at 0.8 -> token 2
+            -1.0, -0.7, -0.9, -0.8, -0.6, -0.4, // row 1: token 5
+            1.25, 1.0, 0.5, 1.25, -2.0, 0.0, // row 2: tie at 1.25 -> token 0
+            3.0, 1.0, 2.0, 0.5, 0.25, 0.0, // row 3: masked to tokens 1,3
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, // row 4: all equal -> token 0
+        ];
+        // Row 3 allows only tokens 1 and 3, so token 1 wins over token 3.
+        let mask: Vec<u32> = vec![
+            u32::MAX,
+            u32::MAX,
+            u32::MAX,
+            (1 << 1) | (1 << 3),
+            u32::MAX,
+        ];
+        let mut params = v41_params(
+            rows,
+            DS41RT_V41_SAMPLER_FLAG_GREEDY | DS41RT_V41_SAMPLER_FLAG_STRICT_FINITE,
+            DS41RT_V41_SAMPLER_NO_MASK_ROW,
+        );
+        for (row, params) in params.iter_mut().enumerate() {
+            params.mask_row = row as u32;
+        }
+        params[4].flags |= DS41RT_V41_SAMPLER_FLAG_NO_MASK;
+        params[4].mask_row = DS41RT_V41_SAMPLER_NO_MASK_ROW;
+
+        let logits_buffer = library.alloc_device_buffer(rows * vocab * 4)?;
+        // K1 dereferences the parameter block on device, so upload it: this is
+        // the residency requirement the ABI documents, and the launch below
+        // must use this buffer rather than the host slice.
+        let params_buffer = library.alloc_device_buffer(rows * DS41RT_V41_SAMPLER_PARAM_BYTES)?;
+        let mask_buffer = library.alloc_device_buffer(rows * words * 4)?;
+        let ids = library.alloc_device_buffer(rows * 4)?;
+        let status = library.alloc_device_buffer(rows * 4)?;
+        let detail = library.alloc_device_buffer(rows * 4)?;
+        let scores = library.alloc_device_buffer(rows * 4)?;
+        let scratch = library.alloc_device_buffer(rows * DS41RT_V41_SAMPLER_SCRATCH_BYTES)?;
+
+        let result = (|| -> Result<Vec<u32>> {
+            // A kernel that never ran would leave these sentinels in place, so
+            // "the ids match the oracle" cannot be satisfied by stale memory.
+            let sentinel: Vec<u8> = (0..rows).flat_map(|_| 0xDEAD_BEEFu32.to_ne_bytes()).collect();
+            library.copy_h2d(ids, &sentinel)?;
+            library.copy_h2d(status, &sentinel)?;
+            let mut logits_bytes = Vec::with_capacity(logits.len() * 4);
+            for value in &logits {
+                logits_bytes.extend_from_slice(&value.to_ne_bytes());
+            }
+            library.copy_h2d(logits_buffer, &logits_bytes)?;
+            let mut mask_bytes = Vec::with_capacity(mask.len() * 4);
+            for value in &mask {
+                mask_bytes.extend_from_slice(&value.to_ne_bytes());
+            }
+            library.copy_h2d(mask_buffer, &mask_bytes)?;
+            // `#[repr(C)]` and pinned to 64 bytes, so its raw bytes are the ABI.
+            assert_eq!(
+                std::mem::size_of::<Ds41rtV41SamplerRow>(),
+                DS41RT_V41_SAMPLER_PARAM_BYTES
+            );
+            let param_bytes: Vec<u8> = unsafe {
+                std::slice::from_raw_parts(
+                    params.as_ptr().cast::<u8>(),
+                    params.len() * DS41RT_V41_SAMPLER_PARAM_BYTES,
+                )
+                .to_vec()
+            };
+            library.copy_h2d(params_buffer, &param_bytes)?;
+            library.cuda_v41_target_sample(
+                logits_buffer,
+                rows,
+                vocab,
+                vocab,
+                &params,
+                params_buffer,
+                Some(mask_buffer),
+                words,
+                ids,
+                status,
+                detail,
+                scores,
+                None,
+                None,
+                scratch,
+            )?;
+            let mut status_bytes = vec![0_u8; rows * 4];
+            library.copy_d2h(&mut status_bytes, status)?;
+            for row in 0..rows {
+                let status = u32::from_ne_bytes(status_bytes[row * 4..row * 4 + 4].try_into().unwrap());
+                assert_eq!(status, DS41RT_V41_SAMPLER_STATUS_OK, "row {row} status");
+            }
+            let mut id_bytes = vec![0_u8; rows * 4];
+            library.copy_d2h(&mut id_bytes, ids)?;
+            Ok((0..rows)
+                .map(|row| u32::from_ne_bytes(id_bytes[row * 4..row * 4 + 4].try_into().unwrap()))
+                .collect())
+        })();
+
+        let mut logits_buffer = logits_buffer;
+        let mut params_buffer = params_buffer;
+        let mut mask_buffer = mask_buffer;
+        let mut ids = ids;
+        let mut status = status;
+        let mut detail = detail;
+        let mut scores = scores;
+        let mut scratch = scratch;
+        let cleanup = (|| -> Result<()> {
+            library.free_device_buffer(&mut logits_buffer)?;
+            library.free_device_buffer(&mut params_buffer)?;
+            library.free_device_buffer(&mut mask_buffer)?;
+            library.free_device_buffer(&mut ids)?;
+            library.free_device_buffer(&mut status)?;
+            library.free_device_buffer(&mut detail)?;
+            library.free_device_buffer(&mut scores)?;
+            library.free_device_buffer(&mut scratch)
+        })();
+        cleanup?;
+
+        // The expected ids come from the production CPU oracle, not from a
+        // re-derivation here: `TargetSamplingParams::greedy()` is exact argmax
+        // with the lowest id winning a tie, and `select_token_with_uniform`
+        // applies the mask first.
+        let selected = result?;
+        let greedy = ds41rt_core::TargetSamplingParams::greedy();
+        let expected: Vec<u32> = (0..rows)
+            .map(|row| {
+                let row_logits = &logits[row * vocab..(row + 1) * vocab];
+                let row_mask = &mask[row * words..(row + 1) * words];
+                let mask = if params[row].flags & DS41RT_V41_SAMPLER_FLAG_NO_MASK != 0 {
+                    None
+                } else {
+                    Some(row_mask)
+                };
+                greedy
+                    .select_token(row_logits, mask, 0)
+                    .expect("oracle selection") as u32
+            })
+            .collect();
+        assert_eq!(selected, expected);
+        // Non-vacuity: row 3 is a constrained greedy row whose mask changes the
+        // winner (unmasked argmax would be token 0; the grammar allows only
+        // tokens 1 and 3), so a kernel that ignored the mask cannot pass this.
+        let unmasked_row3 = greedy
+            .select_token(&logits[3 * vocab..4 * vocab], None, 0)
+            .expect("oracle unmasked selection") as u32;
+        assert_eq!(unmasked_row3, 0, "row 3 must differ unmasked");
+        assert_eq!(expected[3], 1, "row 3 masked argmax");
+        assert_ne!(expected[3], unmasked_row3, "the mask must change row 3's winner");
+        // Printed so a captured run is self-evidencing: the ids were produced by
+        // the kernel (the sentinels above were overwritten), the parameter block
+        // was launched from device memory, and row 3 is a constrained greedy row
+        // whose masked winner differs from the unmasked one.
+        println!(
+            "v4.1 sampler device oracle: rows={rows} vocab={vocab} device_ids={selected:?} \
+             cpu_ids={expected:?} masked_row3={} unmasked_row3={unmasked_row3}",
+            expected[3]
+        );
+        Ok(())
     }
 
     #[test]

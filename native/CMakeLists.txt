@@ -280,6 +280,7 @@ if(DS41RT_ENABLE_CUDA)
     cuda/kernels/attention.cu
     cuda/kernels/embedding.cu
     cuda/kernels/sampling.cu
+    cuda/kernels/v41_sampling_gpu.cu
     cuda/kernels/nibbles.cu
     cuda/kernels/nvfp4_payload.cu
     cuda/kernels/nvfp4_scale.cu
@@ -1043,4 +1044,18 @@ if(DS41RT_ENABLE_CUDA)
   add_executable(ds41rt_cuda_selftest tests/cuda_selftest.cc)
   target_link_libraries(ds41rt_cuda_selftest PRIVATE ds41rt_native CUDA::cudart CUDA::cublas CUDA::cuda_driver)
   add_test(NAME ds41rt_cuda_selftest COMMAND ds41rt_cuda_selftest)
+  # Chunk-1 GPU target-sampler (K1) device tests. They link the shipped native
+  # library and therefore also pin the exported C ABI of v41_sampling_gpu.h.
+  # `.cu` because the subnormal/FTZ canary defines a probe kernel compiled with
+  # the same CUDA flags as the shipped sampler objects.
+  add_executable(ds41rt_v41_sampling_selftest tests/v41_sampling_selftest.cu)
+  set_source_files_properties(tests/v41_sampling_selftest.cu PROPERTIES LANGUAGE CUDA)
+  # The FTZ canary compiles device code in this target, so it must target the
+  # same architecture as the kernels it canaries; without this the executable
+  # silently defaults to sm_75 and its probe kernel never launches.
+  set_target_properties(ds41rt_v41_sampling_selftest PROPERTIES
+    CUDA_ARCHITECTURES "${DS41RT_CUDA_ARCHITECTURES}")
+  target_link_libraries(ds41rt_v41_sampling_selftest PRIVATE ds41rt_native CUDA::cudart)
+  add_test(NAME ds41rt_v41_sampling_selftest COMMAND ds41rt_v41_sampling_selftest)
+  set_tests_properties(ds41rt_v41_sampling_selftest PROPERTIES SKIP_RETURN_CODE 77)
 endif()
