@@ -1,18 +1,20 @@
 # GPU target-sampler design (implementation gate)
 
-**Status:** design gate. **Chunks 1–4 are delivered and reviewed.** Chunk 1 is
+**Status:** design gate. **Chunks 1–5 are delivered and reviewed.** Chunk 1 is
 `9dffad0` (§17); chunk 2 `f0e7902` (§18); chunk 3a `90f745c` (§19); chunk 3b
 `ad9ea72` (§21); chunk 4 is split — **4a committed as `3572101`, 4b committed as
 `b38e910`**, both recorded in **§22** (which also answers §20's hand-off
-list). The normative sections below have been reconciled with all five (notably
-§4.2–§4.5, §5.4–§5.5, §6.3, §8.2–§8.4, §9.2, §10.4, §12.4, §12.12–§12.13, §13.1,
-§13.2, §16, §20). **Chunk 5 (full correctness validation + independent review) is
-next**; chunks 5–7 and the phase-3–4 campaign remain design-only and still require
-the adversarial review of §14.
+list); **chunk 5 / 5b is delivered as `714fc1d`** with its validation record in
+**§22.7** and its harness-power record in **§12.14**. The normative sections below
+have been reconciled with all six (notably §4.1, §4.2–§4.5, §5.4–§5.5, §6.3,
+§8.2–§8.4, §9.2, §10.4, §12.4, §12.6, §12.12–§12.14, §13.1, §13.2, §16, §20,
+§22.7). **Chunks 6/7 (pass-budget optimisation and the published measurement) and
+the phase-3–4 campaign are next**; they remain design-only and still require the
+adversarial review of §14.
 
 **Repository revision read:** `e1f5d495b5a82fb7ddad8514cad419b6ae62c0cc` (`e1f5d49`).
 Chunk 1 reads `9dffad0`, chunk 2 `f0e7902`, chunk 3a `90f745c`, chunk 3b
-`ad9ea72`, chunk 4a `3572101`, and chunk 4b `b38e910`.
+`ad9ea72`, chunk 4a `3572101`, chunk 4b `b38e910`, and chunk 5/5b `714fc1d`.
 
 **Deliverable rule:** the original design task produced exactly this one file;
 the as-built updates are design text only. Every claim about existing code
@@ -322,7 +324,8 @@ expose it as an option). Upstreaming is a *follow-on*, not part of this plan.
      (CPU `:259-262`; device form as `sampling.cu:568,583-587`). Its finiteness
      check is **strict over the whole row, independent of the mask**, because
      `scores.rs::argmax` runs `ensure!(value.is_finite())` *before* the mask test
-     (`scores.rs:160-163`) — a greedy/constrained row must reject a non-finite
+     (`scores.rs:407-420`, the `ensure!` at `:415`) — a greedy/constrained row
+     must reject a non-finite
      logit even when that token is masked out. Record the lowest offending token
      id over all tokens.
   3. **Stochastic branch**: compute `inv = 1.0f / temperature`; per-thread scan
@@ -345,28 +348,41 @@ expose it as an option). Upstreaming is a *follow-on*, not part of this plan.
      `:477-501`).
 - **Masked non-finite discipline is mode-specific and pinned** (review item 7):
   - greedy rows (including constrained greedy): strict over all tokens, exactly
-    as `scores.rs::argmax` (`:160-163`);
+    as `scores.rs::argmax` (`scores.rs:407-420`, the `ensure!` at `:415`);
   - stochastic rows: permissive on masked tokens, exactly as
-    `target_sampling.rs:1009-1024`.
+    `target_sampling.rs:430-436` (the CPU skips masked tokens *before* the
+    finiteness check), pinned by `target_sampling.rs:1009-1024`.
+  - **The shipped host now builds exactly that (chunk 5b).**
+    `build_target_sampling_plan` sets `STRICT_FINITE` **only for greedy rows**
+    (`if greedy`, `scheduler.rs:725-735`); the earlier `needs_mask || greedy`
+    condition was the design/wiring divergence chunk 5b found and fixed. The
+    daemon's recording double mirrors the same rule (`v41_target_head.rs`,
+    `nonfinite_where_allowed`; test
+    `the_recording_double_is_strict_only_where_the_row_can_act`).
   - **As built, `STRICT_FINITE` is functional and additive.** A row that carries
     `flags.bit4` keeps the permissive pass's results and additionally runs a
     whole-row finiteness pre-scan; it is not a replacement branch. The host sets
-    the bit only for greedy and constrained rows (`v41_sampling_gpu.h`;
-    validator `lib.rs:18252-18260`), so a strict stochastic row is possible and
-    would report `NONFINITE_LOGIT` while still computing the same `max_scaled` /
+    the bit only for greedy rows (`v41_sampling_gpu.h`; validator
+    `lib.rs:18252-18260`), so a strict stochastic row is possible and would
+    report `NONFINITE_LOGIT` while still computing the same `max_scaled` /
     survivor state. The device selftest pins both modes and the additive
     behaviour (`native/tests/v41_sampling_selftest.cu`, "masked non-finite is
     mode-specific and STRICT_FINITE is functional").
-  - **Recorded behaviour delta:** today's daemon also rejects a masked
-    non-finite value on a stochastic lane, because `BatchScores::new`
-    pre-validates every materialized row with `argmax(row, None)`
-    (`scores.rs:67-71`, `:160-163`) before `sample` ever runs. Adopting the
-    permissive stochastic rule therefore *loosens* that one case relative to the
-    daemon's incidental behaviour. It is a deliberate, documented change (release
-    note + open decision D9), it never loosens the greedy/constrained path, and
-    both behaviours are pinned by §12.6. If the reviewer prefers zero observable
-    change, set the per-row strict bit for stochastic rows too; the flag exists
-    precisely to make that a one-line host choice.
+  - **Recorded behaviour delta — REALIZED in the shipped plan (chunk 5b).** The
+    daemon rejects a masked non-finite value only on the **whole-round CPU
+    path**: `execute_logits` → `BatchScores::new` (`scheduler.rs:1119`) and the
+    independent lane's equivalent branch (`independent.rs:161`), whose
+    `argmax` applies `ensure!(value.is_finite())` *before* the mask test
+    (`scores.rs:407-420`). Those paths are reached only for a `compact`
+    all-greedy round, a round with **no** device-servable row, or a layout
+    without the sampled terminal. On the **device** path the finiteness decision
+    was the host `needs_mask || greedy` flag; chunk 5b aligned that flag to the
+    CPU arbiter (`target_sampling.rs:430-436`), so a masked-out non-finite value
+    on a stochastic device-selected row is now **accepted and returns the token
+    the CPU sampler returns**. That is a deliberate, documented,
+    consumer-visible loosening (release note + D9); it never loosens the
+    greedy/constrained path, and both behaviours are pinned by §12.6. The revert
+    is a one-line host change (restore `needs_mask || greedy`).
 - **Shapes/limits**: `vocab ≥ 1`; `vocab` discovered from the buffer, never
   hard-coded (contract §1; `scores.rs:7` is the checkpoint constant, not the
   interface). `top_k ∈ {0=disabled, 1..=vocab, >vocab=no-op}`.
@@ -1462,7 +1478,7 @@ test. "Anchor" is the CPU rule the device must reproduce.
 | 11 | Target/draft RNG domain separation (`:182-186`) | target only uses `(seed, position)` + domain constant; the draft's Philox stream (`v41_dspark.cu:245-266`, `dspark_rng.rs:34-49`) is untouched | draft RNG reservation tests unchanged; no target/draft cross-talk test |
 | 12 | Verifier semantics (`dspark_verify.rs:18-52`, `scheduler.rs:539-604`, `constraints.rs:61-102`) | unchanged code; the device only replaces the per-row `selected[i]` producer | `speculative_sample_match_equals_sequential_sampling` + device analogue |
 | 13 | Mask layout/word count/mask-first/hard error (`scores.rs:154-169`, `constraints.rs:44-46`) | §5.2/§5.3; K1 predicate first | vocab-not-divisible-by-32 tests; mask-width status test |
-| 14 | NaN/Inf discipline: reject non-finite allowed logits; non-finite scaled max → invalid temperature; never NaN/panic (`:256-258`, `:434-448`) | K1 status precedence of §4.1; **mode-specific masked-non-finite rule**: greedy/constrained strict over the whole row (`scores.rs:160-163`), stochastic permissive on masked tokens (`target_sampling.rs:1009-1024`), per-row flag bit4 | `-f32::MAX` at `T=1e-5`; huge logit at tiny T; masked NaN per mode; strict-mode masked NaN must error |
+| 14 | NaN/Inf discipline: reject non-finite allowed logits; non-finite scaled max → invalid temperature; never NaN/panic (`:256-258`, `:434-448`) | K1 status precedence of §4.1; **mode-specific masked-non-finite rule**: greedy/constrained strict over the whole row (`scores.rs:407-420`), stochastic permissive on masked tokens (`target_sampling.rs:430-436`, `:1009-1024`); **the shipped host sets the per-row flag bit4 for greedy rows only** (`build_target_sampling_plan`, `scheduler.rs:725-735`) | `-f32::MAX` at `T=1e-5`; huge logit at tiny T; masked NaN per mode; strict-mode masked NaN must error; chunk-5b `boundary_eq`, the `raw_probe` permissive masked-non-finite case, `degenerate:nan_masked_out_permissive`, and the daemon test `masked_stochastic_rows_stay_permissive_and_greedy_rows_stay_strict` |
 | 15 | Greedy throughput not poisoned by a stochastic peer (`scheduler.rs:397-407`, `:458-462`) | per-row params + per-row greedy branch; no whole-batch full download | mixed-lane test asserting zero full-row D2H and greedy id equality |
 
 ---
@@ -2032,12 +2048,25 @@ and is forbidden. Also assert `min_p = 0` keeps `-inf`-scaled survivors
 ### 12.6 `-inf` / NaN / finite discipline (mode-specific)
 
 - **Masked NaN is mode-specific and both modes are pinned** (review item 7):
-  - stochastic rows: legal and unread (`target_sampling.rs:1009-1024`);
+  - stochastic rows: legal and unread (`target_sampling.rs:430-436`,
+    `:1009-1024`);
   - greedy and constrained rows: an **error**, matching `scores.rs::argmax`'s
     `ensure!(value.is_finite())` that runs *before* the mask test
-    (`scores.rs:160-163`). The strict-mode test must use a masked non-finite token
-    and assert `NONFINITE_LOGIT`, so the constrained path is never silently
+    (`scores.rs:407-420`). The strict-mode test must use a masked non-finite
+    token and assert `NONFINITE_LOGIT`, so the constrained path is never silently
     loosened.
+- **What the shipped plan builds (chunk 5b).** `build_target_sampling_plan` sets
+  `STRICT_FINITE` for **greedy rows only** (`if greedy`, `scheduler.rs:725-735`),
+  so a masked *stochastic* row now reaches the permissive branch on the served
+  device path. The previous strictness was the host `needs_mask || greedy`
+  condition, **not** the `BatchScores::new` pre-validation (which lives on the
+  whole-round CPU path). The chunk-5b validation pins it with the
+  `boundary_eq`/`raw_probe` masked-non-finite cases, the
+  `degenerate:nan_masked_out_permissive` cell (32/32 `OK`, 0 mismatches vs the
+  CPU oracle) and the daemon test
+  `masked_stochastic_rows_stay_permissive_and_greedy_rows_stay_strict`.
+- **Unmasked** non-finite logits still fail `NONFINITE_LOGIT` on every path, and
+  greedy is unchanged.
 - Allowed NaN/Inf → status `NONFINITE_LOGIT` with the lowest offending id
   (lowest *allowed* id in stochastic mode, lowest id over the whole row in strict
   mode).
@@ -2221,6 +2250,61 @@ Recorded so they are not re-litigated:
   chunk-4 reviews caught — the discarded fallback write-back, the route-keyed
   frontier classifier, and the counters hidden under `host_metrics()` — are all
   instances of getting that boundary wrong.
+
+### 12.14 Validation-harness power (chunk 5b): the first campaign could not fail
+
+The chunk-5 campaign's first revision could pass on a deliberately broken kernel.
+Chunk 5b hardened it (`runs/chunk5-scratch/REPORT-5b.md` §R1/§R11,
+`REPORT-5b-fixes.md`, `review5b/REVIEW-5b.md` §3):
+
+- **Exactness domains hard-fail.** `Campaign::enforce_cells(mode, &stats)` runs
+  after every artifact: `mismatches > 0` **or** any undeclared status is a hard
+  error with a non-zero exit and a printed `EXACT FAILURE … first_divergence`
+  record (`class/cell/policy/seed/position/route/device_id/device_status/cpu_ok/
+  cpu_id_or_error`). Greedy, `ordered_retained`, the retained/top-k grid, masks
+  and the status-discipline probes are all exact domains.
+- **Residual domains use a per-cell deterministic bound with NO clamp:**
+  `allowed = baseline + 0.5 / device_draws`, where the baseline records
+  `{rate, draws}` and is byte-identical to the pre-hardening baseline on all
+  **4,296** cells. `0.5/n` lies strictly between the adjacent achievable rates
+  `k/n` and `(k+1)/n`, so **one extra mismatch fails**. Under this policy a
+  **1.25×** rate regression fails **43 of 46** non-zero-baseline cells (a 1.5×
+  fails 44/46); the three that survive are baseline-saturated data ceilings
+  (`baseline = 1.0`), not policy escapes; and all **4,250** zero-baseline cells —
+  which the old policy allowed +0.02 — fail on a single new mismatch.
+  **4,293 of 4,296** cells have `allowed < 1.0`.
+- **The documented runner path was stale.** `rust/target/release/chunk5-campaign`
+  was a pre-hardening binary and produced none of the recorded numbers; every
+  post-hardening figure comes from
+  `runs/chunk5-scratch/harness/target/release/chunk5-campaign`
+  (`REPORT-5b.md` §R11).
+- **Mutant matrix and its forensic correction.** The first review's "K2 fast-path"
+  and "K5 draw" mutants were the **same file byte-for-byte**
+  (`c2eb7310…`), both editing line `:742` inside the K2 sequential kernel that is
+  **compiled out** unless `DS41RT_V41_K2_SEQUENTIAL_COMBINE=1`; their
+  `runs/chunk5-scratch/review/mutants/mutC.cu:1806` is
+  `const float target = uniform * nucleus_mass;` and contains no `<=` at all. Its
+  "1 of 3 caught" table is therefore **not evidence**. The corrected matrix
+  (`REPORT-5b.md` §R9) is:
+
+  | mutant | site | broad campaign | `boundary_eq` | verdict |
+  | --- | --- | --- | --- | --- |
+  | `mutA` (greedy tie `>`→`>=`) | K1 `:316` | `greedy` exit 1 (80/1,744) | exit 0 | caught (greedy class) |
+  | `mutB_seq` (sequential `<=`→`<`) | K2 `:742`, not launched | all 0 (dead code) | exit 0 | not caught — **dead code** |
+  | `mutB_seq_active` + the macro | K2 `:742` | — | exit 1 (dev 4 vs 3) | caught |
+  | `mutB_shipped` (real K2 `<=`→`<`) | K2 `:668` | `fast` exit 0 (983,040 draws blind) | exit 1 (dev 2 vs 3) | caught |
+  | `mutC_k5` (K5 retained `>=`→`>`) | `:1812`, `:1819` | `ordered` exit 1 (2 exact mismatches) | exit 1 (dev 4 vs 3) | caught twice |
+  | `mutC_k5_survivor` (`k5_mass_satisfies`) | `:1336` | `ordered` exit 0 | exit 1 (dev 1 vs 0) | caught |
+
+  So the **real** K2 comparison (`:668`), the K5 retained comparisons
+  (`:1812`/`:1819`) and the survivor predicate (`:1336`) all now fail. The K5
+  equality is **reachable naturally** — the retained mutant produced 2
+  exact-equality mismatches in `ordered` mode at seed 20260922 / position 519 —
+  which is why the broad ordered mode catches it; the K2 equality did not arise in
+  983,040 draws, so only the constructed `k2_segment_boundary` case catches the
+  shipped K2 flip. The exact-boundary cases (`k2_fast_path`,
+  `k2_segment_boundary`, `k5_survivor`, `k5_retained`) are built by inverting
+  SplitMix64 to place the uniform exactly on `k/2^24`.
 
 ---
 
@@ -2496,19 +2580,19 @@ evidence; the wiring chunk is gated on wiring evidence plus the four §17.5 gaps
 | 3a ✓ | **KERNEL-ONLY: K3 + K4 — DELIVERED (`90f745c`, on `4277898`)** | kernel only | K3 general-k pivot selection (true bound 21 passes, §4.3) and K4 exact-k lowest-id tie prefix plus the **rank-ordered id list** the §4.5 K5 contract consumes (§4.4), with device tests against the CPU oracle | **met and reviewed (mergeable).** Device selftest **219 cases / 44,780 assertions** (MEASURED) incl. the k-grid over 4 vocabularies, thousands-tied/all-tied/`-inf`/mask cases and the length-2 regression; **K3 max 21 passes** of the 32 cap (host recurrence, randomized simulation, device measurement); FFI **set-and-order** oracle green; **mutation-tested** — keep-all-ties and old-termination mutants both fail; both arches compile; purely additive diffs (0 deletions). **Honest limits (§19.4):** token-level end-to-end vs the production sampler deferred to 3b; no daemon/E2E; `sm_121` compile-only; large-k rank placement deferred to chunk 6 | required |
 | 3b ✓ | **KERNEL-ONLY: K5 nucleus + rank-order draw — DELIVERED (`ad9ea72`, on `ddae9bc`)** | kernel only | K5 inclusive-prefix top-p (largest-key boundary, no `top_p = 1.0` shortcut, full-`S` fallback) and the rank-order draw with the `nucleus_count - 1` fallback, consuming the chunk-3a rank-ordered id list through the §4.5 entry point; the chunk-3b fix round adds `out_status`, the unconditional row-identity guard, the fixed prefix association and the K2 rewrite | **met and reviewed (mergeable after two documentation/test-message fixes, applied).** Device selftest **401 cases / 47,767 assertions** (the reviewed rev-4 tree measured 400/47,754; the commit added one case); six final-source single-defect mutants all fail (M1–M6) plus auxiliary M7/M8; K5 ordered path **344,064 draws = 14.8016%** overall with the retained domain at **0/147,456 (0.00%)**; `sm_120` + `sm_121` compile clean; per-domain divergence published. **Honest limits (§21.4):** P0-3 portability cannot be exercised on this HMM/ATS host; `sm_121` compile-only; no daemon end-to-end; the non-monotone K2 saturation residual (§4.2); wide-row nucleus delta 28 against a 64 bound; the 71-fixture's kernel `!p_found` branch not directly pinned | required |
 | 4 ✓ | **WIRING — DELIVERED (4a `3572101`, 4b `b38e910`)** | wiring | stochastic rows on the sampled terminal with **per-row routing** (§8.4); per-row CPU fallback (planned and post-launch refused) with the token stored and committed; capability gate for layouts without the terminal; constrained mask plumbing (already kernel-complete) now executed-tested; retention gating (§10.4) and the two removed full-row D2H; the executed `upload → launch → output` end-to-end tests; the single-lane blocking stochastic copy removed. Honoured the §20 interface changes | **met for the deliverable scope.** GPU `v41_device` **10 passed / 0 failed**; sampling CPU families **39 passed / 0 failed / 12 ignored**; both arches compile; kernels frozen at the chunk-3b hashes; greedy unchanged (compact 83.4 µs at 48 rows); constrained stochastic draws in-mask on three routes (64/64 each) and constrained-greedy device round token-exact; D2H saving measured as two separate counters (29.2 µs / 517,120 B per gated row). **Honest limits (§22.5):** there is no loaded `TargetPass`/`BlockOutput` fixture (it needs the official head weights plus a backbone output, and that fixture family needs torch/triton, which the container lacks), so `TargetHeadWave::copy_block`, the head graph and `execute_block_sampled` itself are **UNEXECUTED** and the lane-level gate is not run end-to-end; `sm_121` compile-only; residual rates not re-measured (kernels unchanged); full-suite counts are host-dependent and must always be quoted with their command | required |
-| 5 | **Full correctness validation + independent review — NEXT** | validation | the complete matrix vs the CPU oracle: grid × masks × boundaries × ties; seeded replay across batch sizes, lanes, orderings and rejected drafts; distributional comparison; constrained speculation | §12.3–§12.10 all green; the `reference_select` port reviewed as a separate artifact from the kernel (§12.11) | required |
-| 6/7 | **Pass-budget optimisation (conditional), then measurement** | kernel/measurement | **now triggered for the launch-critical-path cost measured in chunk 2** (§13.1): try the levers in order — wider per-row blocks (256→512/1024), fold the owner walk into an existing pass, then the deterministic integer radix histogram (≤2048 buckets, fixed-order combine, u64 fixed-point mass) — and re-measure the per-cell mismatch rate after any segment-count change; then fixed-logit latency vs CPU and the published per-cell mismatch-rate measurement | pass budget ≤ the §13.1 gate after the chosen lever; mismatch rate re-measured for the shipped configuration; §13.7 criteria 3, 4 and 7 | required |
+| 5 ✓ | **Full correctness validation + independent review — DELIVERED (`714fc1d`, evidence-only)** | validation | the complete matrix vs the CPU oracle: token agreement by class, boundaries, ties, masks; seeded replay across batch sizes, row indices, orderings, peers and rejected drafts; distribution (top-64 verdict); speculation; constrained speculation; greedy non-regression. The only product change is the chunk-5b finiteness alignment (`scheduler.rs` `ed870795…`, `v41_target_head.rs` `78cdf67b…`, the latter test-only) | **met and independently reviewed.** 16 shipped modes exit 0; greedy 0/1,264 (+0/480 band); retained domain token-exact at `top_k` 2/40/256 on every row; residual rates recorded per profile; boundary grid 85,050 draws / 0 mismatches; headline figures reproduced (retained 0/147,456, survivor 25.9028%, overall 14.8016%, fast 12.3135%); replay bit-identical; top-64 binned distribution passes all cells; speculation rule confirmed with the correction counterfactual; constrained 20,000/20,000 in-mask; CPU sampler byte-identical to v11. **The harness was hardened so it can fail** (§12.14: per-cell `0.5/draws` bound, 43/46 cells catch a 1.25× regression; the earlier mutant table was forensically withdrawn). **Honest limits (§22.7):** no loaded `TargetPass`/`BlockOutput` fixture (so `copy_block`, the head graph and `execute_block_sampled` remain unexecuted and the lane-level retention gate is not run end-to-end); `sm_121` compile-only; no real-model or HTTP end-to-end run; draft-logit generation unexercised; full-suite counts host-dependent and must be quoted with their command. **Release-note item:** the masked-non-finite alignment is consumer-visible (error → CPU token, §12.6/D9) | required |
+| 6/7 | **Pass-budget optimisation (conditional), then measurement — NEXT** | kernel/measurement | **now triggered for the launch-critical-path cost measured in chunk 2** (§13.1): try the levers in order — wider per-row blocks (256→512/1024), fold the owner walk into an existing pass, then the deterministic integer radix histogram (≤2048 buckets, fixed-order combine, u64 fixed-point mass) — and re-measure the per-cell mismatch rate after any segment-count change; then fixed-logit latency vs CPU and the published per-cell mismatch-rate measurement | pass budget ≤ the §13.1 gate after the chosen lever; mismatch rate re-measured for the shipped configuration; §13.7 criteria 3, 4 and 7 | required |
 | Phase 3–4 | **E2E campaign + release** | release | end-to-end campaign on 1× RTX + 4× Spark with dSpark (§13.3–§13.5), per-round timing (§13.6), README five-profile measurement update (`:214-260`), `docs/release-v11-performance.md` and release notes (§6.4), and the upstream/placement decision memo (former chunk 8) | §13.7 all criteria; workload identity; provenance/identity files; validated campaign | required |
 
 **Current position:** chunks 1 (`9dffad0`, §17), 2 (`f0e7902`, §18), 3a
-(`90f745c`, §19), 3b (`ad9ea72`, §21) and **4 (4a `3572101`, 4b `b38e910`, §22)
-are all delivered and reviewed**; the design gate (chunk 0) is this document.
-**Chunk 5 — full correctness validation plus an independent review — is NEXT**,
-followed by chunk 6/7 (pass-budget optimisation and the published measurement) and
-the phase-3–4 campaign; those remain design-only and still require the adversarial
-review of §14. The four chunk-1 coverage gaps (§17.5) are now **closed at the
-test/function-chain level** by chunk 4b, with the `TargetPass`-level portion
-explicitly unexecuted (§22.5).
+(`90f745c`, §19), 3b (`ad9ea72`, §21), **4 (4a `3572101`, 4b `b38e910`, §22)** and
+**5 / 5b (`714fc1d`, §22.7)** are all delivered and reviewed; the design gate
+(chunk 0) is this document. **Chunks 6/7 — pass-budget optimisation and the
+published measurement — are NEXT**, followed by the phase-3–4 campaign; those
+remain design-only and still require the adversarial review of §14. The four
+chunk-1 coverage gaps (§17.5) are **closed at the test/function-chain level** by
+chunk 4b, with the `TargetPass`-level portion explicitly unexecuted (§22.5 and
+§22.7).
 
 Do not start a later ordered-path chunk before chunk 2's RNG **and** `expf` gates
 pass exactly: the RNG equality test is the only cheap way to separate a
@@ -2535,7 +2619,7 @@ decisions and must not re-litigate them.**
 | R9 | **Draft RNG co-existence** | `v41_dspark.cu:245-266` already has a Philox stream; mixing the target into it would break domain separation (`target_sampling.rs:182-186`) | **Verified**: the draft Gumbel branch is temperature-gated (`if (temperature != 0)` at `v41_dspark.cu:246`, `:262`) and production passes `0.0` (`speculative.rs:511-512`, `:613`), so no draft draw is consumed today. Target uses only SplitMix64 on `(seed, position)`; draft reservation semantics (`dspark_rng.rs:34-49`) untouched |
 | R10 | **Evidence hygiene: `runs/` is gitignored** (`.gitignore:48`) | The phase-0 report, harness rows and campaign artifacts are not in the release tree, so a design or release claim can rest on an artifact a reviewer cannot fetch | Land the fixed-logit rows and the harness (or their sha256 manifest) in the repo before gating on them (§16 D4); keep release-page hashes as the fallback |
 | R11 | **Pass-count blow-up** | The ordered path's ternary searches can reach ~74 row reads worst case (and `top_k40` now also pays the top-p search), which could cost more than the 0.55–1.79 ms it removes | §13.1 gate; chunk 6 histogram; §13.7 criteria 3 and 4 |
-| R20 | **Masked-non-finite mode drift** | The strict (`scores.rs:160-163`) and permissive (`target_sampling.rs:1009-1024`) rules differ, and the daemon today is incidentally strict for stochastic rows too because `BatchScores::new` pre-validates; a careless unification silently changes one of them | Per-row `STRICT_FINITE` flag (bit4) set per call site; §4.1 records the delta; §12.6 pins both; D9 records the choice. The greedy/constrained path is never loosened |
+| R20 | **Masked-non-finite mode drift** | The strict (`scores.rs:407-420`) and permissive (`target_sampling.rs:430-436`) rules differ, so a careless unification silently changes one of them. **This risk materialized** as the chunk-5b F1 finding: the shipped host built the strict flag for masked stochastic rows too (`needs_mask \|\| greedy`), which made the device reject a masked-out non-finite value the CPU accepts | Per-row `STRICT_FINITE` flag (bit4) set per call site; chunk 5b aligned the host to `if greedy` (`scheduler.rs:725-735`) and pinned it with `masked_stochastic_rows_stay_permissive_and_greedy_rows_stay_strict`; §4.1 records the delta; §12.6 pins both; D9 records the choice and the release-note requirement. The greedy/constrained path is never loosened |
 | R12 | **Reduction nondeterminism** | f32 atomics or batch-dependent combine orders would break claim (b) | No f32 atomics; fixed contiguous segments and fixed tree combines; chunk 6's histogram uses integer/fixed-point counts |
 | R13 | **`EmptyCandidates` status change** | `is_bad_request` has no consumer today, so mapping to 400 would be a behavior change | **Decided (D1): preserve today's worker error (500)**; the 400 mapping is a separate follow-up item. The device status is unaffected either way |
 | R14 | **Mask upload pressure** | `rows × 16,160 B` per step (1.3 MB at 48 rows) on the head stream could add latency | One async H2D per step, not per row; measure in §13.1; masks only exist for constrained rows |
@@ -2614,14 +2698,36 @@ declarations next to the existing argmax/sampler declarations (`:1671-1680`); an
 *Decision (planner): mode-specific — greedy and constrained rows keep the strict
 whole-row check, stochastic rows keep the permissive masked rule; pin both with
 tests.* Adopted in §4.1 with the per-row `STRICT_FINITE` flag (bit4) and pinned
-in §12.6. Recorded caveat: today's daemon is *incidentally* strict for stochastic
-rows too, because `BatchScores::new` pre-validates each materialized row with
-`argmax(row, None)` (`scores.rs:67-71`, `:160-163`). Adopting the permissive rule
-is therefore a deliberate, narrow loosening for masked-non-finite stochastic
-rows; it must be in the release notes. The flag exists so that a reviewer who
-prefers zero observable change can set strict for stochastic rows with a one-line
-host change, and so that the constrained/greedy path can never be loosened by
-accident.
+in §12.6. **The device plan was aligned to the CPU arbiter in chunk 5b**
+(`build_target_sampling_plan`, `if greedy`, `scheduler.rs:725-735`), so the
+shipped host now sets bit4 for greedy rows only.
+
+**Served consequence, stated plainly (release-note item).** Pre-change, a
+masked-out non-finite logit on a served **stochastic** device-selected row was
+admitted by `admit_device_rows` (`scheduler.rs:1075`) and then **hard-errored** in
+`check_status` (`scores.rs:80-90`, `"non-finite target logit at token {id}"`),
+failing the active requests through `decode_round`'s error fan-out
+(`scheduler.rs:396-402`) with **no CPU retry**; stochastic frontier retention
+(`retain_from_bytes`, `scores.rs:199-203`) performs no finiteness check either.
+Post-change the same request completes and returns **the CPU sampler's token** —
+direction **error → token**, matching the CPU arbiter (`target_sampling.rs:430-436`).
+The whole-round CPU path still rejects it: `BatchScores::new` is `scores.rs:246-248`
+(not `:33-35`, which is `TokenScores::new`), its `argmax` `ensure!` is
+`scores.rs:407-420` (`:415`), and its non-test call sites are the whole-round CPU
+paths — `execute_logits` (`scheduler.rs:1119`) and the independent lane's
+equivalent branch (`independent.rs:161`) — reached only for a compact all-greedy
+round, a round with no device-servable row, or a layout without the terminal.
+That is why the change is **device-path-only**. Unmasked non-finite logits still
+fail `NONFINITE_LOGIT`, and greedy is unchanged.
+
+**The alternative was considered and rejected:** keep the strict bit on masked
+stochastic rows and document a device-vs-CPU divergence as accepted. It preserves
+the old served behaviour but leaves the device stricter than the reference the
+design names as normative, so the shipping choice is the loosening, and **it must
+be in the release notes**; the revert (restore `needs_mask || greedy`) remains a
+one-line host change. The change is pinned by
+`masked_stochastic_rows_stay_permissive_and_greedy_rows_stay_strict`, so it
+cannot silently flip back.
 
 **Implementation note (chunk 4) — verification semantics are settled, not open.**
 The wiring settled them; the detail and the three defects they caught are in
@@ -3241,6 +3347,117 @@ K3/K4/K5 FFI wrappers take a validated `params_device`; `top_k > 256` is a
 **counted CPU fallback** (`planned_fallback_rows` / `refused_fallback_rows`,
 WARN-logged), not an unservable shape; and the fast-path divergence published for
 the campaign is **12.3135%** (ordered overall 14.8016%, retained domain 0.00%).
+
+### 22.7 Chunk 5 / 5b validation record (evidence-only; product change `714fc1d`)
+
+Chunk 5 is a **validation** chunk: it changed no kernel and no sampling math. Its
+only product change is the chunk-5b alignment commit `714fc1d` ("Align the device
+sampler's finiteness rule with the CPU reference"), 2 files — `scheduler.rs`
+`ed870795f5731f4ed6d1dd2858c6001b4144775748a089d5ca9f2ad7963d4cbb` and
+`v41_target_head.rs`
+`78cdf67b0a308daffcbbafc6877b0fe2b66c880fa9c2777094214afd78ce5725` (the latter
+the `#[cfg(test)]` recording double). Kernels and FFI stay frozen at chunk 3b:
+`.cu 637db1e8…`, `.h 0972d432…`, selftest `6e915ea9…`, `lib.rs 9cbcf267…`. The
+CPU oracle `target_sampling.rs` is `e7382400…`, byte-identical to `v11`, so the
+oracle **is** the production sampler, not a port. Sources:
+`runs/chunk5-scratch/REPORT.md`, `REPORT-5b.md`, `REPORT-5b-fixes.md`,
+`review/REVIEW.md`, `review5b/REVIEW-5b.md`.
+
+**Token agreement by class (MEASURED).**
+
+| class | draws | mismatches | rate |
+| --- | ---: | ---: | ---: |
+| greedy, incl. epsilon band (1,264 pure + 480 band) | 1,744 | **0** | 0.000000 |
+| retained `top_k 40` / `top_k 40 + top_p` (all masks) | 49,152 each | **0** | 0.000000 |
+| `T0.2 + top_p0.95` (survivor) | 49,152 | 15,552 | 0.316406 |
+| `T0.7 + top_p0.9` (survivor) | 49,152 | 17,131 | 0.348531 |
+| `T0.7 + min_p0.05` (fast) | 49,152 | 8,029 | 0.163350 |
+| `T0.7 + top_k40` | 49,152 | **0** | 0.000000 |
+
+The whole retained/top-k domain is token-exact **at `top_k` 2/40/256 on every
+row including `near_uniform`**. The §12.3 boundary grid runs **85,050 device
+draws with 0 mismatches** (`DeviceGreedy` 12,150, `DeviceOrdered` 70,875,
+`DeviceFastPath` 2,025). The four headline figures reproduce exactly: retained
+**0 / 147,456 = 0.00%**; survivor **50,927 / 196,608 = 25.9028%**; overall
+**50,927 / 344,064 = 14.8016%**; fast path **121,047 / 983,040 = 12.3135%**.
+
+**Replay and determinism (MEASURED).** 128 identical rows in one launch all
+identical; 50 repeated launches bit-identical; batch sizes 1–128 with the target
+at first/middle/last (21 placements) give one id; forward vs reversed order with
+interleaved peers is identical at every absolute position; a 48-row mixed wave
+(masked + unmasked, five param seeds) is **bit-identical over 100 repeats**; a
+different seed differs. The three reproducibility claims stay distinct: **(a)**
+CPU bit-identity is asserted for the uniform stream, mask, `scaled`, finite
+checks, `min_p` and every count-only decision but **not** the token; **(b)**
+within-GPU replay is **asserted**; **(c)** spec/non-spec parity is **not
+claimed**.
+
+**Distribution (MEASURED).** The **top-64 binned TV is the verdict** and passes in
+all 12 cells. The raw 129,280-support TV is now disclosed only as a
+**support-coverage floor**, never a verdict: its null (what a perfectly correct
+device produces) has mean ≈0.9386 on the wide rows, and the old bound
+`noise·1.10 + 1/draws ≈ 1.03 > 1.0` could never fail. The f64 analytic reference's
+own error is bounded only as "**no resolvable model error above the ~0.012
+sampling floor at 65,536 draws** for the three checked retained cells"
+(`out5b/reference_precision.json`), where the residual shrank as `1/√draws` and
+device and CPU are token-identical. The wide-row **CPU** inexactness was verified
+with production CPU primitives, independently of the device: `tied` CPU rank
+−140 vs device +1, `near_uniform` −8 vs 0.
+
+**Speculation (MEASURED).** The shipped **emit-the-target-draw** rule preserves
+the target distribution with exact sample-and-match, so **no full-draft
+correction is required**; this is the §12.9/§6.5.2 disposition confirmed on
+device. Acceptance: point mass 0.4615 (45,017/97,545) vs 0.4592 theory (~1.4σ);
+non-point-mass 0.0317 (3,170/99,999) vs 0.0345 theory (~4.7σ — a small excess
+over the independence model, recorded as such, not a comfortable match). The
+counterfactual delimits when a correction **would** be needed: a standard
+publish-the-draft sampler measures `TV 0.0569` uncorrected vs `0.0026` corrected
+(noise 0.0027). Honest limits: the synthetic setup precomputes the target sequence
+and cycles a fixed 64-token draft, so **draft-logit generation, the model/context
+path and the real rejection context remain unproven**, and the
+`emitted == sequential` assertion is near-tautological by construction (the
+non-tautological content is the acceptance-rate and distribution measurement).
+
+**Constrained speculation (MEASURED).** 20,000/20,000 device draws inside their
+own per-row mask with no inheritance across 16 distinct masks; fork/commit/
+rollback enforced (5,715 rounds, 2,857 rollbacks, next anchor = last committed
+token); an all-zero mask remains a hard error on **every** route.
+
+**Greedy non-regression and the oracle.** 0 mismatches, lowest-id ties, compact
+argmax **83.10–83.41 µs** at 48 rows (v11 recorded 83.4 µs), greedy sampled route
+97.5 µs. The CPU sampler is byte-identical to the v11 release revision
+(`target_sampling.rs` `e7382400…`; `git log v11..HEAD` on it is empty).
+
+**Harness power, and the mutant-forensics correction.** See §12.14. In one line:
+exact domains hard-fail, residual cells use a per-cell `baseline + 0.5/draws`
+bound with no clamp (a 1.25× regression fails 43/46 non-zero-baseline cells and
+all 4,250 zero-baseline cells fail on a single new mismatch), and the earlier
+review's "K2/K5" mutants were the **same dead sequential-combine file**, so its
+"1 of 3 caught" table is not evidence; the corrected matrix catches the real K2
+comparison (`:668`), the K5 retained comparisons (`:1812`/`:1819`) and the
+survivor predicate (`:1336`), with the K5 equality reached naturally at seed
+20260922 / position 519.
+
+**The release-note item.** The masked-non-finite alignment is
+**consumer-visible** — a masked-out non-finite logit on a served stochastic
+device-selected row goes from hard request failure to the CPU-agreeing token
+(§12.6, D9) — and **must be in the release notes**.
+
+**Runner-path note.** The path documented in the original script,
+`rust/target/release/chunk5-campaign`, was a **stale pre-hardening binary**;
+every recorded post-hardening number comes from
+`runs/chunk5-scratch/harness/target/release/chunk5-campaign`
+(`REPORT-5b.md` §R11).
+
+**Honest limits.** (1) No loaded `TargetPass`/`BlockOutput` fixture, so
+`copy_block`, the head graph and `execute_block_sampled` remain **unexecuted** and
+the lane-level retention gate is not run end-to-end. (2) `sm_121` is
+compile-only. (3) No real-model or HTTP end-to-end run. (4) Draft-logit
+generation is unexercised. (5) The full-suite counts are **host-dependent** and
+must be quoted with their command. (6) The error→token change is established from
+the shipped control flow and the CPU arbiter, not observed on a live request.
+(7) The 3 saturated `baseline = 1.0` cells are arithmetically unfailable (a data
+ceiling, not a clamp).
 
 ---
 
