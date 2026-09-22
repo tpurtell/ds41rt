@@ -1,11 +1,10 @@
 # DS41RT v11 performance
 
-**STATUS: DRAFT - REVIEWED, PENDING PUBLICATION.** This page carries two
-measured datasets and the optimization and diagnostic evidence behind them, and
-it has been through the campaign audit and the release review. It stays
-explicitly **pre-publication** until the image pair is pushed: registry digests
-do not exist yet and are marked PENDING throughout, and no number here may be
-presented as a published release result before they do.
+**STATUS: PUBLISHED.** This page carries two measured datasets and the
+optimization and diagnostic evidence behind them, and it has been through the
+campaign audit and the release review. The image pair is published, so the
+registry manifest digests in the provenance table and §9 are the registry's own
+values, each re-checked by an anonymous pull on the matching architecture.
 
 The page is linked from [release-v11-notes.md](release-v11-notes.md). It replaces
 the illustration of a single headline with two explicitly labelled datasets plus
@@ -20,15 +19,28 @@ at the tag is not claimed to be byte-identical to it.
 | Role | Revision | Meaning |
 | --- | --- | --- |
 | Final image build source | `fb5115466a8c70c063280e25957577f284e903e3` | the sampler optimization; exports `org.opencontainers.image.revision` |
-| Final image (coordinator) | `sha256:e0e5d631a54e84f36cd1cd99e2a7cf4e2092c15919c8c79403007ba0852d0d89` | local id, version `v11`, amd64 |
-| Final image (spark expert) | `sha256:f1233987c3b9ba13d468d621c96945052db15e7ede9a8feaf101f506aee85516` | local id, version `v11`, arm64, identical on all four required hosts |
+| Final image (coordinator) | `sha256:e0e5d631a54e84f36cd1cd99e2a7cf4e2092c15919c8c79403007ba0852d0d89` | **local image id**, version `v11`, amd64 |
+| Final image (spark expert) | `sha256:f1233987c3b9ba13d468d621c96945052db15e7ede9a8feaf101f506aee85516` | **local image id**, version `v11`, arm64, identical on all four required hosts |
 | Baseline image build source | `9d9b3e0ce8bd85f6b8eced515d0ab00be015f2d0` | the pre-optimization candidate |
 | Qualification host | `8a7da7da9bd30d4ec797926ee4c5c8c6cef734d7` | host HEAD that produced the live qualification |
 | Benchmark host | `ec7cfb5679696aa44d81486cf36e26d25595cfbc` | host HEAD that produced the baseline campaign |
 
+The two rows above are **local image ids** (`docker image inspect`), which is what
+`identity.json`, the campaign reports and the identity chain reference. They are a
+different kind of value from a registry manifest digest and must not be
+substituted for one. The published pair's **registry manifest digests** are:
+
+| Role | Registry manifest digest |
+| --- | --- |
+| Coordinator `:v11` (amd64) | `sha256:e0e5d631a54e84f36cd1cd99e2a7cf4e2092c15919c8c79403007ba0852d0d89` |
+| Spark expert `:v11` (arm64) | `sha256:fc50ac1cf7f309727d406962168fbe278807848566ae84abde0709b9ca5ba27a` |
+
+For the coordinator the local id and the manifest digest coincide; for the Spark
+expert they differ, as expected between an image config id and a manifest digest.
+`latest` resolves to the same two manifest digests.
+
 The engine baseline is `3f8ea80d8e728cf04832dd520c22a9bbf71f8827`; the final
-image build source carries it. Registry digests for either image: **PENDING**
-(no tag has been pushed).
+image build source carries it.
 
 ## 1. Baseline dataset - attempt-02, image source `9d9b3e0`
 
@@ -321,10 +333,13 @@ provenance.
   `d83341f0a393c5c51ac2b8a06ffd510923262c523ece6835ccfa8d561a47b385`.
 - The campaign audit independently recomputed every median and case cell from raw
   and returned **PUBLISHABLE**; its mandatory presentation rule is applied in §2.
-- Registry digests for `ghcr.io/tpurtell/ds41rt-coordinator:v11` and
-  `ghcr.io/tpurtell/ds41rt-spark-expert:v11`: **PENDING**; no tag has been
-  pushed.
-- The `v11` tag is absent from both repositories as of the baseline capture
-  (`runs/v11-release/publication/v11-absence.txt`).
-- Publication remains gated on the release review; this page's status line moves
-  only when the digests exist.
+- Published registry **manifest digests**: coordinator
+  `sha256:e0e5d631a54e84f36cd1cd99e2a7cf4e2092c15919c8c79403007ba0852d0d89`,
+  spark expert
+  `sha256:fc50ac1cf7f309727d406962168fbe278807848566ae84abde0709b9ca5ba27a`;
+  `latest` resolves to the same pair. Anonymous pulls verified on `raptor`
+  (amd64) and `kiwi` (arm64).
+- The `v11` tag was absent from both repositories before the push
+  (`runs/v11-release/publication/v11-absence-recheck.txt`).
+- The runtime default is promoted to `:v11`; rollback is the promotion change
+  reverted plus the recorded `latest` re-point.

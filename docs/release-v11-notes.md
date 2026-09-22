@@ -1,28 +1,24 @@
 # DS41RT v11 release notes
 
-**STATUS: DRAFT - PREPARED, NOT BUILT, NOT PUBLISHED.** Nothing in this file is a
-measurement or a registry digest yet: every field below is an explicit
-`PENDING` placeholder that is filled only from the named evidence file after the
-corresponding step runs. The v11 image pair does not exist in GHCR, the runtime
-default still names the published `:v10` pair, and `./build.sh --dry-run` still
-reports `v10`.
+**STATUS: PUBLISHED.** The v11 pair is built from image source
+`fb5115466a8c70c063280e25957577f284e903e3`, measured, re-qualified and published.
+The registry digests below are read from the registry's own responses and
+re-checked by anonymous pull on the matching architecture. The runtime default
+names `:v11` and `./build.sh --dry-run` reports `v11`.
 
 Status lifecycle, so this file is never both unfilled and required to be final:
 
-- **DRAFT** (now) - the template; facts still `PENDING`.
-- **RELEASE-READY** - every non-registry fact is filled from real evidence
-  (source revision, image ids, build verification, benchmark results) while the
-  registry digests and the publication record remain `PENDING`. This state is
-  the pre-publication gate.
-- **PUBLISHED** - after the push and the anonymous verification, the registry
+- **DRAFT** - the unfilled template.
+- **RELEASE-READY** - every non-registry fact filled from real evidence, with the
+  registry digests and publication record still open. The pre-publication gate.
+- **PUBLISHED** (now) - after the push and anonymous verification, the registry
   digests and the publication record are filled from the registry's own
-  responses. Only this state is the shippable release record.
+  responses. This is the shippable release record.
 
-**This template must not ship as the release record.** No `PENDING` placeholder
-may remain when the status line moves to RELEASE-READY, except the registry and
-publication fields that can only exist after the push; those are filled in the
-same change that moves the status to PUBLISHED. [release-v11-checklist.md](release-v11-checklist.md)
-§6 carries the gate.
+This document is the PUBLISHED release record: every identity, measurement and
+registry field is filled from real evidence, and the documented placeholder-count
+gate over this file reports zero. [release-v11-checklist.md](release-v11-checklist.md)
+§6 carries the publication gate.
 
 Prepared from [the v10 notes](release-v10-notes.md); the ordered gate sheet is
 [release-v11-checklist.md](release-v11-checklist.md).
@@ -32,17 +28,19 @@ Prepared from [the v10 notes](release-v10-notes.md); the ordered gate sheet is
 - **Native non-greedy sampling.** The production native target path accepts
   `temperature > 0` and selects through the full-vocabulary host sampler
   (order-mask, temperature, `min_p`, `top_k`, `top_p`). Semantics to record here
-  from the engine lead, and to confirm against the frozen source before this line
-  is final: `temperature < 1e-5` samples greedily (the vLLM epsilon);
+  from the frozen source (`fb51154`): `temperature < 1e-5` samples greedily (the
+  vLLM epsilon);
   `top_k` of 0 or -1 disables the filter and `k >= vocab` is a no-op; the seed is
   a signed i64 cast to u64, so `-1` is deterministic, unlike vLLM's `-1`
   (unseeded); and the no-temperature default remains greedy. dSpark stochastic
-  selection is an exact sample-match given independent target draws, not a p/q
-  rejection; the adaptive gate is unchanged. Seed reproducibility is conditional
+  selection is exact speculative-sampling rejection correction with the draft as
+  a point mass (`q = delta`), exact for any draft and temperature - not the
+  full-draft-distribution correction that was considered and rejected; the
+  adaptive gate is unchanged. Seed reproducibility is conditional
   on the same logits and execution, not universal batch bitwise identity. Exact
-  qualification and measured effect are the engine lead's and test agent's
-  records; **PENDING** until the runtime change is frozen and independently
-  reviewed.
+  qualification and measured effect are recorded in
+  [release-v11-performance.md](release-v11-performance.md); the runtime change is
+  frozen at `fb51154` and independently reviewed.
 - **Measured native deployment performance.** The v11 campaign measures the
   released pair on the real one-RTX-plus-four-Spark deployment: the headline
   nine-category decode table plus counting, five strict profiles, three repeats.
@@ -86,11 +84,11 @@ Prepared from [the v10 notes](release-v10-notes.md); the ordered gate sheet is
   chain to the verified target distribution, so `min_p` is honored under
   speculation. Bitwise speculative/non-speculative parity is explicitly not
   claimed, matching the upstream non-guarantee.
-- **Launch selection before promotion.** Until the promotion change lands the
-  runtime default names `:v10`, so the v11 candidate is launched with
-  `--config ds41rt.build-v11.config`; `run.sh` then validates the v11 image,
-  source, dependency, model, host and device identity before starting. The
-  build-to-benchmark handoff and its launch overrides are specified in
+- **Launch selection.** The runtime default is promoted to `:v11`, so `run.sh`
+  and `./build.sh` select the v11 pair directly; `ds41rt.build-v11.config` stays
+  an explicit, identical v11 release **build** target. `run.sh` validates the
+  image, source, dependency, model, host and device identity before starting. The
+  build-to-benchmark handoff is specified in
   [release-v11-checklist.md](release-v11-checklist.md) §3. The frozen config's
   SHA-256 is the launch fingerprint `run.sh` records in-container as
   `DS41RT_RELEASE_CONFIG_SHA256`.
@@ -103,8 +101,12 @@ Prepared from [the v10 notes](release-v10-notes.md); the ordered gate sheet is
 
 | Artifact | Tag | Arch | Registry digest |
 | --- | --- | --- | --- |
-| Coordinator | `ghcr.io/tpurtell/ds41rt-coordinator:v11` | amd64 | PENDING - §Registry publication |
-| Spark expert (all four) | `ghcr.io/tpurtell/ds41rt-spark-expert:v11` | arm64 | PENDING - §Registry publication |
+| Coordinator | `ghcr.io/tpurtell/ds41rt-coordinator:v11` | amd64 | `sha256:e0e5d631a54e84f36cd1cd99e2a7cf4e2092c15919c8c79403007ba0852d0d89` |
+| Spark expert (all four) | `ghcr.io/tpurtell/ds41rt-spark-expert:v11` | arm64 | `sha256:fc50ac1cf7f309727d406962168fbe278807848566ae84abde0709b9ca5ba27a` |
+
+Both column values are **registry manifest digests**, read from the registry's
+own response and re-checked by an anonymous fresh pull on a host of the matching
+architecture; they are not local image ids (see the identity rows below).
 
 ### Commit and identity separation
 
@@ -115,40 +117,49 @@ that tag is **not** claimed to be byte-identical to the image build source.
 | Role | Commit / value | Meaning |
 | --- | --- | --- |
 | Engine (sampling runtime) | `3f8ea80d8e728cf04832dd520c22a9bbf71f8827` | the reviewed runtime change |
-| Image build source | `9d9b3e0ce8bd85f6b8eced515d0ab00be015f2d0` | exports `org.opencontainers.image.revision` |
-| Host tools (qualifier/validator) | PENDING - separate evidence-tools commit | committed before the live host run |
-| Release docs / tag commit | PENDING - final reviewed documentation commit | `main`/`release/v11` point here |
+| Baseline image build source | `9d9b3e0ce8bd85f6b8eced515d0ab00be015f2d0` | the pre-optimization candidate |
+| Final image build source | `fb5115466a8c70c063280e25957577f284e903e3` | exports `org.opencontainers.image.revision` |
+| Host tools (qualifier/validator) | `6f58206f70934c40515598e697b0fcd9813a548d` | committed before the live host run |
+| Bench host | `ec7cfb5679696aa44d81486cf36e26d25595cfbc` | produced the baseline campaign |
+| Qualification host | `8a7da7da9bd30d4ec797926ee4c5c8c6cef734d7` | produced the live qualification |
+| Release docs / tag commit | the `v11` tag commit (this documentation commit) | `main`/`release/v11` point here |
 | Image identity | local ids below + version `v11` | the measured artifacts |
 
-- Image build source commit **`9d9b3e0ce8bd85f6b8eced515d0ab00be015f2d0`**
-  (bare, no `-dirty-`), which carries the engine change
-  `3f8ea80d8e728cf04832dd520c22a9bbf71f8827`; recorded from the build log header
-  and asserted by `verify-release-artifacts.sh` on both roles.
+- Final image build source commit
+  **`fb5115466a8c70c063280e25957577f284e903e3`** (bare, no `-dirty-`), which
+  carries the engine change `3f8ea80d8e728cf04832dd520c22a9bbf71f8827` and the
+  sampler optimization; recorded from the build log header and asserted by
+  `verify-release-artifacts.sh` on both roles. The baseline candidate was
+  `9d9b3e0ce8bd85f6b8eced515d0ab00be015f2d0`.
 - Version `v11`; role labels `coordinator` / `expert`; CUDA arch `120` / `121`;
   Spark expert roles `tp2;tp3;tp6` (universal); SparkInfer
   `4b0954148523b5a2e93813f963d483ffd350b9c9` and XGrammar
   `557becfb64c503ae9c04344b0047661f43f44320` at the frozen commit.
 - **Built local image ids (not registry digests):** coordinator
-  `sha256:54c70eae326b7793bb2c6e34466179286b0861b991fd97ade0b99d69e79e4c41`;
+  `sha256:e0e5d631a54e84f36cd1cd99e2a7cf4e2092c15919c8c79403007ba0852d0d89`;
   Spark expert on all four required hosts
-  `sha256:b38647281b18f0a64c46b18417b74bf2027020583717fdceaba7a686be63369e`.
+  `sha256:f1233987c3b9ba13d468d621c96945052db15e7ede9a8feaf101f506aee85516`.
+  Registry manifest digests are listed separately above; for the coordinator the
+  local id and the manifest digest coincide, for the Spark expert they differ, as
+  expected between an image config id and a manifest digest.
 - **Shipped native libraries:** coordinator
-  `11660155299d23b8fa14d68a74a34ae66ced497df442f84371626ce0a3aed701`; Spark
-  expert `77c54a5a3c9b66ea43f362eac66dfde10e8de10694e41909bc6930fb598cdc35`;
+  `a448f52c14246e6ded5f63512678215d8fd7869e925d9128c6dfa8459bf3da87`; Spark
+  expert `2b4be85568109fcba89fc584ff9b3a6b8d845c7e69ad196dff5d115aafd8d148`;
   both equal the value in their dist `V41_EXPERT_TP_AOT.json`.
-- Build result: `runs/v11-release/build/v11-build.rc` = `0`
-  (05:23:43Z, source `9d9b3e0`); artifact verification
+- Build result: `runs/v11-release/build-final/v11-build.rc` = `0`
+  (06:48:33Z, source `fb51154`, the promoted pair; the baseline build kept its own
+  `runs/v11-release/build/` evidence); artifact verification
   `10-verify-summary.txt` = **ALL CHECKS PASS** over the four required hosts and
   `dist/SHA256SUMS` (`10-dist-sha256sums.txt` `sha256sums_rc=0`), with EXL3
   package and SparkInfer provenance steps all `rc=0`.
-- Build evidence root: `runs/v11-release/build/` (repo-ignored), with the build
+- Build evidence root: `runs/v11-release/build-final/` (repo-ignored), with the build
   log, `v11-build.rc`, the verification artifacts named in
   [release-v11-checklist.md](release-v11-checklist.md) §2, and the
   `SHA256SUMS` manifest written at archive time.
 
 ### Registry publication
 
-**PENDING.** `./push-containers.sh --config ds41rt.build-v11.config v11`
+**Published.** `./push-containers.sh --config ds41rt.build-v11.config v11`
 publishes the `v11` and `latest` tags for the two fixed repositories. After the
 push, `scripts/release-digests.sh capture` records each registry digest from the
 registry's own response and `scripts/release-digests.sh verify` re-checks it by
@@ -156,9 +167,14 @@ an anonymous fresh pull on the matching architecture. Record here, never from a
 local image id or a config digest:
 
 - coordinator `ghcr.io/tpurtell/ds41rt-coordinator:v11` (OCI index, linux/amd64):
-  `PENDING` - anonymous pull verified on `raptor`.
+  `sha256:e0e5d631a54e84f36cd1cd99e2a7cf4e2092c15919c8c79403007ba0852d0d89` -
+  anonymous pull verified on `raptor`.
 - spark-expert `ghcr.io/tpurtell/ds41rt-spark-expert:v11` (single manifest,
-  linux/arm64): `PENDING` - anonymous pull verified on an arm64 worker.
+  linux/arm64):
+  `sha256:fc50ac1cf7f309727d406962168fbe278807848566ae84abde0709b9ca5ba27a` -
+  anonymous pull verified on `kiwi`.
+- `latest` resolves to the same two manifest digests for the same roles
+  (`post-push-latest.env`), captured separately after the push.
 
 Each role is verified on a host of its own architecture: an amd64 host cannot
 pull the arm64 Spark manifest, and the coordinator's amd64 blob set is not pulled
@@ -168,28 +184,31 @@ The pre-push rollback baseline is captured before the push. At capture time
 `latest` is expected to be the v10 pair and `v11` expected to return 404 in both
 repositories, so the push creates the tag rather than moving it:
 
-- pre-push `latest` rollback baseline: `PENDING` (`pre-push-latest.env`); must
-  equal the published v10 pair in [release-v10-notes.md](release-v10-notes.md).
-- `:v11` absence record: `PENDING` (`v11-absence.txt`).
+- pre-push `latest` rollback baseline:
+  `sha256:2236d94317eb393cd78940efb117bcca14ae06e6d1113c6aeb188b0b22424689`
+  (coordinator) and
+  `sha256:98ddf9cd83626d92297169b04561b722d136de27ac8213a1a9f5702ebe40ec30`
+  (spark) in `pre-push-latest-recheck.env`; equal to the published v10 pair in
+  [release-v10-notes.md](release-v10-notes.md).
+- `:v11` absence record: `v11-absence-recheck.txt` (both repositories returned
+  absent before the push).
 - GHCR visibility: the v10 packages are public and were re-verified anonymously
   during v11 preparation; re-verify at publication instead of assuming. Only if a
   package has gone private is a manual repository-owner action required.
 
 ## Runtime default and rollback
 
-- Until the promotion change lands, `ds41rt.config` and the
-  `examples/configs/*` files name `:v10`, and `./build.sh --dry-run` reports
-  `v10`. `ds41rt.build-v11.config` is the explicit v11 **build** target and is
-  intentionally not yet identical to `ds41rt.config`; the only intended
-  difference is the release image pair.
-- After publication, promotion moves `ds41rt.config`, `examples/configs/*` and
-  their README pair lines to `:v11`; at that point `ds41rt.build-v11.config` is
-  identical to `ds41rt.config` and its header comment is updated to say so.
+- `ds41rt.config` and the `examples/configs/*` files now name `:v11`, and
+  `./build.sh --dry-run` reports `v11`. `ds41rt.build-v11.config` is identical to
+  `ds41rt.config`.
+- Promotion moved `ds41rt.config`, `examples/configs/*` and their README pair
+  lines to `:v11`, so `ds41rt.build-v11.config` is now identical to
+  `ds41rt.config`.
 - The v10 images remain published as
   `ghcr.io/tpurtell/ds41rt-coordinator:v10` and
   `ghcr.io/tpurtell/ds41rt-spark-expert:v10`
-  ([v10 notes and digests](release-v10-notes.md)). `latest` is the v10 pair until
-  the v11 push moves it.
+  ([v10 notes and digests](release-v10-notes.md)). `latest` moved to the v11 pair
+  at the v11 push.
 - Promotion rollback is the promotion change reverted plus the `latest`
   re-point recorded in [release-v11-checklist.md](release-v11-checklist.md) §6.
 

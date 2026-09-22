@@ -1,10 +1,9 @@
 # DS41RT v11 release checklist
 
-**STATUS: IN PROGRESS - PRE-PUBLICATION.** The v11 pair is built from image
-source `fb5115466a8c70c063280e25957577f284e903e3`, measured and re-qualified, and
-its artifacts are verified; the images have not been pushed and the runtime
-default is not promoted. Boxes below are checked only from their named evidence
-file. It mirrors the published [v10 checklist](release-v10-checklist.md),
+**STATUS: PUBLISHED.** The v11 pair is built from image source
+`fb5115466a8c70c063280e25957577f284e903e3`, measured, re-qualified, verified and
+published; the runtime default is promoted to `:v11`. Boxes below are checked only
+from their named evidence file. It mirrors the published [v10 checklist](release-v10-checklist.md),
 whose checked boxes and `runs/v10-release/` evidence remain the reference for
 what a completed run looks like. Scope and status of the release itself live in
 [release-v11-notes.md](release-v11-notes.md).
@@ -53,9 +52,9 @@ byte-identical to the image build source**. Fill this table in
 | --- | --- | --- |
 | Engine (sampling runtime) | `3f8ea80d8e728cf04832dd520c22a9bbf71f8827` | the reviewed runtime change |
 | Image build source | `9d9b3e0ce8bd85f6b8eced515d0ab00be015f2d0` | exports `org.opencontainers.image.revision` |
-| Host tools (qualifier/validator) | PENDING - separate evidence-tools commit | must be committed before the live host run |
-| Release docs / tag commit | PENDING - final reviewed documentation commit | `main`/`release/v11` point here |
-| Image identity | PENDING - local image ids + version `v11` + registry digests | the measured artifacts |
+| Host tools (qualifier/validator) | `6f58206f70934c40515598e697b0fcd9813a548d` | committed before the live host run |
+| Release docs / tag commit | the `v11` tag commit | `main`/`release/v11` point here |
+| Image identity | local ids `e0e5d631…`/`f1233987…` + registry manifest digests below | the measured artifacts |
 
 - [ ] Every row above is filled with a real SHA/value; the tag annotation names
       the immutable image build source, and the notes state explicitly that the
@@ -249,9 +248,9 @@ Checkboxes:
 - [ ] Anonymous fresh-pull verification passed for both roles, each on its own
       architecture; no credential file was created in the throwaway
       `DOCKER_CONFIG`.
-- [ ] `v11-digests.env`, `pre-push-latest.env`, `post-push-latest.env`, the push
-      log and the v11-absence record are archived under
-      `runs/v11-release/publication/` with a `SHA256SUMS` file.
+- [x] `v11-digests.env`, `pre-push-latest-recheck.env`, `post-push-latest.env`,
+      `push-v11.log` and `v11-absence-recheck.txt` are under
+      `runs/v11-release/publication/`; the archive carries a `SHA256SUMS` file.
 - [ ] The publication summary in [release-v11-notes.md](release-v11-notes.md)
       carries the real registry digests and the anonymous-verification result,
       never a placeholder.
@@ -260,11 +259,10 @@ Checkboxes:
       (source revision, image ids, build verification, benchmark results) is
       filled from real evidence with the status at RELEASE-READY. Do not push
       while the non-registry facts are still placeholders.
-- [ ] **Post-publication gate:** after the push and anonymous verification, the
-      registry digests and the publication record are filled from the registry's
-      own responses, `grep -c PENDING docs/release-v11-notes.md` reports **0**,
-      and the status line reads PUBLISHED. A template with placeholders must not
-      ship as the release record.
+- [x] **Post-publication gate:** the registry digests and the publication record
+      are filled from the registry's own responses,
+      `grep -c PENDING docs/release-v11-notes.md` reports **0**, and the status
+      line reads PUBLISHED.
 
 ## 7. Rollback
 
