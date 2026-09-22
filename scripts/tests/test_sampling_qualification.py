@@ -180,56 +180,224 @@ TOOL_PARAMETERS = {
 }
 
 
-def test_tool_conformance_accepts_a_matching_call() -> None:
-    body = json.dumps(
-        {
-            "tool_calls": [
-                {"type": "function", "function": {"name": "lookup", "arguments": {"city": "Taipei"}}}
-            ]
-        }
+def tool_observation(tool_calls, *, text: str = "", finish_reason: str = "tool_calls"):
+    """Observation carrying protocol tool_calls, as the real response does."""
+    return MODULE.Observation(
+        name="tool-case",
+        request={},
+        status=200,
+        text=text,
+        tool_calls=tool_calls,
+        finish_reason=finish_reason,
     )
-    MODULE.tool_call_schema_check("lookup", TOOL_PARAMETERS)(observation(body))
-    # Arguments may also arrive as a JSON string.
-    string_args = json.dumps(
-        {
-            "tool_calls": [
-                {
-                    "type": "function",
-                    "function": {"name": "lookup", "arguments": "{\"city\": \"Taipei\"}"},
-                }
-            ]
-        }
+
+
+def test_tool_conformance_reads_message_tool_calls_with_null_content() -> None:
+    """Regression: a real tool response has content null and message.tool_calls.
+
+    The pre-fix harness parsed response *text* as JSON, so it failed every real
+    tool-call response. Arguments here arrive as a JSON string, exactly as the
+    protocol serializes them.
+    """
+    observation = tool_observation(
+        [
+            {
+                "id": "call_abc",
+                "type": "function",
+                "name": "lookup",
+                "arguments": "{\"city\": \"Taipei\"}",
+            }
+        ]
     )
-    MODULE.tool_call_schema_check("lookup", TOOL_PARAMETERS)(observation(string_args))
+    assert observation.output() == "", "content must be absent/null for a tool response"
+    MODULE.tool_call_schema_check("lookup", TOOL_PARAMETERS)(observation)
+    # Object-form arguments must also be accepted.
+    MODULE.tool_call_schema_check("lookup", TOOL_PARAMETERS)(
+        tool_observation([{"name": "lookup", "arguments": {"city": "Taipei"}}])
+    )
+
+
+def test_tool_replay_ignores_server_generated_call_ids() -> None:
+    """Replay compares name + arguments; response ids differ between runs."""
+    first = tool_observation(
+        [{"id": "call_run_1", "type": "function", "name": "lookup", "arguments": '{"city": "Taipei"}'}]
+    )
+    second = tool_observation(
+        [{"id": "call_run_2", "type": "function", "name": "lookup", "arguments": {"city": "Taipei"}}]
+    )
+    assert first.tool_replay() == second.tool_replay()
+    # A genuine argument difference must still be visible.
+    third = tool_observation([{"name": "lookup", "arguments": {"city": "Oslo"}}])
+    assert first.tool_replay() != third.tool_replay()
+
+
+def test_streamed_tool_deltas_assemble_like_the_protocol() -> None:
+    """delta.tool_calls start + argument chunks must assemble into one call."""
+    calls: dict = {}
+    MODULE.assemble_stream_tool_calls(
+        [
+            {
+                "index": 0,
+                "id": "call_x",
+                "type": "function",
+                "function": {"name": "lookup", "arguments": ""},
+            }
+        ],
+        calls,
+    )
+    MODULE.assemble_stream_tool_calls([{"index": 0, "function": {"arguments": '{"city": '}}], calls)
+    MODULE.assemble_stream_tool_calls([{"index": 0, "function": {"arguments": '"Taipei"}'}}], calls)
+    assert calls[0]["name"] == "lookup"
+    assembled = tool_observation([calls[0]])
+    assert assembled.tool_replay() == [{"name": "lookup", "arguments": {"city": "Taipei"}}]
 
 
 @pytest.mark.parametrize(
-    "payload,reason",
+    "tool_calls,reason",
     [
-        ({"tool_calls": []}, "no tool_calls"),
-        ({"content": "hi"}, "no tool_calls"),
-        (
-            {"tool_calls": [{"function": {"name": "other", "arguments": {"city": "x"}}}]},
-            "expected tool 'lookup'",
-        ),
-        (
-            {"tool_calls": [{"function": {"name": "lookup", "arguments": {}}}]},
-            "missing required key",
-        ),
-        (
-            {"tool_calls": [{"function": {"name": "lookup", "arguments": {"city": 5}}}]},
-            "expected string",
-        ),
-        (
-            {"tool_calls": [{"function": {"name": "lookup", "arguments": {"city": "x", "z": 1}}}]},
-            "unexpected key",
-        ),
+        ([], "no tool_calls"),
+        ([{"name": "other", "arguments": {"city": "x"}}], "expected tool 'lookup'"),
+        ([{"name": "lookup", "arguments": {}}], "missing required key"),
+        ([{"name": "lookup", "arguments": {"city": 5}}], "expected string"),
+        ([{"name": "lookup", "arguments": {"city": "x", "z": 1}}], "unexpected key"),
+        ([{"name": "lookup", "arguments": "not json"}], "not JSON"),
     ],
 )
-def test_tool_conformance_rejects_wrong_call_or_arguments(payload, reason) -> None:
+def test_tool_conformance_rejects_wrong_call_or_arguments(tool_calls, reason) -> None:
     with pytest.raises(MODULE.AcceptanceError) as error:
-        MODULE.tool_call_schema_check("lookup", TOOL_PARAMETERS)(observation(json.dumps(payload)))
+        MODULE.tool_call_schema_check("lookup", TOOL_PARAMETERS)(tool_observation(tool_calls))
     assert reason in str(error.value)
+
+
+def test_tool_finish_reason_is_accepted_and_null_content_is_legal() -> None:
+    MODULE.check_served(tool_observation([{"name": "lookup", "arguments": {"city": "x"}}]))
+    with pytest.raises(MODULE.AcceptanceError):
+        MODULE.check_served(
+            MODULE.Observation(name="empty", request={}, status=200, finish_reason="stop")
+        )
+
+
+def test_fake_schema_preflight_matches_native_or_semantics() -> None:
+    """Required-missing OR additionalProperties-not-false: either one rejects."""
+    valid = {
+        "type": "object",
+        "json_schema": {
+            "name": "ok",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "properties": {"a": {"type": "string"}},
+                "required": ["a"],
+                "additionalProperties": False,
+            },
+        },
+    }
+    assert not MODULE.fake_rejects_schema({"response_format": valid})
+    # required present but additionalProperties missing -> native rejects.
+    missing_additional = {
+        "type": "object",
+        "json_schema": {
+            "name": "bad",
+            "strict": True,
+            "schema": {"type": "object", "properties": {"a": {"type": "string"}}, "required": ["a"]},
+        },
+    }
+    assert MODULE.fake_rejects_schema({"response_format": missing_additional})
+    # additionalProperties false but required incomplete -> native rejects.
+    incomplete_required = {
+        "type": "object",
+        "json_schema": {
+            "name": "bad2",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "properties": {"a": {"type": "string"}, "b": {"type": "string"}},
+                "required": ["a"],
+                "additionalProperties": False,
+            },
+        },
+    }
+    assert MODULE.fake_rejects_schema({"response_format": incomplete_required})
+    # Non-strict schemas are not preflighted.
+    non_strict = json.loads(json.dumps(missing_additional))
+    non_strict["json_schema"]["strict"] = False
+    assert not MODULE.fake_rejects_schema({"response_format": non_strict})
+
+
+def test_legacy_style_tool_payload_in_content_fails_the_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A tool response that hides tool_calls inside content must fail, not pass.
+
+    This is the regression guard for the confirmed live bug: the harness must
+    require protocol ``message.tool_calls`` (with ``content: null``), so an
+    in-content encoding is correctly reported as a failure.
+    """
+    original = urllib.request.urlopen
+
+    def fake_urlopen(request, timeout=None):  # noqa: ARG001
+        if request.data is None:
+            return MODULE.FakeResponse(200, b'{"http_queue_len":0}')
+        body = json.loads(request.data.decode())
+        if body.get("tools"):
+            legacy = json.dumps(
+                {
+                    "tool_calls": [
+                        {
+                            "type": "function",
+                            "function": {"name": "lookup", "arguments": {"city": "Taipei"}},
+                        }
+                    ]
+                }
+            )
+            return MODULE.FakeResponse(
+                200,
+                json.dumps(
+                    {
+                        "choices": [
+                            {"message": {"role": "assistant", "content": legacy}, "finish_reason": "stop"}
+                        ]
+                    }
+                ).encode(),
+            )
+        return MODULE.fake_server(body)
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    try:
+        result = MODULE.run_deployment("legacy", "http://legacy", list(MODULE.VECTORS), api_key=None)
+    finally:
+        monkeypatch.setattr(urllib.request, "urlopen", original)
+    tool_failures = [failure for failure in result.failures if "tool_calls" in failure]
+    assert tool_failures, f"legacy in-content tool payload was not reported: {result.failures}"
+
+
+def test_tool_replay_is_scoped_to_identical_sampling_params(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Greedy and stochastic tool runs may differ; only same-params runs replay.
+
+    The fake returns a different tool argument for the greedy tool case, so this
+    fails if the harness ever compares greedy and stochastic tool calls together.
+    """
+    original = urllib.request.urlopen
+
+    def fake_urlopen(request, timeout=None):  # noqa: ARG001
+        if request.data is None:
+            return MODULE.FakeResponse(200, b'{"http_queue_len":0}')
+        return MODULE.fake_server(json.loads(request.data.decode()))
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    try:
+        result = MODULE.run_deployment("scope", "http://scope", list(MODULE.VECTORS), api_key=None)
+    finally:
+        monkeypatch.setattr(urllib.request, "urlopen", original)
+
+    assert not result.failures, result.failures
+    assert "stochastic-tool-replay-identical" in result.checks
+    assert "greedy-tool-validated-separately" in result.checks
+    stochastic = result.by_name("constrained-tool")
+    greedy = result.by_name("constrained-tool-greedy")
+    assert stochastic is not None and greedy is not None
+    # Different by design: the scoped check must not equate them.
+    assert stochastic.tool_replay() != greedy.tool_replay()
 
 
 def test_missing_base_url_is_a_clear_cli_error() -> None:

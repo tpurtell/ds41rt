@@ -212,13 +212,25 @@ the other filters.
 | `temp0.7-topk40` | 0.7 | 1.0 | 40 | 0.0 |
 
 Each report records the requested vector, the exact fields sent, the seed and
-its source, the EOS/fixed-length policy, every per-sample actual
-`completion_tokens`, and per-case medians across repeats. `--fixed-decode-tokens
-N` pins the generated length: it sets `ignore_eos`, `min_tokens=N` and
-`max_tokens=N`, so `max_tokens` bounds every case at `N` whether or not the
-server honours `ignore_eos`/`min_tokens`; when the server does not honour them
-the samples simply finish earlier, and the actual token counts and a
-`fixed_length_honored` verdict are recorded instead of assumed. Warmup follows
+its source, the EOS/length policy, every per-sample actual `completion_tokens`,
+and per-case medians across repeats. The release campaign uses each category's
+natural corpus budget with natural EOS and does not force a fixed length, so
+output lengths legitimately differ between profiles; the actual per-case length
+spread is recorded and reported rather than normalized away.
+`--fixed-decode-tokens N` remains available as an optional diagnostic mode: it
+sets `ignore_eos`, `min_tokens=N` and `max_tokens=N` for the weighted cases only,
+while counting and orchid keep their corpus budgets so the counting quality
+contract is not truncated; an unhonoured fixed length is recorded through
+`fixed_length_honored` instead of assumed. The campaign's raw reports are gated
+before aggregation by `scripts/validate-sampling-campaign.py`, which requires
+exactly five profiles by three repeats with no duplicates, a pinned identity
+snapshot (1 RTX + 4 Spark, dspark, local image ids and source/version labels),
+cross-file identity, exact canonical per-profile vectors with per-sample request
+seeds, natural budgets (max equals the corpus budget, no minimum, EOS free),
+complete and passed weighted cases, published numbers recomputed from the raw
+samples, exact n-repeat medians, true cyclic rotation verified from raw
+timestamps, and recorded length spreads; diagnostics are reported separately and
+never folded into the weighted median. Warmup follows
 the release protocol: before the timed rotation, one discarded full invocation
 per profile runs the same category shapes with a distinct `--nonce-seed`, writing
 `warmup-*` files that stay outside the aggregate glob and are never scored. That

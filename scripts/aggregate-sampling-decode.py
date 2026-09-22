@@ -5,8 +5,12 @@ The campaign runs the five sampling profiles interleaved by repeat so a slow
 drift in the deployment hits every profile roughly equally::
 
   repeat 1: greedy -> temp0.2-topp0.95 -> temp0.7-topp0.9 -> temp0.7-minp0.05 -> temp0.7-topk40
-  repeat 2: temp0.7-topk40 -> greedy -> temp0.2-topp0.95 -> ...   (rotated)
-  repeat 3: temp0.7-minp0.05 -> ...                              (rotated)
+  repeat 2: temp0.2-topp0.95 -> temp0.7-topp0.9 -> temp0.7-minp0.05 -> temp0.7-topk40 -> greedy   (left rotation, offset 1)
+  repeat 3: temp0.7-topp0.9 -> temp0.7-minp0.05 -> temp0.7-topk40 -> greedy -> temp0.2-topp0.95   (left rotation, offset 2)
+
+The canonical rotation is a LEFT rotation of the profile list by ``repeat - 1``
+(offsets 0/1/2 for repeats 1/2/3); ``scripts/validate-sampling-campaign.py``
+enforces that exact order from the raw timestamps and overrides this example.
 
 Each invocation of ``scripts/bench-ds41-release-decode.py`` writes one raw
 report (use ``--repeat-index`` to run a single repeat). This tool combines those

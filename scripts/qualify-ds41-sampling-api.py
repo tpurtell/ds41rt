@@ -65,6 +65,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
@@ -121,6 +122,10 @@ class Observation:
     error: dict[str, Any] | None = None
     text: str = ""
     reasoning: str = ""
+    # Tool calls are carried outside `content` (real protocol: message.tool_calls
+    # with `content: null`). Kept separately so tool conformance never depends on
+    # inventing JSON inside the text field.
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
     finish_reason: str | None = None
     system_fingerprint: str | None = None
     usage: dict[str, Any] | None = None
@@ -132,8 +137,28 @@ class Observation:
     def output(self) -> str:
         return self.text + self.reasoning
 
+    def tool_replay(self) -> list[dict[str, Any]]:
+        """Call identity for replay comparison: name + parsed arguments, never the id.
+
+        Response call ids are server-generated and differ between otherwise
+        identical runs, so they must not participate in replay equality. Streamed
+        arguments arrive as an accumulated JSON string while non-streamed
+        arguments arrive as an object, so both are parsed to the same value.
+        """
+        calls = []
+        for call in self.tool_calls:
+            arguments = call.get("arguments")
+            if isinstance(arguments, str):
+                try:
+                    arguments = json.loads(arguments)
+                except json.JSONDecodeError:
+                    pass
+            calls.append({"name": call.get("name"), "arguments": arguments})
+        return calls
+
     def as_dict(self, retain_text: bool) -> dict[str, Any]:
         encoded = self.output().encode()
+        tool_identity = json.dumps(self.tool_replay(), sort_keys=True, default=str)
         record: dict[str, Any] = {
             "name": self.name,
             "request": self.request,
@@ -141,6 +166,9 @@ class Observation:
             "error": self.error,
             "output_length": len(self.output()),
             "output_sha256": hashlib.sha256(encoded).hexdigest(),
+            "tool_call_count": len(self.tool_calls),
+            "tool_calls": self.tool_calls,
+            "tool_replay_sha256": hashlib.sha256(tool_identity.encode()).hexdigest(),
             "finish_reason": self.finish_reason,
             "system_fingerprint": self.system_fingerprint,
             "usage": self.usage,
@@ -195,10 +223,58 @@ def open_request(base_url: str, body: dict[str, Any], api_key: str | None):
     )
 
 
+def normalise_tool_call(call: dict[str, Any]) -> dict[str, Any]:
+    """Normalise one protocol tool call (arguments may be an object or a string)."""
+    function = call.get("function") or {}
+    arguments = function.get("arguments")
+    if isinstance(arguments, str):
+        try:
+            arguments = json.loads(arguments)
+        except json.JSONDecodeError:
+            pass
+    return {
+        "id": call.get("id"),
+        "type": call.get("type"),
+        "name": function.get("name"),
+        "arguments": arguments,
+    }
+
+
+def assemble_stream_tool_calls(
+    deltas: list[dict[str, Any]], calls: dict[int, dict[str, Any]]
+) -> None:
+    """Assemble streamed tool-call deltas by index (start carries name, then args)."""
+    for delta in deltas:
+        index = delta.get("index")
+        if not isinstance(index, int):
+            continue
+        entry = calls.setdefault(
+            index, {"id": None, "type": None, "name": None, "arguments": ""}
+        )
+        if delta.get("id") is not None:
+            entry["id"] = delta.get("id")
+        if delta.get("type") is not None:
+            entry["type"] = delta.get("type")
+        function = delta.get("function")
+        if not isinstance(function, dict):
+            continue
+        if function.get("name") is not None:
+            entry["name"] = function.get("name")
+        arguments = function.get("arguments")
+        if isinstance(arguments, dict):
+            entry["arguments"] = arguments
+        elif isinstance(arguments, str):
+            existing = entry.get("arguments")
+            entry["arguments"] = (
+                existing + arguments if isinstance(existing, str) else arguments
+            )
+
+
 def run_case(base_url: str, case: Case, api_key: str | None) -> Observation:
     observation = Observation(name=case.name, request=case.body)
     started = time.perf_counter()
     stream = bool(case.body.get("stream"))
+    streamed_calls: dict[int, dict[str, Any]] = {}
     try:
         with open_request(base_url, case.body, api_key) as response:
             observation.status = response.status
@@ -225,9 +301,15 @@ def run_case(base_url: str, case: Case, api_key: str | None) -> Observation:
                         delta = choice.get("delta") or {}
                         observation.text += str(delta.get("content") or "")
                         observation.reasoning += str(delta.get("reasoning_content") or "")
+                        assemble_stream_tool_calls(
+                            delta.get("tool_calls") or [], streamed_calls
+                        )
                         if choice.get("finish_reason"):
                             observation.finish_reason = choice["finish_reason"]
                 observation.sse_frames = frames
+                observation.tool_calls = [
+                    streamed_calls[index] for index in sorted(streamed_calls)
+                ]
             else:
                 body = json.load(response)
                 if body.get("error"):
@@ -238,6 +320,8 @@ def run_case(base_url: str, case: Case, api_key: str | None) -> Observation:
                     message = choice.get("message") or {}
                     observation.text += str(message.get("content") or "")
                     observation.reasoning += str(message.get("reasoning_content") or "")
+                    for call in message.get("tool_calls") or []:
+                        observation.tool_calls.append(normalise_tool_call(call))
                     observation.finish_reason = choice.get("finish_reason")
     except urllib.error.HTTPError as error:
         observation.status = error.code
@@ -353,29 +437,49 @@ def expect_bad_request(observation: Observation) -> None:
 
 
 def check_served(observation: Observation) -> None:
-    """Request accepted, text produced, finish reason reported."""
+    """Request accepted, text produced, finish reason reported.
+
+    A tool-call response is valid with ``content: null``; for those the payload
+    is carried in ``tool_calls``, so either text or a tool call satisfies the
+    content requirement. ``finish_reason`` may be ``stop``, ``length`` or
+    ``tool_calls``.
+    """
     if observation.status == 400:
         raise AcceptanceError(
             f"{observation.name}: sampling request rejected 400: {observation.error}"
         )
     expect_ok(observation)
-    if not observation.output():
-        raise AcceptanceError(f"{observation.name}: response carried no text")
-    if observation.finish_reason not in {"stop", "length"}:
+    if not observation.output() and not observation.tool_calls:
+        raise AcceptanceError(
+            f"{observation.name}: response carried neither text nor tool_calls"
+        )
+    if observation.finish_reason not in {"stop", "length", "tool_calls"}:
         raise AcceptanceError(
             f"{observation.name}: missing finish_reason ({observation.finish_reason})"
         )
 
 
 def check_stream_complete(observation: Observation) -> None:
+    """SSE terminates with [DONE], carries usage, and reports a valid finish.
+
+    Token-level streams may omit ``finish_reason`` on every frame, so a missing
+    finish reason is accepted only when the stream actually produced content; a
+    stream that produced neither text nor tool calls is a failure.
+    """
     expect_ok(observation)
     if observation.stream_done is not True:
         raise AcceptanceError(f"{observation.name}: SSE stream did not terminate with [DONE]")
     if observation.usage is None:
         raise AcceptanceError(f"{observation.name}: stream carried no usage with include_usage")
-    if observation.finish_reason not in {"stop", "length"}:
+    if observation.finish_reason is None:
+        if not observation.output() and not observation.tool_calls:
+            raise AcceptanceError(
+                f"{observation.name}: stream produced no content and no finish_reason"
+            )
+        return
+    if observation.finish_reason not in {"stop", "length", "tool_calls"}:
         raise AcceptanceError(
-            f"{observation.name}: stream missing finish_reason ({observation.finish_reason})"
+            f"{observation.name}: stream carried unknown finish_reason ({observation.finish_reason})"
         )
 
 
@@ -477,30 +581,25 @@ def schema_conformance_check(schema: dict[str, Any]) -> Callable[[Observation], 
 def tool_call_schema_check(expected_name: str, parameters: dict[str, Any]) -> Callable[[Observation], None]:
     """Tool output must carry a call to the requested function with conforming args.
 
-    Applied to the harness-owned strict tool schema. The engine validates tool
-    calls server-side as well; this confirms the served payload on the client.
+    Reads the protocol ``tool_calls`` field (``message.tool_calls`` for
+    non-stream, assembled ``delta.tool_calls`` for stream), never the text
+    content: a real tool response carries ``content: null``. The engine validates
+    tool calls server-side as well; this confirms the served payload client-side.
     """
 
     def check(observation: Observation) -> None:
-        check_parseable_json(observation)
-        try:
-            payload = json.loads(observation.text.strip())
-        except json.JSONDecodeError:  # already reported by check_parseable_json
-            return
-        calls = payload.get("tool_calls") if isinstance(payload, dict) else None
-        if not isinstance(calls, list) or not calls:
+        expect_ok(observation)
+        if not observation.tool_calls:
             raise AcceptanceError(
-                f"{observation.name}: tool response has no tool_calls array: {payload!r}"
+                f"{observation.name}: response carried no tool_calls "
+                f"(content was {observation.text!r})"
             )
-        call = calls[0]
-        function = call.get("function") if isinstance(call, dict) else None
-        if not isinstance(function, dict):
-            raise AcceptanceError(f"{observation.name}: tool call has no function object: {call!r}")
-        if function.get("name") != expected_name:
+        call = observation.tool_calls[0]
+        if call.get("name") != expected_name:
             raise AcceptanceError(
-                f"{observation.name}: expected tool {expected_name!r}, got {function.get('name')!r}"
+                f"{observation.name}: expected tool {expected_name!r}, got {call.get('name')!r}"
             )
-        arguments = function.get("arguments")
+        arguments = call.get("arguments")
         if isinstance(arguments, str):
             try:
                 arguments = json.loads(arguments)
@@ -709,6 +808,8 @@ def constrained_cases() -> list[Case]:
         Case("constrained-json-schema-sampled-replay", vector_body("v3-t07-p90", answer_prompt, seed=0, response_format=schema), schema_conformance_check(answer_schema)),
         Case("constrained-tool", vector_body("v3-t07-p90", "Look up the weather in Taipei.", seed=0, tools=tools, tool_choice="required"), tool_call_schema_check("lookup", tools[0]["function"]["parameters"])),
         Case("constrained-tool-replay", vector_body("v3-t07-p90", "Look up the weather in Taipei.", seed=0, tools=tools, tool_choice="required"), tool_call_schema_check("lookup", tools[0]["function"]["parameters"])),
+        Case("constrained-tool-stream", vector_body("v3-t07-p90", "Look up the weather in Taipei.", seed=0, stream=True, tools=tools, tool_choice="required"), tool_call_schema_check("lookup", tools[0]["function"]["parameters"])),
+        Case("constrained-tool-greedy", payload("Look up the weather in Taipei.", temperature=0, tools=tools, tool_choice="required"), tool_call_schema_check("lookup", tools[0]["function"]["parameters"])),
         Case(
             "constrained-invalid-schema",
             payload(
@@ -870,6 +971,34 @@ def run_deployment(
     }
     result.checks.append("top-k-boundary-status:" + json.dumps(top_k_status, sort_keys=True))
 
+    # Tool replay is scoped to identical sampling parameters: the three
+    # stochastic v3-t07-p90 seed=0 runs (non-stream, replay, stream) must agree on
+    # normalized calls (name + parsed arguments), never on server call ids. The
+    # greedy tool run is sampled under different parameters, so it is validated
+    # for conformance only and is deliberately NOT compared with the stochastic
+    # runs; a different greedy argument set is legal.
+    stochastic_tools = [
+        result.by_name("constrained-tool"),
+        result.by_name("constrained-tool-replay"),
+        result.by_name("constrained-tool-stream"),
+    ]
+    if all(run is not None and run.status == 200 for run in stochastic_tools):
+        present = [run for run in stochastic_tools if run is not None]
+        identities = [json.dumps(run.tool_replay(), sort_keys=True, default=str) for run in present]
+        if len(set(identities)) != 1:
+            result.failures.append(
+                "stochastic tool replay differs across transports at identical params/seed "
+                "(name+arguments must match): "
+                + json.dumps([run.tool_replay() for run in present])
+            )
+        else:
+            result.checks.append("stochastic-tool-replay-identical")
+    greedy_tool = result.by_name("constrained-tool-greedy")
+    if greedy_tool is not None and greedy_tool.status == 200:
+        # Conformance is asserted by its own case check; replay is not required
+        # across different sampling parameters.
+        result.checks.append("greedy-tool-validated-separately")
+
     # The schema-constrained sampled vector must also replay exactly.
     constrained_sampled = result.by_name("constrained-json-schema-sampled")
     constrained_replay = result.by_name("constrained-json-schema-sampled-replay")
@@ -1029,15 +1158,30 @@ def fake_invalid(body: dict[str, Any]) -> bool:
 
 
 def fake_rejects_schema(body: dict[str, Any]) -> bool:
-    """Mirror the strict-schema subset check for the deliberately bad schema."""
+    """Mirror the native strict-subset preflight for the deliberately bad schema.
+
+    ``validate_strict_json_schema`` rejects an object schema when
+    ``additionalProperties`` is not exactly ``false`` OR when ``required`` does
+    not list every property (both are checked independently, so the condition is
+    an OR, not an AND). The harness schema is an object, so the preflight applies
+    before the adapter sees it.
+    """
     response_format = body.get("response_format") or {}
     definition = response_format.get("json_schema") or {}
     if not definition.get("strict"):
         return False
     schema = definition.get("schema") or {}
-    if "properties" not in schema:
+    if not isinstance(schema, dict) or "properties" not in schema:
         return False
-    return schema.get("required") is None and schema.get("additionalProperties") is not False
+    properties = schema.get("properties") or {}
+    if not isinstance(properties, dict):
+        return True
+    if schema.get("additionalProperties") is not False:
+        return True
+    required = schema.get("required")
+    if not isinstance(required, list):
+        return True
+    return sorted(required) != sorted(properties)
 
 
 def fake_answer(body: dict[str, Any]) -> str:
@@ -1062,16 +1206,115 @@ def fake_answer(body: dict[str, Any]) -> str:
         return json.dumps(
             {"answer": "4", "confidence": 100, "tags": ["math"], "ok": True}
         )
-    if body.get("tools"):
-        return json.dumps(
-            {
-                "tool_calls": [
-                    {"type": "function", "function": {"name": "lookup", "arguments": {"city": "Taipei"}}}
-                ],
-                "note": suffix,
-            }
-        )
     return "ab" + suffix
+
+
+def fake_tool_call(body: dict[str, Any]) -> dict[str, Any]:
+    """One protocol tool call. The id is server-generated and varies per run.
+
+    The argument value depends on the sampling parameters: greedy and stochastic
+    requests are allowed to select different tokens, so the fake returns a
+    different city for the greedy tool case. That makes any accidental
+    greedy-vs-stochastic replay assertion fail loudly in the self-test.
+    """
+    temperature = body.get("temperature")
+    city = "Taipei" if temperature in (None, 0) else f"Taipei-seed-{body.get('seed')}"
+    return {
+        "id": f"call_{uuid.uuid4().hex[:12]}",
+        "type": "function",
+        "function": {"name": "lookup", "arguments": json.dumps({"city": city})},
+    }
+
+
+def fake_nonstream_response(body: dict[str, Any]) -> dict[str, Any]:
+    """Mirror the real non-stream payload, including tool-call responses."""
+    if body.get("tools"):
+        # Real tool responses carry `content: null` and finish_reason tool_calls.
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [fake_tool_call(body)],
+                    },
+                    "finish_reason": "tool_calls",
+                }
+            ],
+            "system_fingerprint": "fake",
+            "usage": {"completion_tokens": 8},
+        }
+    answer = fake_answer(body)
+    return {
+        "choices": [
+            {"message": {"role": "assistant", "content": answer, "reasoning_content": ""}, "finish_reason": "stop"}
+        ],
+        "system_fingerprint": "fake",
+        "usage": {"completion_tokens": len(answer)},
+    }
+
+
+def fake_stream_frames(body: dict[str, Any]) -> list[dict[str, Any]]:
+    """Mirror the real streamed payload, including tool-call delta accumulation."""
+    if body.get("tools"):
+        call = fake_tool_call(body)
+        # Start delta carries id/type/name, then arguments arrive in two pieces.
+        arguments = call["function"]["arguments"]
+        split = max(1, len(arguments) // 2)
+        return [
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "role": "assistant",
+                            "content": None,
+                            "tool_calls": [
+                                {
+                                    "index": 0,
+                                    "id": call["id"],
+                                    "type": "function",
+                                    "function": {"name": call["function"]["name"], "arguments": ""},
+                                }
+                            ],
+                        },
+                        "finish_reason": None,
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "tool_calls": [
+                                {"index": 0, "function": {"arguments": arguments[:split]}}
+                            ]
+                        },
+                        "finish_reason": None,
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "tool_calls": [
+                                {"index": 0, "function": {"arguments": arguments[split:]}}
+                            ]
+                        },
+                        "finish_reason": None,
+                    }
+                ]
+            },
+            {"choices": [{"delta": {}, "finish_reason": "tool_calls"}]},
+            {"choices": [], "usage": {"completion_tokens": 8}},
+        ]
+    answer = fake_answer(body)
+    return [
+        {"choices": [{"delta": {"content": answer[:1]}, "finish_reason": None}]},
+        {"choices": [{"delta": {"content": answer[1:]}, "finish_reason": None}]},
+        {"choices": [{"delta": {}, "finish_reason": "stop"}]},
+        {"choices": [], "usage": {"completion_tokens": len(answer)}},
+    ]
 
 
 def fake_server(body: dict[str, Any]) -> FakeResponse:
@@ -1079,30 +1322,12 @@ def fake_server(body: dict[str, Any]) -> FakeResponse:
         return FakeResponse(
             400, json.dumps({"error": {"message": "invalid request", "type": ERROR_TYPE}}).encode()
         )
-    answer = fake_answer(body)
     if body.get("stream"):
-        frames = [
-            {"choices": [{"delta": {"content": answer[:1]}, "finish_reason": None}]},
-            {"choices": [{"delta": {"content": answer[1:]}, "finish_reason": None}]},
-            {"choices": [{"delta": {}, "finish_reason": "stop"}]},
-            {"choices": [], "usage": {"completion_tokens": len(answer)}},
-        ]
         payload = b"".join(
-            b"data: " + json.dumps(frame).encode() + b"\n\n" for frame in frames
+            b"data: " + json.dumps(frame).encode() + b"\n\n" for frame in fake_stream_frames(body)
         ) + b"data: [DONE]\n\n"
         return FakeResponse(200, payload)
-    return FakeResponse(
-        200,
-        json.dumps(
-            {
-                "choices": [
-                    {"message": {"content": answer, "reasoning_content": ""}, "finish_reason": "stop"}
-                ],
-                "system_fingerprint": "fake",
-                "usage": {"completion_tokens": len(answer)},
-            }
-        ).encode(),
-    )
+    return FakeResponse(200, json.dumps(fake_nonstream_response(body)).encode())
 
 
 def patch_fake_server(stats_sequence: list[dict[str, Any]] | None = None):
@@ -1149,6 +1374,12 @@ def self_test() -> int:
         "constrained-json-schema-sampled",
         "constrained-json-schema-sampled-replay",
         "constrained-schema-seed0-replay-identical",
+        "constrained-tool",
+        "constrained-tool-replay",
+        "constrained-tool-stream",
+        "constrained-tool-greedy",
+        "stochastic-tool-replay-identical",
+        "greedy-tool-validated-separately",
     }
     required |= {f"{vector}-seed0-replay-identical" for vector in VECTORS if vector != GREEDY_VECTOR}
     required |= {
