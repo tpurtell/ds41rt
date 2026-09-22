@@ -62,7 +62,15 @@ impl<'a> RequestAccess<'a> for std::cell::RefCell<&mut Requests<'a>> {
 enum HeadTerminal<'m> {
     Regular,
     Greedy,
-    Sampled { requests: &'m [TargetSamplingRowRequest], masks: Option<&'m [u32]>, mask_words: usize },
+    Sampled {
+        requests: &'m [TargetSamplingRowRequest],
+        masks: Option<&'m [u32]>,
+        mask_words: usize,
+        /// Whether any row of this batch needs K3/K4/K5. The caller decides it
+        /// per row (`SamplingRoute::is_ordered`); a purely greedy or purely
+        /// fast-path batch keeps the chunk-1/chunk-2 two-stage sequence.
+        ordered_rows: bool,
+    },
 }
 
 #[derive(Default, Debug, PartialEq, Eq)]
@@ -208,9 +216,9 @@ impl<'w, 'a> TargetPass<'w, 'a> {
     pub async unsafe fn execute_sampled(&mut self, requests: &Requests<'a>,
         batch: &mut RequestBatch, transport: &mut NativeTp4Wave<'a>, placement: u64,
         selected: &[usize], sampling: &[TargetSamplingRowRequest], masks: Option<&[u32]>,
-        mask_words: usize) -> Result<()> {
+        mask_words: usize, ordered_rows: bool) -> Result<()> {
         ensure!(batch.cache()?.stage() == CacheStage::Full, "sampled target execute requires full phase");
-        let terminal = HeadTerminal::Sampled { requests: sampling, masks, mask_words };
+        let terminal = HeadTerminal::Sampled { requests: sampling, masks, mask_words, ordered_rows };
         unsafe { self.execute_phase(requests, batch, transport, placement, selected, None, None, terminal).await?; }
         ensure!(self.sampled.is_some(), "sampled target pass published no rows");
         Ok(())
@@ -220,9 +228,10 @@ impl<'w, 'a> TargetPass<'w, 'a> {
         requests: &std::cell::RefCell<&mut Requests<'a>>, batch: &mut RequestBatch,
         transport: &mut NativeTp4Wave<'a>, placement: u64, selected: &[usize],
         sampling: &[TargetSamplingRowRequest], masks: Option<&[u32]>, mask_words: usize,
+        ordered_rows: bool,
     ) -> Result<()> {
         ensure!(batch.cache()?.stage() == CacheStage::Full, "shared sampled target execute requires full phase");
-        let terminal = HeadTerminal::Sampled { requests: sampling, masks, mask_words };
+        let terminal = HeadTerminal::Sampled { requests: sampling, masks, mask_words, ordered_rows };
         unsafe { self.execute_phase(requests, batch, transport, placement, selected, None, None, terminal).await?; }
         ensure!(self.sampled.is_some(), "shared sampled target pass published no rows");
         Ok(())
@@ -465,11 +474,11 @@ impl<'w, 'a> TargetPass<'w, 'a> {
                         unsafe { self.head.execute_block(&output, selected)?; }
                     }
                 }
-                HeadTerminal::Sampled { requests: rows, masks, mask_words } => {
+                HeadTerminal::Sampled { requests: rows, masks, mask_words, ordered_rows } => {
                     let sampled = unsafe {
                         self.head
                             .execute_block_sampled(&output, selected, rows, masks, mask_words,
-                                requests.cooperative_completion())
+                                ordered_rows, requests.cooperative_completion())
                             .await?
                     };
                     self.sampled = Some(sampled);

@@ -184,6 +184,9 @@ pub(super) fn serve<'w, 'a, P: ServingTarget<'w, 'a>>(lib: &'a NativeLibrary, ar
                     *slot = serde_json::json!({
                         "host_cache": metrics,
                         "host_cache_config": prefixes.host_config(),
+                        // Chunk 4a: device-vs-CPU routing and fallback counters,
+                        // so a row the device could not serve is observable.
+                        "target_sampling": sampling_stats::snapshot(),
                     });
                 }
             }
@@ -387,37 +390,265 @@ pub(super) fn serve<'w, 'a, P: ServingTarget<'w, 'a>>(lib: &'a NativeLibrary, ar
     Ok(())
 }
 
-/// Per-row parameters and greedy flags for one sampled round.
-struct SamplingPlan {
-    rows: Vec<TargetSamplingRowRequest>,
-    greedy: Vec<bool>,
+/// Process-wide device-terminal instrumentation.
+///
+/// Chunk 4a's fallback rule is "visible, never silent". The per-row fallback is
+/// also logged at `WARN` on the `ds41rt::sampling` target, but a log line is
+/// easy to miss and impossible to alert on, so every device round and every
+/// fallback row is counted here and exported through the existing per-second
+/// `stats` JSON under `target_sampling` (the `serve` loop is the only publisher).
+///
+/// Counters are monotonic since process start and are read with `Relaxed`
+/// ordering: they are diagnostics, not a synchronization device.
+pub(super) mod sampling_stats {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    /// Sampled rounds routed into the device terminal rather than the CPU path.
+    pub(super) static DEVICE_ROUNDS: AtomicU64 = AtomicU64::new(0);
+    /// Rounds whose every row was a fallback (today: every request stochastic
+    /// with `top_k >= 257`). Those stay on the CPU path; the device is not
+    /// launched for a round it would only serve as no-ops.
+    pub(super) static CPU_ROUNDS: AtomicU64 = AtomicU64::new(0);
+    /// Rows the device selected.
+    pub(super) static DEVICE_ROWS: AtomicU64 = AtomicU64::new(0);
+    /// Rows the host routed to the CPU sampler before the launch.
+    pub(super) static PLANNED_FALLBACK_ROWS: AtomicU64 = AtomicU64::new(0);
+    /// Rows the device launched but reported a non-OK, non-request-fault status
+    /// for (`INTERNAL`), and which the host re-sampled on the CPU.
+    pub(super) static REFUSED_FALLBACK_ROWS: AtomicU64 = AtomicU64::new(0);
+
+    pub(super) fn record_round(device_round: bool, device_rows: usize, planned: usize) {
+        if device_round {
+            DEVICE_ROUNDS.fetch_add(1, Ordering::Relaxed);
+        } else {
+            CPU_ROUNDS.fetch_add(1, Ordering::Relaxed);
+        }
+        DEVICE_ROWS.fetch_add(device_rows as u64, Ordering::Relaxed);
+        PLANNED_FALLBACK_ROWS.fetch_add(planned as u64, Ordering::Relaxed);
+    }
+
+    pub(super) fn record_refused(rows: usize) {
+        REFUSED_FALLBACK_ROWS.fetch_add(rows as u64, Ordering::Relaxed);
+    }
+
+    /// The exported snapshot: the device-terminal counters under the stats
+    /// JSON's `target_sampling` key. A fallback is therefore visible to an
+    /// operator, not only in the `WARN` log line.
+    pub(super) fn snapshot() -> serde_json::Value {
+        let get = |counter: &AtomicU64| counter.load(Ordering::Relaxed);
+        serde_json::json!({
+            "device_rounds": get(&DEVICE_ROUNDS),
+            "cpu_fallback_rounds": get(&CPU_ROUNDS),
+            "device_rows": get(&DEVICE_ROWS),
+            "planned_fallback_rows": get(&PLANNED_FALLBACK_ROWS),
+            "refused_fallback_rows": get(&REFUSED_FALLBACK_ROWS),
+        })
+    }
+}
+
+/// Which kernel route one row of a sampled round takes.
+///
+/// Chunk 4a is the first chunk that serves stochastic rows on the device, so a
+/// round is no longer homogeneous. Every row is classified **independently** by
+/// its own parameters, exactly the way the device kernels classify themselves
+/// (`v41_sampling_gpu.cu`: K1's greedy branch, `k2_applicable`, the K3/K4
+/// eligibility block, and K5's ordered-row class), and the classification is the
+/// routing table of design §4.6:
+///
+/// | host route | condition | kernels |
+/// | --- | --- | --- |
+/// | [`SamplingRoute::DeviceGreedy`] | greedy (`temperature < 1e-5` or `top_k == 1`) | K1 |
+/// | [`SamplingRoute::DeviceFastPath`] | `top_k == 0 && top_p >= 1.0` | K1 → K2 |
+/// | [`SamplingRoute::DeviceOrdered`] | `top_k in 1..=256` (ordered path), or `top_k == 0 && top_p < 1.0` (K5 case 3) | K1 → K3 → K4 → K5 |
+/// | [`SamplingRoute::CpuFallback`] | the device cannot serve this row (below) | CPU sampler on the downloaded row |
+///
+/// The all-greedy, unconstrained, untraced round never reaches the router: it is
+/// the `compact` flag that selects the existing compact lane (K1 argmax + two
+/// small D2H) without building a `SamplingPlan` at all, so there is no plan-level
+/// route for it.
+///
+/// `DeviceOrdered` deliberately does **not** distinguish `top_k < survivor_count`
+/// from `top_k >= survivor_count`: K3/K4 are a per-row no-op in the second case
+/// and K5 then treats the retained set as every survivor (its cases 2 and 3), so
+/// the kernel contract already covers it. What the host must exclude is a
+/// `top_k` above K5's `kBlock` retained-table limit (256), which is
+/// [`SamplingRoute::CpuFallback`] and is a **loud, counted** fallback rather than
+/// a silent wrong token (design §20 item 6).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SamplingRoute {
+    DeviceGreedy,
+    DeviceFastPath,
+    DeviceOrdered,
+    CpuFallback,
+}
+
+impl SamplingRoute {
+    /// Whether the row is selected by a device kernel. A `CpuFallback` row is
+    /// not; every other route is.
+    pub(crate) fn device_served(self) -> bool {
+        !matches!(self, SamplingRoute::CpuFallback)
+    }
+    /// Whether the row needs the K3/K4 → K5 ordered tail.
+    fn is_ordered(self) -> bool {
+        matches!(self, SamplingRoute::DeviceOrdered)
+    }
+}
+
+/// The host-side capability gate for one row, pure over the request parameters
+/// and the row's K1 inputs.
+///
+/// This must mirror the device's own eligibility exactly; where it cannot (the
+/// survivor count is a device reduction), it chooses the *conservative* side and
+/// the row falls back to the CPU sampler, which is always correct and is counted
+/// (see [`SAMPLING_FALLBACK_ROWS`]).
+///
+/// Fallback cases, and why each is a fallback rather than an error:
+///
+/// 1. **`top_k >= 257`.** K5's inclusive-prefix table is one `__shared__` f32
+///    per rank and holds at most `kBlock == 256`; a wider retained list is
+///    `INTERNAL` by contract (design §20 item 6). The CPU sampler serves it
+///    exactly.
+/// 2. **A parameter outside the validator's accepted range** (`temperature` not
+///    finite or outside `[0, 2]`, `top_p` not finite or outside `(0, 1]`,
+///    `min_p` not finite or outside `[0, 1]`, or an inconsistent `ln_min_p`).
+///    The FFI validator rejects the **whole batch** for such a row, so it must
+///    not reach the launch at all. The CPU sampler reports the same
+///    `InvalidParameter` error the CPU path reports today.
+/// 3. **`min_p > 1.0`.** With `min_p > 1` K1's survivor count is zero on every
+///    row, which K1 reports as `INTERNAL` by contract; the CPU sampler's filter
+///    chain keeps the best token alive (`target_sampling.rs:23-25`) and samples
+///    it. Routing it to the device would turn a servable request into an error.
+///
+/// Everything else is servable. In particular a constrained (masked) stochastic
+/// row is servable: the mask is applied by K1/K2/K5 first, exactly as the CPU
+/// `select_verification_sampled` applies it.
+fn sampling_route(params: ds41rt_core::TargetSamplingParams) -> SamplingRoute {
+    if params.is_greedy() {
+        return SamplingRoute::DeviceGreedy;
+    }
+    let top_k = params.top_k().map_or(0u32, |k| k as u32);
+    let temperature = params.temperature();
+    let top_p = params.top_p();
+    let min_p = params.min_p();
+    let finite_range = temperature.is_finite()
+        && (0.0..=2.0).contains(&temperature)
+        && top_p.is_finite()
+        && top_p > 0.0
+        && top_p <= 1.0
+        && min_p.is_finite()
+        && (0.0..=1.0).contains(&min_p);
+    if !finite_range {
+        return SamplingRoute::CpuFallback;
+    }
+    if min_p > 1.0 {
+        // `min_p` is validated to `<= 1.0` by `TargetSamplingParams::new`; a
+        // raw value above it would zero the survivor set.
+        return SamplingRoute::CpuFallback;
+    }
+    // `ln_min_p` is always the host `f32::ln` the validator recomputes: the
+    // plan builds both from the same `min_p` with `target_sampling_row`, so
+    // there is no separate check to make here.
+    if top_k > 0 {
+        if top_k > crate::v41_target_head::DS41RT_V41_SAMPLING_MAX_RETAINED {
+            return SamplingRoute::CpuFallback;
+        }
+        return SamplingRoute::DeviceOrdered;
+    }
+    if top_p < 1.0 {
+        // K5 case 3: no retained list, the nucleus is drawn from every survivor.
+        return SamplingRoute::DeviceOrdered;
+    }
+    SamplingRoute::DeviceFastPath
+}
+
+/// Per-row parameters and routing for one sampled round.
+pub(crate) struct SamplingPlan {
+    /// The device-facing parameter blocks, in batch-row order.
+    pub(crate) rows: Vec<TargetSamplingRowRequest>,
+    pub(crate) greedy: Vec<bool>,
+    /// Per row, the route the row takes. Parallel to `rows`.
+    pub(crate) route: Vec<SamplingRoute>,
+    /// Per row, the row's grammar mask (or `None`). Parallel to `rows`, and the
+    /// source of both the mask arena and the CPU fallback re-sample's mask.
+    pub(crate) mask: Vec<Option<Vec<u32>>>,
+    /// Per row, the **request's** sampling parameters, so a fallback row is
+    /// re-sampled with the request's own values rather than the device-facing
+    /// substitution.
+    pub(crate) params: Vec<ds41rt_core::TargetSamplingParams>,
+    /// Per row, the **absolute emitted-token index** the row's draw is keyed on,
+    /// exactly as the CPU path keys it. Kept per row so a fallback draw cannot
+    /// depend on the member layout.
+    pub(crate) position: Vec<u64>,
+}
+
+impl SamplingPlan {
+    /// Whether the row was a pre-launch fallback (the device was never asked to
+    /// serve it). A post-launch device error is handled by the caller, which
+    /// adds the row to the fallback set it passes to [`SamplingRound::fallback_rows`].
+    pub(crate) fn planned_fallback(&self, row: usize) -> bool {
+        !self.route[row].device_served()
+    }
+    /// How many rows the host routed to the CPU sampler before the launch.
+    #[cfg(test)]
+    pub(crate) fn planned_fallback_count(&self) -> usize {
+        self.route.iter().filter(|route| !route.device_served()).count()
+    }
+    /// Whether any row needs the K3/K4 -> K5 ordered tail (the same predicate
+    /// the wave launch takes).
+    #[cfg(test)]
+    pub(crate) fn routes_need_ordered_tail(&self) -> bool {
+        self.route.iter().any(|route| route.is_ordered())
+    }
+    /// Whether the round has at least one device-servable row, i.e. whether
+    /// launching the device terminal can select anything at all.
+    #[cfg(test)]
+    pub(crate) fn routes_need_device_terminal(&self) -> bool {
+        self.route.iter().any(|route| route.device_served())
+    }
 }
 
 /// One member's sampling inputs for a round, resolved from `Active` by the
 /// caller so the planner itself is a pure function of its arguments.
 #[derive(Clone)]
-struct SamplingMember {
-    params: ds41rt_core::TargetSamplingParams,
-    base_position: u64,
+pub(crate) struct SamplingMember {
+    pub(crate) params: ds41rt_core::TargetSamplingParams,
+    pub(crate) base_position: u64,
     /// Per row: the grammar mask, or `None` when the grammar allows every
     /// token. `needs_mask` is a per-row property, so it decides that row's
     /// `NO_MASK` flag — a constrained request whose grammar is exhausted on a
     /// later row must not have the previous row's grammar applied to it.
-    row_masks: Vec<Option<Vec<u32>>>,
+    pub(crate) row_masks: Vec<Option<Vec<u32>>>,
 }
 
-/// Build the per-row parameter blocks for one round.
+/// Build the per-row parameter blocks and routes for one round.
 ///
 /// `position(offset + index)` is the row's absolute emitted-token index, so a
-/// row's draw and its greedy decision never depend on the batch layout.
+/// row's draw and its greedy decision never depend on the batch layout. The
+/// seed and position of a row are request-local by construction: they come from
+/// the owning request's `TargetSamplingParams` and its own `generated` counter,
+/// never from the row's place in the batch or from a peer.
 ///
 /// `mask_row` is simply the row's ordinal: the mask arena is `rows x
 /// ceil(vocab/32)` and indexed by row, with `NO_MASK` rows carrying the
 /// `0xFFFFFFFF` sentinel. Keeping the two a single flat mapping means no
-/// ordinal remapping can silently pair a row with another row's grammar.
-fn build_target_sampling_plan(members: &[SamplingMember], inputs: &[Vec<u32>],
+/// ordinal remapping can silently pair a row with another row's grammar; it also
+/// satisfies K5's mandatory identity `output_row == block_row`, which
+/// `TargetSamplingWave::upload` re-asserts.
+///
+/// A row that must fall back (`sampling_route` → `CpuFallback`) is given a
+/// **device-neutral** parameter block: an unconstrained greedy row. That keeps
+/// the whole batch acceptable to the FFI validator (which rejects the batch, not
+/// the row, for an out-of-range parameter or an unmaterializable `top_k`) and
+/// makes every downstream stage a per-row no-op for it, so the device can never
+/// publish a token that the host then has to remember to ignore. The CPU
+/// re-sample reads the *planned* parameters, which are kept separately, not
+/// these.
+pub(crate) fn build_target_sampling_plan(members: &[SamplingMember], inputs: &[Vec<u32>],
 ) -> Result<SamplingPlan> {
-    let mut plan = SamplingPlan { rows: Vec::new(), greedy: Vec::new() };
+    let mut plan = SamplingPlan {
+        rows: Vec::new(), greedy: Vec::new(), route: Vec::new(), mask: Vec::new(),
+        params: Vec::new(), position: Vec::new(),
+    };
     for (meta, input) in members.iter().zip(inputs) {
         let params = meta.params;
         ensure!(
@@ -428,6 +659,7 @@ fn build_target_sampling_plan(members: &[SamplingMember], inputs: &[Vec<u32>],
             let greedy = params.is_greedy();
             let output_row = u32::try_from(plan.rows.len()).context("sampled row index overflow")?;
             let needs_mask = meta.row_masks[index].is_some();
+            let route = sampling_route(params);
             // `STRICT_FINITE` is set for masked and greedy rows, which are
             // exactly the rows whose finiteness must be checked before the mask
             // test (`scores.rs::argmax`). A stochastic unmasked row stays
@@ -445,15 +677,47 @@ fn build_target_sampling_plan(members: &[SamplingMember], inputs: &[Vec<u32>],
                 flags |= ds41rt_ffi::DS41RT_V41_SAMPLER_FLAG_NO_MASK;
                 ds41rt_ffi::DS41RT_V41_SAMPLER_NO_MASK_ROW
             };
-            plan.rows.push(TargetSamplingRowRequest {
-                row: target_sampling_row(params, meta.base_position + index as u64, mask_row,
-                    flags, output_row),
-                greedy,
-            });
+            let row = if route.device_served() {
+                target_sampling_row(params, meta.base_position + index as u64, mask_row,
+                    flags, output_row)
+            } else {
+                fallback_sampling_row(meta.base_position + index as u64, output_row)
+            };
+            plan.rows.push(TargetSamplingRowRequest { row, greedy });
             plan.greedy.push(greedy);
+            plan.route.push(route);
+            plan.mask.push(meta.row_masks[index].clone());
+            plan.params.push(params);
+            plan.position.push(meta.base_position + index as u64);
         }
     }
     Ok(plan)
+}
+
+/// The device-facing block for a row the device cannot serve.
+///
+/// It is a valid **unconstrained greedy** row: the FFI validator's range checks
+/// pass, K1's argmax branch runs (writing an id the host ignores), and every
+/// later stage is a per-row no-op (`k2_applicable` is false for a greedy row,
+/// the K3/K4 eligibility block requires non-greedy, and K5's ordered row class
+/// requires non-greedy). The seed/position are kept so the block stays a
+/// faithful record of which row it is.
+fn fallback_sampling_row(position: u64, output_row: u32) -> ds41rt_ffi::Ds41rtV41SamplerRow {
+    ds41rt_ffi::Ds41rtV41SamplerRow {
+        seed: 0,
+        position,
+        temperature: 0.0,
+        top_p: 1.0,
+        min_p: 0.0,
+        top_k: 0,
+        mask_row: ds41rt_ffi::DS41RT_V41_SAMPLER_NO_MASK_ROW,
+        flags: ds41rt_ffi::DS41RT_V41_SAMPLER_FLAG_GREEDY
+            | ds41rt_ffi::DS41RT_V41_SAMPLER_FLAG_STRICT_FINITE
+            | ds41rt_ffi::DS41RT_V41_SAMPLER_FLAG_NO_MASK,
+        output_row,
+        ln_min_p: f32::NEG_INFINITY,
+        ..ds41rt_ffi::Ds41rtV41SamplerRow::default()
+    }
 }
 
 /// Resolve one row's parameter block from the request's sampling parameters.
@@ -494,7 +758,7 @@ fn target_sampling_row(params: ds41rt_core::TargetSamplingParams, position: u64,
 ///
 /// The §5.3 remainder rule (clear every bit `>= vocab` of the final word) is
 /// applied by [`TargetSamplingWave::upload`] immediately before the H2D copy.
-fn build_sampling_masks(row_masks: &[Vec<Option<Vec<u32>>>], arena: &mut [u32]) -> Result<()> {
+pub(crate) fn build_sampling_masks(row_masks: &[Vec<Option<Vec<u32>>>], arena: &mut [u32]) -> Result<()> {
     let words_per_row = VOCAB.div_ceil(32);
     let rows: usize = row_masks.iter().map(Vec::len).sum();
     ensure!(arena.len() >= rows * words_per_row, "grammar mask arena is too small");
@@ -520,43 +784,64 @@ fn build_sampling_masks(row_masks: &[Vec<Option<Vec<u32>>>], arena: &mut [u32]) 
 /// (chunk 1: `DistributedTargetPass`) keeps the CPU path even for an all-greedy
 /// round, because routing it into the terminal would fail the whole lane on
 /// `execute_shared_sampled`'s default "no device-selected sampling terminal".
-fn use_sampled_terminal(supports_terminal: bool, fully_greedy: bool) -> bool {
-    supports_terminal && fully_greedy
+/// That is the **round-level** fallback and it is deliberately not per row: the
+/// terminal is absent for the whole layout, so there is no per-row device
+/// substitute to fall back *to*.
+fn use_sampled_terminal(supports_terminal: bool, routable: bool) -> bool {
+    supports_terminal && routable
 }
 
-/// Whether this round can use the device terminal.
+/// Whether this round can use the device terminal at all.
 ///
-/// Chunk 1 routes **greedy rows only** through K1 and leaves stochastic rows on
-/// the CPU path, so a round is device-selected exactly when every row is
-/// greedy. A constrained greedy row is included: it is a masked argmax, which
-/// is what K1 computes, and the commit path consumes the device's id.
-fn round_is_fully_greedy<'a>(active: &[Option<Active<'a>>], members: &[usize]) -> bool {
+/// Chunk 4a: the terminal is used whenever the layout provides it and the round
+/// has at least one row, because a stochastic row is now servable (K1 → K2, or
+/// K1 → K3 → K4 → K5) and an unservable row is a counted per-row fallback inside
+/// the device round rather than a reason to move the whole round to the CPU.
+/// This is deliberately *not* "every row is servable": moving the whole round to
+/// the CPU because one row has `top_k = 300` would force every greedy and
+/// stochastic peer in the round to download full logits, which contract
+/// §7.1.15 forbids.
+fn round_has_device_rows<'a>(active: &[Option<Active<'a>>], members: &[usize]) -> bool {
     !members.is_empty()
-        && members.iter().all(|&slot| {
+        && members.iter().any(|&slot| {
             active[slot]
                 .as_ref()
-                .is_some_and(|request| request.job.sampling.is_greedy())
+                .is_some_and(|request| sampling_route(request.job.sampling).device_served())
         })
 }
 
-/// Scope of the device terminal in chunk 1: **all-greedy rounds** (any mix of
-/// unconstrained and constrained members) are device-selected. Any round that
-/// contains a stochastic member stays entirely on the existing CPU path and
-/// downloads its full rows for every member, greedy ones included. Removing
-/// that qualifier is chunk 2's job, not this chunk's.
-///
 /// Everything one sampled round needs, built once per lane round.
-struct SamplingRound {
-    plan: SamplingPlan,
-    arena: Vec<u32>,
+pub(crate) struct SamplingRound {
+    pub(crate) plan: SamplingPlan,
+    pub(crate) arena: Vec<u32>,
     /// Rows whose full logits must be downloaded for the CPU-side trace. The
     /// `ds41rt::logit_trace` target logs `top_two`, which only the raw row
     /// provides, so a traced round downloads every row exactly as the
     /// pre-device path did (design §8.5/R15).
-    trace_rows: Vec<usize>,
+    pub(crate) trace_rows: Vec<usize>,
 }
 
-/// Build the per-row plan and the host mask arena for a fully greedy round.
+impl SamplingRound {
+    /// Whether any row needs the K3/K4 → K5 ordered tail (design §20 items 1, 2).
+    fn ordered_rows(&self) -> bool {
+        self.plan.route.iter().any(|route| route.is_ordered())
+    }
+    /// Rows that have to be downloaded and re-sampled on the CPU, ascending.
+    ///
+    /// This is the union of the pre-launch fallback set and the post-launch
+    /// device errors the caller discovered; the caller passes the latter in.
+    pub(crate) fn fallback_rows(&self, extra: &[usize]) -> Vec<usize> {
+        let mut rows: Vec<usize> = (0..self.plan.rows.len())
+            .filter(|&row| self.plan.planned_fallback(row))
+            .chain(extra.iter().copied())
+            .collect();
+        rows.sort_unstable();
+        rows.dedup();
+        rows
+    }
+}
+
+/// Build the per-row plan and the host mask arena for a device-selected round.
 ///
 /// `trace` mirrors the commit-side `ds41rt::logit_trace` gate so both sides
 /// agree on which rows are downloaded.
@@ -579,24 +864,73 @@ fn build_sampling_round<'a>(active: &[Option<Active<'a>>], members: &[usize],
     let plan = build_target_sampling_plan(&resolved, inputs)?;
     let rows: usize = inputs.iter().map(Vec::len).sum();
     let mut arena = vec![0u32; rows * VOCAB.div_ceil(32)];
-    let row_masks: Vec<Vec<Option<Vec<u32>>>> =
-        resolved.iter().map(|member| member.row_masks.clone()).collect();
+    // Only the rows the device will actually read are staged. A fallback row is
+    // already `NO_MASK` in the plan, so its arena slice stays zero and the
+    // upload skips it; clearing it here as well keeps the mapping explicit.
+    let row_masks: Vec<Vec<Option<Vec<u32>>>> = resolved.iter().enumerate()
+        .map(|(member, meta)| {
+            meta.row_masks.iter().enumerate().map(|(index, mask)| {
+                let global = resolved[..member].iter().map(|m| m.row_masks.len()).sum::<usize>()
+                    + index;
+                if plan.planned_fallback(global) { None } else { mask.clone() }
+            }).collect()
+        })
+        .collect();
     build_sampling_masks(&row_masks, &mut arena)?;
     let trace_rows = if trace { (0..rows).collect() } else { Vec::new() };
     Ok(SamplingRound { plan, arena, trace_rows })
 }
 
+/// Resolve the CPU-sampled token of every row the device could not serve.
+///
+/// This is the fallback half of chunk 4a's "fallback, never silent" rule, and it
+/// runs **after** the device launch (the pre-launch fallback rows are known
+/// before it; the device-error rows are known only from `SampledTargetRows`).
+/// `next` must already carry the full logits of every row in `rows`; the caller
+/// downloads them.
+///
+/// The values are the plan's own, not the device-facing substitution: the mask
+/// is the row's prepared grammar mask and the parameters are the request's, at
+/// the row's absolute position. That is exactly what the CPU path computes in
+/// `sample_target_rows` / `State::select_verification_sampled`, so the fallback
+/// is the CPU value rather than a look-alike.
+///
+/// **The result is stored into `next.best[row]`** (`BatchScores::store_sampled`).
+/// That matters for a row the device refused *after* the launch: its plan route
+/// is still `device_served()`, so the commit path consumes `next.best[row]`
+/// directly, and a kernel that reported `INTERNAL` left that slot at the
+/// caller's sentinel. Computing the fallback without storing it would commit the
+/// stale device slot — a silent wrong token. Storing it also means the commit
+/// path never needs to recompute a fallback row, so no row is sampled twice.
+pub(crate) fn resolve_fallback_rows(next: &mut BatchScores, round: &SamplingRound,
+    rows: &[usize],
+) -> Result<()> {
+    for &row in rows {
+        let mask = round.plan.mask[row].as_deref();
+        let params = round.plan.params[row];
+        let position = round.plan.position[row];
+        next.store_sampled(row, mask, params, position)?;
+    }
+    Ok(())
+}
+
 /// Run the device-selected terminal and assemble the selection batch.
 ///
-/// This is entered only for an **all-greedy** round, so no row needs the CPU
-/// sampler. An untraced round therefore downloads nothing beyond the small
-/// ids/scores/status vectors K1 produced, and its rows carry ids but no logits.
-/// A traced round downloads every row (`SamplingRound::trace_rows`) because
+/// Chunk 4a: this is entered for any round with at least one device-servable
+/// row, so a row's parameters decide its kernels. The rows the device cannot
+/// serve are excluded from the plan's device-facing blocks *before* the launch
+/// and re-sampled on the CPU from their downloaded rows afterwards; every other
+/// row downloads nothing beyond the small ids/scores/status vectors. A traced
+/// round still downloads every row (`SamplingRound::trace_rows`) because
 /// `ds41rt::logit_trace` logs `top_two`.
 ///
-/// A round containing any stochastic member never reaches here: it stays on the
-/// CPU path and downloads every member's rows, greedy ones included. That
-/// qualifier is exact for chunk 1 and is chunk 2's to remove.
+/// A **device** row whose status is not OK is itself a fallback (the device
+/// refused a row the host believed servable), not a lane error: it is added to
+/// the fallback set, counted, and re-sampled on the CPU. The two statuses that
+/// are genuinely the request's fault and must stay hard errors —
+/// `EMPTY_CANDIDATES` (contract §7.1.13) and `NONFINITE_LOGIT` — are propagated
+/// by `check_status` exactly as the CPU path propagates them, because the CPU
+/// re-sample would fail identically.
 async fn execute_sampled_rows<'a>(pass: &mut TargetPass<'_, 'a>,
     requests: &Requests<'a>, batch: &mut RequestBatch, transport: &mut NativeTp4Wave<'a>,
     round: &SamplingRound,
@@ -604,18 +938,27 @@ async fn execute_sampled_rows<'a>(pass: &mut TargetPass<'_, 'a>,
     let selected: Vec<_> = (0..batch.cache()?.positions().len()).collect();
     unsafe {
         pass.execute_sampled(requests, batch, transport, 0, &selected, &round.plan.rows,
-            Some(&round.arena), VOCAB.div_ceil(32)).await?;
+            Some(&round.arena), VOCAB.div_ceil(32), round.ordered_rows()).await?;
     }
     let sampled = pass.sampled_rows()?;
     ensure!(sampled.rows() == round.plan.rows.len(), "sampled row count differs from the plan");
-    sampled.check_status(&(0..sampled.rows()).collect::<Vec<_>>())?;
-    // Untraced all-greedy rounds download nothing; a traced round downloads
-    // only the rows the trace itself logs.
-    if round.trace_rows.is_empty() {
-        return BatchScores::from_sampled(&sampled, &round.plan.greedy);
-    }
-    let bytes = pass.download_sampled_rows(&sampled, &round.trace_rows).await?;
-    sampled.with_full_logits(&round.trace_rows, bytes)
+    let (device_rows, refused) = admit_device_rows(round, &sampled)?;
+    sampled.check_status(&device_rows)?;
+    let fallback = round.fallback_rows(&refused);
+    let download: Vec<usize> = fallback.iter().copied().chain(round.trace_rows.iter().copied())
+        .collect::<std::collections::BTreeSet<_>>().into_iter().collect();
+    let next = if download.is_empty() {
+        BatchScores::from_sampled(&sampled, &round.plan.greedy)?
+    } else {
+        let bytes = pass.download_sampled_rows(&sampled, &download).await?;
+        let mut next = sampled.with_full_logits(&download, bytes)?;
+        resolve_fallback_rows(&mut next, round, &fallback)?;
+        next
+    };
+    sampling_stats::record_refused(refused.len());
+    sampling_stats::record_round(true, device_rows.len(),
+        (0..round.plan.rows.len()).filter(|&row| round.plan.planned_fallback(row)).count());
+    Ok(next)
 }
 
 /// Independent-lane twin of [`execute_sampled_rows`]: the lane already holds
@@ -628,16 +971,70 @@ async fn execute_shared_sampled_rows<'a, P: VerificationTarget<'a> + ?Sized>(
     let selected: Vec<_> = (0..batch.cache()?.positions().len()).collect();
     unsafe {
         pass.execute_shared_sampled(requests, batch, transport, 0, &selected, &round.plan.rows,
-            Some(&round.arena), VOCAB.div_ceil(32)).await?;
+            Some(&round.arena), VOCAB.div_ceil(32), round.ordered_rows()).await?;
     }
     let sampled = pass.sampled_rows()?;
     ensure!(sampled.rows() == round.plan.rows.len(), "sampled row count differs from the plan");
-    sampled.check_status(&(0..sampled.rows()).collect::<Vec<_>>())?;
-    if round.trace_rows.is_empty() {
-        return BatchScores::from_sampled(&sampled, &round.plan.greedy);
+    let (device_rows, refused) = admit_device_rows(round, &sampled)?;
+    sampled.check_status(&device_rows)?;
+    let fallback = round.fallback_rows(&refused);
+    let download: Vec<usize> = fallback.iter().copied().chain(round.trace_rows.iter().copied())
+        .collect::<std::collections::BTreeSet<_>>().into_iter().collect();
+    let next = if download.is_empty() {
+        BatchScores::from_sampled(&sampled, &round.plan.greedy)?
+    } else {
+        let bytes = pass.download_sampled_rows(&sampled, &download).await?;
+        let mut next = sampled.with_full_logits(&download, bytes)?;
+        resolve_fallback_rows(&mut next, round, &fallback)?;
+        next
+    };
+    sampling_stats::record_refused(refused.len());
+    sampling_stats::record_round(true, device_rows.len(),
+        (0..round.plan.rows.len()).filter(|&row| round.plan.planned_fallback(row)).count());
+    Ok(next)
+}
+
+/// Admit the device rows of one launch and record the ones the device refused.
+///
+/// Returns `(rows to status-check, rows the device refused)`.
+///
+/// The first is the plan's device rows whose status is `OK` plus the two
+/// request-fault statuses; the second is every other device row, which the
+/// caller folds into its fallback set and counts, so an INTERNAL from K1, K3/K4
+/// or K5 becomes a correct CPU token and a visible fallback rather than a silent
+/// bad token.
+///
+/// A `CpuFallback` row is skipped entirely: its device-facing block is a
+/// device-neutral greedy row by construction, so its status says nothing about
+/// the request.
+pub(crate) fn admit_device_rows(round: &SamplingRound,
+    sampled: &crate::v41_target_head::SampledTargetRows,
+) -> Result<(Vec<usize>, Vec<usize>)> {
+    let mut admitted = Vec::new();
+    let mut refused = Vec::new();
+    for row in 0..sampled.rows() {
+        if !round.plan.route[row].device_served() {
+            continue;
+        }
+        match sampled.status[row] {
+            ds41rt_ffi::DS41RT_V41_SAMPLER_STATUS_OK => admitted.push(row),
+            ds41rt_ffi::DS41RT_V41_SAMPLER_STATUS_EMPTY_CANDIDATES
+            | ds41rt_ffi::DS41RT_V41_SAMPLER_STATUS_NONFINITE_LOGIT => {
+                // The request's fault, not a capability miss: the CPU re-sample
+                // fails identically, so let `check_status` render the CPU's own
+                // message (design D1).
+                admitted.push(row);
+            }
+            status => {
+                // INTERNAL, or any future code: the device could not serve a row
+                // the host believed servable. Fall back loudly and count it.
+                tracing::warn!(target: "ds41rt::sampling", row, status,
+                    "device sampler row fell back to the CPU sampler");
+                refused.push(row);
+            }
+        }
     }
-    let bytes = pass.download_sampled_rows(&sampled, &round.trace_rows).await?;
-    sampled.with_full_logits(&round.trace_rows, bytes)
+    Ok((admitted, refused))
 }
 
 async fn execute_logits<'a>(lib: &'a NativeLibrary, pass: &mut TargetPass<'_, 'a>,
@@ -722,14 +1119,18 @@ fn single_lane_round<'w, 'a>(lib: &'a NativeLibrary, runtime: &tokio::runtime::R
             draft.trace_cost_forecast(batch_id, &candidates);
         }
     }
-    // Chunk-1 scope: an **all-greedy** round (any mix of unconstrained and
-    // constrained members) is selected on the device. A round containing any
-    // stochastic member stays entirely on the existing CPU path below and
-    // downloads full rows for every member, greedy ones included — that
-    // qualifier is what makes the residency claim exact, and removing it is
-    // chunk 2's job. A traced round still takes this path, but
-    // `SamplingRound::trace_rows` then downloads every row for `top_two`.
-    if !compact && round_is_fully_greedy(active, members) {
+    // Chunk-4a scope: a round is device-selected whenever the layout supports
+    // the terminal and at least one row is device-servable. Each row's own
+    // parameters then decide its kernels (K1, K1->K2 or K1->K3->K4->K5), and a
+    // row the device cannot serve is re-sampled on the CPU inside the same
+    // round. Only two shapes still take the whole-round CPU path: the `compact`
+    // greedy lane above (which never reaches the sampler), and a round in which
+    // **every** row is unservable — there the device launch would select nothing
+    // and the rows' logits have to be downloaded anyway.
+    //
+    // A traced round still takes this path, but `SamplingRound::trace_rows` then
+    // downloads every row for `top_two`.
+    if !compact && round_has_device_rows(active, members) {
         let round = build_sampling_round(active, members, &inputs,
             tracing::enabled!(target: "ds41rt::logit_trace", tracing::Level::DEBUG))?;
         let next = runtime.block_on(execute_sampled_rows(pass, requests,
@@ -742,9 +1143,9 @@ fn single_lane_round<'w, 'a>(lib: &'a NativeLibrary, runtime: &tokio::runtime::R
                 return Err(error);
             }
         };
-        let (accepted, emitted, emissions) = commit_lane(lib, lane, pass, requests, active, members,
-            &inputs, &mut batch, &next, draft.as_deref_mut(), capture_routes, 0,
-            SampleSource::DeviceSelected)?;
+        let (accepted, emitted, emissions) = commit_lane(lib, lane, pass, requests,
+            active, members, &inputs, &mut batch, &next, draft.as_deref_mut(), capture_routes, 0,
+            Some(&round))?;
         for (&slot, tokens) in members.iter().zip(emissions) {
             let request = active[slot].as_mut().unwrap();
             if let Err(error) = request.emit(&tokens) {
@@ -760,6 +1161,11 @@ fn single_lane_round<'w, 'a>(lib: &'a NativeLibrary, runtime: &tokio::runtime::R
             total_us=started.elapsed().as_micros() as u64, "native scheduler round");
         return Ok(());
     }
+    // No device terminal ran on this branch, so **no** rows were device-selected:
+    // the round is a CPU round with zero device rows, exactly what the counter
+    // must say. Counting the rows that merely *would have been* servable would
+    // make the export claim device work that never happened.
+    sampling_stats::record_round(false, 0, 0);
     let next = runtime.block_on(execute_logits(lib, pass, requests, &mut batch, transport, capture_routes, compact));
     let executed_us = started.elapsed().as_micros() as u64;
     let result = (|| -> Result<()> {
@@ -767,9 +1173,9 @@ fn single_lane_round<'w, 'a>(lib: &'a NativeLibrary, runtime: &tokio::runtime::R
         tracing::debug!(target: "ds41rt::cost_model", batch=batch_id, lane,
             requests=members.len(), rows=inputs.iter().map(Vec::len).sum::<usize>(),
             prepared_us, verify_us=executed_us-prepared_us, "verification round cost");
-        let (accepted, emitted, emissions) = commit_lane(lib, lane, pass, requests, active, members,
-            &inputs, &mut batch, &next, draft.as_deref_mut(), capture_routes,
-            executed_us-prepared_us, SampleSource::CpuRecomputed)?;
+        let (accepted, emitted, emissions) = commit_lane(lib, lane, pass, requests,
+            active, members, &inputs, &mut batch, &next, draft.as_deref_mut(), capture_routes,
+            executed_us-prepared_us, None)?;
         for (&slot, tokens) in members.iter().zip(emissions) {
             let request = active[slot].as_mut().unwrap();
             if let Err(error) = request.emit(&tokens) {
@@ -810,13 +1216,54 @@ fn sample_target_rows(
         .collect()
 }
 
+/// How a finishing row's retained frontier is obtained.
+///
+/// A device-sampled **stochastic** row's `next.best[row]` is a *draw*, not an
+/// argmax, so the retention cross-check in
+/// [`BatchScores::retain_downloaded_with`] must not run for it: it validates a
+/// greedy selection and would raise a spurious "GPU and retained CPU greedy
+/// selection differ". The recorded id is the value the verification already
+/// consumed, so the retained token is that id with the downloaded row for a
+/// later grammar to re-select from. Every other row keeps the cross-check.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum FrontierRetain {
+    Checked,
+    RecordedSample,
+}
+
+/// Which retention a finishing frontier row takes.
+///
+/// **In a device round, `best[row]` of a non-greedy row is always a draw**,
+/// whichever producer selected it: K2 for a fast-path row, K5 for an ordered
+/// row, or the CPU re-sample for a fallback row (planned, or refused after the
+/// launch). It is therefore classified on the parameters alone — keying on
+/// `route[frontier].device_served()` is wrong, because a planned-fallback row is
+/// **not** device-served while its stored `best` is a draw, so the cross-check
+/// would compare an argmax against a draw and fail the whole lane with "GPU and
+/// retained CPU greedy selection differ".
+///
+/// A greedy row's `best` is an argmax whichever path produced it, so it keeps
+/// [`FrontierRetain::Checked`] — including a greedy fallback row, whose stored
+/// value is the argmax the CPU side computed. Outside a device round the
+/// classifier is not reached: a whole-CPU round has every row's logits, so
+/// `next.has_full_logits()` takes the trusting `retain` path instead.
+pub(crate) fn frontier_retain(round: Option<&SamplingRound>,
+    params: ds41rt_core::TargetSamplingParams,
+) -> FrontierRetain {
+    if round.is_some() && !params.is_greedy() {
+        FrontierRetain::RecordedSample
+    } else {
+        FrontierRetain::Checked
+    }
+}
+
 struct CommitDecision {
     accepted_drafts: u32,
     emitted: usize,
     accepted: Vec<u32>,
     emissions: Vec<Vec<u32>>,
     next_after_commit: Vec<Option<TokenScores>>,
-    frontier_downloads: Vec<(usize, usize, Option<Vec<u32>>)>,
+    frontier_downloads: Vec<(usize, usize, Option<Vec<u32>>, FrontierRetain)>,
 }
 /// The per-row target selection of a round.
 ///
@@ -849,6 +1296,41 @@ fn selected_target_rows(next: &BatchScores, offset: usize, len: usize,
     })
 }
 
+/// Chunk-4a's per-row twin of [`select_target_row`].
+///
+/// A mixed round has no single source: a row the device served is consumed from
+/// `next.best`, while a row the device could not serve carries its full logits
+/// and is re-sampled from the request's own parameters. `round` decides that per
+/// row (`planned_fallback(row)`), and `None` means the whole round was
+/// CPU-selected. The closure is consulted only when the row has no stored
+/// selection at all, so the device-selection property stays testable.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn select_routed<'a, F>(next: &'a BatchScores, round: Option<&SamplingRound>,
+    offset: usize, row: usize, len: usize, recompute: F,
+) -> Result<std::borrow::Cow<'a, [u32]>>
+where
+    F: FnOnce() -> Result<Vec<u32>>,
+{
+    let stored = match round {
+        // A row whose selection is already stored is consumed as-is, whichever
+        // producer stored it: a device row's `best[row]` came from the kernels,
+        // and a fallback row's was written by `BatchScores::store_sampled` after
+        // the launch. Keying on "does this row carry its logits" rather than on
+        // the plan route is what makes a row the device **refused after the
+        // launch** commit the stored CPU token instead of the stale device slot
+        // (a failed kernel writes no id), and it means a fallback row is never
+        // sampled a second time by the closure below.
+        Some(round) => round.plan.route[row].device_served() || next.has_row_logits(row),
+        // No round: the whole batch was CPU-produced, so every row is stored and
+        // the closure is dead. Kept for the existing chunk-1 tests, which call
+        // `select_routed` with `None` to assert the device path cannot reach the
+        // closure.
+        None => false,
+    };
+    let source = if stored { SampleSource::DeviceSelected } else { SampleSource::CpuRecomputed };
+    select_target_row(next, offset, len, source, recompute)
+}
+
 /// One request's target selection.
 ///
 /// `recompute` is the CPU selection (masked argmax, target sample, or cached
@@ -871,7 +1353,7 @@ where
 fn prepare_commit_lane<'a, C: DraftChain<'a>>(lane: usize,
     requests: &Requests<'a>, active: &[Option<Active<'a>>], members: &[usize], inputs: &[Vec<u32>],
     next: &BatchScores, draft: Option<&DraftRuntime<'_, 'a, C>>, verify_us: u64,
-    source: SampleSource,
+    round: Option<&SamplingRound>,
 ) -> Result<CommitDecision> {
     let mut accepted_drafts = 0u32;
     let mut emitted = 0usize;
@@ -889,14 +1371,14 @@ fn prepare_commit_lane<'a, C: DraftChain<'a>>(lane: usize,
         // sample-and-match rule: a draft is accepted while it equals the target
         // sample, and the first mismatch emits the target sample. The emitted
         // token is always the target draw, so speculation cannot bias p.
-        // A device-selected round consumes K1's ids directly; every other round
-        // keeps the existing per-row CPU selection, which is passed in as a
-        // closure so the device path can never reach it.
-        debug_assert!(
-            source == SampleSource::CpuRecomputed || params.is_greedy(),
-            "device selection is only claimed for greedy rounds"
-        );
-        let selected = select_target_row(next, offset, input.len(), source, || {
+        //
+        // Chunk 4a: the source is per **row**, not per round. A device row (any
+        // route, greedy or stochastic) consumes the id the device published; a
+        // fallback row consumes the id `resolve_fallback_rows` re-sampled from
+        // its downloaded logits. The closure below is consulted only for a row
+        // with no device route at all (a whole-round CPU path), so the
+        // device-selection property stays testable rather than incidental.
+        let selected = select_routed(next, round, offset, offset, input.len(), || {
             let state = request.constraint.as_ref();
             if params.is_greedy() {
                 match state {
@@ -961,7 +1443,13 @@ fn prepare_commit_lane<'a, C: DraftChain<'a>>(lane: usize,
                     Some(state) => state.prepare_verification_mask_row(input, row_in_round)?,
                     None => None,
                 };
-                frontier_downloads.push((next_after_commit.len(), frontier, mask));
+                // A non-greedy frontier in a device round is a *draw* from
+                // whichever producer selected it, so its retention must not run
+                // the greedy argmax cross-check; a greedy row keeps it. See
+                // `frontier_retain` for why the route is deliberately not part of
+                // the decision.
+                let retain = frontier_retain(round, params);
+                frontier_downloads.push((next_after_commit.len(), frontier, mask, retain));
             }
             None
         });
@@ -991,19 +1479,54 @@ fn publish_commit_lane<'a, C: DraftChain<'a>>(pass: &impl VerificationTarget<'a>
     }
     Ok((accepted_drafts, emitted, emissions))
 }
-fn commit_lane<'w, 'a>(lib: &'a NativeLibrary, lane: usize, pass: &mut TargetPass<'w, 'a>, requests: &mut Requests<'a>,
+/// Resolve one finishing row's retained frontier from its downloaded bytes.
+///
+/// This is the single place that decides between the two retention shapes, so
+/// the single-lane and independent-lane paths cannot drift:
+///
+/// * [`FrontierRetain::Checked`] — the recorded id is a greedy selection, so it
+///   is validated against the row's own grammar mask by
+///   [`BatchScores::retain_downloaded_with`] (the chunk-1 property: a device/CPU
+///   greedy disagreement is an error, not a silent token).
+/// * [`FrontierRetain::RecordedSample`] — the recorded id is a stochastic draw
+///   produced by the same path, so the row is retained as-is
+///   ([`BatchScores::retain`]); running the argmax cross-check would be checking
+///   a draw for being an argmax.
+pub(crate) fn resolve_frontier(retain: FrontierRetain, next: &BatchScores, row: usize,
+    bytes: &[u8],
+    mask: Option<&[u32]>,
+) -> Result<TokenScores> {
+    match retain {
+        FrontierRetain::Checked => next.retain_downloaded_with(row, bytes, mask),
+        FrontierRetain::RecordedSample => next.retain_from_bytes(row, bytes),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn commit_lane<'w, 'a>(lib: &'a NativeLibrary, lane: usize,
+    pass: &mut TargetPass<'w, 'a>, requests: &mut Requests<'a>,
     active: &mut [Option<Active<'a>>], members: &[usize], inputs: &[Vec<u32>],
     owned_batch: &mut Option<RequestBatch>, next: &BatchScores,
     mut draft: Option<&mut DraftRuntime<'_, 'a>>, capture_routes: bool, verify_us: u64,
-    source: SampleSource,
+    round: Option<&SamplingRound>,
 ) -> Result<(u32, usize, Vec<Vec<u32>>)> {
     let Some(batch) = owned_batch else { return Ok((0, 0, Vec::new())); };
     let mut decision = prepare_commit_lane(lane, requests, active, members, inputs,
-        next, draft.as_deref(), verify_us, source)?;
-    for (member, row, mask) in decision.frontier_downloads.drain(..) {
-        let mask = mask.as_deref();
-        decision.next_after_commit[member] =
-            Some(next.retain_from_device(lib, pass.output(batch)?.logits, row, mask)?);
+        next, draft.as_deref(), verify_us, round)?;
+    // Each finishing frontier row is downloaded by itself through the head's
+    // existing per-row D2H path (the same one the greedy device path used in
+    // chunk 1), because a finishing row is rare and it is the only route that
+    // reuses the batch's own logits view without a second head pass.
+    let frontier: Vec<(usize, usize, Option<Vec<u32>>, FrontierRetain)> =
+        std::mem::take(&mut decision.frontier_downloads);
+    for (member, row, mask, retain) in frontier {
+        let logits = pass.output(batch)?.logits;
+        decision.next_after_commit[member] = Some(match retain {
+            FrontierRetain::Checked =>
+                next.retain_from_device(lib, logits, row, mask.as_deref())?,
+            FrontierRetain::RecordedSample =>
+                next.retain_recorded_from_device(lib, logits, row)?,
+        });
     }
     if let Some(draft) = draft.as_deref_mut() { draft.commit_batch(pass, requests, batch, &decision.accepted)?; }
     else { pass.commit(requests, batch, &decision.accepted)?; }
@@ -1110,10 +1633,187 @@ mod sampling_tests {
         assert!(!called, "device-selected rows must not consult the CPU recompute");
     }
 
-    /// A layout without the sampled terminal keeps the CPU path even for an
-    /// all-greedy round. Routing it into the terminal would fail the whole lane
-    /// on `execute_shared_sampled`'s default bail, which is the regression the
-    /// capability gate fixes; the gate is what decides the route.
+    /// The chunk-4a routing table: one row per kernel class, asserted by the
+    /// production router rather than by prose. Each expected route names the
+    /// kernels the row takes (design §4.6 and the kernel eligibility blocks in
+    /// `v41_sampling_gpu.cu`).
+    #[test]
+    fn the_per_row_router_selects_the_documented_kernel_class() {
+        use ds41rt_core::TargetSamplingParams;
+        // The four required stochastic profiles, plus greedy, top_k == 1 and
+        // the unservable band.
+        let cases: Vec<(&str, TargetSamplingParams, SamplingRoute)> = vec![
+            ("greedy (no temperature)", TargetSamplingParams::greedy(), SamplingRoute::DeviceGreedy),
+            ("top_k == 1 is greedy", TargetSamplingParams::new(0.9, 1.0, Some(1), 0.0, 1).unwrap(),
+                SamplingRoute::DeviceGreedy),
+            ("temperature only", TargetSamplingParams::new(0.7, 1.0, None, 0.0, 1).unwrap(),
+                SamplingRoute::DeviceFastPath),
+            ("temperature 0.2 + top_p 0.95",
+                TargetSamplingParams::new(0.2, 0.95, None, 0.0, 1).unwrap(),
+                SamplingRoute::DeviceOrdered),
+            ("temperature 0.7 + top_p 0.9",
+                TargetSamplingParams::new(0.7, 0.9, None, 0.0, 1).unwrap(),
+                SamplingRoute::DeviceOrdered),
+            ("temperature 0.7 + min_p 0.05",
+                TargetSamplingParams::new(0.7, 1.0, None, 0.05, 1).unwrap(),
+                SamplingRoute::DeviceFastPath),
+            ("temperature 0.7 + top_k 40",
+                TargetSamplingParams::new(0.7, 1.0, Some(40), 0.0, 1).unwrap(),
+                SamplingRoute::DeviceOrdered),
+            ("top_k at K5's kBlock limit",
+                TargetSamplingParams::new(0.7, 1.0, Some(256), 0.0, 1).unwrap(),
+                SamplingRoute::DeviceOrdered),
+            ("top_k above K5's retained table",
+                TargetSamplingParams::new(0.7, 1.0, Some(300), 0.0, 1).unwrap(),
+                SamplingRoute::CpuFallback),
+            ("top_k above the retained table with top_p < 1",
+                TargetSamplingParams::new(0.7, 0.9, Some(300), 0.0, 1).unwrap(),
+                SamplingRoute::CpuFallback),
+        ];
+        for (name, params, expected) in &cases {
+            assert_eq!(sampling_route(*params), *expected, "{name}");
+        }
+        // A row the router calls device-served must be one the FFI validator
+        // would accept, because the whole batch is rejected otherwise: every
+        // device route moves `top_k` into the retained-table range and leaves the
+        // ranges alone.
+        for (name, params, route) in &cases {
+            if !route.device_served() {
+                continue;
+            }
+            let top_k = params.top_k().map_or(0, |k| k as u32);
+            assert!(top_k <= crate::v41_target_head::DS41RT_V41_SAMPLING_MAX_RETAINED,
+                "{name} must not exceed K5's retained table");
+            assert!(params.temperature().is_finite() && params.temperature() <= 2.0, "{name}");
+            assert!(params.top_p().is_finite() && params.top_p() > 0.0 && params.top_p() <= 1.0,
+                "{name}");
+            assert!(params.min_p().is_finite() && params.min_p() <= 1.0, "{name}");
+        }
+    }
+
+    /// A mixed round is routed per **row**, not per round: greedy, fast-path,
+    /// ordered and fallback rows coexist, and the plan's device-facing blocks
+    /// carry each row's own parameters.
+    #[test]
+    fn a_mixed_round_routes_every_row_by_its_own_parameters() {
+        use ds41rt_core::TargetSamplingParams;
+        let greedy = TargetSamplingParams::greedy().with_seed(1);
+        let fast = TargetSamplingParams::new(0.7, 1.0, None, 0.05, 2).unwrap();
+        let ordered = TargetSamplingParams::new(0.7, 1.0, Some(40), 0.0, 3).unwrap();
+        let fallback = TargetSamplingParams::new(0.7, 1.0, Some(300), 0.0, 4).unwrap();
+        let mut mask = vec![0u32; VOCAB.div_ceil(32)];
+        mask[0] = 0b1111;
+        let members = vec![
+            SamplingMember { params: greedy, base_position: 100, row_masks: vec![None, None] },
+            SamplingMember { params: fast, base_position: 0, row_masks: vec![None] },
+            SamplingMember { params: ordered, base_position: 7, row_masks: vec![None, None, None] },
+            SamplingMember { params: fallback, base_position: 50, row_masks: vec![None] },
+        ];
+        let inputs = vec![vec![0, 0], vec![0], vec![0, 0, 0], vec![0]];
+        let plan = build_target_sampling_plan(&members, &inputs).unwrap();
+        assert_eq!(plan.route, vec![
+            SamplingRoute::DeviceGreedy, SamplingRoute::DeviceGreedy,
+            SamplingRoute::DeviceFastPath,
+            SamplingRoute::DeviceOrdered, SamplingRoute::DeviceOrdered, SamplingRoute::DeviceOrdered,
+            SamplingRoute::CpuFallback,
+        ]);
+        // Per-row parameters travel with their own row, at their own absolute
+        // position, and a fallback row's device-facing block is device-neutral.
+        let positions: Vec<u64> = plan.rows.iter().map(|r| r.row.position).collect();
+        assert_eq!(positions, vec![100, 101, 0, 7, 8, 9, 50]);
+        assert_eq!(plan.rows[4].row.top_k, 40);
+        assert_eq!(plan.rows[4].row.temperature, 0.7);
+        assert_eq!(plan.rows[6].row.top_k, 0, "a fallback row's device block is a no-op");
+        assert_eq!(plan.rows[6].row.temperature, 0.0);
+        assert_eq!(plan.rows[6].row.mask_row, ds41rt_ffi::DS41RT_V41_SAMPLER_NO_MASK_ROW);
+        assert_ne!(plan.rows[6].row.flags & ds41rt_ffi::DS41RT_V41_SAMPLER_FLAG_GREEDY, 0,
+            "the fallback block is a greedy no-op");
+        // The request's own values survive in the plan for the CPU re-sample.
+        assert_eq!(plan.params[6].top_k(), Some(300));
+        assert_eq!(plan.position[6], 50);
+        // The route decides the device requirement, and the fallback row's
+        // route is the only one that is not device-served.
+        assert_eq!(plan.route.iter().filter(|route| route.device_served()).count(), 6);
+        assert!(plan.routes_need_ordered_tail());
+    }
+
+    /// A round where every row is unservable stays on the CPU path; a round with
+    /// one servable row uses the device terminal and falls back only the
+    /// unservable row. This is the per-row policy, stated as a property.
+    #[test]
+    fn a_single_unservable_row_falls_back_per_row_not_per_round() {
+        use ds41rt_core::TargetSamplingParams;
+        let unservable = TargetSamplingParams::new(0.7, 1.0, Some(300), 0.0, 1).unwrap();
+        let servable = TargetSamplingParams::new(0.7, 0.9, None, 0.0, 2).unwrap();
+        let members = |params: ds41rt_core::TargetSamplingParams| SamplingMember {
+            params, base_position: 0, row_masks: vec![None],
+        };
+        let all = build_target_sampling_plan(&[members(unservable)], &[vec![0]]).unwrap();
+        assert!(!all.routes_need_device_terminal(),
+            "an all-fallback round must keep the CPU path");
+        let mixed = build_target_sampling_plan(
+            &[members(unservable), members(servable)], &[vec![0], vec![0]]).unwrap();
+        assert!(mixed.routes_need_device_terminal(),
+            "one servable row is enough to use the device terminal");
+        assert_eq!(mixed.planned_fallback_count(), 1);
+    }
+
+    /// The fallback row is re-sampled with the request's own parameters and the
+    /// row's own mask and absolute position -- not with the device-facing
+    /// substitution, and not at a batch-relative position.
+    #[test]
+    fn a_fallback_row_is_re_sampled_from_its_own_values() {
+        use ds41rt_core::TargetSamplingParams;
+        let params = TargetSamplingParams::new(0.7, 1.0, Some(300), 0.0, 4242).unwrap();
+        let member = SamplingMember { params, base_position: 900, row_masks: vec![None] };
+        let plan = build_target_sampling_plan(&[member], &[vec![0]]).unwrap();
+        assert!(plan.planned_fallback(0));
+        assert_eq!(plan.params[0].top_k(), Some(300));
+        assert_eq!(plan.params[0].seed(), 4242);
+        assert_eq!(plan.position[0], 900);
+        assert_eq!(plan.mask[0], None);
+
+        // The CPU value the fallback must reproduce, over a real logit row.
+        let mut logits = vec![-6.0f32; VOCAB];
+        logits[5] = 4.0;
+        logits[17] = 3.5;
+        let expected = params.select_token(&logits, None, 900).unwrap() as u32;
+        let batch = BatchScores::new(logits.iter().flat_map(|value| value.to_ne_bytes()).collect())
+            .unwrap();
+        assert_eq!(batch.sample(0, None, plan.params[0], plan.position[0]).unwrap(), expected);
+        // The position decides the draw: the seeded uniform at the row's own
+        // absolute position must differ from the batch-relative one, which is
+        // the wiring this pins.
+        assert_ne!(params.random_uniform(900).to_bits(), params.random_uniform(0).to_bits(),
+            "the fallback draw must be keyed on the row's absolute position");
+        assert_eq!(batch.sample(0, None, plan.params[0], 0).unwrap(),
+            params.select_token(&logits, None, 0).unwrap() as u32,
+            "a batch-relative draw is a different value");
+    }
+
+    /// The fallback counters are exported, monotonic and cumulative, so an
+    /// operator can see a fallback that no log line happened to catch.
+    #[test]
+    fn fallback_instrumentation_is_exported() {
+        let before = sampling_stats::snapshot();
+        sampling_stats::record_round(true, 3, 1);
+        sampling_stats::record_refused(2);
+        let after = sampling_stats::snapshot();
+        let field = |value: &serde_json::Value, name: &str| value[name].as_u64().unwrap();
+        assert_eq!(field(&after, "device_rounds"), field(&before, "device_rounds") + 1);
+        assert_eq!(field(&after, "device_rows"), field(&before, "device_rows") + 3);
+        assert_eq!(field(&after, "planned_fallback_rows"),
+            field(&before, "planned_fallback_rows") + 1);
+        assert_eq!(field(&after, "refused_fallback_rows"),
+            field(&before, "refused_fallback_rows") + 2);
+        assert_eq!(field(&after, "cpu_fallback_rounds"), field(&before, "cpu_fallback_rounds"));
+    }
+
+    /// A layout without the sampled terminal keeps the CPU path. Routing it into
+    /// the terminal would fail the whole lane on `execute_shared_sampled`'s
+    /// default bail, which is the regression the capability gate fixes; the gate
+    /// is what decides the route. Chunk 4a keeps this as the one **round-level**
+    /// fallback, because a missing terminal has no per-row device substitute.
     #[test]
     fn layouts_without_the_sampled_terminal_keep_the_cpu_path() {
         // Chunk 1's two layouts, as a property of the type.
@@ -1125,12 +1825,14 @@ mod sampling_tests {
         assert!(
             !<crate::v41_target_pass::DistributedTargetPass<'static, 'static> as
                 crate::v41_target_pass::VerificationTarget<'static>>::SUPPORTS_SAMPLED_TERMINAL,
-            "the distributed layout has no sampled terminal in chunk 1"
+            "the distributed layout has no sampled terminal"
         );
-        // The gate: capability AND round shape.
+        // The gate is capability AND "some row is device-servable". A
+        // stochastic round is no longer a reason to move the whole round to the
+        // CPU -- only a round with no device-servable row is.
         assert!(use_sampled_terminal(true, true));
         assert!(!use_sampled_terminal(false, true), "no terminal -> CPU fallback");
-        assert!(!use_sampled_terminal(true, false), "stochastic round -> CPU path");
+        assert!(!use_sampled_terminal(true, false), "no device row -> CPU path");
         assert!(!use_sampled_terminal(false, false));
     }
 

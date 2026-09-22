@@ -36,8 +36,9 @@ pub(crate) trait VerificationTarget<'a>: TargetCache<'a> {
     async unsafe fn execute_shared_sampled(&mut self, requests: &RefCell<&mut Requests<'a>>,
         batch: &mut RequestBatch, transport: &mut Self::Transport, placement: u64,
         selected: &[usize], sampling: &[TargetSamplingRowRequest], masks: Option<&[u32]>,
-        mask_words: usize) -> Result<()> {
-        let _ = (requests, batch, transport, placement, selected, sampling, masks, mask_words);
+        mask_words: usize, ordered_rows: bool) -> Result<()> {
+        let _ = (requests, batch, transport, placement, selected, sampling, masks, mask_words,
+            ordered_rows);
         anyhow::bail!("this target layout has no device-selected sampling terminal")
     }
     /// Take the device-selected rows published by
@@ -80,10 +81,10 @@ impl<'a> VerificationTarget<'a> for TargetPass<'_, 'a> {
     async unsafe fn execute_shared_sampled(&mut self, requests: &RefCell<&mut Requests<'a>>,
         batch: &mut RequestBatch, transport: &mut Self::Transport, placement: u64,
         selected: &[usize], sampling: &[TargetSamplingRowRequest], masks: Option<&[u32]>,
-        mask_words: usize) -> Result<()> {
+        mask_words: usize, ordered_rows: bool) -> Result<()> {
         unsafe {
             TargetPass::execute_shared_sampled(self, requests, batch, transport, placement,
-                selected, sampling, masks, mask_words).await
+                selected, sampling, masks, mask_words, ordered_rows).await
         }
     }
     fn sampled_rows(&mut self) -> Result<SampledTargetRows> { TargetPass::sampled_rows(self) }

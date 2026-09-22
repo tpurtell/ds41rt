@@ -12,8 +12,8 @@ use anyhow::{ensure, Result};
 use ds41rt_core::TargetSamplingParams;
 use std::sync::Arc;
 
-pub(super) const VOCAB: usize = 129_280;
-pub(super) const ROW_BYTES: usize = VOCAB * 4;
+pub(crate) const VOCAB: usize = 129_280;
+pub(crate) const ROW_BYTES: usize = VOCAB * 4;
 
 /// Materialize one device logit row for the exact full-vocabulary sampler.
 fn row_logits(bytes: &[u8]) -> Result<Vec<f32>> {
@@ -25,7 +25,7 @@ fn row_logits(bytes: &[u8]) -> Result<Vec<f32>> {
 }
 
 #[derive(Clone)]
-pub(super) struct TokenScores {
+pub(crate) struct TokenScores {
     bytes: Arc<[u8]>,
     best: u32,
 }
@@ -129,7 +129,7 @@ impl SampledTargetRows {
 /// The per-row selection batch and the logit bytes of the rows that needed
 /// them. `bytes` holds only the rows that were downloaded, packed in the order
 /// the caller named them; `packs[row]` maps a batch row to its slice.
-pub(super) struct BatchScores {
+pub(crate) struct BatchScores {
     pub best: Vec<u32>,
     bytes: Vec<u8>,
     /// For each batch row, its packed position in `bytes`, or `usize::MAX` when
@@ -140,8 +140,33 @@ pub(super) struct BatchScores {
 }
 impl BatchScores {
     pub fn rows(&self) -> usize { self.best.len() }
+    /// Build a batch with an explicit per-row device selection and every row's
+    /// full logits attached.
+    ///
+    /// Test-only, for the chunk-4a fallback regression tests: they need a batch
+    /// that looks exactly like `execute_sampled_rows`'s output (device ids in
+    /// `best`, the requested rows downloaded) so they can require the fallback
+    /// resolution to **store** its CPU token over a stale device slot.
+    #[cfg(test)]
+    pub(crate) fn test_visible(ids: &[u32], bytes: Vec<u8>) -> Result<BatchScores> {
+        ensure!(!ids.is_empty() && bytes.len() == ids.len() * ROW_BYTES,
+            "test batch extents differ");
+        let packs = (0..ids.len()).collect();
+        Ok(BatchScores { best: ids.to_vec(), bytes, packs })
+    }
+
     /// Whether every row still has its full logits (the legacy full-batch path).
     pub fn has_full_logits(&self) -> bool { self.packs.iter().all(|pack| *pack != usize::MAX) }
+    /// Whether **this** row carries its full logits.
+    ///
+    /// A row with logits is one whose selection the CPU can (re)compute; a row
+    /// without is one only the device can select. The commit path uses this to
+    /// tell a stored CPU fallback selection from a device selection, which is
+    /// independent of the row's *planned* route: a row the device refused after
+    /// the launch has a device route but a CPU-stored token.
+    pub fn has_row_logits(&self, row: usize) -> bool {
+        row < self.packs.len() && self.packs[row] != usize::MAX
+    }
     fn row_range(&self, row: usize) -> Result<std::ops::Range<usize>> {
         ensure!(row < self.best.len(), "logit row is outside the batch");
         let pack = self.packs[row];
@@ -163,6 +188,18 @@ impl BatchScores {
         let best = argmax(bytes, mask)?;
         ensure!(best == self.best[row], "GPU and retained CPU greedy selection differ");
         Ok(TokenScores { bytes: Arc::from(bytes), best })
+    }
+    /// Retain one row from downloaded bytes, trusting the recorded selection.
+    ///
+    /// Used for a device-sampled **stochastic** frontier: `self.best[row]` is a
+    /// draw the verification already consumed, not an argmax, so there is no
+    /// cross-check to make and [`Self::retain_downloaded_with`] would reject it
+    /// spuriously. The row's full logits are still stored, so a later grammar
+    /// can re-select from the exact frontier.
+    pub fn retain_from_bytes(&self, row: usize, bytes: &[u8]) -> Result<TokenScores> {
+        ensure!(row < self.best.len() && bytes.len() == ROW_BYTES,
+            "downloaded retained logit extent differs");
+        Ok(TokenScores { bytes: Arc::from(bytes), best: self.best[row] })
     }
     /// Reuse logits this batch already holds, with the same cross-check.
     fn retain_packed(&self, row: usize, mask: Option<&[u32]>) -> Result<TokenScores> {
@@ -237,6 +274,68 @@ impl BatchScores {
         let mut bytes = vec![0; ROW_BYTES];
         lib.copy_d2h(&mut bytes, logits)?;
         self.retain_downloaded_with(row, &bytes, mask)
+    }
+    /// Retain one row's frontier from device logits, trusting the recorded
+    /// selection.
+    ///
+    /// The twin of [`Self::retain_from_device`] for a device-sampled
+    /// **stochastic** row: `self.best[row]` is a draw the verification already
+    /// consumed, so there is no argmax to cross-check against. The downloaded
+    /// row is still stored in full, so a later grammar can re-select from it.
+    pub fn retain_recorded_from_device(&self, lib: &ds41rt_ffi::NativeLibrary,
+        mut logits: ds41rt_ffi::Ds41rtDeviceBuffer, row: usize,
+    ) -> Result<TokenScores> {
+        if self.row_range(row).is_ok() {
+            let range = self.row_range(row)?;
+            return Ok(TokenScores { bytes: Arc::from(&self.bytes[range]), best: self.best[row] });
+        }
+        ensure!(row < self.best.len() && logits.bytes == self.best.len() * ROW_BYTES,
+            "compact retained logit extent differs");
+        logits.ptr = unsafe { logits.ptr.cast::<u8>().add(row * ROW_BYTES).cast() };
+        logits.bytes = ROW_BYTES;
+        let mut bytes = vec![0; ROW_BYTES];
+        lib.copy_d2h(&mut bytes, logits)?;
+        self.retain_from_bytes(row, &bytes)
+    }
+    /// Apply one row's CPU fallback sample and **store it** as that row's
+    /// selection.
+    ///
+    /// Chunk 4a's fallback rows are selected by the CPU after the device launch,
+    /// so this is the only writer of `best[row]` for them. It must store: the
+    /// commit path consumes `best[row]` wholesale (a device row has no logits to
+    /// recompute from), so a fallback that merely *computed* a token without
+    /// recording it would let the commit path read the stale device slot — which
+    /// a kernel that failed left untouched (K1/K5 write no id on a non-OK
+    /// status). That is a silent wrong token, the exact failure mode the
+    /// fallback exists to prevent.
+    ///
+    /// The values are the caller's: the row's own mask, the request's own
+    /// parameters, and the row's absolute emitted position, so the stored token
+    /// is exactly what the CPU path computes in `sample_target_rows` /
+    /// `State::select_verification_sampled`.
+    ///
+    /// **It recomputes from the row's logits for every parameter shape, never
+    /// from `best`.** [`Self::sample`] would return `best[row]` unchanged for a
+    /// greedy row with no mask (`select(None)`), which for a refused greedy row
+    /// is the stale device slot — the same class of defect as the stochastic
+    /// case, one indirection further out. The value computed here is identical
+    /// to the CPU path's (`argmax` of the row, mask applied first), so the
+    /// hardening changes no reachable result; it removes the possibility.
+    pub fn store_sampled(&mut self, row: usize, mask: Option<&[u32]>,
+        params: TargetSamplingParams, position: u64,
+    ) -> Result<u32> {
+        let range = self.row_range(row)?;
+        let token = if params.is_greedy() {
+            argmax(&self.bytes[range], mask)?
+        } else {
+            let logits = row_logits(&self.bytes[range])?;
+            params
+                .select_token(&logits, mask, position)
+                .map(|token| token as u32)
+                .map_err(|error| anyhow::anyhow!("{error}"))?
+        };
+        self.best[row] = token;
+        Ok(token)
     }
     pub fn select(&self, row: usize, mask: Option<&[u32]>) -> Result<u32> {
         ensure!(row < self.best.len(), "selected logit row is outside batch");
@@ -326,6 +425,53 @@ mod tests {
         scores[winner] = 4.;
         scores[17] = 3.;
         scores.into_iter().flat_map(f32::to_ne_bytes).collect()
+    }
+
+    /// A row whose only live tokens are `winners`; every other token is far
+    /// below the nucleus floor.
+    fn peaked(winners: &[(usize, f32)]) -> Vec<u8> {
+        let mut scores = vec![-1e4f32; VOCAB];
+        for &(token, value) in winners {
+            scores[token] = value;
+        }
+        scores.into_iter().flat_map(f32::to_ne_bytes).collect()
+    }
+
+    /// `store_sampled` must recompute the CPU selection for **every** parameter
+    /// shape, never return a stale `best` slot.
+    ///
+    /// This is the hardening for the delta review's latent item: the stochastic
+    /// path already recomputed, but a **greedy** row with no mask went through
+    /// `select(None)`, which returns `best[row]` unchanged — so a refused greedy
+    /// row would have committed the stale device slot. The recomputed value is
+    /// identical to the CPU path's, so no reachable result changes.
+    #[test]
+    fn store_sampled_recomputes_and_never_returns_a_stale_device_slot() {
+        let mut bytes = peaked(&[(91, 4.), (17, 3.)]);
+        bytes.extend(peaked(&[(93, 4.), (17, 3.99)]));
+        // Device slots deliberately stale: what a kernel that failed leaves.
+        let mut batch = BatchScores::test_visible(&[5, 7], bytes).unwrap();
+        let greedy = TargetSamplingParams::greedy();
+        // Unmasked greedy: the argmax, not `best[0] == 5`.
+        assert_eq!(batch.store_sampled(0, None, greedy, 0).unwrap(), 91);
+        assert_eq!(batch.best, [91, 7]);
+        // Masked greedy: the masked argmax, still not the stale slot.
+        let mut mask = vec![0u32; VOCAB.div_ceil(32)];
+        mask[0] = 1 << 17;
+        assert_eq!(batch.store_sampled(0, Some(&mask), greedy, 0).unwrap(), 17);
+        assert_eq!(batch.best[0], 17);
+        // Stochastic: a draw over the two-token nucleus, stored as `best[1]` and
+        // therefore never the stale `7`.
+        let stochastic = TargetSamplingParams::new(0.7, 0.9, None, 0.0, 3).unwrap();
+        let draw = batch.store_sampled(1, None, stochastic, 11).unwrap();
+        assert!([17, 93].contains(&draw), "the draw left the nucleus: {draw}");
+        assert_eq!(batch.best[1], draw);
+        assert_ne!(batch.best[1], 7, "the stale device slot survived the store");
+        // A row with no logits cannot be CPU re-sampled at all, so a fallback can
+        // never silently claim it did.
+        let mut compact = BatchScores::from_greedy(vec![(5, 1.)]).unwrap();
+        assert!(compact.store_sampled(0, None, greedy, 0).is_err());
+        assert!(compact.store_sampled(0, None, stochastic, 0).is_err());
     }
     #[test]
     fn compact_scores_reject_invalid_rows_and_require_logits_for_masks() {
