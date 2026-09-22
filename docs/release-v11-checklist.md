@@ -1,9 +1,10 @@
 # DS41RT v11 release checklist
 
-**STATUS: DRAFT - PREPARED, NOT STARTED.** No v11 image has been built, pushed
-or promoted. This checklist is the v11 gate sheet, prepared in advance of the
-runtime change; every box below stays unchecked until the named evidence file
-exists. It mirrors the published [v10 checklist](release-v10-checklist.md),
+**STATUS: IN PROGRESS - PRE-PUBLICATION.** The v11 pair is built from image
+source `fb5115466a8c70c063280e25957577f284e903e3`, measured and re-qualified, and
+its artifacts are verified; the images have not been pushed and the runtime
+default is not promoted. Boxes below are checked only from their named evidence
+file. It mirrors the published [v10 checklist](release-v10-checklist.md),
 whose checked boxes and `runs/v10-release/` evidence remain the reference for
 what a completed run looks like. Scope and status of the release itself live in
 [release-v11-notes.md](release-v11-notes.md).

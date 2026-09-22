@@ -46,9 +46,46 @@ Prepared from [the v10 notes](release-v10-notes.md); the ordered gate sheet is
 - **Measured native deployment performance.** The v11 campaign measures the
   released pair on the real one-RTX-plus-four-Spark deployment: the headline
   nine-category decode table plus counting, five strict profiles, three repeats.
-  No retained-turn and no concurrency-matrix campaign is required for v11.
-  Numbers, raw package and limitations are **PENDING** in
-  [release-v11-performance.md](release-v11-performance.md).
+  No retained-turn and no concurrency-matrix campaign is required for v11. Both
+  datasets are recorded in [release-v11-performance.md](release-v11-performance.md)
+  with distinct provenance, and neither is published here as a single headline:
+
+  | Profile | Baseline `9d9b3e0` | Final `fb51154` |
+  | --- | ---: | ---: |
+  | greedy | 94.41 | 95.46 |
+  | temp0.2 + top_p0.95 | 47.35 | 80.58 |
+  | temp0.7 + top_p0.9 | 47.52 | 83.29 |
+  | temp0.7 + min_p0.05 | 88.26 | 88.99 |
+  | temp0.7 + top_k40 | 47.14 | 87.74 |
+
+  Both campaigns pass the campaign validator with zero failures, 15/15 raw
+  reports and an identity deep-equal; evidence hashes are listed on the
+  performance page. The final pair's optimization (`fb51154`) replaces the
+  ordered sampler path's structured sort with bit-identical heap/radix
+  selection, verified against a verbatim pre-change oracle.
+  **Presentation rule (audit-mandated):** on the final dataset only **greedy** is
+  clearly first (95.46, margin +6.47 to +14.88 over the others, whose spreads are
+  0.97-5.73); the **four stochastic modes form one tight cluster and must not be
+  ordered internally**, because min_p 88.99 versus top_k40 87.74 is +1.24 against
+  a 2.00 spread, and top_p0.9 83.29 versus top_p0.95 80.58 is +2.70 against a
+  5.73 spread - both within noise.
+  **Workload identity:** weighted token counts are exactly equal between baseline
+  and final for every profile (6608 / 7013 / 6067 / 6870 / 7166) and per-case
+  median completion tokens are identical across every profile and case, so the
+  entire gain is reduced elapsed time for the same output (top_k40 128.44 s ->
+  69.37 s, top_p0.9 144.33 -> 82.47, top_p0.95 151.70 -> 88.11, with greedy and
+  min_p at 0.989x / 0.988x) - not a workload artifact.
+  **Re-qualification:** the final pair passed live qualification with **91 checks
+  / 69 observations / 0 failures**, all replay checks exact and an empty
+  check-outcome delta versus baseline.
+  A baseline-image `--no-dspark` control found no profile faster without dSpark,
+  so speculation is a net win at every vector and the adaptive gate is
+  unchanged. Full-draft-distribution rejection correction was considered and
+  rejected for this release (no gain at the benchmark temperatures; kept as a
+  future high-temperature item), while our verifier applies the full filter
+  chain to the verified target distribution, so `min_p` is honored under
+  speculation. Bitwise speculative/non-speculative parity is explicitly not
+  claimed, matching the upstream non-guarantee.
 - **Launch selection before promotion.** Until the promotion change lands the
   runtime default names `:v10`, so the v11 candidate is launched with
   `--config ds41rt.build-v11.config`; `run.sh` then validates the v11 image,

@@ -192,7 +192,7 @@ from the EXL3 5090+2-spark runs above, none qualifies either new quant.
 
 Historical EXL3 performance, acceptance and quantization analysis are preserved in the [v5 performance report](https://github.com/tpurtell/ds41rt/blob/v5/docs/release-v5-performance.md); they are not v6 measurements.
 
-**Sampling comparison (infrastructure and metadata; no measurements yet).** The
+**Sampling comparison (measured on the v11 final build, dSpark on).** The
 release decode battery `scripts/bench-ds41-release-decode.py` keeps the
 nine-category weighted corpus, per-category weights and decode-only metric of
 the headline table above, and additionally drives five canonical sampling
@@ -211,6 +211,117 @@ the other filters.
 | `temp0.7-minp0.05` | 0.7 | 1.0 | 0 (disabled) | 0.05 |
 | `temp0.7-topk40` | 0.7 | 1.0 | 40 | 0.0 |
 
+**Measured sampling comparison (2026-09-22, v11 final build, dSpark on).** One
+deployment on the real topology — one RTX of the two present plus the four
+configured Spark workers, dSpark on — measured from image source
+`fb5115466a8c70c063280e25957577f284e903e3` (coordinator
+`sha256:e0e5d631a54e84f36cd1cd99e2a7cf4e2092c15919c8c79403007ba0852d0d89`, Spark
+`sha256:f1233987c3b9ba13d468d621c96945052db15e7ede9a8feaf101f506aee85516`) at
+host HEAD `fb51154`, run identity
+`285544d4e350bacc4137031ac884aded92e73f6fc207ccaf44584e18bedc3653`. Five
+discarded warmups preceded a rotating five-mode by three-repeat campaign of 15
+raw reports on the natural per-category budgets;
+`scripts/validate-sampling-campaign.py` passed with zero failures and recomputed
+every number from the per-sample timings (`campaign-validation.json`
+`476b233029ee01cb200a7632463dea2a1f0e509b8b256140a0bab79ebfc5ba5b`).
+
+Weighted decode, n=3 median of the per-repeat weighted ratios (observed decode
+tokens/s; weights sum to 8.0), dSpark on:
+
+| Sampling mode | Weighted decode tok/s | repeats (spread) |
+|---|---:|---|
+| greedy | 95.46 | 92.9590 / 97.3036 / 95.4597 (4.34) |
+| temperature 0.2 + top_p 0.95 | 80.58 | 78.6887 / 84.4165 / 80.5842 (5.73) |
+| temperature 0.7 + top_p 0.9 | 83.29 | 84.1616 / 83.2861 / 82.5288 (1.63) |
+| temperature 0.7 + min_p 0.05 | 88.99 | 88.2909 / 88.9857 / 89.2613 (0.97) |
+| temperature 0.7 + top_k 40 | 87.74 | 88.2760 / 86.2790 / 87.7424 (2.00) |
+
+Per-content-case n=3 median observed decode tokens/s. The weighted row is the
+median of the per-repeat ratios, not the mean of the case rows:
+
+| Content case | greedy | temp 0.2 / top_p 0.95 | temp 0.7 / top_p 0.9 | temp 0.7 / min_p 0.05 | temp 0.7 / top_k 40 |
+|---|---:|---:|---:|---:|---:|
+| code | 138.7 | 112.7 | 115.0 | 122.0 | 124.5 |
+| code with reasoning | 105.1 | 88.4 | 89.3 | 97.1 | 93.2 |
+| math | 134.1 | 116.9 | 121.1 | 112.4 | 124.5 |
+| fable | 62.6 | 54.2 | 56.0 | 61.4 | 59.0 |
+| hello | 66.4 | 68.6 | 63.7 | 66.1 | 77.2 |
+| topic | 75.0 | 65.9 | 69.3 | 70.6 | 75.0 |
+| natural JSON (0.5) | 99.4 | 85.1 | 87.3 | 85.0 | 94.9 |
+| schema JSON (0.5) | 102.0 | 91.0 | 87.2 | 94.9 | 106.5 |
+| multilingual | 77.1 | 67.3 | 65.6 | 73.8 | 70.2 |
+| **weighted (sum w = 8.0)** | **95.46** | **80.58** | **83.29** | **88.99** | **87.74** |
+| counting 1-200 (weight 0, diagnostic) | 165.8 | 135.3 | 142.0 | 156.8 | 154.6 |
+
+Ordered-sampler optimization, before and after. The two columns come from
+**different image sources** — baseline `9d9b3e0` and final `fb51154` — and the
+baseline raw package is preserved as provenance rather than re-measured:
+
+| Sampling mode | baseline `9d9b3e0` | final `fb51154` | ratio |
+|---|---:|---:|---:|
+| greedy | 94.41 | 95.46 | 1.01 |
+| temperature 0.2 + top_p 0.95 | 47.35 | 80.58 | 1.70 |
+| temperature 0.7 + top_p 0.9 | 47.52 | 83.29 | 1.75 |
+| temperature 0.7 + min_p 0.05 | 88.26 | 88.99 | 1.01 |
+| temperature 0.7 + top_k 40 | 47.14 | 87.74 | 1.86 |
+
+Reading these numbers:
+
+- **greedy is clearly first** at 95.46 tokens/s: its margin over every other
+  mode is +6.47 to +14.88, wider than any other mode's own repeat spread
+  (0.97-5.73).
+- The four stochastic modes form one tight cluster and are **not ordered
+  internally**: `min_p=0.05` 88.99 over `top_k=40` 87.74 is a +1.24 margin
+  against a top_k 40 spread of 2.00, and `top_p=0.9` 83.29 over `top_p=0.95`
+  80.58 is a +2.70 margin against a top_p 0.95 spread of 5.73. Both are within
+  noise, so a 2nd/3rd/4th/5th ordering is not resolved by three repeats; the
+  per-repeat values are listed in the weighted table above so the tie is
+  checkable.
+- The three ordered top_p/top_k modes now sit at 90.6-98.6% of the min-p
+  envelope (top_p 0.95 90.6%, top_p 0.9 93.6%, top_k 40 98.6%).
+- The recovery is **workload-identical**: the weighted token totals are exactly
+  equal between baseline and final for every mode (greedy 6608, min_p 7013,
+  top_k 40 6067, top_p 0.9 6870, top_p 0.95 7166) and the per-case median
+  completion tokens are identical for all nine cases, so the entire gain is
+  reduced elapsed time (top_k 40 128.44 s -> 69.37 s, top_p 0.9 144.33 s ->
+  82.47 s, top_p 0.95 151.70 s -> 88.11 s, with greedy at 0.989x and min_p at
+  0.988x of baseline elapsed).
+- The optimization is commit `fb51154`: bit-identical heap/radix ordered-path
+  selection replacing the per-row full-vocabulary sort; see
+  [release-v11-performance.md](docs/release-v11-performance.md).
+- The counting 1-200 sequence is a weight-0 diagnostic and is **not** part of the
+  weighted figure; it passed on every mode and is reported separately.
+- Natural EOS means the modes do different amounts of work: the median
+  `code-reasoning` answer runs 1088-1393 completion tokens and `fable` 134-153,
+  so the length spread is real and is reported per case rather than normalized
+  away. `hello` finished on its 32-token natural budget in 11 of 15 samples.
+- Provenance caveat: every `(profile, repeat, case)` uses its own nonce token as
+  the first user-content token, so prompts differ by that nonce as well as by the
+  sampling vector. This comparison therefore does not claim that the sampling
+  vector is the only difference between columns.
+
+**dSpark draft activity (final build, untimed proof).** dSpark is configured on
+for this deployment, but configuration is not evidence of drafting, so a separate
+untimed pass restarted the same final image with
+`RUST_LOG='info,ds41rt::timing=debug,ds41rt::logit_trace=debug,ds41rt::draft_policy=debug'`
+and sent one sequential short request per mode (`hello`, 32-token natural
+budget), capturing a finite window per mode. Every mode produced drafts and none
+was suppressed by the adaptive gate:
+
+| Sampling mode | Rounds | Proposed | Accepted | Emitted | Accepted fraction |
+|---|---:|---:|---:|---:|---:|
+| greedy | 10 | 29 | 21 | 31 | 0.724 |
+| temperature 0.2 + top_p 0.95 | 14 | 46 | 17 | 31 | 0.326 |
+| temperature 0.7 + top_p 0.9 | 6 | 24 | 11 | 16 | 0.450 |
+| temperature 0.7 + min_p 0.05 | 15 | 42 | 16 | 31 | 0.381 |
+| temperature 0.7 + top_k 40 | 12 | 33 | 19 | 31 | 0.548 |
+
+These are single short-request samples: they prove that active drafting occurred
+on the released build for every mode, and they are not a serving acceptance rate.
+`logit_trace=debug` disables the compact greedy fast path during that untimed
+pass only; the timed numbers above were measured with default logging, and the
+deployment was restarted with default logging afterwards.
+
 Each report records the requested vector, the exact fields sent, the seed and
 its source, the EOS/length policy, every per-sample actual `completion_tokens`,
 and per-case medians across repeats. The release campaign uses each category's
@@ -219,8 +330,8 @@ output lengths legitimately differ between profiles; the actual per-case length
 spread is recorded and reported rather than normalized away.
 `--fixed-decode-tokens N` remains available as an optional diagnostic mode: it
 sets `ignore_eos`, `min_tokens=N` and `max_tokens=N` for the weighted cases only,
-while counting and orchid keep their corpus budgets so the counting quality
-contract is not truncated; an unhonoured fixed length is recorded through
+while the weight-0 counting diagnostic keeps its corpus budget so the counting
+quality contract is not truncated; an unhonoured fixed length is recorded through
 `fixed_length_honored` instead of assumed. The campaign's raw reports are gated
 before aggregation by `scripts/validate-sampling-campaign.py`, which requires
 exactly five profiles by three repeats with no duplicates, a pinned identity
@@ -232,7 +343,8 @@ samples, exact n-repeat medians, true cyclic rotation verified from raw
 timestamps, and recorded length spreads; diagnostics are reported separately and
 never folded into the weighted median. Warmup follows
 the release protocol: before the timed rotation, one discarded full invocation
-per profile runs the same category shapes with a distinct `--nonce-seed`, writing
+per profile runs the same category shapes with its own per-profile `--nonce-seed`
+(warmup 79201-79205, timed 79101-79105), writing
 `warmup-*` files that stay outside the aggregate glob and are never scored. That
 pass warms execution shapes, kernels, workspace and adaptive state, and it uses
 fresh unique prompts, with the nonce seeded as the first user-content token
@@ -242,7 +354,11 @@ timed sample can share is the invariant chat-template header, and the harness
 does not assume that sharing is zero. It records each sample's
 `prompt_cache_hit_tokens` and requires a bounded static-prefix hit (at most 32
 tokens) for the sample to pass, so a larger donated prefix is a recorded failure
-rather than a claim. Every timed `(repeat, case)` nonce is also unique, and this
+rather than a claim. A profile's nonce seed is fixed across its three repeats,
+while the generated nonce still differs for every `(profile, repeat, case)`
+because it is derived from the position in the repeat plan; the five profiles use
+pairwise distinct seeds, so no profile can reuse another's prompts or prefix
+cache. This
 campaign has no retained-context cells. Stochastic profiles require an explicit
 `--seed`. The harness is strict-only: a vector the engine cannot express is a
 hard request error, never a silent substitution.
@@ -255,19 +371,18 @@ drift hits every profile equally, `scripts/aggregate-sampling-decode.py` combine
 the per-repeat raw reports into per-profile weighted medians and reports the
 observed execution order, flagging a profile-major ordering instead of hiding
 it. dSpark activity is not exposed in the usage block or `/v1/stats`, so a claim
-that drafts were active for a stochastic profile needs a separate untimed
-runtime-log pass
-(`RUST_LOG='info,ds41rt::timing=debug,ds41rt::cost_model=debug'`, which `run.sh`
-does forward to the coordinator and every worker); the adaptive gate may
-legitimately suppress drafts at poor acceptance, so actual activity is recorded
-rather than forced, and a suppressed-draft run is never reported as active
-dSpark. **No sampling-comparison measurements are published.** The v11 candidate
-implements the native stochastic sampling path, so all five profiles are
-runnable on the candidate build; the legacy runtime is not extended. The greedy
-fast path is unchanged, which is an implementation statement and **not** a
-measured "no change" — this section claims no performance result for any profile.
-The scope is the native production path: one RTX coordinator plus the four
-configured Spark workers.
+that drafts were active for a stochastic profile needs the separate untimed
+runtime-log pass described above
+(`RUST_LOG='info,ds41rt::timing=debug,ds41rt::logit_trace=debug,ds41rt::draft_policy=debug'`,
+which `run.sh` forwards to the coordinator and every worker); the adaptive gate
+may legitimately suppress drafts at poor acceptance, so actual activity is
+recorded rather than forced, and a suppressed-draft run is never reported as
+active dSpark. The measured tables above are the v11 final build's five-mode
+sampling comparison; the legacy runtime is not extended. The greedy fast path
+applies only when every request in a batch is greedy and unconstrained — mixed or
+constrained batches take the full logits path — so it is not a blanket default
+device argmax. The scope is the native production path: one RTX coordinator plus
+the four configured Spark workers.
 
 Sampling facts for this engine (native candidate):
 
@@ -275,7 +390,10 @@ Sampling facts for this engine (native candidate):
   greedy. This is ds41rt-specific and deliberately differs from vLLM's default
   temperature of 1.0.
 - `top_k=0` or `-1` disables top-k; `top_k` greater than or equal to the
-  vocabulary size is a no-op; otherwise top-k keeps that many tokens.
+  vocabulary size is a no-op; otherwise top-k keeps that many tokens. On an exact
+  boundary tie ds41rt keeps the lowest token id, and vLLM's tie behaviour may
+  differ, so the vectors are semantically matched to vLLM rather than claimed to
+  be bit-exact with it.
 - `seed` is a signed 64-bit integer and is wrapped deterministically, including
   `-1`. vLLM maps only `seed == -1` to unseeded and otherwise uses negative
   seeds as given; ds41rt does not adopt that convention.
