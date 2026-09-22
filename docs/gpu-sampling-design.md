@@ -5,13 +5,17 @@
 record. **Chunk 2 (K2 fast path) is delivered and reviewed** as `f0e7902`
 (committed on `9dffad0`); §18 is its as-built record. **Chunk 3a (K3 + K4) is
 delivered and reviewed** as `90f745c` (committed on `4277898`); §19 is its
-as-built record. The normative sections below have been reconciled
-with all three (notably §4.2, §4.3, §4.4, §4.5, §5.4, §6.3b, §6.3c, §6.5.3,
-§11.1, §12.2, §12.3, §12.4, §13.1, §14). Chunk 3b is next; chunks 3b–4 remain
-design-only and still require the adversarial review of §14.
+as-built record. **Chunk 3b (K5 nucleus + draw) is delivered and reviewed** as
+uncommitted working-tree work on base `ddae9bc`; §21 is its as-built record and
+§20 lists the interface changes chunk 4 must honour. The normative sections below
+have been reconciled with all four (notably §4.2, §4.3, §4.4, §4.5, §5.4, §6.3b,
+§6.3c, §6.5.3, §11.1, §12.2, §12.3, §12.4, §12.12, §13.1, §14). **Chunk 4
+(wiring) is next**; it remains design-only and still requires the adversarial
+review of §14.
 
 **Repository revision read:** `e1f5d495b5a82fb7ddad8514cad419b6ae62c0cc` (`e1f5d49`).
-Chunk 1 reads `9dffad0`, chunk 2 `f0e7902`, and chunk 3a `90f745c`.
+Chunk 1 reads `9dffad0`, chunk 2 `f0e7902`, chunk 3a `90f745c`, and chunk 3b is
+uncommitted on base `ddae9bc`.
 
 **Deliverable rule:** the original design task produced exactly this one file;
 the as-built updates are design text only. Every claim about existing code
@@ -390,63 +394,84 @@ path.
 
 - **Inputs**: row logits, `max_scaled`, `min_scaled`, `inv`, `params[r].seed`,
   `params[r].position`, mask.
-- **Algorithm**
-  1. Two passes within the CTA: (i) `w_t = expf(scaled_t - max_scaled)` over
-     survivors, with `total` taken from the **crossing walk's own** accumulation
-     (step 3 — never from a separate tree reduction); (ii)
-     `total = fmaxf(total, 1e-20f)`, `target = clamp(u, 0, MAX_UNIFORM) * total`.
-  2. **Ascending-id inclusive-prefix scan** `[NEW]`: partition `[0, vocab)` into
-     256 contiguous segments; thread `t` sequentially prefix-sums its segment in
-     ascending token order; block-exclusive-scan the segment totals (fixed tree);
-     each thread walks its segment from its exclusive offset and reports the
-     first token (if any) whose inclusive cumulative satisfies
-     `target <= cumulative`; the answer is the **minimum token id** over
-     reporting threads.
-     Because weights are non-negative and the comparison is inclusive, **more
-     than one segment can report** (every segment after the first crossing
-     reports its first token). The minimum over reported ids is still exactly the
-     first crossing token, because the earliest reporting segment contains it.
-     Do not implement this as "exactly one segment crosses".
-  3. **The no-crossing fallback is UNREACHABLE — chunk-2 correction.** The first
-     revision called "select the last survivor in ascending token order" a
-     reachable rule; it is not, on either side. `sample_categorical`
-     (`target_sampling.rs:590-618`) computes `total` at `:597-603` and the
-     crossing `cumulative` at `:605-614` with the **identical left-to-right f32
-     accumulation** over the same survivor set from the same `0.0f32`, so at the
-     last allowed token `cumulative == total` bit for bit. The uniform was
-     clamped at `:459` to `MAX_UNIFORM.min(uniform.max(0.0))` with
-     `MAX_UNIFORM = 1 − 2^-24` (`:52`), so `u <= 1 − 2^-24 < 1`; round-to-nearest
-     is monotone, hence `target = fl(u·total) <= total = cumulative` at that token
-     (including the ties-to-even edge, where `fl(u·total) < total` strictly), and
-     the inclusive test at `:613` returns before the `:617-618` `last` arm. The
-     CPU fallback is defensive code no user-reachable input can enter.
-     **The device must mirror this by deriving `total` from the same accumulation
-     the crossing pass reaches**: the segment owning the last survivor re-walks
-     from its exclusive prefix to that token and publishes that cumulative as
-     `total`. Taking `total` from the tree scan's inclusive prefix instead makes
-     the device fallback reachable as a **device-only** artifact — the pre-fix
-     kernel did exactly that, and on a wide row the tree prefix exceeded the walk
-     cumulative by ~3e-5, so a `MAX_UNIFORM`-scale target found no crossing. Keep
-     the last-survivor fallback only as defensive code.
-  4. **Latent bug found while fixing step 3 (fixed):** the per-segment
-     last-survivor sentinel must not be `NO_DETAIL` (`0xFFFFFFFF`, the maximum
-     u32) because it wins the `tree_max_u32` reduction whenever trailing segments
-     are empty — which is almost every vocabulary. It is now `0`, safe because
-     every real token id is `>= 0` and `k2_applicable` guarantees at least one
-     survivor (`v41_sampling_gpu.cu:534-552`).
-  5. Write `out_indices[r]` and `out_total[r] = total` (diagnostic).
+- **Algorithm — chunk-3b rewrite (replaces the chunk-2 tree combine; the
+  Hillis-Steele f32 inclusive scan is no longer called by K2)**
+  1. Two passes within the CTA: (i) per-segment sequential local sums
+     `local(i)` over `w_t = expf(scaled_t - max_scaled)` for survivors; (ii) ONE
+     consistent sequential segment prefix built by **thread 0**,
+     `C(0) = 0`, `C(i+1) = fl(C(i) + local(i))` — at most `kBlock = 256`
+     shared-memory adds, with barriers before and after — and
+     `total = C(kBlock)`, `total = fmaxf(total, 1e-20f)`,
+     `target = clamp(u, 0, MAX_UNIFORM) * total`.
+  2. Pass 2 may report from a segment only when its start is strictly below the
+     target (`may_report`: `C(i) < target`), and inside it a token is a crossing
+     only when the cumulative **strictly before** the token is `< target`
+     (`cumulative_before < target`). Because `fl(before + w) >= target > before`
+     forces `w > 0` in f32, **a zero-weight token is structurally unreachable for
+     `target > 0`**. `target == 0` still selects the first survivor, matching the
+     CPU. The retained per-segment sums, `tree_max_u32(lasts)` and
+     `tree_min_u32(hits)` remain.
+  3. **Saturation fallback:** if the bracketing segment
+     (`C(i) < target <= C(i+1)`) cannot reach `target` because its own in-segment
+     walk association rounds the tail away, it reports its **first positive-weight
+     survivor**; `tree_min_u32` keeps the earliest report. That segment always
+     contains a positive weight, so the fallback is positive. The old
+     owner-segment re-walk (which derived `total` from the tree prefix) is gone.
+  4. Write `out_indices[r]` and `out_total[r] = total` (diagnostic).
+- **Invariant established by the rewrite (MEASURED).** No zero-weight selection
+  for `u > 0`. Witness (chunk-3b `k2witness`): vocab 2048, `T = 1`, `top_p = 1`,
+  `min_p = 0`, `logits[0] = 0`, `logits[8..15] = -17`, the rest `-200`, seed
+  `0x9216a62488dbaa7b`, position 0 (`u = MAX_UNIFORM`): the pre-fix tree build
+  selected token **16** with weight `expf(-200) = 0`; the fixed build selects
+  token **8** with weight `4.13994e-08` (positive), while the CPU sequential
+  oracle selects token **0** — a documented residual, not an equality. Pinned by
+  `test_k2_zero_weight_invariant`; mutant **M6** (pre-fix walk) fails it
+  (`runs/chunk3b-scratch/REPORT.md` §2).
+- **CORRECTION — the chunk-2 wording "one consistent `W`, and the minimum over
+  reports is exactly the first crossing token" is no longer literally true.** The
+  in-segment walk re-adds weights from `C(i)` with a *different* f32 association
+  than the fold that produced `C(i+1)`, so in the saturation case the reported
+  token's own cumulative can be **below** `target` and the draw is **non-monotone
+  in `u`**. This is device-confirmed (chunk-3b review, `/tmp/advrev/k2mono.cu`; row
+  `vocab = 1024`, `token0 δ=0`, `token4 δ=ln(0.4·2^-23)`, `token5 δ=ln(1.4·2^-23)`,
+  `tokens6,7 δ=ln(0.4·2^-23)`):
+  `u = 0.9999997615814209 → token 5`, and the **larger**
+  `u = 0.99999988079071045 → token 4` (backward), both with status OK. The
+  affected range is the last few ulps of the uniform (≈`1e-7` of the mass), i.e.
+  rows whose tail weights are below half an ulp of the running sum. It is a
+  **measured, bounded, declared residual**: every selection is still a valid
+  survivor with strictly positive f32 weight for `u > 0` — an independent
+  983,040-draw scan found **0/983,040** zero-weight or non-survivor selections,
+  and in every cell `TV(device, oracle) <= TV(cpu, oracle) + Monte-Carlo noise`.
+  A cheap correct fix, if one exists, is a **chunk-6 candidate**; the design does
+  not claim monotonicity in `u` for K2.
 - **Why contiguous segments**: they preserve the CPU's ascending accumulation
-  order *within* a segment; only the cross-segment combine uses a tree. Together
-  with the `expf` difference (§6.3b) this is one of the two accumulation-order
-  sources of the residual acknowledged in §6.3c. The strictly sequential
-  token-order combine was implemented and measured in chunk 2 (§6.5.3); the
-  shipped default is the tree.
+  order *within* a segment, and the chunk-3b fold makes the *cross-segment*
+  combine a single sequential chain as well; the remaining difference from the
+  CPU is the in-segment walk association in the saturation case above plus the
+  `expf` difference (§6.3b), both acknowledged in §6.3c. The strictly sequential
+  token-order combine was implemented and measured in chunk 2 (§6.5.3) and is not
+  used.
 - **Limits**: `top_p >= 1.0` and `top_k` disabled only; `MAX_UNIFORM` is
-  `0x3F7FFFFF` written as a bit pattern, not a decimal literal.
-- **Measured cost (chunk 2, §13.1)**: K1-only 177.1 µs vs K1+K2 392.5 µs at 4
-  rows and 404.5 µs at 48 rows; the 4→48 difference is 12.0 µs (3.1%), so the
-  cost is a **fixed per-launch critical path of two ~505-iteration serial
-  dependent `expf`+add chains per thread**, not launch-count or bandwidth bound.
+  `0x3F7FFFFF` written as a bit pattern, not a decimal literal;
+  `DS41RT_V41_K2_NO_WALK_TOTAL` is now vestigial (kept so old measurement scripts
+  compile); `DS41RT_V41_K2_SEQUENTIAL_COMBINE` remains a compile-time diagnostic
+  switch, never an ABI field.
+- **Measured cost and divergence after the rewrite (chunk 3b, MEASURED).** The
+  rewrite is **faster**: 392.6 → **305.0 µs** per call at 4 rows and 404.9 →
+  **314.8 µs** at 48 rows (−22.3%), with the K2-non-applicable baseline unchanged
+  (176.9 → 176.3 µs at 4 rows, 183.1 → 182.6 µs at 48 rows), because the ≤256-step
+  serial fold plus the retained reductions are cheaper than the removed owner walk
+  + tree scan. Full table in §13.1. The fast-path GPU-vs-CPU divergence on the
+  **same 983,040-draw harness** moved 119,138/983,040 = **12.1193% →**
+  121,047/983,040 = **12.3135%** (per-row: `near_uniform` 57.7502 → 59.1241%,
+  `long_tail` 12.3169 → 12.0947%, `peaked` 2.0184 → 2.0294%, `moderate`
+  0.6293 → 0.6317%, `tied` 0 → 0%, `trace_anchored` unchanged; 21/120 cells
+  changed). **The two figures are not apples-to-apples**: the earlier one included
+  the invalid zero-weight selections this rewrite removes, and the independent
+  validity scan confirmed `TV(device, oracle) <= TV(cpu, oracle)` + noise in all
+  120 cells — so the increase is a legitimate mapping difference, not residual
+  invalidity. **The chunk-6 number to publish is 12.3135%.**
 - **Provenance**: `[PORT]` of `DeviceSamplingFromProb`'s "sum then inclusive
   scan then lowest crossing id" structure (`sampling.cuh:567-642`), with
   `[NEW]` contiguous-segment ordering to match ds41rt's token-order walk and
@@ -594,6 +619,56 @@ ds41rt_status_t ds41rt_cuda_v41_topk_select_async(
   nucleus and the rank-order draw iterate ranks `0..k-1`, recomputing
   `scaled = logits[id] * inv` and `w = expf(scaled − max_scaled)` per rank
   exactly as the CPU's `sample_from_ranked` does.
+
+**K5 entry point (as built and adversarially verified in chunk 3b):**
+
+```c
+ds41rt_status_t ds41rt_cuda_v41_nucleus_async(
+    const float* logits, size_t rows, size_t vocab, size_t logits_stride,
+    const ds41rt_v41_sampler_row_t* params, const uint32_t* mask_words,
+    size_t mask_words_per_row, const uint32_t* rank_order_ids,
+    size_t rank_order_capacity, const uint32_t* rank_retained_count,
+    uint32_t* out_indices, uint32_t* out_status, float* out_total,
+    uint32_t* out_nucleus_count, ds41rt_v41_sampler_scratch_t* scratch,
+    void* cuda_stream);
+/* plus the blocking ds41rt_cuda_v41_nucleus(...) without cuda_stream */
+```
+
+- **`output_row == block_row` is REQUIRED for every K5-class row**, checked
+  **unconditionally and before `rank_retained_count` is read**; a violation writes
+  `INTERNAL` to both `out_status` and `scratch.status` and writes no token. (The
+  earlier *conditional* guard was bypassable: a raw-C permutation witness made
+  block 0 read K4's count for the other row, silently fall into the survivor
+  domain and write a wrong token with status OK — `ADVERSARIAL-REVIEW-rev3` §4.)
+  K1–K4 still permit scatter; only K5's block-row consumption needs identity, and
+  the FFI validator rejects a non-identity batch outright.
+- **`out_status` is a caller-visible channel** (pass K1's buffer). K5's loud
+  per-row statuses reach it, not just scratch: non-finite `top_p`, zero-survivor
+  non-greedy rows, `top_k ∈ [257, survivor_count)` (unsupported, loud INTERNAL),
+  non-identity/output-row violations, and capacity-0/wide shapes. The entry point
+  still returns `OK` for a per-row failure; the caller must read `out_status`.
+- The K3/K4/K5 **FFI wrappers take a validated `params_device` buffer and launch
+  its pointer**, exactly as K1 does (§5.5, §11.1); passing a host
+  `params.as_ptr()` as a device pointer is a protocol violation. This closes the
+  chunk-1 defect class that K3/K4 predated and K5 had reintroduced
+  (`ADVERSARIAL-REVIEW-rev3`, mandatory item).
+- **Verified K5 fixes from the three chunk-3b review rounds:**
+  (a) the **mass-probe shared-memory race** (the reduction returned `phase[0]` to
+  all threads with no barrier before the next probe overwrote it) is fixed by a
+  snapshot + trailing barrier mirroring K3, pinned by a 32-launch bit-identical
+  determinism test (`test_k5_repeated_run_determinism`); no other shared-array
+  re-read hazard exists in K3/K4/K5.
+  (b) the **probe-dependent prefix association** (bit-level `0x3f800001` vs
+  `0x3f800000` for weights `[1, 2^-24, 2^-24]`) is fixed by one fixed sequential
+  prefix per row read by every search. The prefix is bounded by
+  `retained <= kBlock = 256` (**not** ~129k), so the production-shape cost is
+  **+1.6 µs at `top_k = 40` and +4.5 µs at `top_k = 256`** (0.07%/0.19%) — no
+  chunk-6 impact. A fixed-but-parallel association would be probe-invariant but
+  **not** CPU-bit-identical, so the tid0 sequential walk is load-bearing for the
+  retained-domain exactness in §6.3c.
+  (c) the **zero-uniform non-member** bug (`u = 0` is reachable, e.g. seed
+  310147/position 0) is fixed by requiring `mass > 0`; `u = 0` now selects rank 0,
+  the CPU's choice.
 
 - **Inputs**: survivors, the rank-ordered retained id list (if K3/K4 ran),
   `total`, `max_scaled`, `top_p`, `uniform`, `top_k` state.
@@ -994,6 +1069,18 @@ relied on — it is precisely why the header now states the requirement explicit
 and why the validator/wave pass the uploaded device buffer. Any caller that
 skips the upload is unsupported even if it appears to work locally.
 
+**Chunk-3b closure of this defect class.** The chunk-3a K3/K4 wrappers and the
+new chunk-3b K5 wrappers had reintroduced the host-pointer defect
+(`params.as_ptr()` passed as a device pointer). All four FFI wrappers
+(`ds41rt_cuda_v41_topk_select[_async]`, `ds41rt_cuda_v41_nucleus[_async]`) now
+take a **validated `params_device: Ds41rtDeviceBuffer`** argument, call
+`validate_v41_params_device` (non-null, `rows × 64` bytes) and launch
+`params_device.ptr`, exactly the K1 pattern; the device-test helpers were fixed
+to pass the uploaded `params_buffer`. Any caller passing a host `params.as_ptr()`
+is now a **protocol violation** — it is not covered by the ABI and is unsupported
+even where the driver tolerates it (`ADVERSARIAL-REVIEW-rev3`, mandatory item).
+Any new entry point added later must follow the same rule.
+
 ---
 
 ## 6. RNG decision and its consequences
@@ -1144,6 +1231,49 @@ distribution error. The divergence is therefore a uniform→token mapping shift 
 wide-support rows, not a wrong distribution, and the release wording must say
 exactly that.
 
+**The ordered path: per-token normalization makes the retained domain
+token-exact (chunk-3b headline, MEASURED).** The original design evaluated the
+nucleus with the algebraic rewrite `Σw >= threshold·total`
+(`DS41RT_V41_K5_NORMALIZED_MASS=0`). That is equivalent in real arithmetic but
+**not in f32**. Chunk 3b replaced it with the CPU's own per-token form
+(`DS41RT_V41_K5_NORMALIZED_MASS` default **1**): accumulate `fl(w/total)` per
+rank, exactly `target_sampling.rs:534-551`. Result on the 344,064-draw
+ordered-path harness (`measure3b`; independently reproduced in
+`ADVERSARIAL-REVIEW-rev3` §5):
+
+| domain | `=1` (shipped, per-token) | `=0` (algebraic rewrite) |
+| --- | ---: | ---: |
+| retained (`top_k != 0`), 147,456 draws | **0 — 0.00% (0/18 cells)** | 16,834 — 11.4163% |
+| survivor (`top_k = 0`), 196,608 draws | 50,927 — 25.9028% | 51,016 — 25.9481% |
+| overall, 344,064 draws | **50,927 — 14.8016%** | 67,850 — 19.7202% |
+
+Concrete mechanism: ten equal weights with `top_p = 0.8000000715255737f`
+(`3f4cccce`) — CPU nucleus **8**, un-normalized GPU **9**
+(`fl(top_p·10) = 8.000000953674316`), normalized GPU **8**
+(`runs/chunk3b-scratch/verify/f5case.c`). The algebraic rewrite was only
+real-arithmetic equivalent; the per-token division reproduces the CPU's f32
+rounding order. This is a real behavioural change, not a harness artifact: the
+counterfactual `=0` run on the same harness/CPU stream yields the 16,834 retained
+mismatches, and the CPU's own code is `weights[r] /= total` then a left-to-right
+prefix (`target_sampling.rs:534-551`).
+
+**After this change the only remaining ordered-path residual is the
+accumulation-association difference on the survivor domain**, with its two
+labelled mechanisms:
+
+- **Residual A — wide-flat total bias (O(n·ulp)).** On survivor-domain
+  `near_uniform`/`tied` rows the CPU's sequential f32 normalization sum over
+  ~116k–129k near-equal terms is systematically biased (measured device `total`
+  129,188 vs CPU 129,280 = 7.1e-4 relative; exact f64 = 129,187.795), which moves
+  the CPU's own boundary by +8 ranks on `near_uniform` and +140 on `tied`
+  relative to the exact-double boundary; the GPU's balanced tree sum lands on the
+  exact-f64 crossing.
+- **Residual B — k-scale normalized-prefix drift (36–40 terms).** The CPU's
+  per-token division plus sequential accumulation of only 36–40 quotients
+  (`tied @ k40 @ top_p0.9`: CPU nucleus 37 vs GPU/oracle 36). **Residual B is now
+  largely removed by the per-token division** — the retained domain is
+  token-exact — so Residual A on the survivor domain is what remains.
+
 **Precedent already in-tree.** The CPU itself uses two different accumulation
 orders for the same draw: the fast path accumulates in **token order**
 (`target_sampling.rs:597-618`) and the ordered path in **rank order**
@@ -1151,12 +1281,13 @@ orders for the same draw: the fast path accumulates in **token order**
 accepted property of the released sampler; this design adds a third, fixed,
 per-row order and does not introduce a new class of behaviour.
 
-**Required measurement.** Measured for the fast path above. It is still required
-for the ordered path (chunks 3a/3b, the 8,192-draw protocol of §12.9), and
-**must be re-measured in full after any change that alters the segment count or
-the tree association**, because such a change moves the uniform→token mapping
-(see the §13.1 caveat). Bit-identity is not claimed for the token; the mismatch
-rate is, and it is published in the release notes.
+**Required measurement.** Measured: the fast path at **12.3135%** after the
+chunk-3b K2 rewrite (§4.2; it was 12.1193% before, not apples-to-apples), and the
+ordered path at **14.8016%** overall with the retained domain at **0/147,456**.
+It **must be re-measured in full after any change that alters the segment count,
+the tree association, or the normalization form**, because such a change moves the
+uniform→token mapping (see the §13.1 caveat). Bit-identity is not claimed for the
+token; the mismatch rate is, and it is published in the release notes.
 
 **Documentation rules**
 
@@ -1266,12 +1397,23 @@ CUDA-`expf` term (§6.3b), still diverging on 85/983,040 draws
 (0.0086%); tree+CUDA-`expf` diverges on 119,138 (12.1193%). Only
 sequential+double-`exp` reached zero divergence in the sweep (0/983,040, model
 plus a 1,536-draw GPU spot check), and that path is 3.37× slower than the tree
-and still not weight-bit-identical. The default is therefore the tree; the
+and still not weight-bit-identical. The chunk-2 default was therefore the tree
+(the chunk-3b update below supersedes its cross-segment combine); the
 sequential macro is retained as a build knob for diagnosis, never an ABI field.
 The full-grid sequential rate is partly model-derived: the expf experiment's
 sequential-order accumulation plus a GPU spot check (0/1,536), because running
 the sequential GPU over 983,040 draws would take ~2.2 h — recorded as an honest
 limit in §18.
+
+**Update (chunk 3b).** The chunk-3b P0-1 fix replaced the tree combine with a
+**consistent sequential segment fold** — `C(0) = 0`, `C(i+1) = fl(C(i) + local(i))`,
+built by thread 0 in at most `kBlock = 256` steps (§4.2). The shipped
+cross-segment association is therefore sequential now, but it is **not** the
+one-thread-per-row `DS41RT_V41_K2_SEQUENTIAL_COMBINE` walk measured above (which
+stays off at ~8.25 ms/row). This is why the fast-path divergence moved
+12.1193% → **12.3135%** and latency improved 22.3%. The remaining K2 residual is
+the in-segment walk association in the saturation case (§4.2), not the
+cross-segment combine.
 
 ---
 
@@ -1882,6 +2024,48 @@ full table in §6.3b and the report in `runs/chunk2-scratch/REPORT.md` §6 /
   the contract passes both. This is the same reason the phase-0 oracle was built
   independently of the sampler (`REPORT.md:106-111`).
 
+### 12.12 Test-credibility corrections (chunk 3b) and the mutant suite
+
+The chunk-3b external review found that the earlier green K5 suite **overstated
+K5 coverage**. Recorded here so no later chunk repeats the pattern:
+
+- **Two tests named as K5 boundary/fallback regressions used `top_k = 0`,
+  `top_p = 1`** — i.e. the K2 fast path — so they executed **no K5 code at all**
+  and their "0 reached the normalizing shortfall" line was the reference's own
+  early return.
+- **The one-rank exception never bounded `abs(device_nucleus_count - expected)`**
+  and hard-coded `max_nucleus_delta = 1`.
+- **The wide profiles disabled `strict_nucleus`**, so `nucleus_mismatch` and the
+  rank bounds were not collected, yet the summary printed "nucleus mismatches 0"
+  (unmeasured), and device-nucleus membership was never asserted.
+
+**Fixes (all landed in chunk 3b, `runs/chunk3b-scratch/REPORT.md` §4,
+`ADVERSARIAL-REVIEW-rev4` §7):**
+
+1. The boundary test now uses `top_k = 2` (an ordered row) and asserts
+   `compared == 1`/`exact == 1`, so K5 genuinely runs.
+2. The fallback tests use the 13-equal/`top_k = 12` and 71-equal/`top_k = 71`
+   fixtures and assert `compared == 2` and **`fallback_rows > 0`** (a real
+   `expect`, satisfied by the retained fixture).
+3. The exception requires `|delta| == 1` **and** a genuine **f32** prefix
+   comparison (`host_cumulative_through_f32`), with `max_nucleus_delta` recording
+   the true maximum before the exception.
+4. Counters (`nucleus_mismatch`, `max_nucleus_delta`) are collected **outside** the
+   `strict_nucleus` gate; device-nucleus membership, `KP_CROSSING_WINDOW`, a
+   measured `1e-3` CDF-error bound and a measured wide-row nucleus-delta bound of
+   **64 (observed 28)** are always asserted.
+5. Device coverage for the raw-C shapes: `test_k2_zero_weight_invariant`,
+   `test_k1_only_entry_loud_status` and `test_k5_scattered_row_identity_guard`.
+
+**Mutant evidence — the sensitivity test of the suite.** Six final-source
+single-defect mutants all fail (M1 survivor rank keyed by token order, M2 crossing
+returns `lo`, M3 empty-prefix acceptance, M4 tree-association retained prefix, M5
+silent status, M6 the pre-fix K2 walk), plus auxiliary **M7** (conditional
+identity guard) and **M8** (K1 branches removed). The older rev3-based mutant
+files abort first on the new P0-1 test purely as a **test-ordering artifact**
+(all embed the pre-fix K2 walk and P0-1 runs first) — verified by removing that
+call, after which each fails at its intended test.
+
 ---
 
 ## 13. Measurement plan
@@ -1937,21 +2121,46 @@ point plus ids D2H, 5 warmups, 50 timed calls, `peaked` row
 - **The excess is per-launch critical-path-bound, not launch-count-bound and not
   row-count-bound.** The 4-row and 48-row calls differ by 12.0 µs (3.1%), and it
   is not bandwidth-bound (48 rows × 517 KB × ~4 reads ≈ 99 MB ≈ 55 µs at HBM
-  speed). The critical path is two full passes over the row, each a
-  ~`vocab / kBlock ≈ 505`-iteration serial dependent `expf`+add chain per thread,
-  plus the step-3 owner walk (~33 µs/launch) and two Hillis-Steele barrier sets.
+  speed). **As measured in chunk 2**, the critical path was two full passes over
+  the row, each a ~`vocab / kBlock ≈ 505`-iteration serial dependent `expf`+add
+  chain per thread, plus the step-3 owner walk (~33 µs/launch) and two
+  Hillis-Steele barrier sets. **The chunk-3b rewrite removed the owner walk and the
+  Hillis-Steele scan** (see the re-measurement below).
 - **Cheapest levers, in order:** (1) raise the per-row thread count from 256 to
   512/1024, halving/quartering the per-thread serial chain — a launch-geometry
   change under contract §7.2.6 with no semantic change, and the largest lever;
   (2) fold the owner walk into an existing pass or replace the tree scan with a
   cheaper fixed-shape combine; (3) the chunk-6 radix histogram, which attacks the
-  pass count but not the per-thread dependent chain.
+  pass count but not the per-thread dependent chain. **Chunk 3b already
+  implemented (2) as part of the P0-1 fix, for a −22.3% net gain.**
 - **Caveat on any lever that changes the segment count:** the tree association
   changes, hence the uniform→token mapping changes. Determinism is preserved and
   it is contract-§7.2.6-legal, but the published GPU-vs-CPU mismatch rate **must
-  be re-measured afterwards** (the 8,192-draw protocol of §12.9); the chunk-2
-  figures in §6.3c are valid only for the shipped 256-thread/segment-count
-  configuration.
+  be re-measured afterwards** (the 8,192-draw protocol of §12.9); the mismatch
+  figures in §6.3c are valid only for the shipped configuration.
+
+**Chunk-3b re-measurement after the K2 rewrite (MEASURED).** Same harness and
+protocol as above; "before" is the shipped chunk-2 (rev3) kernel, "after" is the
+chunk-3b rewrite (§4.2; `runs/chunk3b-scratch/k2_latency_{before,after}.log`):
+
+| rows | before µs | after µs | delta | K2-non-applicable baseline before → after |
+| ---: | ---: | ---: | ---: | --- |
+| 1 | 382.6 | 298.0 | −84.6 (−22.1%) | — |
+| **4** | 392.6 | **305.0** | **−87.6 (−22.3%)** | 176.9 → 176.3 µs |
+| 16 | 404.6 | 314.4 | −90.2 (−22.3%) | — |
+| **48** | 404.9 | **314.8** | **−90.1 (−22.3%)** | 183.1 → 182.6 µs |
+| 64 | 405.1 | 314.7 | −90.4 (−22.3%) | — |
+
+The independent review re-ran the same harness and got 305.8/315.0/315.2 µs
+(run-to-run noise; −22.1% vs −22.3%). The K2-non-applicable baseline is
+unchanged, so the whole gain is in K2: the ≤256-step serial fold replaces the
+tree scan, `total = C(kBlock)` deletes the owner re-walk, and pass 2 early-outs
+segments with `C(i) >= target`. **The ≤0.10 ms/4-row and ≤0.25 ms/48-row gates
+are still missed** (K2 delta ~128 µs at 4 rows against a 100 µs gate), so
+chunk 6/7 still owns the pass budget. The fast-path GPU-vs-CPU divergence on the
+same 983,040-draw harness moved **12.1193% → 12.3135%** (§4.2, §6.3c) — a
+mapping shift from the same fix, not invalidity (0/983,040 invalid selections).
+**The number to publish is 12.3135%.**
 
 ### 13.2 D2H bytes and synchronizations before/after
 
@@ -2080,8 +2289,8 @@ evidence; the wiring chunk is gated on wiring evidence plus the four §17.5 gaps
 | 1 ✓ | **ABI + GPU prepare/greedy — DELIVERED (`9dffad0`)** | kernel + wiring | as planned: `ds41rt_v41_sampler_row_t` + helpers in `v41_sampling_gpu.h`, mask arena, `TargetSamplingWave`, C-ABI registration, FFI wrappers + `validate_v41_sampling_buffers`, `execute_block_sampled`, scheduler/pass wiring, K1 with the greedy/constrained branch. Passed three adversarial review rounds (two found wiring defects, one found a third; all fixed before commit) | **met for the delivered scope**: ABI validated end to end; device greedy/constrained-greedy parity vs the CPU oracle (81 device cases / 6552 assertions; 63-cell greedy parity grid); compact greedy path behaviourally unchanged; no full-row D2H for greedy rows; stochastic path behaviourally unchanged. Four coverage gaps carried to chunk 4 (§17.5) | required |
 | 2 ✓ | **KERNEL-ONLY: K2 fast path + device RNG + accumulation-order/`expf` evaluation — DELIVERED (`f0e7902`, on `9dffad0`)** | kernel only | as planned: K1 stochastic reductions with host `ln_min_p`; the K2 fast path; the accumulation-order evaluation (sequential vs parallel segmented scan); the §12.9a `expf` experiment; per-cell mismatch rates at 8,192 seeded draws; device tests plus the FFI-level oracle test against the production CPU sampler. **No daemon/scheduler/scores changes** | **met and reviewed.** RNG **345/345 bit-equal** (extended grid incl. `2^63`, `u64::MAX`); `expf` **declared residual** with numbers (§6.3b: CUDA 15.4928% of weights / max 2 ulp, double 0.0173% / max 1 ulp and 3.37× slower); mismatch rates recorded per cell (§6.3c: 12.1193% overall, `near_uniform` 57.7502%, `tied` 0.0000%); distribution matches the analytic oracle within noise in every cell; device selftest **90 cases / 7,329 assertions** incl. the fast-path grid, seeded-replay, min_p-threshold and fallback regression cases; FFI oracle green (`v41_sampler_device_fast_path_matches_cpu_oracle`); both arches compile. **Honest limits (§18.4):** no daemon/E2E path; `sm_121` compile-only; the sequential full-grid rate is partly model-derived; the design's ≤0.10 ms/4-row gate is **missed** and is now a chunk-6/7 item. **The gate was kernel-only and deliberately did not close the §17.5 gaps** (chunk 4's) | required |
 | 3a ✓ | **KERNEL-ONLY: K3 + K4 — DELIVERED (`90f745c`, on `4277898`)** | kernel only | K3 general-k pivot selection (true bound 21 passes, §4.3) and K4 exact-k lowest-id tie prefix plus the **rank-ordered id list** the §4.5 K5 contract consumes (§4.4), with device tests against the CPU oracle | **met and reviewed (mergeable).** Device selftest **219 cases / 44,780 assertions** (MEASURED) incl. the k-grid over 4 vocabularies, thousands-tied/all-tied/`-inf`/mask cases and the length-2 regression; **K3 max 21 passes** of the 32 cap (host recurrence, randomized simulation, device measurement); FFI **set-and-order** oracle green; **mutation-tested** — keep-all-ties and old-termination mutants both fail; both arches compile; purely additive diffs (0 deletions). **Honest limits (§19.4):** token-level end-to-end vs the production sampler deferred to 3b; no daemon/E2E; `sm_121` compile-only; large-k rank placement deferred to chunk 6 | required |
-| 3b | **KERNEL-ONLY: K5 — NEXT** | kernel only | K5 inclusive-prefix top-p (largest-key boundary, no `top_p = 1.0` shortcut, full-`S` fallback) plus the rank-order draw with the `nucleus_count - 1` fallback, consuming the chunk-3a rank-ordered id list through the fixed §4.5 entry point, with device tests | full parameter grid × masks × boundaries vs the ported `reference_select` (device level); the §12.3 `top_k + top_p = 1.0` prefix-overshoot oracle; all tie cases; `-inf`/NaN/min_p sweeps; vocab-not-divisible-by-32; total pass budget measured | required |
-| 4 | **WIRING — the single consolidated daemon chunk** | wiring | put stochastic rows on the sampled terminal; capability gates for layouts without the terminal (`DistributedTargetPass`); constrained mask preparation/upload for stochastic verification rows; retention gating and the incidental-download fix; remove the remaining full-row D2H for stochastic rows; **add the executed `upload → launch → output` end-to-end test**; delete the residual single-lane blocking `copy_d2h` for stochastic rounds | **closes all four §17.5 gaps**: the executed `upload → launch → output` end-to-end test (a chunk-4 acceptance gate, not chunk 2's); a daemon-level GPU end-to-end constrained-greedy round; the distributed capability gate; mixed greedy+stochastic rounds wired. Plus: §13.2 D2H accounting holds for stochastic rounds; sync count unchanged; no 517 KB per-row `Vec`; retention tests green; error strings per §5.4 and D1 | required |
+| 3b ✓ | **KERNEL-ONLY: K5 nucleus + rank-order draw — DELIVERED (working tree, commit pending; base `ddae9bc`)** | kernel only | K5 inclusive-prefix top-p (largest-key boundary, no `top_p = 1.0` shortcut, full-`S` fallback) and the rank-order draw with the `nucleus_count - 1` fallback, consuming the chunk-3a rank-ordered id list through the §4.5 entry point; the chunk-3b fix round adds `out_status`, the unconditional row-identity guard, the fixed prefix association and the K2 rewrite | **met and reviewed (mergeable after two documentation/test-message fixes, applied).** Device selftest **400 cases / 47,754 assertions**; six final-source single-defect mutants all fail (M1–M6) plus auxiliary M7/M8; K5 ordered path **344,064 draws = 14.8016%** overall with the retained domain at **0/147,456 (0.00%)**; `sm_120` + `sm_121` compile clean; per-domain divergence published. **Honest limits (§21.4):** P0-3 portability cannot be exercised on this HMM/ATS host; `sm_121` compile-only; no daemon end-to-end; the non-monotone K2 saturation residual (§4.2); wide-row nucleus delta 28 against a 64 bound; the 71-fixture's kernel `!p_found` branch not directly pinned | required |
+| 4 | **WIRING — NEXT (single consolidated daemon chunk)** | wiring | put stochastic rows on the sampled terminal; capability gates for layouts without the terminal (`DistributedTargetPass`); constrained mask preparation/upload for stochastic verification rows; retention gating and the incidental-download fix; remove the remaining full-row D2H for stochastic rows; **add the executed `upload → launch → output` end-to-end test**; delete the residual single-lane blocking `copy_d2h` for stochastic rounds. **Must honour the §20 interface changes** (K5 `out_status`, `output_row == block_row`, K1's new INTERNAL statuses, `params_device` wrappers, the re-published 12.3135% fast-path rate, `top_k ∈ [257, survivor_count)` loud INTERNAL) | **closes all four §17.5 gaps**: the executed `upload → launch → output` end-to-end test (a chunk-4 acceptance gate, not chunk 2's); a daemon-level GPU end-to-end constrained-greedy round; the distributed capability gate; mixed greedy+stochastic rounds wired. Plus: §13.2 D2H accounting holds for stochastic rounds; sync count unchanged; no 517 KB per-row `Vec`; retention tests green; error strings per §5.4 and D1 | required |
 | 5 | **Full correctness validation + independent review** | validation | the complete matrix vs the CPU oracle: grid × masks × boundaries × ties; seeded replay across batch sizes, lanes, orderings and rejected drafts; distributional comparison; constrained speculation | §12.3–§12.10 all green; the `reference_select` port reviewed as a separate artifact from the kernel (§12.11) | required |
 | 6/7 | **Pass-budget optimisation (conditional), then measurement** | kernel/measurement | **now triggered for the launch-critical-path cost measured in chunk 2** (§13.1): try the levers in order — wider per-row blocks (256→512/1024), fold the owner walk into an existing pass, then the deterministic integer radix histogram (≤2048 buckets, fixed-order combine, u64 fixed-point mass) — and re-measure the per-cell mismatch rate after any segment-count change; then fixed-logit latency vs CPU and the published per-cell mismatch-rate measurement | pass budget ≤ the §13.1 gate after the chosen lever; mismatch rate re-measured for the shipped configuration; §13.7 criteria 3, 4 and 7 | required |
 | Phase 3–4 | **E2E campaign + release** | release | end-to-end campaign on 1× RTX + 4× Spark with dSpark (§13.3–§13.5), per-round timing (§13.6), README five-profile measurement update (`:214-260`), `docs/release-v11-performance.md` and release notes (§6.4), and the upstream/placement decision memo (former chunk 8) | §13.7 all criteria; workload identity; provenance/identity files; validated campaign | required |
@@ -2089,11 +2298,12 @@ evidence; the wiring chunk is gated on wiring evidence plus the four §17.5 gaps
 **Current position:** chunk 1 is delivered (`9dffad0`, §17) and its review is
 closed; **chunk 2 is delivered** (`f0e7902`, §18), so its RNG and `expf`
 prerequisites for §12.9a are satisfied; **chunk 3a is delivered** (`90f745c`, on
-`4277898`; §19 is the as-built record) — kernel-only, reviewed and
-mutation-tested. **Chunk 3b (K5) is NEXT** and remains
-kernel-only. The four chunk-1 coverage gaps (§17.5) belong to the **chunk-4
-gate**, not to any kernel chunk. The design gate (chunk 0) is what this document
-is.
+`4277898`; §19); **chunk 3b is delivered** — kernel-only, reviewed across three
+adversarial rounds, working-tree changes pending commit on base `ddae9bc` (§21 is
+the as-built record). **Chunk 4 (the consolidated wiring chunk) is NEXT** and must
+honour the interface changes listed in §20. The four chunk-1 coverage gaps
+(§17.5) belong to the **chunk-4 gate**, not to any kernel chunk. The design gate
+(chunk 0) is what this document is.
 
 Do not start a later ordered-path chunk before chunk 2's RNG **and** `expf` gates
 pass exactly: the RNG equality test is the only cheap way to separate a
@@ -2534,6 +2744,131 @@ largest-key boundary direction and the `top_p = 1.0` strict-prefix rule (§4.5),
 and add the token-level oracle comparison that chunk 3a deferred. The `order_key`
 canonicalization, the exact-k lowest-id tie rule and the 21-pass K3 bound are
 settled and must be pinned unchanged by K5's tests.
+
+---
+
+## 20. Chunk-4 inheritance: interface changes to honour
+
+Chunk 4 (wiring) is the first chunk that calls K3/K4/K5 from the daemon. It must
+honour every interface change the kernel chunks settled; this list is the
+authoritative hand-off (`runs/chunk3b-scratch/REPORT.md` §8).
+
+1. **K5 `out_status` parameter.** `ds41rt_cuda_v41_nucleus[_async]` takes
+   `uint32_t* out_status` after `out_indices`; pass K1's status buffer. A K5-class
+   row that cannot produce a token writes `INTERNAL` there **and** to
+   `scratch.status`; the entry point still returns `OK` (per-row failure), so the
+   daemon must read `out_status`, not the return code.
+2. **`params[r].output_row == block_row` is REQUIRED for every K5-class row.**
+   The FFI validator rejects a non-identity batch and the kernel reports
+   `INTERNAL` unconditionally otherwise (before reading `rank_retained_count`).
+   K1–K4 still support scatter; only K5's block-row consumption needs identity.
+3. **K1 now writes `INTERNAL`** for a non-finite `top_p` and for a non-greedy
+   zero-survivor row, so the K1+K2-only `ds41rt_cuda_v41_target_sample[_async]`
+   cannot return OK with an unwritten index. The FFI validator rejects both shapes
+   on the host; a raw-C caller sees the per-row status. Chunk 4 must propagate it.
+4. **`params_device` on the K3/K4/K5 FFI wrappers** (after `params`): upload the
+   64-byte blocks and pass the `Ds41rtDeviceBuffer`; the wrapper validates it and
+   launches that pointer (§5.5). Do not pass a host `params.as_ptr()`.
+5. **Re-published fast-path divergence: 12.3135%** (was 12.1193%), and the
+   ordered-path rate 14.8016% with the retained domain at 0. Publish these beside
+   the new numbers in the release notes; they are the §6.3c figures of record.
+6. **`top_k ∈ [257, survivor_count)` remains unsupported by K5** and stays **loud**
+   (`INTERNAL`); chunk 4 still needs either a wider retained list or an explicit
+   CPU fallback for that band.
+7. **The four §17.5 gaps and the executed `upload → launch → output` end-to-end
+   test remain chunk-4's acceptance gate**, as does the daemon-level
+   constrained-greedy round.
+
+---
+
+## 21. Chunk 3b as-built record (K5 nucleus + draw, kernel-only, reviewed; working tree on `ddae9bc`)
+
+Chunk 3b passed three adversarial review rounds and is mergeable after the two
+documentation/test-message fixes those rounds required (applied). It is
+uncommitted working-tree work on base `ddae9bc` (chunks 1, 2 and 3a committed).
+K3/K4/K5 kernel math is unchanged by the fix round — the rev3→rev4 diff contains
+only the K1 status branches, the K2 rewrite, the K5 identity guard and
+additive/test hunks.
+
+### 21.1 Files and content hashes (rev 4, verified by the reviewer)
+
+| File | sha256 | diff vs `HEAD` |
+| --- | --- | --- |
+| `native/cuda/kernels/v41_sampling_gpu.cu` | `637db1e8c7d8aa51a8a866a65843f1c418a38e9275f24ccfeeb6f8cd8754035c` | +911 / −61 |
+| `native/cuda/kernels/v41_sampling_gpu.h` | `0972d432a81dc075d237174dd1628aca41d44717141927fb05f64ae488054d77` | +133 / −5 |
+| `native/tests/v41_sampling_selftest.cu` | `85da1e1b24be3f7a178decb585797a7dcae038a0eb7cc91118b78caf8ec150cf` | +1876 / −0 |
+| `rust/crates/ds41rt-ffi/src/lib.rs` | `9cbcf2677f1c6a056c185f6d6b20b8e70674fe0f30c602dd51a7e149d484b1b8` | +804 / −2 |
+
+The 68 deleted lines are fully accounted for (`ADVERSARIAL-REVIEW-rev4`,
+"Deleted-line accounting"): the old K2 tree-combine body/owner walk, the obsolete
+`DS41RT_V41_K2_NO_WALK_TOTAL` comment, the old K2 header paragraph, and the two
+host-`params` launches. No K1/K3/K4/K5 functional line or arch guard is deleted.
+
+### 21.2 What chunk 3b built and fixed
+
+- **K5 (`v41_sample_nucleus_kernel`)** implements the §4.5 ordered path: the
+  inclusive-prefix top-p boundary (largest-key, no `top_p = 1.0` shortcut, full-`S`
+  fallback) and the rank-order draw with the `nucleus_count - 1` fallback, over
+  the chunk-3a rank-ordered id list.
+- **Normalization (headline).** The nucleus mass now accumulates the CPU's
+  per-token `fl(w/total)` (`DS41RT_V41_K5_NORMALIZED_MASS` default 1) instead of
+  the algebraic `Σw >= threshold·total`; the retained domain becomes
+  **token-exact** against the production sampler (0/147,456). Full result and
+  Residual A/B in §6.3c.
+- **Verified fixes** (detail in §4.2/§4.5 and `REPORT.md`): the K2 zero-weight
+  selection (P0-1) via the consistent sequential segment prefix and the
+  `cumulative_before < target` rule; the unconditional K5 row-identity guard
+  (P0-2); `params_device` on all four K3/K4/K5 wrappers (P0-3); K1's loud
+  INTERNAL statuses (P1-4); the K5 test-credibility fixes (P1-5a/b/c, §12.12); and
+  the mass-probe race, probe-dependent prefix and zero-uniform fixes.
+
+### 21.3 Evidence (MEASURED)
+
+- Device selftest: **400 cases / 47,754 assertions**, exit 0 (rev3 was
+  395/47,371); the reviewer rebuilt and re-ran it independently.
+- **Six final-source single-defect mutants all fail** (M1–M6) plus auxiliary M7
+  (conditional identity guard) and M8 (K1 branches removed); the older
+  rev3-based mutant files abort first on the new P0-1 test purely as a
+  **test-ordering artifact** (verified by removing that call).
+- **K5 ordered path: 50,927 / 344,064 = 14.8016%**, with the retained domain
+  **0 / 147,456 = 0.00%** (18/18 cells) and the survivor domain
+  50,927/196,608 = 25.9028%; the algebraic counterfactual was 19.7202% overall /
+  11.4163% retained. Independently reproduced by the reviewer.
+- **K2 latency after the rewrite: 305.0 µs at 4 rows / 314.8 µs at 48 rows**
+  (−22.3%), baseline unchanged; fast-path divergence 12.1193% → **12.3135%**
+  (§13.1). Validity scan: **0/983,040** invalid selections; `TV(device, oracle)
+  <= TV(cpu, oracle)` + noise in all 120 cells.
+- FFI: **108 passed / 1 pre-existing unrelated `v41_experts` failure / 10
+  ignored**; the explicit ignored run is **5 passed**.
+- **`sm_120` and `sm_121` compile clean** (rc=0, no warnings).
+- `runs/` is gitignored (risk R10): the committed evidence is the selftest and FFI
+  source; the scratch report and reviews carry the artifact hashes.
+
+### 21.4 Honest limits
+
+1. **P0-3 portability cannot be exercised here** — this is a unified-memory
+   (HMM/ATS) box with no non-HMM host; the code path is now identical to K1's and
+   the defect class is closed by construction, but the failing platform was not
+   reproduced.
+2. **`sm_121` is compile-only**; execution was on `sm_120`.
+3. **No daemon/end-to-end run** — chunk-4 wiring is absent.
+4. **The non-monotone K2 saturation residual** (§4.2): a below-threshold,
+   non-monotone draw in the sub-half-ulp tail class; valid and positive-weight,
+   bounded to the last few ulps, declared, with a cheap fix as a chunk-6 candidate.
+5. **Wide-row K5 nucleus delta 28** against an asserted bound of 64 (each rank
+   ≈7.7e-6 of the mass); token, rank, device-nucleus membership and CDF error are
+   asserted.
+6. **The 71-equal fixture's kernel `!p_found` branch is not directly pinned**
+   (N3): the test asserts the resulting full-set nucleus, which the normal
+   crossing would also produce.
+7. **Known dead capacity:** `__shared__ float phase[4 * kBlock]` in K5 is 4×
+   larger than the used region (~3 KB/block); harmless, noted not changed.
+
+### 21.5 What chunk 4 inherits
+
+Everything in §20. K5's entry point, `out_status`, the identity rule, the
+`params_device` wrappers, the K1 statuses and the published divergence rates are
+the contract chunk 4 wires to.
 
 ---
 
