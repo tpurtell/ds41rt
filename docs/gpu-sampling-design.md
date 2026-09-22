@@ -1,15 +1,17 @@
 # GPU target-sampler design (implementation gate)
 
-**Status:** design gate. No kernel has been written. Implementation follows this
-document; an adversarial reviewer signs off *before* any kernel is written and
-again per staged chunk (§14).
+**Status:** design gate. **Chunk 1 is delivered** on `dev` as
+`9dffad0236cae8b5398a41bea973b1ff21f2da88` (2026-09-22); §17 is the as-built
+record, and the normative sections below have been reconciled with it. Chunks 2+
+remain design-only and still require the adversarial review of §14.
 
 **Repository revision read:** `e1f5d495b5a82fb7ddad8514cad419b6ae62c0cc` (`e1f5d49`).
+The chunk-1 as-built record reads `9dffad0`.
 
-**Deliverable rule:** this task produces exactly this one file. No code, config,
-cluster, hardware or git state was touched. Every claim about existing code
-carries a `path:line` anchor; every number is labelled MEASURED (with its
-artifact), COMPUTED, ARITHMETIC or UNKNOWN.
+**Deliverable rule:** the original design task produced exactly this one file;
+the §17 update is design text only. Every claim about existing code carries a
+`path:line` anchor or a commit anchor; every number is labelled MEASURED (with
+its artifact), COMPUTED, ARITHMETIC or UNKNOWN.
 
 **Inputs read**
 
@@ -85,7 +87,7 @@ only (`rust/crates/ds41rt-daemon/src/cli.rs:26`), with:
    `independent.rs:143` → `v41_memory/download.rs:17-42`) and the per-row
    517 KB `Vec<f32>` (`.../scores.rs:11-17`, `:47`, `:119`) leave the hot path.
 4. A release and README measurement update with an honest, falsifiable claim
-   (§13, §14 chunk 7).
+   (§13, §14 Phase 3–4).
 
 ### 1.2 Explicit non-goals
 
@@ -127,7 +129,7 @@ replaces.
 | 2 | There **is** in-kernel Philox in the draft path: `curand_init(..., &state)` at `native/cuda/kernels/v41_dspark.cu:249` feeding `curand(&state)` at `:263` (Gumbel-max at `:262-265`), unused at `T = 0` because the branch is guarded by `if (temperature != 0)` (`:246`, `:262`) and production passes `0.0` (`speculative.rs:511-512`) | `runs/sampling-gpu-recon-2026-09-22.md:81` ("seed + RNG absent from all GPU code"), `:113` | cuRAND/Philox is already a linked, graph-captured dependency; but only the **target** sampler lacks an on-device draw. §6 ports SplitMix64 rather than reusing the draft stream |
 | 3 | FlashInfer `min_p`/top-k/top-p are **reference mechanisms, not semantic equivalents**: (a) min_p compares *probability* `p >= max_val * p` (`sampling.cuh:1137`) while ds41rt compares *logit* `scaled >= max_scaled + ln(min_p)` (`target_sampling.rs:449-457`); (b) top-k accepts when `aggregate_gt_pivot_0.count < k` (`sampling.cuh:945`), keeping every token equal to the k-th value (vLLM rule), while ds41rt keeps exactly k with the lowest id (`target_sampling.rs:30-33`, `:477-501`); (c) top-p accepts `aggregate_gt_pivot_0 < top_p` (`sampling.cuh:1072`), a strict tail-mass criterion **excluding** the boundary tie, while ds41rt is the inclusive descending prefix reaching `top_p` (`target_sampling.rs:544-554`) | `runs/sampling-gpu-recon-2026-09-22.md:106` calls min_p "exactly ds41rt's semantics"; `:294-297`, `:316-320` treat ties as a caveat only | Ports must implement **our** rules and be oracle-tested at boundaries (§4.4, §4.5, §12) |
 | 4 | A logits row is **517,120 B ≈ 0.52 MB** (`129,280 × 4`); the "3.1 MB" figure was a 6-row batch | `docs/gpu-sampler-contract-v11.md:447` ("≈ 3.1 MB/row"; that file is being corrected concurrently — the claim is contract §4.4) | All bandwidth arithmetic in §4 is per *row*, not per *batch* |
-| 5 | The recoverable amount is **0.55–1.79 ms/token** (host sampler + D2H/argmax/materialization) on a measured 10.5–12.3 ms/token, i.e. ceilings of **+5.1% to +16.9%** on the four stochastic profiles, greedy untouched. These ceilings are **OPTIMISTIC**: they assume a zero-cost sampler, part of them is derived from cross-host microbench numbers, and greedy's 10.517 ms/token is not a clean shared device floor because lower acceptance means more target-forward passes per emitted token (greedy accepted fraction 0.724 vs 0.326–0.548) | none; this is the correction of the phase-0 report's own framing | §2.3 states the ceilings with caveats; §13 discounts top_p0.95 hardest; §14 chunk 6 exists specifically to cut pass cost if the kernel is not near-zero-cost |
+| 5 | The recoverable amount is **0.55–1.79 ms/token** (host sampler + D2H/argmax/materialization) on a measured 10.5–12.3 ms/token, i.e. ceilings of **+5.1% to +16.9%** on the four stochastic profiles, greedy untouched. These ceilings are **OPTIMISTIC**: they assume a zero-cost sampler, part of them is derived from cross-host microbench numbers, and greedy's 10.517 ms/token is not a clean shared device floor because lower acceptance means more target-forward passes per emitted token (greedy accepted fraction 0.724 vs 0.326–0.548) | none; this is the correction of the phase-0 report's own framing | §2.3 states the ceilings with caveats; §13 discounts top_p0.95 hardest; §14 chunk 6/7 exists specifically to cut pass cost if the kernel is not near-zero-cost |
 | 6 | Term (b) accept/verify is identifiable **only as a residual**; separating acceptance-driven device time needs per-round timing on the TIMED campaign | `runs/gpu-sampling-phase0/REPORT.md:244-255` already says this; the corrected fact forbids treating it as measured | §13 requires per-round timing in the timed campaign before any term-(b) claim |
 | 7 | The weak batch-layout unit test does not pin batch independence; the real pin is `scheduler.rs:666-691` | `target_sampling.rs:998-1007` is self-referential (it re-derives the same hash twice) | §12 uses the scheduler test as the batch-independence pin and adds a GPU analogue |
 
@@ -340,6 +342,15 @@ expose it as an option). Upstreaming is a *follow-on*, not part of this plan.
     as `scores.rs::argmax` (`:160-163`);
   - stochastic rows: permissive on masked tokens, exactly as
     `target_sampling.rs:1009-1024`.
+  - **As built, `STRICT_FINITE` is functional and additive.** A row that carries
+    `flags.bit4` keeps the permissive pass's results and additionally runs a
+    whole-row finiteness pre-scan; it is not a replacement branch. The host sets
+    the bit only for greedy and constrained rows (`v41_sampling_gpu.h`;
+    validator `lib.rs:18252-18260`), so a strict stochastic row is possible and
+    would report `NONFINITE_LOGIT` while still computing the same `max_scaled` /
+    survivor state. The device selftest pins both modes and the additive
+    behaviour (`native/tests/v41_sampling_selftest.cu`, "masked non-finite is
+    mode-specific and STRICT_FINITE is functional").
   - **Recorded behaviour delta:** today's daemon also rejects a masked
     non-finite value on a stochastic lane, because `BatchScores::new`
     pre-validates every materialized row with `argmax(row, None)`
@@ -554,7 +565,7 @@ Runs only when `top_k ∈ 1..vocab` and `top_k < survivor_count` (otherwise
   key) + K4 1 + K5 (top-p ≤20 value + ≤11 tie + draw ≤20 worst / typically ≤4)
   ≈ **up to ~74 row reads** worst case, ~35 typical. ARITHMETIC at 517,120 B/row:
   up to ~38 MB/row, ~1.8 GB for 48 rows. **This is the central cost risk**
-  (§13.1 gate, §14 chunk 6) and the reason the ceilings in §2 are optimistic.
+  (§13.1 gate, §14 chunk 6/7) and the reason the ceilings in §2 are optimistic.
   Note the `temp0.7 + top_k40` profile now also pays the top-p search because
   `top_p = 1.0` is not skipped, so its +5.5% ceiling is the one most exposed to a
   pass-count overrun.
@@ -614,7 +625,7 @@ typedef struct ds41rt_v41_sampler_row_s {
   float    min_p;       /* +24 validated [0,1]; 0.0 means disabled (target_sampling.rs:124,449-454) */
   uint32_t top_k;       /* +28 0 = Option::None (disabled); 1 = greedy; k > vocab = no-op (target_sampling.rs:121-123,499-501) */
   uint32_t mask_row;    /* +32 0xFFFFFFFF = unconstrained; else index into the mask arena (constraints.rs:44-46) */
-  uint32_t flags;       /* +36 bit0 greedy; bit1 diagnose; bit2 mask remainder-masked; bit3 cpu-oracle cross-check */
+  uint32_t flags;       /* +36 bit0 GREEDY; bit1 DIAGNOSE; bit2 NO_MASK; bit3 ORACLE_CROSSCHECK; bit4 STRICT_FINITE */
   uint32_t output_row;  /* +40 row index into logits/out_* (equals the struct index in practice) */
   float    ln_min_p;    /* +44 HOST-precomputed ln(min_p); negative infinity when min_p == 0.
                               Hard requirement: the device never calls logf (see §6.3a). */
@@ -624,9 +635,32 @@ typedef struct ds41rt_v41_sampler_row_s {
 } ds41rt_v41_sampler_row_t; /* exactly 64 B */
 ```
 
-`flags` bits: bit0 greedy; bit1 diagnose; bit2 mask remainder-masked; bit3
-CPU-oracle cross-check; **bit4 strict whole-row finiteness** (set for greedy and
-constrained rows; see §4.1 and D9).
+`flags` bits (as built in `v41_sampling_gpu.h`; constants
+`DS41RT_V41_SAMPLER_FLAG_*`):
+
+| bit | name | meaning |
+| --- | --- | --- |
+| 0 | `GREEDY` | host resolved `temperature < 1e-5 \|\| top_k == 1`; the kernel re-derives it and ORs, so a host bug cannot turn a stochastic row greedy |
+| 1 | `DIAGNOSE` | optional `out_total`/`out_nucleus_count` are written |
+| 2 | `NO_MASK` | **the row has no meaningful mask bits**; the kernel treats every `t < vocab` as allowed and never reads the arena. Requires `mask_row == 0xFFFFFFFF` |
+| 3 | `ORACLE_CROSSCHECK` | diagnostic only; unused in production |
+| 4 | `STRICT_FINITE` | whole-row finiteness for a row that would otherwise take the permissive branch; the host sets it for greedy and constrained rows only (§4.1) |
+
+**`bit2` is `NO_MASK`, not "mask remainder-masked"** (the first revision's
+wording). The remainder rule is not signalled by a flag at all; it is enforced
+unconditionally host-side immediately before upload by
+`ds41rt_v41_sampler_clear_remainder` (§5.3). `NO_MASK` exists because
+`fill_bitmask`'s `needs_mask == false` is the production signal for an
+unconstrained row (`constraints.rs:44-46`) and nothing else told the kernel to
+skip the arena. The kernel additionally treats `mask_row == 0xFFFFFFFF` as
+unconstrained even without the flag, so a raw-C caller that follows only §5.2
+cannot index the arena out of bounds; the **host validator is stricter and
+requires the flag and the sentinel to agree** (§5.4).
+
+`top_k` is **not range-validated yet** (only `top_k == 1` participates in the
+greedy derivation). That is harmless for chunk 1, which never selects with
+`k`; a full `top_k ∈ {0} ∪ 1..=vocab` validation is a chunk-2+ item and is
+recorded in §17.
 
 Rationale:
 
@@ -641,7 +675,17 @@ Rationale:
   §11's capture/replay story trivial.
 - **Why `mask_row` instead of a pointer**: the mask arena has a fixed base and a
   fixed `words_per_row`, so a row index is stable across steps and needs no
-  pointer patching. `0xFFFFFFFF` is the sentinel.
+  pointer patching. `0xFFFFFFFF` is the sentinel (`DS41RT_V41_SAMPLER_NO_MASK_ROW`).
+- **Launch-shape rule (found in chunk-1 review)**: `mask_words_per_row` **must be
+  0 when no mask buffer is supplied**, and the buffer and the stride are produced
+  by one helper so they cannot diverge. An all-unconstrained non-compact round
+  (for example a traced all-greedy round, §8.5) is a real reachable case with
+  `mask_words == nullptr`; the validator rejects `(None, non-zero)` and
+  `(Some, 0)` alike (`lib.rs:18189-18197`).
+- **`params` MUST point at device memory** holding `rows` consecutive 64 B
+  blocks; the kernel dereferences `params[blockIdx.x]` on device. The residency
+  requirement is pinned in `v41_sampling_gpu.h` and the product path uploads
+  into `param_device` before launch (§5.5).
 - **Disabled encodings are resolved on the host** when the struct is filled, so
   the kernel branch is a plain integer/float test: greedy `= temperature < 1e-5
   || top_k == 1` (`target_sampling.rs:172-174`); `top_p >= 1.0` means "use the
@@ -680,10 +724,17 @@ The `.cu` is added to `DS41RT_NATIVE_SOURCES` next to `sampling.cu`
   (`scores.rs:154-169`, `target_sampling.rs:231-233`,
   `constraints.rs:44-46`).
 - A row with `needs_mask == false` from `fill_bitmask`
-  (`constraints.rs:45`, `lib.rs:3358-3379`) gets `mask_row = 0xFFFFFFFF`; the
-  kernel treats it as all-allowed. There is no all-ones fill in the native path
-  (contrast the legacy `real_full` representation,
-  `commands/real_full/constraint.rs:237-245`).
+  (`constraints.rs:45`, `lib.rs:3358-3379`) gets **`mask_row = 0xFFFFFFFF` and
+  `flags.bit2 NO_MASK`**; the validator requires the two to agree (§5.4). There
+  is no all-ones fill in the native path (contrast the legacy `real_full`
+  representation, `commands/real_full/constraint.rs:237-245`).
+- **As-built constrained seam:** per-row `needs_mask` propagation is implemented
+  by `State::prepare_verification_masks` (`constraints.rs:115`) and
+  `State::prepare_verification_mask_row` (`constraints.rs:88`), both returning
+  `Option<Vec<u32>>` (one entry per row; `None` = unconstrained). A row that
+  needs no mask becomes `NO_MASK`, **never** an inherited or zeroed mask — the
+  matcher's mask buffer is reused across rows, so dropping `fill_bitmask`'s
+  return value would silently apply stale grammar.
 - Arena: `capacity × words_per_row × 4 B` = 80 × 16,160 B = **1,292,800 B**,
   allocated once (§11).
 - Width validation mirrors `target_sampling.rs:222-230`: the FFI validator
@@ -698,39 +749,67 @@ the rule is:
 
 1. Every kernel loop is bounded by `vocab`, so no code path can ever emit a
    token id `>= vocab` regardless of mask bits. This is the primary guard.
-2. Before upload, the host sets any bit `>= vocab` in the last word to 0:
-   `last &= (vocab % 32 == 0) ? u32::MAX : (1u32 << (vocab % 32)) - 1`. This
-   makes a whole-word reader safe even if a future kernel reads 32 tokens per
-   mask word (`apply_token_bitmask_f32_candidate_kernel` reads whole words,
+2. Before upload, the host zeroes any bit `>= vocab` in the last word via
+   **`ds41rt_v41_sampler_clear_remainder(words, vocab)`** (declared in
+   `v41_sampling_gpu.h`; no-op when `vocab % 32 == 0`). This is enforced
+   unconditionally, for every masked row, immediately before upload — it is
+   **not** gated by `flags.bit2 NO_MASK` (§5.1). It makes a whole-word reader
+   safe even if a future kernel reads 32 tokens per mask word
+   (`apply_token_bitmask_f32_candidate_kernel` reads whole words,
    `sampling.cu:687-690`).
 3. The kernel's `allowed(t)` is `mask_word(t/32) >> (t%32) & 1` evaluated only
-   for `t < vocab`.
+   for `t < vocab`. A `NO_MASK` row skips the arena entirely and allows every
+   `t < vocab`.
 
 Today's CPU path never masks those bits and is harmless only because `allowed`
 is per real token id (contract §6.1). The GPU path must not rely on that.
-Pinned by §12's `vocab = 33` / `last word = u32::MAX` test.
+Pinned by §12's `vocab = 33` / `last word = u32::MAX` test and by the
+`vocab ∈ {1, 32, 33, 100, 127, 129281}` device case
+(`native/tests/v41_sampling_selftest.cu:760`, `:834`).
 
 ### 5.4 Outputs
 
 ```c
+/* As built in native/cuda/kernels/v41_sampling_gpu.h and registered in
+   native/include/ds41rt_native.h; mirrored by ds41rt-ffi/src/lib.rs. */
 ds41rt_status_t ds41rt_cuda_v41_target_sample_async(
     const float* logits, size_t rows, size_t vocab, size_t logits_stride,
-    const ds41rt_v41_sampler_row_t* params, const uint32_t* mask_words,
-    size_t mask_words_per_row,
-    uint32_t* out_indices,      /* rows u32, REQUIRED: the only production read */
-    uint32_t* out_status,       /* rows u32, REQUIRED: hard-error channel */
-    uint32_t* out_status_detail,/* rows u32, REQUIRED-cheap: offending token / actual width */
-    float*    out_scores,       /* rows f32, REQUIRED for greedy rows (retained-frontier check, scores.rs:61-66) */
-    float*    out_total,        /* rows f32, OPTIONAL (diagnose bit) */
-    uint32_t* out_nucleus_count,/* rows u32, OPTIONAL (diagnose bit) */
-    void*     workspace, size_t workspace_bytes, void* cuda_stream);
+    const ds41rt_v41_sampler_row_t* params,     /* MUST be device memory */
+    const uint32_t* mask_words,                 /* nullable */
+    size_t mask_words_per_row,                  /* 0 iff mask_words == nullptr */
+    uint32_t* out_indices,        /* rows u32, REQUIRED: the only production read */
+    uint32_t* out_status,         /* rows u32, REQUIRED: hard-error channel */
+    uint32_t* out_status_detail,  /* rows u32, REQUIRED: token id / width / NO_DETAIL */
+    float*    out_scores,         /* rows f32, REQUIRED for greedy rows (scores.rs:61-66) */
+    float*    out_total,          /* rows f32, nullable; DIAGNOSE only */
+    uint32_t* out_nucleus_count,  /* rows u32, nullable; DIAGNOSE only */
+    ds41rt_v41_sampler_scratch_t* scratch,      /* REQUIRED: rows * 64 B */
+    void* cuda_stream);
 /* plus the synchronizing wrapper with the same signature minus cuda_stream,
    matching sampling.cu:1321-1341's convention. */
 ```
 
 Status codes: `0 OK`, `1 EMPTY_CANDIDATES`, `2 NONFINITE_LOGIT`,
-`3 INVALID_TEMPERATURE`, `4 MASK_WIDTH`, `5 INTERNAL`. `out_status_detail`
-carries the token id for `2`, the actual word count for `4`, else 0.
+`3 INVALID_TEMPERATURE`, `4 MASK_WIDTH`, `5 INTERNAL`.
+**`out_status_detail` sentinel (as built):** the device writes
+`DS41RT_V41_SAMPLER_NO_DETAIL = 0xFFFFFFFF` when there is no detail, because
+token `0` is a real token id and a plain `0` could not be told from "no detail";
+the host normalizes the sentinel to `0` before it is observable
+(`SampledTargetRows`, `scores.rs:65-68`). Detail carries the offending token id
+for `2` and the provided word count for `4`.
+
+**Error-string status (as built, D1 preserved).** `check_status`
+(`scores.rs:80-106`) renders:
+
+| status | host message | relation to the CPU path |
+| --- | --- | --- |
+| `EMPTY_CANDIDATES` | `"grammar allows no target token"` | **byte-identical** to `scores.rs:317` |
+| `INVALID_TEMPERATURE` | `"invalid target sampling parameter: temperature"` | **byte-identical** to `target_sampling.rs`'s `InvalidParameter("temperature")` rendering |
+| `NONFINITE_LOGIT` | `"non-finite target logit at token {id}"` | deliberate **prefix-superset**: the CPU reports neither the id nor this phrasing |
+| `MASK_WIDTH` | `"invalid grammar mask width: {width}"` | deliberate **prefix-superset**: the CPU does not report the actual width |
+
+The two supersets share the CPU string's prefix, so no caller that matched on the
+old text breaks. They are documented as supersets, not claimed identical.
 
 - **Genuinely useful diagnostics**: `out_status`/`out_status_detail` (error
   semantics otherwise lost), `out_scores` for greedy rows (the existing
@@ -743,26 +822,55 @@ carries the token id for `2`, the actual word count for `4`, else 0.
   reads it (`scores.rs:48-51`, `:120-123`); a separate top-two buffer — the
   trace (`scheduler.rs:565-576`, `scores.rs:127-142`) stays on an explicit,
   trace-gated download path (§8.5).
-- The FFI validator must reject `rows == 0`, `vocab == 0`,
-  `vocab > u32::MAX`, `mask_words_per_row != vocab.div_ceil(32)` when masks are
-  present, non-finite/out-of-range params, and buffer extents — mirroring
-  `target_sampling.rs:108-134` and `lib.rs:17859-17896`.
+- **The as-built FFI validator is stricter than the earlier §5.1 letter.** It
+  rejects (`validate_v41_sampling_buffers`, `lib.rs:18151-18310`):
+  `rows == 0`, `vocab == 0`, `vocab > u32::MAX`, `logits_stride < vocab`,
+  `params.len() != rows`, a non-zero `mask_words_per_row` with no mask buffer, a
+  positive `mask_words_per_row` that differs from `ceil(vocab/32)`, a
+  `mask_words_per_row` of 0 with a mask buffer, temperature outside `[0, 2]`,
+  `top_p` outside `(0, 1]`, `min_p` outside `[0, 1]`, `ln_min_p` that is not
+  exactly `f32::ln(min_p)` (or not `-inf` when `min_p == 0`), non-zero reserved
+  fields, unknown `flags` bits, `STRICT_FINITE` on a row that is neither greedy
+  nor masked, `output_row >= rows`, `NO_MASK` without the `0xFFFFFFFF` sentinel,
+  a masked row with no mask buffer, `mask_row >= rows`, and buffer extents.
+  **`top_k` is not range-validated yet** — harmless in chunk 1 because K1 never
+  selects with `k`; full `top_k ∈ {0} ∪ 1..=vocab` validation is a chunk-2+ item
+  (§17).
 
 ### 5.5 Buffer ownership
 
 | Buffer | Owner | Lifetime |
 | --- | --- | --- |
 | logits `b(4)` | `TargetHeadWave` (`v41_target_head.rs:57-60`) | unchanged; read-only to the sampler |
-| `param_staging` (pinned) + `param_device` | new `TargetSamplingWave`, owned by `TargetHeadWave` | allocated once in `TargetHeadWeights::wave` (`:44-87`), freed with the wave |
-| `mask_staging` (pinned) + `mask_device` | same | same |
-| `scratch_device` (per-row reductions + top-k bitmap arena) | same | same |
-| `ids_host`/`status_host` (pinned), `ids_device`/`status_device` | same | same |
-| optional diag device buffers | same | allocated only when the diagnose flag is enabled |
+| `param_pinned` + `param_device` | `TargetSamplingWave`, owned by `TargetHeadWave` | allocated once in `TargetHeadWeights::wave` (`:44-87`), freed with the wave |
+| `mask_pinned` + `mask_device` (arena) | same | same |
+| `scratch` (K1 per-row reductions, 64 B/row) | same | same |
+| `bitmap` (top-k membership, chunk 3) and `histogram` (chunk 6) | same | allocated now, unwritten in chunk 1 |
+| `ids`/`status`/`detail`/`scores` device + pinned | same | same |
+| `total`/`nucleus` device (nullable outputs) | same | written only under `DIAGNOSE` |
 
+The as-built field list is `TargetSamplingWave` (`v41_target_head.rs:80-112`).
 Charged to `TargetHeadWave::device_bytes` (`:124-129`) so head budgeting stays
 honest. **Zero per-call cudaMalloc**, matching the existing pattern
 (`greedy_staging: HostAllocation::new(library, capacity * 8)`, `:83`;
 `RowDownload::new`, `:85`).
+
+**Residency requirement (as built).** `params` **must** point at device memory:
+the kernel dereferences `params[blockIdx.x]` on device, so a pageable host
+address is not device-addressable under CUDA's documented model. The requirement
+is stated in `v41_sampling_gpu.h` next to the entry-point declarations, and the
+product path stages the blocks in `param_pinned`, H2D-copies them into
+`param_device`, and launches that buffer (`TargetSamplingWave::upload` →
+`launch`), exactly as designed in §8.3.
+
+**Platform observation, recorded as a hazard, not a property.** During chunk-1
+investigation a pageable host `params` pointer *happened to work* on this box:
+`cudaPointerGetAttributes` reported `cudaSuccess` (type 0, unmanaged/host) and
+the launch returned success (`runs/chunk1-scratch/logs/host_pointer_probe.log`).
+That is an ATS/HMM-class driver behaviour on this platform and must **not** be
+relied on — it is precisely why the header now states the requirement explicitly
+and why the validator/wave pass the uploaded device buffer. Any caller that
+skips the upload is unsupported even if it appears to work locally.
 
 ---
 
@@ -1005,40 +1113,48 @@ test. "Anchor" is the CPU rule the device must reproduce.
 
 ### 8.1 Seams to change
 
-| Seam | Today | After |
+| Seam | Before | As built in chunk 1 (`9dffad0`) / planned |
 | --- | --- | --- |
-| `execute_logits` (`scheduler.rs:389-407`) | non-compact: `pass.execute` → `vec![0; logits.logits.bytes]` → blocking `lib.copy_d2h` (`:400-403`); compact: `execute_greedy` (`:397-398`) | non-compact: new `pass.execute_sampled(...)` terminal that runs the head graph **and** the sampler on the same stream, then copies `rows×4` ids + `rows×4` status + `rows×4` scores; compact unchanged |
-| `independent.rs:137-144` | compact: `execute_shared_greedy`; non-compact: `execute_shared` + `BatchScores::new(pass.download_logits(...).await?)` | compact unchanged; non-compact: `execute_shared_sampled(...)` + `BatchScores::from_sampled(ids, status, scores)` |
-| `scores.rs` `BatchScores` | full `bytes: Vec<u8>` or compact `best: Vec<u32>`; `new` runs a CPU argmax per row (`:67-71`) | add `from_sampled`; keep `new` only for the CPU fallback/oracle; hot path never calls `new` |
-| `scores.rs::row_logits` (`:11-17`) | called per sampled row (`:47`, `:119`) | removed from the hot path; retained for the fallback/oracle |
-| `v41_target_head.rs` | `execute_block` (`:324-331`), `execute_block_cooperative` (`:334-348`), `execute_block_greedy` (`:350-377`) | add `execute_block_sampled` / `execute_block_sampled_cooperative`, modelled on `execute_block_greedy`: `copy_block` → graph ensure/launch → sampler launch → existing `wait()`/`synchronize()` → published outputs |
-| `v41_target_pass.rs` | `execute_greedy`/`execute_shared_greedy` (`:177-189`) | add `execute_sampled`/`execute_shared_sampled` mirroring them, passing the prepared `TargetSamplingWave` |
-| `constraints.rs` | `select_verification` (`:61-73`), `select_verification_sampled` (`:80-102`) select on the CPU from host rows | split into `prepare_verification_masks(input) -> MaskSet` (fork + `fill_bitmask` per row, CPU, unchanged semantics) and device selection; both greedy and stochastic constrained rows then use the device |
-| `prepare_commit_lane` (`scheduler.rs:528-607`) | `finishing && next.has_full_logits()` retains host bytes (`:598-599`) | `finishing && bank_enabled` schedules a single-row device download (`:601` → `:638-640`) |
+| `execute_logits` (`scheduler.rs:389-407`) | non-compact: `pass.execute` → `vec![0; logits.logits.bytes]` → blocking `lib.copy_d2h` (`:400-403`); compact: `execute_greedy` (`:397-398`) | a **fully-greedy** round (unconstrained and/or constrained) routes through the device terminal; any round containing a stochastic member keeps the CPU path and its full-row download. See §17 for the exact scope |
+| `independent.rs:137-144` | compact: `execute_shared_greedy`; non-compact: `execute_shared` + `BatchScores::new(pass.download_logits(...).await?)` | same gate; the terminal is reached only when `use_sampled_terminal(P::SUPPORTS_SAMPLED_TERMINAL, round_is_fully_greedy(...))` is true (`scheduler.rs:519-545`) |
+| `scores.rs` `BatchScores` | full `bytes: Vec<u8>` or compact `best: Vec<u32>`; `new` runs a CPU argmax per row (`:67-71`) | `SampledTargetRows` (+ `check_status`, `with_full_logits`) carries the device ids/status/detail/scores; `BatchScores::new` remains for the CPU path and the oracle |
+| `scores.rs::row_logits` (`:11-17`) | called per sampled row (`:47`, `:119`) | still used by the CPU path; not called for a device-selected all-greedy round |
+| `v41_target_head.rs` | `execute_block` (`:324-331`), `execute_block_cooperative` (`:334-348`), `execute_block_greedy` (`:350-377`) | `execute_block_sampled` (`:768-798`): `copy_block` → graph ensure/launch → sampler (`TargetSamplingWave::upload/launch`) → existing `wait()`/`synchronize()` → `sampling.output()`; plus `download_sampled_rows` (`:810-814`) for the trace and the CPU-path rows |
+| `v41_target_pass.rs` | `execute_greedy`/`execute_shared_greedy` (`:177-189`) | `execute_shared_sampled` + `sampled_rows` + `download_sampled_rows` on the `VerificationTarget` trait, gated by `const SUPPORTS_SAMPLED_TERMINAL` (`verification.rs:32` false, `:64` true) |
+| `constraints.rs` | `select_verification` (`:61-73`), `select_verification_sampled` (`:80-102`) select on the CPU from host rows | **as built**: `prepare_verification_masks` (`:115`) and `prepare_verification_mask_row` (`:88`) return `Option<Vec<u32>>` per row, preserving the CPU selection twins; device selection consumes the `NO_MASK`/arena form (§9.2) |
+| `prepare_commit_lane` (`scheduler.rs:528-607`) | `finishing && next.has_full_logits()` retains host bytes (`:598-599`) | **as built**: `frontier_downloads: Vec<(usize, usize, Option<Vec<u32>>)>` (`:819`) — the retained frontier carries the per-row grammar mask, `None` for an unconstrained row |
 
 ### 8.2 What replaces the full-row D2H
 
-Per round, a non-compact lane downloads `rows × (4 + 4 + 4)` B (ids, status,
-greedy scores) instead of `rows × 517,120` B. ARITHMETIC: 48 rows × 12 B = 576 B
-versus 24.8 MB before. The retained frontier is the only remaining full-row
-transfer and it is one row per *finishing* request (§10).
+For a **device-selected all-greedy round**, a lane downloads `rows × (4 + 4 + 4)`
+B (ids, status, detail/score) instead of `rows × 517,120` B. ARITHMETIC: 48 rows
+× 12 B = 576 B versus 24.8 MB before. **Chunk-1 qualifier:** a round containing
+any stochastic member is still entirely on the CPU path and still downloads every
+member's full rows, greedy ones included (`scheduler.rs` `round_is_fully_greedy`
+doc). Removing that qualifier is the chunk-4 wiring work. The retained frontier is still
+the only full-row transfer for a device-selected round, and it is one row per
+*finishing* request (§10).
 
 ### 8.3 How per-row parameters and masks reach the device
 
 1. `prepare_decode_lane` already flattens members in order
    (`scheduler.rs:409-416`) and `selected` is `0..positions().len()`
    (`scheduler.rs:396`, `independent.rs:129`), so the row order is known.
-2. Build `Vec<ds41rt_v41_sampler_row_t>` in that order: for member `m` with
+2. Build `Vec<Ds41rtV41SamplerRow>` in that order: for member `m` with
    `input.len()` rows, row `i` gets `seed = params.seed()`,
    `position = request.generated + i` (`scheduler.rs:542`, `:516`),
    `temperature/top_p/min_p/top_k` from `request.job.sampling` (`:541`),
-   `flags.greedy = params.is_greedy()`, `mask_row` from the mask set (§9).
-3. Constrained members' masks are prepared once per step (§9) into
-   `mask_staging`.
+   `flags GREEDY` from `params.is_greedy()`, `ln_min_p` from the host `f32::ln`,
+   and `mask_row = 0xFFFFFFFF` + `NO_MASK` for a row that needs no mask
+   (`SamplingRound`/`TargetSamplingRowRequest`, `scheduler.rs:556-586`).
+3. Constrained members' masks are prepared once per step (§9.2) into
+   `mask_pinned`; the `(mask buffer, mask_words_per_row)` pair is produced by one
+   helper so the two cannot diverge (`v41_target_head.rs:114-120`).
 4. `TargetSamplingWave::upload` fills the pinned staging and issues one
-   `copy_h2d_async` for params and one for masks on the head stream, then the
-   sampler launch, all before the existing drain. `require_complete()` guards
-   overwriting staging on the next round (the pattern at `v41_memory.rs:75-78`).
+   `copy_h2d_async` for params and one for masks on the head stream, then
+   `launch` runs the kernel, all before the existing drain. `require_complete()`
+   guards overwriting staging on the next round (the pattern at
+   `v41_memory.rs:75-78`).
 
 ### 8.4 Greedy compact path and mixed-lane poisoning
 
@@ -1046,12 +1162,20 @@ transfer and it is one row per *finishing* request (§10).
   `independent.rs:131-135`). An all-greedy, unconstrained lane never calls the
   sampler and keeps `execute_block_greedy` byte-for-byte
   (`v41_target_head.rs:350-377`).
-- A lane with at least one stochastic/constrained member is non-compact **as
-  today**, but now every row is selected on device: greedy rows via K1's greedy
-  branch (mask-aware when constrained), stochastic rows via K1+K2/K3/K4/K5. No
-  CPU argmax, no full-row download. Per-row parameters make the lane-wide
-  heterogeneity safe by construction: a row's behaviour is a pure function of its
-  own struct.
+- **Chunk-1 scope, recorded verbatim:** all-greedy rounds — unconstrained and/or
+  constrained — are device-selected and greedy rows no longer download full
+  logits. Any round containing a stochastic member stays entirely on the CPU path
+  and downloads its full rows for every member, greedy ones included; **mixed
+  greedy+stochastic rounds are NOT wired**. `round_is_fully_greedy`
+  (`scheduler.rs:537-545`) is the gate, and it is a *precondition* for the
+  terminal, not an optimization: routing a stochastic round into K1 would
+  silently produce a greedy token for it.
+- `VerificationTarget::SUPPORTS_SAMPLED_TERMINAL` is an associated const
+  (`verification.rs:32`, default `false`; `TargetPass` `true` at `:64`), so
+  `DistributedTargetPass` keeps the CPU fallback and has no sampled terminal yet —
+  a documented limitation for a later chunk. `use_sampled_terminal(supports,
+  fully_greedy)` requires both, and a layout without the terminal is never routed
+  into the default bail (`verification.rs:36-42`).
 - The existing lane-level split is preserved: two requests in *different* lanes
   never contaminate each other (`independent.rs:52-54`,
   `layout.rs:33-36`).
@@ -1064,29 +1188,32 @@ transfer and it is one row per *finishing* request (§10).
   and keeps the retained-frontier cross-check meaningful (`scores.rs:61-66`).
 - The per-row 517,120 B host `Vec` (`scores.rs:47`, `:119`) never exists.
 - `ds41rt::logit_trace` (`scheduler.rs:458`, `:565-576`, `scores.rs:127-142`)
-  needs full rows for `top_two`. Keep it working by having the trace path
-  request an explicit, trace-gated per-row download (only the rows it logs) —
-  it already disables compact (`scheduler.rs:458`) and is documented as an
-  untimed diagnostic (`runs/gpu-sampling-phase0/README.md`). Do **not** add a
-  per-row top-two reduction to the production kernel just for the trace.
-- The single-request path stops using blocking pageable `cudaMemcpy`
-  (`ds41rt_native.cc:1625-1647`) because `single_lane_round` calls the same
-  `execute_sampled` terminal as the lane path (`scheduler.rs:471`,
-  `layout.rs:33-43`). This also removes the ambiguity recorded at
-  `runs/gpu-sampling-recon-paths-2026-09-22.md:175` about which download path a
-  1-request benchmark used.
+  needs full rows for `top_two`. **As built**, `SamplingRound::trace_rows` is
+  every row when the trace target is `DEBUG` and the empty vector otherwise
+  (`scheduler.rs:585`), and `download_sampled_rows` fetches exactly that
+  selection (`:614-618`, `:636-640`). A traced all-greedy round therefore
+  downloads each row; an untraced one downloads none. Do **not** add a per-row
+  top-two reduction to the production kernel just for the trace.
+- **The single-request blocking `cudaMemcpy` path (`ds41rt_native.cc:1625-1647`)
+  is removed only for a device-selected all-greedy round**, because
+  `single_lane_round` reaches the same `execute_block_sampled` terminal as the lane
+  path (`scheduler.rs:471`, `layout.rs:33-43`) only under the §8.4 gate. A
+  stochastic single-request round still uses the CPU path and its blocking copy.
+  Removing the blocking copy on the stochastic path is chunk-4 wiring.
 
 ### 8.6 The CPU sampler as retained reference/fallback
 
 - Retained as (i) the test oracle, via `reference_select`
   (`target_sampling.rs:1235-1399`) and `compare_to_reference` (`:1401-1450`);
   (ii) a **build- and env-gated diagnostic** fallback.
-- Recommendation (D2): default is the GPU path; `DS41RT_TARGET_SAMPLER=cpu`
-  selects the CPU path for diagnosis only, and it is documented as changing the
-  in-build token stream at cumulative-boundary cases. It is *not* an automatic
-  fallback: if the native symbol is missing, fail at startup, consistent with the
-  existing missing-symbol diagnosis (`DEVELOPER.md:67-68`). A silent automatic
-  fallback would make the reproducibility claims unverifiable.
+- Decision (D2): default is the GPU path for a device-selected round; the CPU
+  path is what serves every stochastic round in chunk 1, and
+  `DS41RT_TARGET_SAMPLER=cpu` (when wired) selects the CPU path for A/B
+  diagnosis. It is *not* an automatic fallback: if the native symbol is missing,
+  fail at startup, consistent with the existing missing-symbol diagnosis
+  (`DEVELOPER.md:67-68`). A silent automatic fallback would make the
+  reproducibility claims unverifiable, and the fallback must not silently
+  reintroduce the full-row download on the default device path.
 
 ---
 
@@ -1100,17 +1227,27 @@ moves xgrammar. Only mask storage and application move.
 
 ### 9.2 Mask rows for the speculative prefix, uploaded once per step
 
-Refactor `State::select_verification_sampled` (`constraints.rs:80-102`) into:
+**As built (`9dffad0`)** the split is `State::prepare_verification_masks`
+(`constraints.rs:115`) and `State::prepare_verification_mask_row` (`:88`), both
+returning `Option<Vec<u32>>` — one entry per row, `None` meaning the grammar
+allows every token at that row:
 
-- `prepare_verification_masks(&self, input) -> Result<MaskSet>` — fork the
-  matcher once (`self.matcher.fork()`, `:88`), then for each row `index`:
-  `if index > 0 { branch.accept_token(input[index])? }` (`:92`, error
-  `"illegal verification draft token"`), `branch.fill_bitmask(&mut mask)` (`:93`),
-  record `needs_mask` and copy the mask row into a flat
-  `rows × words_per_row` buffer. Row 0's mask is the pre-draft state, exactly as
-  today (`:66-69`).
-- The flat buffer is uploaded once per step (§8.3). `needs_mask == false` rows
-  get `mask_row = 0xFFFFFFFF`.
+- `prepare_verification_masks(&self, input) -> Result<Vec<Option<Vec<u32>>>>` —
+  fork the matcher once, then for each row `index`:
+  `if index > 0 { branch.accept_token(input[index])? }` (error
+  `"illegal verification draft token"`), `branch.fill_bitmask(&mut mask)`,
+  record `needs_mask`, and keep `Some(mask)` only when it is true. Row 0's mask
+  is the pre-draft state, exactly as today.
+- `prepare_verification_mask_row(&self, input, row)` is the retention-time
+  variant: only the accepted frontier's mask is needed, and it returns `None`
+  when that row needs no mask.
+- `select_verification` (`:61-73`) and `select_verification_sampled` (`:80-102`)
+  remain the CPU selection twins and are unchanged, so the CPU path and the
+  oracle keep exercising the same helper.
+- The flat arena is uploaded once per step (§8.3). A row with `None` becomes
+  `mask_row = 0xFFFFFFFF` **and** `flags.bit2 NO_MASK`; it is never an inherited
+  or zeroed mask. A masked row's arena index is checked against `rows` and the
+  mask buffer must exist (§5.4).
 
 Preserved exactly: row 0 uses the mask before any draft accept; later rows use
 the mask after accepting the preceding draft; `input[0]` is the committed anchor
@@ -1240,19 +1377,21 @@ Allocated once per `TargetHeadWave`:
 
 | Region | Bytes | Formula |
 | --- | ---: | --- |
-| sampler params (device) | 5,120 | `capacity × 64` |
-| sampler params (pinned staging) | 5,120 | `capacity × 64` |
+| sampler params (device) | 5,120 | `capacity × 64`, staged in `param_pinned` |
 | mask arena (device + pinned) | 2 × 1,292,800 | `capacity × ceil(vocab/32) × 4` at capacity 80 |
-| scratch (per-row reductions) | `capacity × 64` | 4 f32 + 6 u32 padded |
-| top-k bitmap arena | `capacity × ceil(vocab/32) × 4` | 1,292,800 at capacity 80 |
+| scratch (per-row reductions) | `capacity × 64` | `ds41rt_v41_sampler_scratch_t`, exactly 64 B |
+| top-k bitmap arena | 1,292,800 | `capacity × ceil(vocab/32) × 4`; **allocated now**, unwritten until chunk 3 |
 | ids/status/detail/scores | `capacity × 4 × 4` | device + pinned |
-| optional diag (`total`, `nucleus_count`) | `capacity × 8` | only when diagnose |
-| chunk-6 radix histogram (optional) | `capacity × 2048 × 4` | 655,360 at capacity 80 |
+| diag (`total`, `nucleus_count`) | `capacity × 8` | **allocated now**, written only under `DIAGNOSE` |
+| chunk-6 radix histogram | 655,360 | `capacity × 2048 × 4`; **allocated now**, unwritten until chunk 6 |
 
-Total ≈ 4.2 MB at capacity 80, well within the existing head budget
-(`TargetHeadWave::device_bytes`, `v41_target_head.rs:124-129`). **Zero per-call
-allocations**: no `cudaMalloc`, no `Vec` growth, no `to_vec()` on the hot path
-(contrast `download.rs:41`).
+All regions above are allocated once in `TargetSamplingWave` at wave construction
+(`v41_target_head.rs:80-112`); the chunk-3 bitmap, chunk-6 histogram and the
+nullable diag outputs are reserved from the start so a later chunk adds no
+allocation and no resize. Total ≈ 4.2 MB at capacity 80, well within the existing
+head budget (`TargetHeadWave::device_bytes`, `v41_target_head.rs:124-129`).
+**Zero per-call allocations**: no `cudaMalloc`, no `Vec` growth, no `to_vec()` on
+the hot path (contrast `download.rs:41`).
 
 ### 11.2 Streams and synchronization
 
@@ -1299,20 +1438,30 @@ allocations**: no `cudaMalloc`, no `Vec` growth, no `to_vec()` on the hot path
 
 ### 12.1 Device tests in the `cuda_selftest.cc` style
 
-Add to `native/tests/cuda_selftest.cc` (registered next to line 2869-2872):
+**As built**, chunk 1 added a dedicated CUDA test target,
+`native/tests/v41_sampling_selftest.cu` (`native/CMakeLists.txt:1051-1059`),
+with its own CPU oracle and a `SKIP_RETURN_CODE 77` convention. Later chunks
+extend that file rather than `cuda_selftest.cc`; the style reference remains
+`cuda_selftest.cc` (`:545-624`, `:2158-2300`).
 
-- A CPU oracle `cpu_v41_target_sample(...)` in the style of
-  `cpu_logits_sample_topk_topp` (`:545-624`) that is a **faithful port of the
+- The CPU oracle `cpu_v41_target_sample(...)` must be a **faithful port of the
   production `reference_select`** (`target_sampling.rs:1235-1399`) — mask,
   temperature, min_p, top_k exact-k-lowest-id, inclusive top-p, SplitMix64 draw,
   status codes and `total`/`nucleus_count`. The reviewer must diff this port
   against `reference_select` line by line; it is the only oracle that can
-  validate the new rules.
-- `test_cuda_v41_sampling_greedy_matches_ref`, `..._fast_path_matches_ref`,
-  `..._ordered_matches_ref`, `..._masked_matches_ref`,
-  `..._status_precedence`, `..._vocab_remainder`, `..._rng_bit_equality`.
-- Follow the existing conventions: `device_buffer`, `copy_h2d`, `copy_d2h`,
-  `assert_close`, `require_status` (`:2280-2300`, `:2158-2224`).
+  validate the new rules. Chunk 1's oracle covers the K1 subset; chunks 2–3b
+  extend it.
+- Chunk 1 landed `..._greedy_matches_ref`, `..._masked_matches_ref`,
+  `..._status_precedence`, `..._vocab_remainder`, the mode-specific finiteness
+  and `STRICT_FINITE` case, min_p boundary cases, the subnormal grid, batch
+  independence and the 63-cell greedy parity grid. Chunks 2+ add
+  `..._fast_path_matches_ref`, `..._ordered_matches_ref`, `..._rng_bit_equality`.
+- Use the target's own conventions (mirroring `cuda_selftest.cc`):
+  `device_buffer`, `copy_h2d`, `copy_d2h`, `assert_close`, `require_status`.
+- **Warning learned in chunk 1:** a new device test target must set
+  `CUDA_ARCHITECTURES` from `DS41RT_CUDA_ARCHITECTURES`; the chunk-1 target
+  initially defaulted to `sm_75`, so its probe kernel never launched and its FTZ
+  canary read zeros (§17.3 item 9).
 
 ### 12.2 Rust oracle tests against a port of `reference_select`
 
@@ -1439,7 +1588,7 @@ CPU-sampler histogram and to the independent f64 analytic reference already
 built in the phase-0 harness (`REPORT.md:106-124`,
 `out/histogram-oracle-validation.json`). Total-variation must be within the
 Monte-Carlo noise reference for every cell. Because `runs/` is gitignored, land
-the harness rows in the repo as part of chunk 7 or assert their sha256
+the harness rows in the repo as part of chunk 6/7 or assert their sha256
 (§16 D4).
 
 The same 8,192-draw sweep must also record the **GPU-vs-CPU token mismatch count
@@ -1484,11 +1633,12 @@ unmeasured assumption.
 
 - **Gate A (before any kernel):** this document, reviewed adversarially.
 - **Gate B (per chunk):** §14 lists a review requirement per chunk.
-- Additionally: the `reference_select` port in `cuda_selftest.cc` must be
-  reviewed as a separate artifact from the kernel, by a reviewer who does not
-  read the kernel first — otherwise a shared misreading of the contract passes
-  both. This is the same reason the phase-0 oracle was built independently of the
-  sampler (`REPORT.md:106-111`).
+- Additionally: the `reference_select` port in
+  `native/tests/v41_sampling_selftest.cu` (chunk 1; `cuda_selftest.cc` for the
+  legacy samplers) must be reviewed as a separate artifact from the kernel, by a
+  reviewer who does not read the kernel first — otherwise a shared misreading of
+  the contract passes both. This is the same reason the phase-0 oracle was built
+  independently of the sampler (`REPORT.md:106-111`).
 
 ---
 
@@ -1522,19 +1672,20 @@ never be published without that mismatch rate beside it.
 - Also measure the §6.3b `expf` variants and the §6.5.3 sequential-combine option
   here, so the chunk-2 decision is made on data.
 - **Proposed gate (not measured yet):** the sampler+D2H must add ≤ 0.25 ms to a
-  48-row ordered round and ≤ 0.10 ms to a 4-row round. If it does not, chunk 6
+  48-row ordered round and ≤ 0.10 ms to a 4-row round. If it does not, chunk 6/7
   (radix histogram) is mandatory before any E2E claim.
 
 ### 13.2 D2H bytes and synchronizations before/after
 
 Count from code plus a device-side byte counter test:
 
-| Item | Before | After |
+| Item | Before | After (chunk 1) |
 | --- | --- | --- |
-| non-compact round D2H | `rows × 517,120 B` (`scheduler.rs:401-403`, `independent.rs:143`) | `rows × 12 B` (ids, status, scores) |
-| per-row host materialization | `rows × 517,120 B` host Vec (`scores.rs:47`, `:119`) | 0 |
+| device-selected all-greedy round D2H | `rows × 517,120 B` (`scheduler.rs:401-403`, `independent.rs:143`) | `rows × 16 B` (ids, status, detail, greedy scores) |
+| stochastic / mixed round D2H | `rows × 517,120 B` | **unchanged in chunk 1** (§8.4 gate); becomes `rows × 16 B` in the chunk-4 wiring |
+| per-row host materialization | `rows × 517,120 B` host Vec (`scores.rs:47`, `:119`) | 0 for a device-selected round; unchanged for a stochastic round |
 | finishing frontier | `1 × 517,120 B` (`scores.rs:88`, `independent.rs:153`) | unchanged, now gated on caching being enabled (§10.4) |
-| per-step syncs | head `wait()`/`synchronize()` + one pinned async D2H; single-lane adds a blocking pageable `cudaMemcpy` | head `wait()`/`synchronize()` + one pinned async D2H; nothing added |
+| per-step syncs | head `wait()`/`synchronize()` + one pinned async D2H; single-lane adds a blocking pageable `cudaMemcpy` | device-selected round: head `wait()`/`synchronize()` + one pinned async D2H, nothing added; stochastic single-lane round still uses the blocking copy until the chunk-4 wiring |
 | greedy compact round | `2 × rows × 4 B` (`v41_target_head.rs:367-369`) | unchanged |
 
 ### 13.3 End-to-end per profile on 1× RTX + 4× Spark with dSpark
@@ -1568,8 +1719,9 @@ Count from code plus a device-side byte counter test:
   is unchanged within the noise floor.
 - A mixed lane: assert the greedy rows' ids are exactly the CPU argmax over the
   same logits (using the retained-frontier cross-check).
-- Constrained (JSON schema) runs at both concurrencies: assert no error-status
-  change other than the documented `EmptyCandidates` decision.
+- Constrained (JSON schema) runs at both concurrencies: assert error strings are
+  byte-identical where §5.4 says identical, and prefix-supersets otherwise; no
+  status change (D1 preserves today's worker error).
 
 ### 13.6 Per-round timing on the TIMED campaign
 
@@ -1632,18 +1784,34 @@ GPU path at all.
 Each chunk is sized to be delegated whole, has its own acceptance gate, and
 requires its own review before merge. Chunk 0 is this document.
 
-| # | Chunk | Contents | Acceptance gate | Review |
-| --- | --- | --- | --- | --- |
-| 0 | **Design gate** | this document | adversarial review passes; corrected facts §2 accepted | required |
-| 1 | **ABI + plumbing + GPU prepare/greedy** | `ds41rt_v41_sampler_row_t` in `v41_sampling_gpu.h`, mask arena, `TargetSamplingWave`, C-ABI registration, FFI wrappers + `validate_v41_sampling_buffers`, `execute_block_sampled` terminal, scheduler wiring, K1 with the greedy/constrained branch. **Stochastic rows temporarily keep the CPU path** and therefore still download full rows for those rows only | what chunk 1 can actually achieve: ABI validated end to end; greedy and constrained-greedy rows device-selected and exactly equal to the CPU masked argmax (including strict whole-row finiteness); compact greedy path byte-identical; **no full-row D2H for greedy rows**; no regression to compact greedy throughput; `cargo test` + `ds41rt_cuda_selftest` green. Removing the full-row D2H for stochastic rows is explicitly chunk 2/3a/3b work | required |
-| 2 | **Fast path + device RNG + `expf` experiment** | K1 stochastic reductions with host `ln_min_p`, K2 contiguous-prefix scan with the no-crossing fallback, SplitMix64 device port, `total` diagnostic, the §12.9a `expf` experiment and the §6.5.3 sequential-combine evaluation | device RNG bit-equal on the **extended** seed/position grid (`2^63`, `u64::MAX`); `expf` outcome written into §6.3b (pinned variant or declared residual); fast-path token mismatch **rate recorded** per cell (not asserted zero); phase-0 `moderate`/`long_tail` histogram within TV noise | required |
-| 3a | **Ordered path — top-k** | K3 pivot top-k, K4 exact tie prefix; stochastic `top_k` rows are completed by a **temporary CPU draw over the selected ≤k-token set** (≤ k×8 B download, exact because the set is tiny), so the top_k40 profile leaves the full-row path early | device top-k membership set equals the oracle's `ranked[..k]` for the full grid, all tie rows, `k ∈ {2,40,V-1,V,V+1}`, `top_p = 1.0` included; end-to-end `top_k40` token equality up to the declared accumulation residual; pass budget for K3+K4 measured against §13.1 | required |
-| 3b | **Ordered path — top-p + draw** | K5 inclusive-prefix top-p (largest-key boundary, no `top_p = 1.0` shortcut, full-`S` fallback) and the rank-order draw with the `nucleus_count - 1` fallback; removes the temporary CPU draw | full parameter grid × masks × boundaries vs the ported `reference_select`; the §12.3 `top_k + top_p = 1.0` prefix-overshoot oracle; all tie cases; `-inf`/NaN/min_p sweeps; vocab-not-divisible-by-32; total pass budget measured | required |
-| 4 | **Constrained path** | `prepare_verification_masks`, per-prefix mask upload, mask-first application, `EMPTY_CANDIDATES`/`MASK_WIDTH` status with **today's status preserved** (D1) | constrained device selection equals `select_verification_sampled`; all-zero mask hard-errors with the unchanged worker error; strict-mode masked non-finite errors; fork/commit/rollback unchanged; no per-position download | required |
-| 5 | **Hot-path cleanup** | delete `BatchScores::new` CPU argmax from the hot path; delete the single-lane blocking `copy_d2h`; gate the frontier download on caching being enabled; trace-gated download for `logit_trace` | D2H byte accounting per §13.2; sync count unchanged; no `Vec` of 517 KB per row; retention tests green | required |
-| 6 | **Pass-budget optimization (conditional)** | deterministic integer radix histogram (≤2048 buckets, fixed-order combine, u64 fixed-point mass) to cut K3/K5 passes; only if chunk 3b's measurement misses the §13.1 gate | measured pass budget ≤ the gate; determinism tests still exact; no new nondeterminism | required |
-| 7 | **Measurement campaign + release/README** | fixed-logit kernel bench, timed E2E campaign with per-round timing, **the per-cell GPU-vs-CPU token mismatch rate**, README `:214-260` update, `docs/release-v11-performance.md` update, release-note wording per §6.4 | §13.7 falsification criteria, including criterion 7 (unmeasured divergence); workload identity; provenance/identity files; validated campaign | required |
-| 8 | **Upstream/placement decision memo** | whether to vendor the kernel for upstream, expose the top-k tie rule as an option | written memo with the flip evidence of §3.3 | required |
+**Rationale for the split (kernel-first, wiring-last).** The three chunk-1 review
+rounds produced a clear signal: the kernel-side artifacts — the kernel, the ABI,
+the validator, the device tests — were merge-quality on their first review, while
+**every** defect found lived in the daemon wiring: two P0 breaks, a trace
+regression, a host-pointer-as-device-pointer launch, a distributed-layout gap, a
+stale-mask inheritance, and a launch-shape mismatch. The remaining work is
+therefore split so that chunks 2–3b touch only `native/` and the device tests (a
+review defect there cannot be confounded with wiring), and **all** daemon changes
+land in one consolidated wiring chunk (4) whose gate includes the executed
+end-to-end test that chunk 1 declared missing. Kernel chunks are gated on kernel
+evidence; the wiring chunk is gated on wiring evidence plus the four §17.5 gaps.
+
+| # | Chunk | Kind | Contents | Acceptance gate | Review |
+| --- | --- | --- | --- | --- | --- |
+| 0 | **Design gate** | doc | this document | adversarial review passes; corrected facts §2 accepted | required |
+| 1 ✓ | **ABI + GPU prepare/greedy — DELIVERED (`9dffad0`)** | kernel + wiring | as planned: `ds41rt_v41_sampler_row_t` + helpers in `v41_sampling_gpu.h`, mask arena, `TargetSamplingWave`, C-ABI registration, FFI wrappers + `validate_v41_sampling_buffers`, `execute_block_sampled`, scheduler/pass wiring, K1 with the greedy/constrained branch. Passed three adversarial review rounds (two found wiring defects, one found a third; all fixed before commit) | **met for the delivered scope**: ABI validated end to end; device greedy/constrained-greedy parity vs the CPU oracle (81 device cases / 6552 assertions; 63-cell greedy parity grid); compact greedy path behaviourally unchanged; no full-row D2H for greedy rows; stochastic path behaviourally unchanged. Four coverage gaps carried to chunk 4 (§17.5) | required |
+| 2 | **KERNEL-ONLY, in progress: K2 fast path + device RNG + accumulation-order/`expf` evaluation** | kernel only | K1 stochastic reductions with host `ln_min_p`; the K2 fast path; the **accumulation-order evaluation** (sequential token-order scan vs parallel segmented scan, both measured on latency **and** GPU-vs-CPU token mismatch rate); the §12.9a `expf` parity experiment as a gate; per-cell mismatch rates at 8,192 seeded draws; device tests plus an **FFI-level oracle test against the production CPU sampler**. **No daemon/scheduler/scores changes.** | device RNG bit-equal on the extended seed/position grid (`2^63`, `u64::MAX`); `expf` outcome written into §6.3b (pinned variant or declared residual); per-cell mismatch rate recorded (not asserted zero); accumulation-order choice justified by the measured latency **and** mismatch pair; phase-0 `moderate`/`long_tail` histogram within TV noise; FFI oracle green. **The gate is kernel-only and deliberately does not close the §17.5 gaps** (they are chunk 4's) | required |
+| 3a | **KERNEL-ONLY: K3 + K4** | kernel only | K3 general-k pivot selection and K4 exact-k lowest-id tie prefix, with device tests against the CPU oracle | device top-k membership set equals the oracle's `ranked[..k]` for the full grid, all tie rows, `k ∈ {2,40,V-1,V,V+1}`, `top_p = 1.0` included; K3+K4 pass budget measured against §13.1 | required |
+| 3b | **KERNEL-ONLY: K5** | kernel only | K5 inclusive-prefix top-p (largest-key boundary, no `top_p = 1.0` shortcut, full-`S` fallback) plus the rank-order draw with the `nucleus_count - 1` fallback, with device tests | full parameter grid × masks × boundaries vs the ported `reference_select` (device level); the §12.3 `top_k + top_p = 1.0` prefix-overshoot oracle; all tie cases; `-inf`/NaN/min_p sweeps; vocab-not-divisible-by-32; total pass budget measured | required |
+| 4 | **WIRING — the single consolidated daemon chunk** | wiring | put stochastic rows on the sampled terminal; capability gates for layouts without the terminal (`DistributedTargetPass`); constrained mask preparation/upload for stochastic verification rows; retention gating and the incidental-download fix; remove the remaining full-row D2H for stochastic rows; **add the executed `upload → launch → output` end-to-end test**; delete the residual single-lane blocking `copy_d2h` for stochastic rounds | **closes all four §17.5 gaps**: the executed `upload → launch → output` end-to-end test (a chunk-4 acceptance gate, not chunk 2's); a daemon-level GPU end-to-end constrained-greedy round; the distributed capability gate; mixed greedy+stochastic rounds wired. Plus: §13.2 D2H accounting holds for stochastic rounds; sync count unchanged; no 517 KB per-row `Vec`; retention tests green; error strings per §5.4 and D1 | required |
+| 5 | **Full correctness validation + independent review** | validation | the complete matrix vs the CPU oracle: grid × masks × boundaries × ties; seeded replay across batch sizes, lanes, orderings and rejected drafts; distributional comparison; constrained speculation | §12.3–§12.10 all green; the `reference_select` port reviewed as a separate artifact from the kernel (§12.11) | required |
+| 6/7 | **Pass-budget optimisation (conditional), then measurement** | kernel/measurement | deterministic integer radix histogram (≤2048 buckets, fixed-order combine, u64 fixed-point mass) **only if the measured kernel cost demands it**; then fixed-logit latency vs CPU and the published per-cell mismatch-rate measurement | pass budget ≤ the §13.1 gate if optimisation ran; §13.7 criteria 3, 4 and 7 | required |
+| Phase 3–4 | **E2E campaign + release** | release | end-to-end campaign on 1× RTX + 4× Spark with dSpark (§13.3–§13.5), per-round timing (§13.6), README five-profile measurement update (`:214-260`), `docs/release-v11-performance.md` and release notes (§6.4), and the upstream/placement decision memo (former chunk 8) | §13.7 all criteria; workload identity; provenance/identity files; validated campaign | required |
+
+**Current position:** chunk 1 is delivered (`9dffad0`, §17) and its own review is
+closed; **chunk 2 is in progress and is kernel-only**. The four chunk-1 coverage
+gaps (§17.5) belong to the **chunk-4 gate**, not chunk 2's. The design gate
+(chunk 0) is what this document is.
 
 Do not start chunk 3a before chunk 2's RNG **and** `expf` gates pass exactly: the
 RNG equality test is the only cheap way to separate a draw-stream bug from a
@@ -1669,11 +1837,11 @@ remaining token differences are the expected residual or a real defect.
 | R11 | **Pass-count blow-up** | The ordered path's ternary searches can reach ~74 row reads worst case (and `top_k40` now also pays the top-p search), which could cost more than the 0.55–1.79 ms it removes | §13.1 gate; chunk 6 histogram; §13.7 criteria 3 and 4 |
 | R20 | **Masked-non-finite mode drift** | The strict (`scores.rs:160-163`) and permissive (`target_sampling.rs:1009-1024`) rules differ, and the daemon today is incidentally strict for stochastic rows too because `BatchScores::new` pre-validates; a careless unification silently changes one of them | Per-row `STRICT_FINITE` flag (bit4) set per call site; §4.1 records the delta; §12.6 pins both; D9 records the choice. The greedy/constrained path is never loosened |
 | R12 | **Reduction nondeterminism** | f32 atomics or batch-dependent combine orders would break claim (b) | No f32 atomics; fixed contiguous segments and fixed tree combines; chunk 6's histogram uses integer/fixed-point counts |
-| R13 | **`EmptyCandidates` status change** | `is_bad_request` has no consumer today, so mapping to 400 is a behavior change | Open decision D1; release note either way |
+| R13 | **`EmptyCandidates` status change** | `is_bad_request` has no consumer today, so mapping to 400 would be a behavior change | **Decided (D1): preserve today's worker error (500)**; the 400 mapping is a separate follow-up item. The device status is unaffected either way |
 | R14 | **Mask upload pressure** | `rows × 16,160 B` per step (1.3 MB at 48 rows) on the head stream could add latency | One async H2D per step, not per row; measure in §13.1; masks only exist for constrained rows |
-| R15 | **Loss of logit-trace observability** | Removing the full-row download would silently break `ds41rt::logit_trace` (`scheduler.rs:565-576`) | Explicit trace-gated per-row download (§8.5); the trace already forces non-compact (`:458`) and is documented untimed |
+| R15 | **Loss of logit-trace observability** | Removing the full-row download would silently break `ds41rt::logit_trace` (`scheduler.rs:565-576`) | **Implemented**: `trace_rows` is all rows under `DEBUG` and empty otherwise (`scheduler.rs:585`), and `download_sampled_rows` fetches exactly that selection (§8.5); untraced all-greedy rounds download nothing |
 | R16 | **Frontier retention regression** | Device-side retention or a missing row would break exact-frontier restore (`scores.rs:195-206`, `prefix.rs:248-…`) | Keep the host `TokenScores` and the one-row download (§10); retention tests stay green |
-| R17 | **CPU fallback divergence** | If the CPU path can serve the same seeded request, two token streams exist in one build | D2 recommendation: oracle + explicit diagnostic override only; fail closed when the symbol is missing |
+| R17 | **CPU fallback divergence** | If the CPU path can serve the same seeded request, two token streams exist in one build | **Decided (D2): oracle + explicit env-gated A/B fallback only**, never automatic; fail closed when the symbol is missing; the default path never probes the CPU sampler on a miss |
 | R18 | **Single-row (`rows = 1`) shapes** | The dSpark-off shape and the first-token path (`scheduler.rs:324`) are common and must not pay a launch-heavy kernel path | Fast path is 4 row reads; measured explicitly (§13.4) |
 | R19 | **`logits_stride` assumptions** | The head buffer is contiguous today (`STRIDES[4] = 517120`, `v41_target_head.rs:12`, `output()` fixes bytes at `:387-404`), but a future layout could be padded | ABI takes `logits_stride` and validates it |
 
@@ -1754,6 +1922,143 @@ rows; it must be in the release notes. The flag exists so that a reviewer who
 prefers zero observable change can set strict for stochastic rows with a one-line
 host change, and so that the constrained/greedy path can never be loosened by
 accident.
+
+---
+
+## 17. Chunk 1 as-built record (commit `9dffad0`, 2026-09-22)
+
+This section records what chunk 1 actually shipped and reconciles the normative
+sections above with it. Commit
+`9dffad0236cae8b5398a41bea973b1ff21f2da88` ("Add GPU target sampler chunk 1:
+ABI, prepare kernel, greedy device path"), 16 files, `+4673/-71`, on `dev`.
+It passed three adversarial review rounds: the first two found wiring defects,
+the third one more; all were fixed before commit. Chunk 2 is next.
+
+### 17.1 Files
+
+| File | Role |
+| --- | --- |
+| `native/cuda/kernels/v41_sampling_gpu.h` | the 64 B ABI, flag/status constants, scratch layout, `ds41rt_v41_sampler_clear_remainder`, `ds41rt_v41_sampler_mask_words`, residency requirement, entry-point declarations |
+| `native/cuda/kernels/v41_sampling_gpu.cu` | K1: mask-first predicate, finiteness discipline, temperature scaling, scaled max, `min_p` survivor count, greedy/constrained-greedy argmax |
+| `native/tests/v41_sampling_selftest.cu` | the device selftest and its CPU oracle |
+| `native/include/ds41rt_native.h` | the `extern "C"` declarations |
+| `rust/crates/ds41rt-ffi/src/lib.rs` | wrappers, `Ds41rtV41SamplerRow` mirror, `validate_v41_sampling_buffers`, ABI `sizeof`/offset pins |
+| `rust/crates/ds41rt-daemon/src/v41_target_head.rs` | `TargetSamplingWave`, `execute_block_sampled`, `download_sampled_rows` |
+| `rust/crates/ds41rt-daemon/src/v41_target_pass.rs`, `.../v41_target_pass/verification.rs` | trait methods + `SUPPORTS_SAMPLED_TERMINAL` |
+| `.../v41_native_serve/{scheduler.rs,scheduler/independent.rs,scores.rs,constraints.rs}` | round gating, per-row params/masks, `SampledTargetRows`, status mapping, mask preparation |
+| `native/CMakeLists.txt` | source registration, selftest target, arch propagation |
+| `.gitignore`, `rust/Cargo.lock` | local build tree + SQLite sidecars ignored; lockfile |
+
+### 17.2 Scope, recorded verbatim
+
+**All-greedy rounds — unconstrained and/or constrained — are device-selected and
+greedy rows no longer download full logits. Any round containing a stochastic
+member stays entirely on the CPU path, and mixed greedy+stochastic rounds are NOT
+wired.** `VerificationTarget::SUPPORTS_SAMPLED_TERMINAL` is an associated const
+(default `false`, `TargetPass` `true`) so `DistributedTargetPass` keeps the CPU
+fallback and has no sampled terminal yet — a documented limitation for a later
+chunk (§8.4).
+
+### 17.3 Deviations from the first-revision design, and why
+
+1. **`flags.bit2` is `NO_MASK`, not "mask remainder-masked"** (§5.1). The
+   design's §5.2 wanted `mask_row = 0xFFFFFFFF` for an unconstrained row and
+   §5.3 said there is no all-ones fill, so nothing told the kernel to skip the
+   arena. `needs_mask == false` is the production signal. A `NO_MASK` row must
+   carry `mask_row == 0xFFFFFFFF`, and the validator enforces the
+   correspondence. The remainder rule is separate and unconditional, enforced
+   host-side immediately before upload by
+   `ds41rt_v41_sampler_clear_remainder` (§5.3).
+2. **`out_status_detail` uses `DS41RT_V41_SAMPLER_NO_DETAIL = 0xFFFFFFFF` on
+   device and is normalized to `0` host-side** (§5.4). A plain `0` could not be
+   told from "token 0".
+3. **The validator is stricter than §5.1's letter** (§5.4): it rejects `NO_MASK`
+   without the sentinel, `mask_row >= rows`, `mask_words_per_row != 0` when no
+   mask buffer is supplied, `STRICT_FINITE` on a row that is neither greedy nor
+   masked, and non-zero reserved fields, among the rest listed in §5.4.
+   **`top_k` is not range-validated yet** — harmless in chunk 1 because K1 never
+   selects with `k`; it is a chunk-2+ item.
+4. **`params` MUST point at device memory**, and the residency requirement is
+   now pinned in `v41_sampling_gpu.h` (§5.1, §5.5). A pageable host pointer
+   *happened* to work on this box (ATS/HMM-class:
+   `cudaPointerGetAttributes` accepts unregistered pageable memory here), which
+   is exactly why the requirement is explicit. Recorded as a portability hazard,
+   never a property to rely on; the product path passes the uploaded
+   `param_device` buffer.
+5. **Launch-shape rule:** `mask_words_per_row` MUST be `0` when no mask buffer is
+   supplied; the buffer and the stride are produced by one helper so they cannot
+   diverge (§5.1, `v41_target_head.rs:114-120`). An all-unconstrained
+   non-compact round (for example a traced all-greedy round) is a real reachable
+   case.
+6. **`STRICT_FINITE` is functional and additive** (§4.1): a strict stochastic row
+   keeps the permissive pass's results and gets an additional whole-row
+   finiteness pre-scan. The host sets it only for greedy and constrained rows.
+7. **Per-row `needs_mask` propagation** changed the daemon helper signatures:
+   `prepare_verification_masks` / `prepare_verification_mask_row` return
+   `Option<Vec<u32>>`, and `frontier_downloads` is
+   `Vec<(usize, usize, Option<Vec<u32>>)>` (`scheduler.rs:819`). A row that
+   needs no mask becomes `NO_MASK`, never an inherited or zeroed mask (§5.2,
+   §9.2, §8.1).
+8. **Error-string status** (§5.4): `EMPTY_CANDIDATES` and
+   `INVALID_TEMPERATURE` are byte-identical to the daemon CPU path;
+   `NONFINITE_LOGIT` and `MASK_WIDTH` are deliberate prefix-supersets (they add
+   the token id / actual width) and are documented as supersets, not claimed
+   identical.
+9. **Test-target architecture fix:** the new device-selftest target had been
+   defaulting to `sm_75`, so its probe kernel never launched and its FTZ canary
+   read zeros. `CUDA_ARCHITECTURES` is now set from
+   `DS41RT_CUDA_ARCHITECTURES` on that target (`native/CMakeLists.txt:1051-1058`;
+   `arch.log` shows `arch 120 exit=0`, `arch 121 exit=0`). General lesson for any
+   new device test target: propagate the configured architecture explicitly.
+10. **`.gitignore`** now covers `native/build-sampling/` and `data/*.sqlite-*`.
+
+### 17.4 Evidence and results (MEASURED)
+
+- The K1 kernel was verified against the CPU oracle with **81 device cases /
+  6552 assertions** and a **63-cell greedy parity grid**
+  (`native/tests/v41_sampling_selftest.cu`;
+  `runs/chunk1-scratch/logs/device_selftest.log` —
+  `ds41rt_v41_sampling_selftest passed: 81 cases, 6552 assertions`). The counter
+  line is the selftest's own output (`v41_sampling_selftest.cu:1253-1254`).
+- The stochastic path is **behaviourally unchanged**: it is untouched and still
+  serves every stochastic round.
+- The compact greedy path is **behaviourally unchanged**.
+- Trace behaviour is as designed: `trace_rows` is all rows when
+  `ds41rt::logit_trace` is `DEBUG` and empty otherwise, so traced all-greedy
+  rounds download exactly those rows and untraced ones download nothing (§8.5).
+- Arch checks were run for both built arches (`arch.log`).
+- `runs/` is gitignored, so these evidence paths are local; the committed
+  normative evidence is the selftest source and its output counter (risk R10).
+
+### 17.5 Honest gaps still open after chunk 1
+
+1. **The `upload → launch → output` join has no hardware-executed test.** The
+   individual pieces are covered and the validator/wave paths are unit-tested,
+   but no test drives a real `TargetSamplingWave::upload` followed by a launch
+   and an `output()` on hardware.
+2. **No daemon-level GPU end-to-end constrained-greedy round.** The device
+   masked-argmax parity is covered at the kernel/selftest level, but no daemon
+   test runs a constrained all-greedy round through the whole terminal and commit
+   path.
+3. **The distributed sampled terminal is not implemented.**
+   `DistributedTargetPass` has `SUPPORTS_SAMPLED_TERMINAL = false` and keeps the
+   CPU path.
+4. **Mixed greedy+stochastic rounds are unwired.** Any stochastic member keeps
+   the whole round on the CPU path, so those rounds still download full rows for
+   every member.
+
+These four gaps are carried into the **chunk-4 gate** (§14), because every one of
+them is a wiring defect rather than a kernel gap; chunk 2 is kernel-only and
+deliberately does not gate on them. None of them is a correctness defect in the
+delivered scope; they are unwired or untested surface.
+
+### 17.6 What the later chunks inherit unchanged
+
+The normative text of §4.0 (no fast-math/FTZ), §4.1 (K1 semantics, mode-specific
+finiteness), §5 (ABI, masks, outputs, ownership), §6 (RNG and the residual),
+§8.4 (the gating rule), §9.2 (mask preparation) and §11 (streams, workspace,
+graph legality) now matches the as-built code above and is the baseline chunks
+2–3b (kernel-only) and chunk 4 (wiring) must preserve.
 
 ---
 
