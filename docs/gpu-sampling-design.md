@@ -2,14 +2,16 @@
 
 **Status:** design gate. **Chunk 1 is delivered** on `dev` as
 `9dffad0236cae8b5398a41bea973b1ff21f2da88` (2026-09-22); §17 is its as-built
-record. **Chunk 2 (K2 fast path) is delivered and reviewed** as uncommitted
-working-tree work on base `9dffad0`; §18 is its as-built record, and the
-normative sections below have been reconciled with both (notably §4.2, §6.3b,
-§6.3c, §6.5.3, §12.2, §12.3, §13.1). Chunk 3a is next; chunks 3a–4 remain
+record. **Chunk 2 (K2 fast path) is delivered and reviewed** as `f0e7902`
+(committed on `9dffad0`); §18 is its as-built record. **Chunk 3a (K3 + K4) is
+delivered and reviewed** as `90f745c` (committed on `4277898`); §19 is its
+as-built record. The normative sections below have been reconciled
+with all three (notably §4.2, §4.3, §4.4, §4.5, §5.4, §6.3b, §6.3c, §6.5.3,
+§11.1, §12.2, §12.3, §12.4, §13.1, §14). Chunk 3b is next; chunks 3b–4 remain
 design-only and still require the adversarial review of §14.
 
 **Repository revision read:** `e1f5d495b5a82fb7ddad8514cad419b6ae62c0cc` (`e1f5d49`).
-The chunk-1 as-built record reads `9dffad0`; chunk 2 is uncommitted on that base.
+Chunk 1 reads `9dffad0`, chunk 2 `f0e7902`, and chunk 3a `90f745c`.
 
 **Deliverable rule:** the original design task produced exactly this one file;
 the as-built updates are design text only. Every claim about existing code
@@ -474,9 +476,24 @@ Runs only when `top_k ∈ 1..vocab` and `top_k < survivor_count` (otherwise
      per pass halves.)
      Accept `v` when `C_gt(v) < k`; the k-th value is the **smallest** accepted
      key, so a satisfying probe moves the upper bound down (Appendix A.1).
-  2. Stop when the interval has ≤ 1 representable f32 value or after
-     `MAX_PIVOT_STEPS = 32` passes (defensive cap; report `INTERNAL` if hit).
+  2. Terminate when the interval collapses to one key. **Correction (chunk 3a):
+     the true worst case is 21 passes, not the first revision's "≤ 20"**, and the
+     termination condition is the load-bearing part. The loop probes while
+     `hi - lo >= 2` and, when `hi - lo == 2`, takes the single final probe
+     `m0 = lo + 1` (`m1 = hi`, already known accepted), stopping at `hi - lo == 1`.
+     The 32-pass cap remains as a defensive bound, reporting `INTERNAL` if hit.
      Write `kth_value = ordered_bits_to_float(v)`, `above_count = C_gt(v)`.
+     **Termination bug found during implementation and fixed:** the first version
+     stopped at `hi - lo < 3`, but the middle branch of a length-4 interval
+     produces a length-2 interval (`lo' = lo+1`, `hi' = lo+3`), and when a survivor
+     key sits at `lo+2` the true k-th key is `lo+2` while the loop returns
+     `hi = lo+3`. `C_gt` stays correct but no survivor carries `kth+1`, so the tie
+     cut admits nothing and the retained set comes up short. A host simulation
+     over random key sets failed **261/20,000** cases with the `>= 3` termination
+     and **0/20,000** with the fix (the reviewer's independent generator measured
+     131/20,000 for the same mechanism). The `hi - lo == 2` final probe is
+     **load-bearing** — removing it reintroduces the bug — and seven concrete keys
+     are pinned as a regression by `test_k3_k4_length_two_interval`.
   3. **ds41rt tie rule `[NEW]`** (this is the deliberate deviation documented at
      `target_sampling.rs:30-33`): membership is
      `{order_key > kth_key} ∪ {the lowest-id `k - above_count` tokens with
@@ -489,34 +506,99 @@ Runs only when `top_k ∈ 1..vocab` and `top_k < survivor_count` (otherwise
   compile-time k cap (contrast `kMaxSampleTopK = 64`, `common.h:19`, and
   `kParallelSampleTopK = 8`, `sampling.cu:7`).
 - **Workspace**: `kth_value` f32, `above_count` u32 in `scratch`.
-- **Passes**: ≤ 20 with two probes per pass (ternary search over a 32-bit key).
+- **Passes**: **21** worst case with two probes per pass (ternary search over a
+  32-bit key) against the 32-step defensive cap; **corrected in chunk 3a from the
+  first revision's "≤ 20"**, confirmed three independent ways — a host interval
+  recurrence, a randomized host simulation, and device measurement of 21
+  (`runs/chunk3a-scratch/REPORT.md` §2, §5). The ternary middle branch is
+  `L − 2·floor(L/3)`, which is why the bound is not 20.
 - **No sort**: this replaces both the `real_full`-style
   `cub::DeviceSegmentedRadixSort` over `rows × vocab` (`sampling.cu:1739-1742`)
   and the single-thread serial top-k (`sampling.cu:598-676`).
 
-### 4.4 K4 — `v41_sample_topk_membership_kernel`: exact tie prefix
+### 4.4 K4 — `v41_sample_topk_membership_kernel`: exact tie prefix, rank-ordered output
 
 - **Inputs**: `kth_key`, `above_count`, `target_tie = k - above_count`,
   survivors predicate.
-- **Algorithm** `[NEW]`: single pass over `[0, vocab)` in 256 contiguous
-  segments; each thread counts `order_key == kth_key` tokens in its segment;
-  block-exclusive-scan gives the number of equals before each segment; each
-  thread admits equals while the running count is `< target_tie`. Writes a
-  per-row bitmap `topk_bits[vocab/32]` (16,160 B/row) or, when `target_tie`
-  covers the whole tie group, nothing (membership is then just
-  `order_key >= kth_key`, a predicate K5 can evaluate inline — the common case).
-- **Why a bitmap**: K5 must evaluate membership repeatedly during bisection, and
-  recomputing the tie prefix each pass would be O(vocab) per pass. The bitmap is
-  16 KB/row versus 517 KB of logits, so re-reading it is cheap.
-- **Limits/edge**: works for `vocab % 32 != 0` because the bitmap is only indexed
-  by in-range token ids (see §5.3).
-- **Passes**: 1 write pass (+ bitmap reads in K5).
+- **Algorithm** `[NEW]` (as built in chunk 3a): single pass over `[0, vocab)` in
+  256 contiguous segments; each thread counts `above` (`order_key > kth_key`) and
+  `equal` (`== kth_key`) survivors; a fixed-tree exclusive scan of the equals
+  gives `eq_before`; each thread admits equal-key survivors while its running
+  index is `< target_tie`. Correct for any multiplicity (thousands tied, whole
+  row tied) and for `vocab % 32 != 0`, with no value-carrying sentinel — every
+  decision is an integer count or a scan, so the chunk-2 `tree_max_u32` sentinel
+  class cannot recur.
+- **DEVIATION, recorded as implemented: K4 emits a rank-ordered id list, not a
+  bitmap.** The retained set is written to `rank_order_ids` in the CPU's **exact
+  rank order** — descending `order_key(scaled)`, ties ascending token id, with
+  `-0.0` canonicalized to `+0.0` exactly as `descending_radix_key` does
+  (`target_sampling.rs:283-291`, `:323-344`; the same permutation the CPU's
+  comparison sort and stable LSD radix sort both produce). This replaces the
+  first revision's per-row `topk_bits[vocab/32]` bitmap. The list subsumes the
+  bitmap for membership (a scan or a direct rank lookup) and gives K5 the CPU's
+  inclusive-prefix nucleus and rank-order draw directly, in **O(k) rather than
+  O(vocab)** per-row memory; the production region is the §11.1 top-k arena.
+- **Rank assignment is O(k²/256) counting, not a sort.** Entries are compacted in
+  token order into a u64 staging arena as `(order_key << 32) | id`; each entry's
+  rank is the number of staging entries strictly better under the u64 total
+  order. Nothing is sorted. Scaling (COMPUTED, tests in
+  `runs/chunk3a-scratch/REPORT.md` §5): a few hundred comparisons at the served
+  `k = 40`; fine to `k ≈ 1000` (the tests materialize `k = 1000` at vocab
+  129,280 — ≈1M comparisons, sub-millisecond); sluggish by `k ≈ 4093`; unusable
+  near `k ≈ vocab`. **Wide-k coverage is therefore selection-only, and the
+  chunk-6 histogram owns the large-k case.**
+- **Arena sizing and the k-beyond-capacity fallback are chunk-4 decisions.**
+  `rank_order_capacity == 0` selects a selection-only call (null arenas,
+  `kth_value_bits`/`above_count` still published); a non-zero capacity must be
+  `>= max_r params[r].top_k`, enforced by the FFI validator and re-checked
+  in-kernel as `capacity >= total_retained`.
+- **Passes**: 1 membership pass over the vocabulary + 1 rank-placement pass over
+  the k-sized staging set (no vocabulary-sized second pass).
 
 ### 4.5 K5 — `v41_sample_nucleus_kernel`: inclusive-prefix top-p + rank-order draw
 
-- **Inputs**: survivors, top-k bitmap (if K4 ran), `total`, `max_scaled`,
-  `top_p`, `uniform`, `top_k` state.
-- **Set `S`**: survivors ∧ top-k membership. Weights
+**Entry point and interface (fixed by chunk 3a; K5 lands in chunk 3b on top of
+it).** The K3/K4 entry point is exactly:
+
+```c
+ds41rt_status_t ds41rt_cuda_v41_topk_select_async(
+    const float* logits, size_t rows, size_t vocab, size_t logits_stride,
+    const ds41rt_v41_sampler_row_t* params, const uint32_t* mask_words,
+    size_t mask_words_per_row, uint32_t* rank_order_ids,
+    uint64_t* rank_order_scratch, size_t rank_order_capacity,
+    uint32_t* out_retained_count, uint32_t* out_pivot_passes,
+    ds41rt_v41_sampler_scratch_t* scratch, void* cuda_stream);
+/* plus the blocking ds41rt_cuda_v41_topk_select(...) without cuda_stream */
+```
+
+- `scratch` must already hold a completed K1 pass (the chunk-2 convention), so K5
+  is a third kernel on the same stream after K1 and K3/K4.
+- K3/K4 write **block row `b`**'s retained ids at
+  `rank_order_ids + b * rank_order_capacity`, rank 0 = best, in exact CPU rank
+  order; `rank_order_scratch` is the matching u64 staging (`rows × capacity`),
+  scratch only, never observable. `out_retained_count` / `out_pivot_passes` are
+  indexed by `output_row` like the other ABI outputs (the daemon makes the two
+  equal).
+- **O(k) memory**: `4 B` per id + `8 B` staging, no vocabulary-sized structure.
+- `rank_order_capacity == 0` means **selection-only** with null arenas; a
+  non-zero capacity must be `>= max_r params[r].top_k` (FFI validator enforces,
+  kernel re-checks `capacity >= total_retained`).
+- `scratch[r].kth_value_bits` / `above_count` are published.
+- **Eligibility matches the CPU exactly** (`target_sampling.rs:477-501`): K1
+  `status == OK`, not greedy (`temperature < 1e-5 || top_k == 1`), `top_k != 0`,
+  `top_k < survivor_count`. `top_k >= survivor_count` and `k > vocab` are
+  **no-ops** (K5 must then treat the retained set as *all* survivors);
+  `k == 1` is greedy and never enters K3/K4; `top_k == 0` with `top_p >= 1` is
+  the disjoint K2 fast path.
+- K5 consumes the list as a plain rank-ordered id array: the inclusive-prefix
+  nucleus and the rank-order draw iterate ranks `0..k-1`, recomputing
+  `scaled = logits[id] * inv` and `w = expf(scaled − max_scaled)` per rank
+  exactly as the CPU's `sample_from_ranked` does.
+
+- **Inputs**: survivors, the rank-ordered retained id list (if K3/K4 ran),
+  `total`, `max_scaled`, `top_p`, `uniform`, `top_k` state.
+- **Set `S`**: survivors ∧ the K4 rank-ordered retained membership (all survivors
+  when K3/K4 were a no-op). Weights
   `w_t = expf(scaled_t - max_scaled)`; `total = Σ w_t` (fixed order);
   `p_t = w_t / fmaxf(total, 1e-20f)` — per-token division, matching
   `target_sampling.rs:539-542`. **This is where the dominant residual enters**:
@@ -588,8 +670,9 @@ Runs only when `top_k ∈ 1..vocab` and `top_k < survivor_count` (otherwise
 - **Limits**: nucleus up to `vocab` (the phase-0 `near_uniform` top_p0.9 cell
   reports support 116,344 of 129,280 — `REPORT.md:120`); nothing is
   materialized, so nucleus width costs passes only, not memory.
-- **Passes (ordered path, uncompressed)**: K1 2 + K3 ≤20 (ternary over a 32-bit
-  key) + K4 1 + K5 (top-p ≤20 value + ≤11 tie + draw ≤20 worst / typically ≤4)
+- **Passes (ordered path, uncompressed)**: K1 2 + K3 ≤21 (ternary over a 32-bit
+  key, §4.3) + K4 1 + rank placement O(k²/256) over the k-sized set + K5
+  (top-p ≤20 value + ≤11 tie + draw ≤20 worst / typically ≤4)
   ≈ **up to ~74 row reads** worst case, ~35 typical. ARITHMETIC at 517,120 B/row:
   up to ~38 MB/row, ~1.8 GB for 48 rows. **This is the central cost risk**
   (§13.1 gate, §14 chunk 6/7) and the reason the ceilings in §2 are optimistic.
@@ -863,6 +946,18 @@ old text breaks. They are documented as supersets, not claimed identical.
   **`top_k` is not range-validated yet** — harmless in chunk 1 because K1 never
   selects with `k`; full `top_k ∈ {0} ∪ 1..=vocab` validation is a chunk-2+ item
   (§17).
+- **Chunk-3a validators, and a deliberate trust-level choice.** The new top-k
+  wrapper validates its own buffers (`validate_v41_topk_select_buffers` in
+  `lib.rs` / `validate_topk_select_args` in the `.cu`): `rank_order_capacity` must
+  be `0` (selection-only) or `>= max_r params[r].top_k`, capacity-bearing calls
+  must supply both arenas, and the kernel re-checks `capacity >= total_retained`.
+  **The raw-C `validate_topk_select_args` does NOT re-check `output_row` bounds
+  while the FFI validator does.** That is a conscious **same-trust-level** choice:
+  the C entry points are only called through the FFI wrapper, which has already
+  bounds-checked `params` against `rows`; duplicating the check in C would buy no
+  safety on the supported path. It is recorded here so **chunk 4 remembers to
+  enforce `output_row` bounds at the FFI boundary** for any new caller (and to
+  keep the two validators in step).
 
 ### 5.5 Buffer ownership
 
@@ -872,7 +967,7 @@ old text breaks. They are documented as supersets, not claimed identical.
 | `param_pinned` + `param_device` | `TargetSamplingWave`, owned by `TargetHeadWave` | allocated once in `TargetHeadWeights::wave` (`:44-87`), freed with the wave |
 | `mask_pinned` + `mask_device` (arena) | same | same |
 | `scratch` (K1 per-row reductions, 64 B/row) | same | same |
-| `bitmap` (top-k membership, chunk 3) and `histogram` (chunk 6) | same | allocated now, unwritten in chunk 1 |
+| `bitmap` (top-k arena, chunk 3) and `histogram` (chunk 6) | same | allocated now; chunk 3a's K3/K4 use an **O(k) rank-ordered id list** inside this region's per-row stride, not a bitmap — see §4.4 and §11.1 |
 | `ids`/`status`/`detail`/`scores` device + pinned | same | same |
 | `total`/`nucleus` device (nullable outputs) | same | written only under `DIAGNOSE` |
 
@@ -1477,16 +1572,22 @@ Allocated once per `TargetHeadWave`:
 | sampler params (device) | 5,120 | `capacity × 64`, staged in `param_pinned` |
 | mask arena (device + pinned) | 2 × 1,292,800 | `capacity × ceil(vocab/32) × 4` at capacity 80 |
 | scratch (per-row reductions) | `capacity × 64` | `ds41rt_v41_sampler_scratch_t`, exactly 64 B |
-| top-k bitmap arena | 1,292,800 | `capacity × ceil(vocab/32) × 4`; **allocated now**, unwritten until chunk 3 |
+| top-k arena | 1,292,800 | `capacity × ceil(vocab/32) × 4`; **allocated now**. As built, chunk 3a's `ds41rt_cuda_v41_topk_select[_async]` writes an **O(k) rank-ordered id list** (4 B/id + 8 B u64 staging) whose per-row stride is `rank_order_capacity`; the §11.1 region is the production backing and its stride sizing / k-beyond-capacity fallback are **chunk-4 decisions** |
 | ids/status/detail/scores | `capacity × 4 × 4` | device + pinned |
 | diag (`total`, `nucleus_count`) | `capacity × 8` | **allocated now**, written only under `DIAGNOSE` |
 | chunk-6 radix histogram | 655,360 | `capacity × 2048 × 4`; **allocated now**, unwritten until chunk 6 |
 
 All regions above are allocated once in `TargetSamplingWave` at wave construction
-(`v41_target_head.rs:80-112`); the chunk-3 bitmap, chunk-6 histogram and the
-nullable diag outputs are reserved from the start so a later chunk adds no
-allocation and no resize. Total ≈ 4.2 MB at capacity 80, well within the existing
-head budget (`TargetHeadWave::device_bytes`, `v41_target_head.rs:124-129`).
+(`v41_target_head.rs:80-112`); the chunk-3 rank-order arena, chunk-6 histogram
+and the nullable diag outputs are reserved from the start so a later chunk adds
+no allocation and no resize. Total ≈ 4.2 MB at capacity 80, well within the
+existing head budget (`TargetHeadWave::device_bytes`, `v41_target_head.rs:124-129`).
+As built, chunk 3a additionally takes an **O(k)** u32 `rank_order_ids`
+(`rows × rank_order_capacity`) and an equal O(k) u64 staging buffer
+(`rank_order_scratch`, 8 B/entry) — 25.6 KB + 51.2 KB at capacity 80, negligible
+against the region above. Who allocates them and how the §11.1 top-k region is
+carved into the per-row `rank_order_capacity` stride (plus the k-beyond-capacity
+fallback) is a **chunk-4 decision**.
 **Zero per-call allocations**: no `cudaMalloc`, no `Vec` growth, no `to_vec()` on
 the hot path (contrast `download.rs:41`).
 
@@ -1632,6 +1733,24 @@ Mirror `param_grid` (`target_sampling.rs:1496-1524`):
   last retained survivor, so a `top_k`-truncated row at `top_p = 1.0` must be
   allowed to produce a strict prefix; assert the same prefix as the oracle and
   that `out_nucleus_count` is not simply `survivor_count`.
+
+**As built in chunk 3a (stronger than the original wording).** The K3/K4 tie
+tests assert the **exact id multiset and the exact rank order**, not counts, and
+they do so on thousands-deep and flat tie groups:
+
+- 2048 survivors at 1.0 and 2048 at 0.5 with `k = 3000` → the cut keeps exactly
+  the 952 lowest **odd** ids;
+- three leaders over a 4093-token flat group with `k = 2000` → retained ids are
+  exactly `0..1999`, **asserted independently of the oracle helper**;
+- all-tied vocab 1024, `k ∈ {2,40,64,257,1000}` → ids `0..k-1`, also asserted
+  independently, plus a 256-token `-inf` tie group below one finite leader;
+- `-0.0` tie groups publish `+0.0`, matching `descending_radix_key`.
+
+**Mutation evidence (chunk 3a review).** Two deliberate mutants were built and
+run: a **keep-all-ties** K4 (vLLM/FlashInfer rule) and the **old `hi - lo < 3`
+termination**. **Both fail the suite**, so the exact-k lowest-id rule and the
+length-2 final probe are pinned by tests rather than by inspection
+(`runs/review3a/mutA_test`, `mutB_test`; `runs/chunk3a-scratch/REPORT.md` §2, §5).
 
 ### 12.5 min_p near-threshold sweeps
 
@@ -1959,26 +2078,30 @@ evidence; the wiring chunk is gated on wiring evidence plus the four §17.5 gaps
 | --- | --- | --- | --- | --- | --- |
 | 0 | **Design gate** | doc | this document | adversarial review passes; corrected facts §2 accepted | required |
 | 1 ✓ | **ABI + GPU prepare/greedy — DELIVERED (`9dffad0`)** | kernel + wiring | as planned: `ds41rt_v41_sampler_row_t` + helpers in `v41_sampling_gpu.h`, mask arena, `TargetSamplingWave`, C-ABI registration, FFI wrappers + `validate_v41_sampling_buffers`, `execute_block_sampled`, scheduler/pass wiring, K1 with the greedy/constrained branch. Passed three adversarial review rounds (two found wiring defects, one found a third; all fixed before commit) | **met for the delivered scope**: ABI validated end to end; device greedy/constrained-greedy parity vs the CPU oracle (81 device cases / 6552 assertions; 63-cell greedy parity grid); compact greedy path behaviourally unchanged; no full-row D2H for greedy rows; stochastic path behaviourally unchanged. Four coverage gaps carried to chunk 4 (§17.5) | required |
-| 2 ✓ | **KERNEL-ONLY: K2 fast path + device RNG + accumulation-order/`expf` evaluation — DELIVERED (working tree, commit pending; base `9dffad0`)** | kernel only | as planned: K1 stochastic reductions with host `ln_min_p`; the K2 fast path; the accumulation-order evaluation (sequential vs parallel segmented scan); the §12.9a `expf` experiment; per-cell mismatch rates at 8,192 seeded draws; device tests plus the FFI-level oracle test against the production CPU sampler. **No daemon/scheduler/scores changes** | **met and reviewed.** RNG **345/345 bit-equal** (extended grid incl. `2^63`, `u64::MAX`); `expf` **declared residual** with numbers (§6.3b: CUDA 15.4928% of weights / max 2 ulp, double 0.0173% / max 1 ulp and 3.37× slower); mismatch rates recorded per cell (§6.3c: 12.1193% overall, `near_uniform` 57.7502%, `tied` 0.0000%); distribution matches the analytic oracle within noise in every cell; device selftest **90 cases / 7,172 assertions** incl. the fast-path grid, seeded-replay, min_p-threshold and fallback regression cases; FFI oracle green (`v41_sampler_device_fast_path_matches_cpu_oracle`); both arches compile. **Honest limits (§18.4):** no daemon/E2E path; `sm_121` compile-only; the sequential full-grid rate is partly model-derived; the design's ≤0.10 ms/4-row gate is **missed** and is now a chunk-6/7 item. **The gate was kernel-only and deliberately did not close the §17.5 gaps** (chunk 4's) | required |
-| 3a | **KERNEL-ONLY: K3 + K4** | kernel only | K3 general-k pivot selection and K4 exact-k lowest-id tie prefix, with device tests against the CPU oracle | device top-k membership set equals the oracle's `ranked[..k]` for the full grid, all tie rows, `k ∈ {2,40,V-1,V,V+1}`, `top_p = 1.0` included; K3+K4 pass budget measured against §13.1 | required |
-| 3b | **KERNEL-ONLY: K5** | kernel only | K5 inclusive-prefix top-p (largest-key boundary, no `top_p = 1.0` shortcut, full-`S` fallback) plus the rank-order draw with the `nucleus_count - 1` fallback, with device tests | full parameter grid × masks × boundaries vs the ported `reference_select` (device level); the §12.3 `top_k + top_p = 1.0` prefix-overshoot oracle; all tie cases; `-inf`/NaN/min_p sweeps; vocab-not-divisible-by-32; total pass budget measured | required |
+| 2 ✓ | **KERNEL-ONLY: K2 fast path + device RNG + accumulation-order/`expf` evaluation — DELIVERED (`f0e7902`, on `9dffad0`)** | kernel only | as planned: K1 stochastic reductions with host `ln_min_p`; the K2 fast path; the accumulation-order evaluation (sequential vs parallel segmented scan); the §12.9a `expf` experiment; per-cell mismatch rates at 8,192 seeded draws; device tests plus the FFI-level oracle test against the production CPU sampler. **No daemon/scheduler/scores changes** | **met and reviewed.** RNG **345/345 bit-equal** (extended grid incl. `2^63`, `u64::MAX`); `expf` **declared residual** with numbers (§6.3b: CUDA 15.4928% of weights / max 2 ulp, double 0.0173% / max 1 ulp and 3.37× slower); mismatch rates recorded per cell (§6.3c: 12.1193% overall, `near_uniform` 57.7502%, `tied` 0.0000%); distribution matches the analytic oracle within noise in every cell; device selftest **90 cases / 7,329 assertions** incl. the fast-path grid, seeded-replay, min_p-threshold and fallback regression cases; FFI oracle green (`v41_sampler_device_fast_path_matches_cpu_oracle`); both arches compile. **Honest limits (§18.4):** no daemon/E2E path; `sm_121` compile-only; the sequential full-grid rate is partly model-derived; the design's ≤0.10 ms/4-row gate is **missed** and is now a chunk-6/7 item. **The gate was kernel-only and deliberately did not close the §17.5 gaps** (chunk 4's) | required |
+| 3a ✓ | **KERNEL-ONLY: K3 + K4 — DELIVERED (`90f745c`, on `4277898`)** | kernel only | K3 general-k pivot selection (true bound 21 passes, §4.3) and K4 exact-k lowest-id tie prefix plus the **rank-ordered id list** the §4.5 K5 contract consumes (§4.4), with device tests against the CPU oracle | **met and reviewed (mergeable).** Device selftest **219 cases / 44,780 assertions** (MEASURED) incl. the k-grid over 4 vocabularies, thousands-tied/all-tied/`-inf`/mask cases and the length-2 regression; **K3 max 21 passes** of the 32 cap (host recurrence, randomized simulation, device measurement); FFI **set-and-order** oracle green; **mutation-tested** — keep-all-ties and old-termination mutants both fail; both arches compile; purely additive diffs (0 deletions). **Honest limits (§19.4):** token-level end-to-end vs the production sampler deferred to 3b; no daemon/E2E; `sm_121` compile-only; large-k rank placement deferred to chunk 6 | required |
+| 3b | **KERNEL-ONLY: K5 — NEXT** | kernel only | K5 inclusive-prefix top-p (largest-key boundary, no `top_p = 1.0` shortcut, full-`S` fallback) plus the rank-order draw with the `nucleus_count - 1` fallback, consuming the chunk-3a rank-ordered id list through the fixed §4.5 entry point, with device tests | full parameter grid × masks × boundaries vs the ported `reference_select` (device level); the §12.3 `top_k + top_p = 1.0` prefix-overshoot oracle; all tie cases; `-inf`/NaN/min_p sweeps; vocab-not-divisible-by-32; total pass budget measured | required |
 | 4 | **WIRING — the single consolidated daemon chunk** | wiring | put stochastic rows on the sampled terminal; capability gates for layouts without the terminal (`DistributedTargetPass`); constrained mask preparation/upload for stochastic verification rows; retention gating and the incidental-download fix; remove the remaining full-row D2H for stochastic rows; **add the executed `upload → launch → output` end-to-end test**; delete the residual single-lane blocking `copy_d2h` for stochastic rounds | **closes all four §17.5 gaps**: the executed `upload → launch → output` end-to-end test (a chunk-4 acceptance gate, not chunk 2's); a daemon-level GPU end-to-end constrained-greedy round; the distributed capability gate; mixed greedy+stochastic rounds wired. Plus: §13.2 D2H accounting holds for stochastic rounds; sync count unchanged; no 517 KB per-row `Vec`; retention tests green; error strings per §5.4 and D1 | required |
 | 5 | **Full correctness validation + independent review** | validation | the complete matrix vs the CPU oracle: grid × masks × boundaries × ties; seeded replay across batch sizes, lanes, orderings and rejected drafts; distributional comparison; constrained speculation | §12.3–§12.10 all green; the `reference_select` port reviewed as a separate artifact from the kernel (§12.11) | required |
 | 6/7 | **Pass-budget optimisation (conditional), then measurement** | kernel/measurement | **now triggered for the launch-critical-path cost measured in chunk 2** (§13.1): try the levers in order — wider per-row blocks (256→512/1024), fold the owner walk into an existing pass, then the deterministic integer radix histogram (≤2048 buckets, fixed-order combine, u64 fixed-point mass) — and re-measure the per-cell mismatch rate after any segment-count change; then fixed-logit latency vs CPU and the published per-cell mismatch-rate measurement | pass budget ≤ the §13.1 gate after the chosen lever; mismatch rate re-measured for the shipped configuration; §13.7 criteria 3, 4 and 7 | required |
 | Phase 3–4 | **E2E campaign + release** | release | end-to-end campaign on 1× RTX + 4× Spark with dSpark (§13.3–§13.5), per-round timing (§13.6), README five-profile measurement update (`:214-260`), `docs/release-v11-performance.md` and release notes (§6.4), and the upstream/placement decision memo (former chunk 8) | §13.7 all criteria; workload identity; provenance/identity files; validated campaign | required |
 
-**Current position:** chunk 1 is delivered (`9dffad0`, §17) and its own review is
-closed. **Chunk 2 is delivered** — kernel-only, reviewed, working-tree changes
-pending commit (base `9dffad0`; §18 is the as-built record) — so its RNG and
-`expf` prerequisites for §12.9a are satisfied. **Chunk 3a (K3 + K4) is NEXT**, and
-remains kernel-only. The four chunk-1 coverage gaps (§17.5) belong to the
-**chunk-4 gate**, not chunk 2's. The design gate (chunk 0) is what this document
+**Current position:** chunk 1 is delivered (`9dffad0`, §17) and its review is
+closed; **chunk 2 is delivered** (`f0e7902`, §18), so its RNG and `expf`
+prerequisites for §12.9a are satisfied; **chunk 3a is delivered** (`90f745c`, on
+`4277898`; §19 is the as-built record) — kernel-only, reviewed and
+mutation-tested. **Chunk 3b (K5) is NEXT** and remains
+kernel-only. The four chunk-1 coverage gaps (§17.5) belong to the **chunk-4
+gate**, not to any kernel chunk. The design gate (chunk 0) is what this document
 is.
 
-Do not start chunk 3a before chunk 2's RNG **and** `expf` gates pass exactly: the
-RNG equality test is the only cheap way to separate a draw-stream bug from a
-filter bug, and the `expf` experiment is what tells the implementer whether the
-remaining token differences are the expected residual or a real defect.
+Do not start a later ordered-path chunk before chunk 2's RNG **and** `expf` gates
+pass exactly: the RNG equality test is the only cheap way to separate a
+draw-stream bug from a filter bug, and the `expf` experiment is what tells the
+implementer whether the remaining token differences are the expected residual or
+a real defect. **Chunk 2 satisfied both gates, so chunk 3a was correctly started
+and is delivered (§19); chunk 3b inherits the same settled `expf`/accumulation
+decisions and must not re-litigate them.**
 
 ---
 
@@ -2224,34 +2347,30 @@ graph legality) now matches the as-built code above and is the baseline chunks
 
 ---
 
-## 18. Chunk 2 as-built record (kernel-only, reviewed; working tree, commit pending)
+## 18. Chunk 2 as-built record (kernel-only, reviewed; committed as `f0e7902`)
 
 Chunk 2 (K2 fast path) passed adversarial review and is recorded here **before
 chunk 3a/3b start**, because §12.9a makes the `expf` outcome a prerequisite for
-the ordered path. Chunk 2 is uncommitted working-tree work on base revision
-`9dffad0`; no daemon, scheduler or scores file was touched, and the kernel
-`.cu`/`.h` plus the FFI diff are purely additive (`0` deleted lines).
+the ordered path. It is committed as `f0e7902` on base revision `9dffad0`; no
+daemon, scheduler or scores file was touched, and the kernel `.cu`/`.h` plus the
+FFI diff are purely additive (`0` deleted lines).
 
-### 18.1 Files and content hashes (from `runs/chunk2-scratch/REPORT.md` §1)
+### 18.1 Files and content hashes (hashes of the committed `f0e7902` blobs)
 
 | File | sha256 | Change |
 | --- | --- | --- |
 | `native/cuda/kernels/v41_sampling_gpu.h` | `a5286f336abe4cd15e70d0759736b2079f5e7dbd74a3a65c4e44568e1ed06b74` | adds `ds41rt_v41_target_uniform` (`:198`) and `ds41rt_v41_target_clamp_uniform` (`:210`) |
-| `native/cuda/kernels/v41_sampling_gpu.cu` | `0f79fa3bd3ba279e71c3fa13fef8afe00294479d7b49a854859d9c44c91d0dfd` | adds `v41_sample_categorical_kernel` (`:475`), `k2_applicable` (`:418`), `k2_weight` (`:447`), `tree_max_u32` (`:142`), the launch switch (`:738-744`) and the two build macros (`:42-57`) |
-| `native/tests/v41_sampling_selftest.cu` | `aac44c9e8533825401bca13ba2ba67001d237d8fd084ecdfcb8bec4386883da6` | `+801/−0`: the K2 test set, existing K1 assertions untouched |
-| `rust/crates/ds41rt-ffi/src/lib.rs` | `97135f6806f5174ec343da2af700a71c80ab06c7bc1e2e0538fc39179d929da1` | adds the device-test loader (`:18535`) and the production-oracle test (`:19245` now; `:19215` in the reviewed revision) |
+| `native/cuda/kernels/v41_sampling_gpu.cu` | `b313fd82b15ba5f011dce284ed6fa4fd3919df7185ffae9cfc9ba9231584bc4f` | adds `v41_sample_categorical_kernel` (`:475`), `k2_applicable` (`:418`), `k2_weight` (`:447`), `tree_max_u32` (`:142`), the launch switch (`:738-744`) and the two build macros (`:42-57`) |
+| `native/tests/v41_sampling_selftest.cu` | `48b8cb0b99d195a0fddabe3d8b0eaae55cc55149210c2a0db166f1e34a2716f8` | the K2 test set; existing K1 assertions untouched |
+| `rust/crates/ds41rt-ffi/src/lib.rs` | `e9652d0c56bea7d7bc1f010d086e2d73642610de02dd9fdd34a884792ddeb583` | adds the device-test loader (`:18535`) and the production-oracle test (`:19245` now; `:19215` in the reviewed revision) |
 
-**Hash provenance and working-tree drift.** The hashes above are the reviewed
-chunk-2 revision recorded in `runs/chunk2-scratch/REPORT.md` §1. As of this
-document edit the working tree has already advanced:
-`v41_sampling_gpu.cu` = `b313fd82b15ba5f011dce284ed6fa4fd3919df7185ffae9cfc9ba9231584bc4f`,
-`native/tests/v41_sampling_selftest.cu` =
-`48b8cb0b99d195a0fddabe3d8b0eaae55cc55149210c2a0db166f1e34a2716f8`,
-`rust/crates/ds41rt-ffi/src/lib.rs` =
-`e9652d0c56bea7d7bc1f010d086e2d73642610de02dd9fdd34a884792ddeb583` (the `.h` is
-unchanged at `a5286f33…`). Chunk 2's commit must therefore either capture the
-reviewed revision or re-verify the delta; the line numbers in this section are
-from the current tree and drift as later chunks add lines.
+**Hash provenance.** These are the blobs actually committed as chunk 2. The
+chunk-2 report (`runs/chunk2-scratch/REPORT.md` §1) lists an **earlier** revision
+of three of them (`.cu` `0f79fa3b…`, selftest `aac44c9e…`, `lib.rs` `97135f68…`;
+the `.h` matches). The committed `f0e7902` is the reviewed behaviour plus the
+final test additions, so the commit, not the report table, is the authoritative
+chunk-2 revision; line numbers in this section are from it and drift as later
+chunks add lines.
 
 Build macros are `DS41RT_V41_K2_SEQUENTIAL_COMBINE` (default 0) and
 `DS41RT_V41_K2_WEIGHT_DOUBLE` (default 0), compile-time switches only — neither
@@ -2284,10 +2403,10 @@ unchanged.
 
 - RNG bit-equality: **345/345** device-vs-host cases including `2^63` and
   `u64::MAX`; `MAX_UNIFORM` clamp pinned separately.
-- Device selftest: **90 cases / 7,172 assertions** (K1's 81 cases unchanged and
-  green), including the fast-path grid, seeded replay, min_p-threshold-token
-  cases, tied/edge rows, `k2_applicable == false` rows, and the fallback
-  regression.
+- Device selftest: **90 cases / 7,329 assertions** (K1's 81 cases unchanged and
+  green; the count was corrected from an earlier 7,172 draft figure), including
+  the fast-path grid, seeded replay, min_p-threshold-token cases, tied/edge rows,
+  `k2_applicable == false` rows, and the fallback regression.
 - FFI: **7/7** `v41_sampler` tests green, including the production-oracle
   fast-path test; both arches (`sm_120`, `sm_121`) compile.
 - Latency and `expf`/mismatch measurements: `runs/chunk2-scratch/out/*.json`
@@ -2319,6 +2438,102 @@ reuse the same `order_key`/total-order primitive (§4.3–§4.5), keep `total` o
 the tree for any categorical walk, and follow the §12.2 test conventions. The
 `expf` and accumulation-order decisions of §6.3b/§6.5.3 are settled and are not
 re-litigated in the ordered path.
+
+---
+
+## 19. Chunk 3a as-built record (K3 + K4, kernel-only, reviewed; committed as `90f745c`)
+
+Chunk 3a passed adversarial review as **mergeable**, verified by execution and by
+mutation testing. It is committed as `90f745c` on base `4277898` (chunks 1 and 2
+committed). It adds new **additive** entry points; the chunk-1/chunk-2
+`ds41rt_cuda_v41_target_sample[_async]` path, the 64-byte ABI struct and the
+daemon are byte-for-byte untouched.
+
+### 19.1 Files and content hashes (hashes of the committed `90f745c` blobs)
+
+| File | sha256 | Change |
+| --- | --- | --- |
+| `native/cuda/kernels/v41_sampling_gpu.h` | `f9cc3fc2a2829628e20d71f03e3ff58b6af0bfbb9a2798c8848ee06898e458f8` | adds `ds41rt_v41_order_key` / `ds41rt_v41_ordered_value`, the rank-order contract, `DS41RT_V41_TOPK_MAX_PIVOT_STEPS = 32`, and `ds41rt_cuda_v41_topk_select[_async]` |
+| `native/cuda/kernels/v41_sampling_gpu.cu` | `deca8344017865cf0c7f3baac810106090c68c4749c3f0c6ea1cd65abb2bf393` | adds `tree_add_u32_pair`, `tree_inclusive_scan_u32`, `k3_scaled`/`k3_survivor`/`k3_eligible`, `v41_sample_topk_pivot_kernel` (K3), `v41_sample_topk_membership_kernel` (K4), `validate_topk_select_args`, and the two entry points |
+| `native/tests/v41_sampling_selftest.cu` | `08276847bcce9fb8c43f12233a032315bfdc55f1adaba1b9b573af7285c96716` | adds the CPU top-k oracle, `run_topk_case`, the five K3/K4 tests and the pass-budget print |
+| `rust/crates/ds41rt-ffi/src/lib.rs` | `bf640ef0a5e86d1774496e95097f795b33191c852ef206ba9d93382120dfab75` | adds the two K3/K4 FFI wrappers, `validate_v41_topk_select_buffers`, the `TopkRun`/`v41_expected_topk` helpers and the FFI set-and-order oracle test |
+
+`git diff --numstat` for the four paths is `457/0`, `111/0`, `849/0`, `736/0` —
+purely additive, **0 deleted lines** in each
+(`runs/chunk3a-scratch/REPORT.md` §1; note the committed selftest carries 8 more
+lines than the report's `0095b9e8…` / `841` snapshot, so the commit is the
+authoritative chunk-3a revision).
+
+### 19.2 Decisions and corrections settled by chunk 3a
+
+1. **K3 worst case is 21 passes, not "≤ 20"** (§4.3), confirmed by a host
+   interval recurrence, a randomized host simulation, and device measurement
+   against the 32-step defensive cap.
+2. **Termination bug fixed** (§4.3): the old `hi - lo < 3` stop could return
+   `kth+1` from a length-2 interval (261/20,000 random cases), cutting the tie set
+   short. The loop now probes while `hi - lo >= 2` with a load-bearing
+   `hi - lo == 2` final probe; seven concrete keys are pinned by
+   `test_k3_k4_length_two_interval`.
+3. **K4 emits a rank-ordered id list, not a bitmap** (§4.4) — descending
+   `order_key`, ties ascending id, `-0.0` → `+0.0`, exactly the CPU's total-order
+   permutation; O(k) memory; rank placement is O(k²/256) counting.
+4. **K5's entry point is fixed** (§4.5): `ds41rt_cuda_v41_topk_select_async(...)`
+   with the exact parameter list, `rank 0` best, `capacity == 0` =
+   selection-only, capacity `>= max top_k` enforced by FFI and re-checked in the
+   kernel, `kth_value_bits`/`above_count` published, and CPU-identical
+   eligibility/no-op rules.
+5. **Tie tests assert exact id multiset and order**, not counts, with the
+   all-tied case independent of the oracle (§12.4).
+6. **Mutation evidence**: a keep-all-ties K4 mutant and the old-termination
+   mutant both fail the suite (`runs/review3a/mutA_test`, `mutB_test`).
+7. **Validator trust-level note** (§5.4): the raw-C `validate_topk_select_args`
+   does not re-check `output_row` bounds while the FFI validator does; chunk 4
+   must enforce it at the FFI boundary.
+
+### 19.3 Evidence (MEASURED)
+
+- **Device selftest: 219 cases / 44,780 assertions** — the executed binary's own
+  output, matching the committed selftest blob
+  `08276847bcce9fb8c43f12233a032315bfdc55f1adaba1b9b573af7285c96716` and
+  `runs/chunk3a-scratch/REPORT.md` §4. *(Resolved provenance: an earlier chunk-3a
+  revision reported 219 cases / 39,710 assertions; the reviewer asked for one more
+  coverage assertion — eligible rows must leave arena entries `[k, capacity)` at
+  the sentinel — the implementer added it, and the re-run gave 44,780. The 39,710
+  figure was therefore superseded, and 44,780 is the reviewed, committed count.)*
+- **K3 pass budget: max 21 of the 32 cap**, host worst-case bound 21 — printed by
+  the selftest.
+- The chunk-1/chunk-2 suite is independently reproduced unchanged at
+  **90 cases / 7,329 assertions** by rebuilding the `HEAD` revision
+  (`runs/chunk3a-scratch/selftest_head.cu`), so the additive claim is verified,
+  not asserted.
+- **FFI set-and-order oracle green**; the default sweep is 5 passed / 3 ignored,
+  and the explicit device run is 3 passed (greedy, fast-path, top-k).
+- Both arches compile (`sm_120`, `sm_121`).
+- `runs/` is gitignored (risk R10): the committed evidence is the selftest and
+  FFI test source; the scratch report carries the artifact hashes.
+
+### 19.4 Honest limits
+
+1. **No token-level end-to-end comparison against the production sampler yet.**
+   K3/K4 produce the retained set; the first end-to-end token comparison is
+   deliberately deferred to chunk 3b, when K5 completes the ordered path.
+2. **No daemon or E2E path** — chunk 3a is kernel-only; the §17.5 gaps stay open
+   for chunk 4.
+3. **`sm_121` is compile-only**; execution was on `sm_120`.
+4. **Large-k rank placement is deferred.** O(k²/256) rank counting is fine at the
+   served `k = 40` and to `k ≈ 1000`, but sluggish by `k ≈ 4093` and unusable near
+   `k ≈ vocab`; wide-k coverage here is selection-only, and the chunk-6 histogram
+   owns the large-k case.
+5. **Arena sizing and the k-beyond-capacity fallback are undecided** (chunk 4).
+
+### 19.5 What chunk 3b inherits
+
+K5 must consume `rank_order_ids` through the §4.5 entry point, iterate ranks
+`0..k-1` recomputing `scaled`/`w` per rank as `sample_from_ranked` does, keep the
+largest-key boundary direction and the `top_p = 1.0` strict-prefix rule (§4.5),
+and add the token-level oracle comparison that chunk 3a deferred. The `order_key`
+canonicalization, the exact-k lowest-id tie rule and the 21-pass K3 bound are
+settled and must be pinned unchanged by K5's tests.
 
 ---
 
