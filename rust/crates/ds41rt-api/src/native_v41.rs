@@ -16,8 +16,10 @@ use deepseek_recipe::{
     util::append_delta::AppendDelta,
 };
 use deepseek_recipe_encoding::{v4::dsv41::DeepseekV41Encoding, PromptEncoding};
+use ds41rt_core::TargetSamplingParams;
 use futures::StreamExt;
 use serde_json::{json, Value};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
@@ -53,6 +55,10 @@ pub struct NativeRequest {
     pub constraint: Option<NativeConstraint>,
     pub images: Vec<ds41rt_loader::V41Image>,
     pub max_tokens: usize,
+    /// Resolved target-sampling parameters. `TargetSamplingParams::greedy()`
+    /// keeps the legacy device-argmax route; anything else selects from the
+    /// full vocabulary through the shared exact sampler.
+    pub sampling: TargetSamplingParams,
     pub events: mpsc::Sender<Result<InferenceChunk, NativeFailure>>,
 }
 /// Serving statistics the CUDA owner publishes (a JSON object; `null` until the first publish).
@@ -119,6 +125,67 @@ fn error(status: StatusCode, message: impl ToString) -> Response {
     )
         .into_response()
 }
+
+static NEXT_TARGET_SEED: AtomicU64 = AtomicU64::new(0);
+
+fn generated_target_seed() -> u64 {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos() as u64;
+    now ^ NEXT_TARGET_SEED.fetch_add(0x9e37_79b9_7f4a_7c15, Ordering::Relaxed)
+}
+
+/// Resolve the served target-sampling parameters from the raw request body.
+///
+/// `top_k`, `min_p` and the signed `seed` are not part of the pinned
+/// `deepseek-recipe` adapter, so they are read here. `top_p`/`temperature` are
+/// also re-read so one validator owns the whole sampling contract.
+///
+/// Greedy is the served default: an absent or zero `temperature` keeps the
+/// legacy argmax route and ignores the other filters. Once sampling is opted
+/// into, unspecified filters are disabled (`top_p = 1`, no `top_k`,
+/// `min_p = 0`) rather than silently inheriting a truncation.
+fn request_target_sampling(body: &Value) -> Result<TargetSamplingParams, String> {
+    let number = |name: &str| -> Result<Option<f64>, String> {
+        match body.get(name) {
+            None | Some(Value::Null) => Ok(None),
+            Some(value) => value
+                .as_f64()
+                .map(Some)
+                .ok_or_else(|| format!("{name} must be a finite number")),
+        }
+    };
+    let temperature = number("temperature")?.unwrap_or(0.0) as f32;
+    let top_p = number("top_p")?.unwrap_or(1.0) as f32;
+    let min_p = number("min_p")?.unwrap_or(0.0) as f32;
+    let top_k = match body.get("top_k") {
+        None | Some(Value::Null) => None,
+        Some(value) => {
+            let k = value
+                .as_i64()
+                .ok_or_else(|| "top_k must be an integer".to_owned())?;
+            if k == 0 || k == -1 {
+                None
+            } else if k < 0 {
+                return Err("top_k must be -1, 0, or a positive integer".to_owned());
+            } else {
+                Some(k as usize)
+            }
+        }
+    };
+    let seed = match body.get("seed") {
+        None | Some(Value::Null) => generated_target_seed(),
+        Some(value) => {
+            let seed = value
+                .as_i64()
+                .ok_or_else(|| "seed must be an integer".to_owned())?;
+            TargetSamplingParams::seed_from_i64(seed)
+        }
+    };
+    TargetSamplingParams::new(temperature, top_p, top_k, min_p, seed)
+        .map_err(|error| error.to_string())
+}
 async fn chat(State(state): State<NativeState>, Json(mut body): Json<Value>) -> Response {
     let assistance = match body.get("tool_decoding_assistance") {
         None | Some(Value::Null) => true,
@@ -160,6 +227,15 @@ async fn chat(State(state): State<NativeState>, Json(mut body): Json<Value>) -> 
     if response_format.as_ref().and_then(|v| v.get("type")).and_then(Value::as_str) == Some("regex") {
         body["response_format"] = json!({"type":"text"});
     }
+    let sampling = match request_target_sampling(&body) {
+        Ok(sampling) => sampling,
+        Err(message) => return error(StatusCode::BAD_REQUEST, message),
+    };
+    // The adapter's `seed` field is `u64`; ds41rt keeps the signed convention,
+    // so drop it after resolution to keep a negative seed from failing serde.
+    if let Some(object) = body.as_object_mut() {
+        object.remove("seed");
+    }
     let mut parsed: ChatCompletionRequest = match serde_json::from_value(body) {
         Ok(r) => r,
         Err(e) => return error(StatusCode::BAD_REQUEST, e),
@@ -178,12 +254,6 @@ async fn chat(State(state): State<NativeState>, Json(mut body): Json<Value>) -> 
     }
     if converted.model.as_deref() != Some(MODEL) {
         return error(StatusCode::BAD_REQUEST, format!("model must be {MODEL}"));
-    }
-    if converted.inference_options.temperature.unwrap_or(0.0) != 0.0 {
-        return error(
-            StatusCode::BAD_REQUEST,
-            "native target sampling currently requires temperature=0",
-        );
     }
     let max_tokens = match state.limits.requested_output(converted.inference_options.max_tokens) {
         Ok(limit) => limit,
@@ -253,6 +323,7 @@ async fn chat(State(state): State<NativeState>, Json(mut body): Json<Value>) -> 
         constraint,
         images: prepared,
         max_tokens,
+        sampling,
         events,
     };
     permit.send(job);

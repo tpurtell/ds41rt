@@ -6,8 +6,12 @@
 //! - `tests/v1/logits_processors/test_correctness.py` (30 tests)
 //!
 //! ds41rt has no `trace_decode_token_ids`, `repetition_penalty`,
-//! `logit_bias`, `min_p`, or `min_tokens` logits-processor surface in the
-//! API crate: sampling validation lives in `crate::request::validate_request`
+//! `logit_bias`, or `min_tokens` logits-processor surface in the API crate.
+//! `min_p` is accepted by the request model, but the legacy `real-ds4-full`
+//! sampler does not implement it: `validate_request` rejects a nonzero value
+//! with an explicit unsupported-backend error instead of silently ignoring it
+//! (the production `serve-native` path implements min_p from the raw body).
+//! Sampling validation lives in `crate::request::validate_request`
 //! and `crate::request::request_sampling_params`, and the logits-processor
 //! semantics are implemented natively (GPU). Each section below states the
 //! mapping from the upstream test to the ds41rt behaviour it pins down; the
@@ -27,6 +31,7 @@ fn sampling_request() -> crate::ChatCompletionRequest {
     request.temperature = None;
     request.top_p = None;
     request.top_k = None;
+    request.min_p = None;
     request.seed = None;
     request
 }
@@ -200,6 +205,41 @@ fn sampling_params_rejects_above_range_top_k() {
     let mut request = sampling_request();
     request.top_k = Some(65);
     assert_invalid(&request, "top_k");
+}
+
+/// The legacy backend has no min_p kernel. A nonzero request must fail loudly
+/// with the offending parameter named, never be silently ignored.
+#[test]
+fn sampling_params_rejects_nonzero_min_p_as_unsupported() {
+    let mut request = sampling_request();
+    request.temperature = Some(1.0);
+    request.min_p = Some(0.05);
+    let error = validate_request(&request).expect_err("nonzero min_p must be rejected");
+    assert_eq!(error.param.as_deref(), Some("min_p"));
+    assert!(
+        error.message.contains("not supported"),
+        "rejection must name the unsupported backend: {}",
+        error.message
+    );
+}
+
+/// `min_p = 0` is the disabled bound and remains a no-op on the legacy path.
+#[test]
+fn sampling_params_accepts_disabled_min_p() {
+    let mut request = sampling_request();
+    request.temperature = Some(1.0);
+    request.min_p = Some(0.0);
+    assert_valid(&request);
+}
+
+/// Out-of-domain min_p is rejected by the shared domain validator.
+#[test]
+fn sampling_params_rejects_out_of_domain_min_p() {
+    for value in [-0.1_f32, 1.5, f32::NAN, f32::INFINITY] {
+        let mut request = sampling_request();
+        request.min_p = Some(value);
+        assert_invalid(&request, "min_p");
+    }
 }
 
 // ---------------------------------------------------------------------------

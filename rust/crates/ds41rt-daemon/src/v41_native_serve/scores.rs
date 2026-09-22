@@ -1,10 +1,20 @@
 //! Preserve raw scores at retained frontiers so a new grammar can select a
 //! different first token without replaying an otherwise exact KV prefix.
 use anyhow::{ensure, Result};
+use ds41rt_core::TargetSamplingParams;
 use std::sync::Arc;
 
 pub(super) const VOCAB: usize = 129_280;
 pub(super) const ROW_BYTES: usize = VOCAB * 4;
+
+/// Materialize one device logit row for the exact full-vocabulary sampler.
+fn row_logits(bytes: &[u8]) -> Result<Vec<f32>> {
+    ensure!(bytes.len() == ROW_BYTES, "target logit row extent differs");
+    Ok(bytes
+        .chunks_exact(4)
+        .map(|word| f32::from_ne_bytes(word.try_into().unwrap()))
+        .collect())
+}
 
 #[derive(Clone)]
 pub(super) struct TokenScores {
@@ -22,6 +32,23 @@ impl TokenScores {
             None => Ok(self.best),
             Some(mask) => argmax(&self.bytes, Some(mask)),
         }
+    }
+    /// Exact full-vocabulary sample at an absolute emitted-token position.
+    /// Greedy parameters keep the existing argmax path unchanged.
+    pub fn sample(
+        &self,
+        mask: Option<&[u32]>,
+        params: TargetSamplingParams,
+        position: u64,
+    ) -> Result<u32> {
+        if params.is_greedy() {
+            return self.select(mask);
+        }
+        let logits = row_logits(&self.bytes)?;
+        params
+            .select_token(&logits, mask, position)
+            .map(|token| token as u32)
+            .map_err(|error| anyhow::anyhow!("{error}"))
     }
 }
 
@@ -70,6 +97,30 @@ impl BatchScores {
                 argmax(&self.bytes[row * ROW_BYTES..(row + 1) * ROW_BYTES], Some(mask))
             },
         }
+    }
+    /// Exact full-vocabulary sample of one row at an absolute emitted-token
+    /// position. Requires the full logits (a stochastic lane disables the
+    /// compact greedy path), and keeps the argmax route for greedy parameters.
+    pub fn sample(
+        &self,
+        row: usize,
+        mask: Option<&[u32]>,
+        params: TargetSamplingParams,
+        position: u64,
+    ) -> Result<u32> {
+        ensure!(row < self.best.len(), "sampled logit row is outside batch");
+        if params.is_greedy() {
+            return self.select(row, mask);
+        }
+        ensure!(
+            self.bytes.len() == self.best.len() * ROW_BYTES,
+            "stochastic selection requires full logits"
+        );
+        let logits = row_logits(&self.bytes[row * ROW_BYTES..(row + 1) * ROW_BYTES])?;
+        params
+            .select_token(&logits, mask, position)
+            .map(|token| token as u32)
+            .map_err(|error| anyhow::anyhow!("{error}"))
     }
     // Diagnostic only: scores are already on the host. Callers gate the scan
     // behind the logit trace target so normal serving incurs no extra work.
@@ -191,5 +242,52 @@ mod tests {
         assert_eq!(batch.best, [17]);
         assert_eq!(batch.top_two(0).unwrap(), [(17, -2.), (91, -2.)]);
         assert!(batch.top_two(1).is_err());
+    }
+    #[test]
+    fn stochastic_sample_is_deterministic_and_masks_first() {
+        let batch = BatchScores::new([row(91), row(93)].concat()).unwrap();
+        let params =
+            ds41rt_core::TargetSamplingParams::new(1.0, 1.0, None, 0.0, 5).unwrap();
+        assert!(!params.is_greedy());
+        // Same request position and seed replay the same token.
+        let first = batch.sample(0, None, params, 0).unwrap();
+        assert_eq!(first, batch.sample(0, None, params, 0).unwrap());
+        // Greedy parameters keep the argmax route exactly.
+        assert_eq!(batch.sample(0, None, ds41rt_core::TargetSamplingParams::greedy(), 0).unwrap(), 91);
+        // A grammar mask restricts the draw to the allowed token.
+        let mut mask = vec![0u32; VOCAB.div_ceil(32)];
+        mask[0] = 1 << 17;
+        for position in 0..32 {
+            assert_eq!(batch.sample(0, Some(&mask), params, position).unwrap(), 17);
+        }
+    }
+    #[test]
+    fn stochastic_sample_requires_full_logits() {
+        let compact = BatchScores::from_greedy(vec![(91, 4.)]).unwrap();
+        assert!(!compact.has_full_logits());
+        let params =
+            ds41rt_core::TargetSamplingParams::new(1.0, 1.0, None, 0.0, 5).unwrap();
+        assert!(compact.sample(0, None, params, 0).is_err());
+        // The greedy route still works without logits.
+        assert_eq!(
+            compact
+                .sample(0, None, ds41rt_core::TargetSamplingParams::greedy(), 0)
+                .unwrap(),
+            91
+        );
+    }
+    #[test]
+    fn token_scores_sample_matches_batch_scores() {
+        let bytes = row(91);
+        let single = TokenScores::new(bytes.clone()).unwrap();
+        let batch = BatchScores::new(bytes).unwrap();
+        let params =
+            ds41rt_core::TargetSamplingParams::new(0.9, 0.95, Some(8), 0.01, 77).unwrap();
+        for position in 0..16 {
+            assert_eq!(
+                single.sample(None, params, position).unwrap(),
+                batch.sample(0, None, params, position).unwrap()
+            );
+        }
     }
 }

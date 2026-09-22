@@ -192,6 +192,89 @@ from the EXL3 5090+2-spark runs above, none qualifies either new quant.
 
 Historical EXL3 performance, acceptance and quantization analysis are preserved in the [v5 performance report](https://github.com/tpurtell/ds41rt/blob/v5/docs/release-v5-performance.md); they are not v6 measurements.
 
+**Sampling comparison (infrastructure and metadata; no measurements yet).** The
+release decode battery `scripts/bench-ds41-release-decode.py` keeps the
+nine-category weighted corpus, per-category weights and decode-only metric of
+the headline table above, and additionally drives five canonical sampling
+profiles with an explicit per-request seed and an optional fixed generated
+length. Every profile states all four filters, so a run cannot silently inherit
+a server default: unrelated filters are disabled with the vLLM conventions
+(`top_k=0` disables top-k, `top_p=1.0` disables nucleus, `min_p=0.0` disables
+min-p), and `temperature=0` is the greedy control, which by construction ignores
+the other filters.
+
+| Profile | temperature | top_p | top_k | min_p |
+|---|---:|---:|---:|---:|
+| `greedy` | 0.0 | 1.0 | 0 (disabled) | 0.0 |
+| `temp0.2-topp0.95` | 0.2 | 0.95 | 0 (disabled) | 0.0 |
+| `temp0.7-topp0.9` | 0.7 | 0.9 | 0 (disabled) | 0.0 |
+| `temp0.7-minp0.05` | 0.7 | 1.0 | 0 (disabled) | 0.05 |
+| `temp0.7-topk40` | 0.7 | 1.0 | 40 | 0.0 |
+
+Each report records the requested vector, the exact fields sent, the seed and
+its source, the EOS/fixed-length policy, every per-sample actual
+`completion_tokens`, and per-case medians across repeats. `--fixed-decode-tokens
+N` pins the generated length: it sets `ignore_eos`, `min_tokens=N` and
+`max_tokens=N`, so `max_tokens` bounds every case at `N` whether or not the
+server honours `ignore_eos`/`min_tokens`; when the server does not honour them
+the samples simply finish earlier, and the actual token counts and a
+`fixed_length_honored` verdict are recorded instead of assumed. Warmup follows
+the release protocol: before the timed rotation, one discarded full invocation
+per profile runs the same category shapes with a distinct `--nonce-seed`, writing
+`warmup-*` files that stay outside the aggregate glob and are never scored. That
+pass warms execution shapes, kernels, workspace and adaptive state, and it uses
+fresh unique prompts, with the nonce seeded as the first user-content token
+ahead of the category prompt. Native shared-prefix caching is preserved rather
+than disabled: because the nonce comes first, the only prefix a warmup and a
+timed sample can share is the invariant chat-template header, and the harness
+does not assume that sharing is zero. It records each sample's
+`prompt_cache_hit_tokens` and requires a bounded static-prefix hit (at most 32
+tokens) for the sample to pass, so a larger donated prefix is a recorded failure
+rather than a claim. Every timed `(repeat, case)` nonce is also unique, and this
+campaign has no retained-context cells. Stochastic profiles require an explicit
+`--seed`. The harness is strict-only: a vector the engine cannot express is a
+hard request error, never a silent substitution.
+Each run embeds a hardware, software and container-image identity snapshot
+(`--identity-file`) alongside the measured source revision, the harness SHA-256
+and the source label; the release-document commit is assigned only at render
+time and is distinct from the measurement source revision. Because the campaign
+interleaves the profiles by repeat (rotating the order each repeat) so a slow
+drift hits every profile equally, `scripts/aggregate-sampling-decode.py` combines
+the per-repeat raw reports into per-profile weighted medians and reports the
+observed execution order, flagging a profile-major ordering instead of hiding
+it. dSpark activity is not exposed in the usage block or `/v1/stats`, so a claim
+that drafts were active for a stochastic profile needs a separate untimed
+runtime-log pass
+(`RUST_LOG='info,ds41rt::timing=debug,ds41rt::cost_model=debug'`, which `run.sh`
+does forward to the coordinator and every worker); the adaptive gate may
+legitimately suppress drafts at poor acceptance, so actual activity is recorded
+rather than forced, and a suppressed-draft run is never reported as active
+dSpark. **No sampling-comparison measurements are published.** The v11 candidate
+implements the native stochastic sampling path, so all five profiles are
+runnable on the candidate build; the legacy runtime is not extended. The greedy
+fast path is unchanged, which is an implementation statement and **not** a
+measured "no change" — this section claims no performance result for any profile.
+The scope is the native production path: one RTX coordinator plus the four
+configured Spark workers.
+
+Sampling facts for this engine (native candidate):
+
+- `temperature < 1e-5` is greedy, and a request that omits `temperature` is
+  greedy. This is ds41rt-specific and deliberately differs from vLLM's default
+  temperature of 1.0.
+- `top_k=0` or `-1` disables top-k; `top_k` greater than or equal to the
+  vocabulary size is a no-op; otherwise top-k keeps that many tokens.
+- `seed` is a signed 64-bit integer and is wrapped deterministically, including
+  `-1`. vLLM maps only `seed == -1` to unseeded and otherwise uses negative
+  seeds as given; ds41rt does not adopt that convention.
+- The host stochastic sampler applies filters in the order
+  mask → temperature → min_p → top_k → top_p.
+- Under stochastic sampling dSpark stays active through sample-and-match
+  verification (target draws and proposals are compared, and the same draw emits
+  on a mismatch); it is not a rejection-sampling algorithm.
+- A seed reproduces the same logits and execution path; it does not promise
+  universal cross-batch determinism.
+
 ## Getting started
 
 The release topology requires:

@@ -208,6 +208,23 @@ pub(crate) fn validate_request(request: &ChatCompletionRequest) -> Result<(), Ap
             Some("top_k"),
         ));
     }
+    if let Some(min_p) = request.min_p {
+        if !min_p.is_finite() || !(0.0..=1.0).contains(&min_p) {
+            return Err(invalid_request(
+                "min_p must be a finite number between 0 and 1",
+                Some("min_p"),
+            ));
+        }
+        if min_p > 0.0 {
+            // Honest unsupported-backend rejection: the legacy real-ds4-full
+            // sampler has no min_p kernel. Do not silently ignore the filter.
+            return Err(invalid_request(
+                "min_p is not supported by the legacy real-ds4-full backend; \
+                 use the native serve-native backend",
+                Some("min_p"),
+            ));
+        }
+    }
     if let Some(effort) = request.reasoning_effort.as_ref() {
         let valid = effort.as_str().is_some_and(|effort| {
             matches!(
@@ -620,6 +637,7 @@ pub(crate) fn real_ds4_full_prompt_text(messages: &[ChatMessage]) -> String {
         temperature: None,
         top_p: None,
         top_k: None,
+        min_p: None,
         seed: None,
         stop: None,
         response_format: None,

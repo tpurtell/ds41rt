@@ -25,7 +25,7 @@ pub(crate) fn exercise_distributed_decode<'t, 'd, 'a: 'd>(lib: &'a NativeLibrary
     let mut prefixes = PrefixCache::new(2);
     let image_keys = prefixes.prepare_key(tokens, &[])?;
     let mut request = Active { constraint: None, id, lease,
-        job: NativeRequest { prompt: String::new(), constraint: None, images: Vec::new(), max_tokens: 4, events },
+        job: NativeRequest { prompt: String::new(), constraint: None, images: Vec::new(), max_tokens: 4, sampling: Default::default(), events },
         decoder: ds41rt_loader::streaming_token_decoder(snapshot, false)?, anchor,
         generated: 0, buffered: 0, lane: 0, finished: false, cacheable: false,
         tokens: tokens.to_vec(), image_keys, next_after_commit: None };
@@ -320,7 +320,8 @@ pub(super) fn serve<'w, 'a, P: ServingTarget<'w, 'a>>(lib: &'a NativeLibrary, ar
                 }
                 tracing::debug!(request_id=id, prompt_tokens=prompt.len(), cached_tokens=cached, "native prefix admission");
                 let mask = constraint.as_mut().map(|state| state.mask()).transpose()?.flatten();
-                let anchor = scores.select(mask)?;
+                // The first generated token is emitted-token index 0.
+                let anchor = scores.sample(mask, job.sampling, 0)?;
                 Ok(Active { constraint, id, lease, job, decoder, anchor, generated: 0, buffered: 0, lane,
                     finished: false, cacheable: false, tokens: prompt, image_keys, next_after_commit: Some(scores) })
             })();
@@ -455,7 +456,10 @@ fn single_lane_round<'w, 'a>(lib: &'a NativeLibrary, runtime: &tokio::runtime::R
     let prepare_us = prepare_start.elapsed().as_micros() as u64;
     let prepared_us = started.elapsed().as_micros() as u64;
     let compact = !tracing::enabled!(target: "ds41rt::logit_trace", tracing::Level::DEBUG)
-        && members.iter().all(|&slot| active[slot].as_ref().unwrap().constraint.is_none());
+        && members.iter().all(|&slot| {
+            let request = active[slot].as_ref().unwrap();
+            request.constraint.is_none() && request.job.sampling.is_greedy()
+        });
     let batch_id = batch.as_ref().unwrap().cache()?.identity();
     if tracing::enabled!(target: "ds41rt::cost_model", tracing::Level::DEBUG) {
         if let Some(draft) = draft.as_deref() {
@@ -495,6 +499,24 @@ fn single_lane_round<'w, 'a>(lib: &'a NativeLibrary, runtime: &tokio::runtime::R
     result
 }
 
+/// Sample one unconstrained stochastic request's verification rows.
+///
+/// `offset` is the request's anchor row in the flattened batch and
+/// `base_position` is its absolute emitted-token index. Draws are keyed on
+/// `base_position + index`, never on the batch row, so a member's position in a
+/// multi-request round and any rejected draft rows cannot shift its stream.
+fn sample_target_rows(
+    next: &BatchScores,
+    offset: usize,
+    input: &[u32],
+    params: ds41rt_core::TargetSamplingParams,
+    base_position: u64,
+) -> Result<Vec<u32>> {
+    (0..input.len())
+        .map(|index| next.sample(offset + index, None, params, base_position + index as u64))
+        .collect()
+}
+
 struct CommitDecision {
     accepted_drafts: u32,
     emitted: usize,
@@ -516,9 +538,27 @@ fn prepare_commit_lane<'a, C: DraftChain<'a>>(lane: usize,
     let mut frontier_downloads = Vec::new();
     for (&slot, input) in members.iter().zip(inputs) {
         let request = active[slot].as_ref().unwrap();
-        let constrained = request.constraint.as_ref().map(|state|
-            state.select_verification(next, offset, input)).transpose()?;
-        let selected = constrained.as_deref().unwrap_or(&next.best[offset..offset + input.len()]);
+        let params = request.job.sampling;
+        let base_position = request.generated as u64;
+        // Stochastic requests select a target sample per row. Reusing the same
+        // greedy verifier turns "draft equals target argmax" into the exact
+        // sample-and-match rule: a draft is accepted while it equals the target
+        // sample, and the first mismatch emits the target sample. The emitted
+        // token is always the target draw, so speculation cannot bias p.
+        let sampled;
+        let selected: &[u32] = if let Some(state) = request.constraint.as_ref() {
+            sampled = if params.is_greedy() {
+                state.select_verification(next, offset, input)?
+            } else {
+                state.select_verification_sampled(next, offset, input, params, base_position)?
+            };
+            &sampled
+        } else if params.is_greedy() {
+            &next.best[offset..offset + input.len()]
+        } else {
+            sampled = sample_target_rows(next, offset, input, params, base_position)?;
+            &sampled
+        };
         let decision = ds41rt_core::verify_dspark_greedy(input,
             selected, 1, request.job.max_tokens - request.generated)
             .map_err(anyhow::Error::msg)?;
@@ -601,4 +641,52 @@ fn commit_lane<'w, 'a>(lib: &'a NativeLibrary, lane: usize, pass: &mut TargetPas
     if let Some(draft) = draft.as_deref_mut() { draft.commit_batch(pass, requests, batch, &decision.accepted)?; }
     else { pass.commit(requests, batch, &decision.accepted)?; }
     publish_commit_lane(pass, active, members, inputs, owned_batch, draft, capture_routes, decision)
+}
+
+#[cfg(test)]
+mod sampling_tests {
+    use super::*;
+    use crate::v41_native_serve::scores::{ROW_BYTES, VOCAB};
+
+    /// Position-sensitive logits so different absolute indices and rows differ.
+    fn rows(count: usize) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(count * ROW_BYTES);
+        for row in 0..count {
+            for token in 0..VOCAB {
+                let value = (((row * 31 + token * 7) % 23) as f32) * 0.25;
+                bytes.extend_from_slice(&value.to_ne_bytes());
+            }
+        }
+        bytes
+    }
+
+    /// Two members in one round: the anchor row offsets differ from the
+    /// generated indices, and every draw must follow the absolute emitted
+    /// position rather than the batch row.
+    #[test]
+    fn sample_target_rows_keys_draws_on_absolute_position() {
+        let batch = BatchScores::new(rows(5)).unwrap();
+        let params =
+            ds41rt_core::TargetSamplingParams::new(0.9, 0.97, Some(8), 0.02, 4242).unwrap();
+        assert!(!params.is_greedy());
+
+        // Member A: anchor at batch row 0, generated index 0.
+        let a = sample_target_rows(&batch, 0, &[0, 0], params, 0).unwrap();
+        // Member B: anchor at batch row 2, generated index 100.
+        let b = sample_target_rows(&batch, 2, &[0, 0, 0], params, 100).unwrap();
+        assert_eq!(a.len(), 2);
+        assert_eq!(b.len(), 3);
+        assert_eq!(a[0], batch.sample(0, None, params, 0).unwrap());
+        assert_eq!(a[1], batch.sample(1, None, params, 1).unwrap());
+        assert_eq!(b[0], batch.sample(2, None, params, 100).unwrap());
+        assert_eq!(b[1], batch.sample(3, None, params, 101).unwrap());
+        assert_eq!(b[2], batch.sample(4, None, params, 102).unwrap());
+
+        // Sensitivity: keying member B on the row index (the classic wiring
+        // bug) must be distinguishable from keying it on the emitted index.
+        let row_keyed: Vec<u32> = (0..3)
+            .map(|index| batch.sample(2 + index, None, params, (2 + index) as u64).unwrap())
+            .collect();
+        assert_ne!(b, row_keyed, "offset-keyed draws must not match emitted-index draws");
+    }
 }

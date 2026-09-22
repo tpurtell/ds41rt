@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Small live native-API smoke/latency run; not a release performance gate."""
+"""Small live native-API smoke/latency run; not a release performance gate.
+
+The release accepts sampled requests (``temperature > 0`` with optional
+``top_p``/``top_k``/``min_p``/``seed``); this script asserts one sampled request
+is served and that its fixed seed replays exactly. Deeper sampling acceptance
+(five vectors, invalid parameters, constrained decoding, signed seeds, request
+isolation) lives in ``scripts/qualify-ds41-sampling-api.py``.
+"""
 import argparse
 import json
 import time
@@ -90,21 +97,40 @@ def main():
     with open_request(args.base_url, simple) as response:
         recovered = json.load(response)
     assert recovered['choices'][0]['message']['content'].strip() == '4'
-    bad = dict(simple, temperature=0.7)
+    # The release serves sampled requests. Pin acceptance plus fixed-seed replay
+    # on a short deterministic-looking prompt; the exact text is not asserted
+    # because non-zero temperature is supposed to vary with the seed.
+    sampled_payload = dict(simple, temperature=0.7, top_p=0.95, seed=0, max_tokens=32)
+    with open_request(args.base_url, sampled_payload) as response:
+        sampled_first = json.load(response)
+    assert sampled_first['choices'][0]['message'].get('content') is not None
+    with open_request(args.base_url, dict(sampled_payload)) as response:
+        sampled_replay = json.load(response)
+    sampled_text = (sampled_first['choices'][0]['message'].get('content') or '') + \
+        (sampled_first['choices'][0]['message'].get('reasoning_content') or '')
+    replay_text = (sampled_replay['choices'][0]['message'].get('content') or '') + \
+        (sampled_replay['choices'][0]['message'].get('reasoning_content') or '')
+    assert sampled_text, sampled_first
+    assert replay_text == sampled_text, (sampled_text, replay_text)
+    invalid = dict(simple, top_p=0.0)
     try:
-        open_request(args.base_url, bad)
-        raise AssertionError('unsupported sampling accepted')
+        open_request(args.base_url, invalid)
+        raise AssertionError('invalid sampling accepted')
     except urllib.error.HTTPError as error:
         assert error.code == 400
     record = dict(model=MODEL, base_url=args.base_url, first_json=first,
                   streaming_request=long, streaming_runs=runs, cancellation=cancelled,
-                  post_cancellation_json=recovered, unsupported_sampling_status=400,
-                  scope='One client, greedy text, tiny prompts, three same-shape streams; first run warms. Engine mode is identified by system_fingerprint. Not release throughput or broad quality qualification.')
+                  post_cancellation_json=recovered,
+                  sampled_request=sampled_payload, sampled_json=sampled_first,
+                  sampled_replay_identical=True, invalid_sampling_status=400,
+                  scope='One client, greedy text, tiny prompts, three same-shape streams; first run warms. One sampled request with seed=0 is replayed once. Engine mode is identified by system_fingerprint. Not release throughput or broad quality qualification.')
     args.output.write_text(json.dumps(record, indent=2) + '\n')
     print(json.dumps(dict(json_content=first['choices'][0]['message']['content'],
-                         stream_text=runs[-1]['text'], ttft_seconds=[r['first_content_seconds'] for r in runs],
+                         stream_text=runs[-1]['text'],
+                         ttft_seconds=[r['first_content_seconds'] for r in runs],
                          observed_decode_tps=[r['observed_decode_tokens_per_second'] for r in runs],
-                         cancellation_recovered=True), indent=2))
+                         cancellation_recovered=True,
+                         sampled_replay_identical=True), indent=2))
 
 if __name__ == '__main__':
     main()

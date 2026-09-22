@@ -919,6 +919,7 @@ fn base_request(content: &str) -> ChatCompletionRequest {
         temperature: Some(0.0),
         top_p: Some(1.0),
         top_k: None,
+        min_p: None,
         seed: None,
         stop: None,
         response_format: None,

@@ -69,7 +69,7 @@ mod tests {
     fn cancelled_pending_request_wakes_admission_without_waiting_for_retirement() {
         let (events, output) = mpsc::channel(1);
         let job = NativeRequest { prompt: String::new(), constraint: None, images: Vec::new(),
-            max_tokens: 1, events };
+            max_tokens: 1, sampling: Default::default(), events };
         let wake = Wake { blocked_at: Some(2), pending: Some(&job) };
         assert!(!wake.ready(2, 16, true));
         drop(output);

@@ -324,12 +324,17 @@ printf '%s\n' "$MODEL_ID" "$MODEL_REVISION" "$EXPERT_FORMAT" "$SPARKINFER_EXL3" 
 
 
 class V10BuildTargetTest(unittest.TestCase):
-    """The canonical v10 build tag comes from the runtime default config.
+    """The explicit v10 build target and the promoted runtime default.
 
     `ds41rt.build-v10.config` is retained as the explicit release BUILD target
     (build.sh derives `release_version` from its coordinator tag). After the v10
     runtime promotion it is identical to `ds41rt.config`, so a plain
     `./build.sh` derives the same `v10` tag.
+
+    The default-pair assertions are deliberately derived from `ds41rt.config`
+    rather than hardcoded, so promoting the runtime default to a later release
+    does not require rewriting this class: only the retained `v10` target below
+    and the example-config expectation remain version-pinned.
     """
 
     BUILD_CONFIG = ROOT / "ds41rt.build-v10.config"
@@ -347,23 +352,41 @@ class V10BuildTargetTest(unittest.TestCase):
         return [line for line in path.read_text().splitlines()
                 if "=" in line and not line.lstrip().startswith("#")]
 
+    def config_value(self, path: Path, key: str) -> str:
+        for line in self.assignments(path):
+            name, _, value = line.partition("=")
+            if name.strip() == key:
+                return value.strip()
+        self.fail(f"{key} not found in {path}")
+
     def test_build_config_matches_the_runtime_default(self) -> None:
         base = self.assignments(ROOT / "ds41rt.config")
         target = self.assignments(self.BUILD_CONFIG)
         self.assertEqual(len(base), len(target))
         self.assertEqual(base, target)
 
-    def test_default_and_explicit_build_tags_are_v10(self) -> None:
-        # CPU-only: --dry-run validates without touching Docker, SSH or images.
+    def test_default_build_reports_the_runtime_default_pair(self) -> None:
+        """The default derives its tag from ds41rt.config, whatever it names."""
         default = self.dry_run(None)
-        self.assertIn("release tag: v10", default)
-        self.assertIn("coordinator image: ghcr.io/tpurtell/ds41rt-coordinator:v10", default)
+        config = ROOT / "ds41rt.config"
+        coordinator = self.config_value(config, "COORDINATOR_DOCKER_INFERENCE")
+        spark = self.config_value(config, "SPARK_EXPERT_DOCKER_INFERENCE")
+        tag = coordinator.rsplit(":", 1)[1]
+        self.assertIn(f"release tag: {tag}", default)
+        self.assertIn(f"coordinator image: {coordinator}", default)
+        self.assertIn(f"spark image: {spark}", default)
+        # The promoted default carries the universal role set.
+        self.assertIn("tp2;tp3;tp6", default)
+
+    def test_the_retained_v10_build_target_still_reports_v10(self) -> None:
+        # CPU-only: --dry-run validates without touching Docker, SSH or images.
+        # This is the explicit historical build target and must not drift with
+        # the runtime promotion.
         v10 = self.dry_run(self.BUILD_CONFIG)
         self.assertIn("release tag: v10", v10)
         self.assertIn("coordinator image: ghcr.io/tpurtell/ds41rt-coordinator:v10", v10)
         self.assertIn("spark image: ghcr.io/tpurtell/ds41rt-spark-expert:v10", v10)
-        # The promoted default carries the same universal role set.
-        self.assertIn("tp2;tp3;tp6", default)
+        self.assertIn("tp2;tp3;tp6", v10)
 
     def test_all_examples_use_the_promoted_pair(self) -> None:
         examples = sorted((ROOT / "examples" / "configs").glob("*.config"))
@@ -373,6 +396,36 @@ class V10BuildTargetTest(unittest.TestCase):
                 text = path.read_text()
                 self.assertIn("COORDINATOR_DOCKER_INFERENCE=ghcr.io/tpurtell/ds41rt-coordinator:v10", text)
                 self.assertIn("SPARK_EXPERT_DOCKER_INFERENCE=ghcr.io/tpurtell/ds41rt-spark-expert:v10", text)
+
+
+class V11ReleaseBuildTargetTest(unittest.TestCase):
+    """The v11 release build target exists ahead of the runtime promotion.
+
+    `ds41rt.build-v11.config` selects the `v11` tag for the release build before
+    `ds41rt.config` is promoted, so `run.sh` can launch the candidate with
+    `--config ds41rt.build-v11.config`. Its payload must match the runtime
+    default except for the release pair; that exact difference is asserted by
+    `scripts/tests/test_release_helpers.py`, owned by the release executor.
+    """
+
+    BUILD_CONFIG = ROOT / "ds41rt.build-v11.config"
+
+    def dry_run(self, config: Path) -> str:
+        result = subprocess.run(
+            ["bash", "build.sh", "--config", str(config), "--dry-run"],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout
+
+    def test_the_v11_target_reports_v11_and_the_universal_roles(self) -> None:
+        if not self.BUILD_CONFIG.is_file():
+            self.skipTest("ds41rt.build-v11.config is not present in this checkout")
+        v11 = self.dry_run(self.BUILD_CONFIG)
+        self.assertIn("release tag: v11", v11)
+        self.assertIn("coordinator image: ghcr.io/tpurtell/ds41rt-coordinator:v11", v11)
+        self.assertIn("spark image: ghcr.io/tpurtell/ds41rt-spark-expert:v11", v11)
+        self.assertIn("tp2;tp3;tp6", v11)
 
 
 if __name__ == "__main__":

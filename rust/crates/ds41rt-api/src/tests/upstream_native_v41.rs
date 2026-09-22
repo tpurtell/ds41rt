@@ -9,9 +9,9 @@
 //!   clean 400 with a bounded body (via the bounded `error()` constructor).
 //! - Review BLOCKER follow-up -> huge validly typed fields (role) stay
 //!   bounded on THIS router too.
-//! - OpenAI protocol contract -> wrong model / non-zero temperature reject
-//!   with 400s; temperature=0 (greedy) is the documented native contract
-//!   (resolves DEFERRED divergence #4 for native clients).
+//! - OpenAI protocol contract -> wrong model rejects with a 400; greedy
+//!   (`temperature` absent or 0) is the served default and non-greedy
+//!   temperature/top_p/top_k/min_p/seed are resolved for the engine.
 //! - llama.cpp `test_chat_completion.py` SSE patterns -> `data:` frames,
 //!   JSON payload per frame, `data: [DONE]` terminator; non-stream bodies
 //!   carry choices[].finish_reason.
@@ -92,25 +92,142 @@ async fn huge_valid_role_string_is_bounded_on_the_native_router() {
 }
 
 #[tokio::test]
-async fn wrong_model_and_nonzero_temperature_rejected() {
+async fn wrong_model_is_rejected() {
     let app = app();
     let mut wrong_model = valid_request();
     wrong_model["model"] = json!("someone-else");
-    let response = app.clone().oneshot(post_json(wrong_model)).await.unwrap();
+    let response = app.oneshot(post_json(wrong_model)).await.unwrap();
     let (status, value, _) = response_json(response).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(value["error"]["message"].as_str().unwrap().contains("model must be"));
+}
 
-    let mut warm = valid_request();
-    warm["temperature"] = json!(0.7);
-    let response = app.oneshot(post_json(warm)).await.unwrap();
-    let (status, value, _) = response_json(response).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert!(
-        value["error"]["message"].as_str().unwrap().contains("temperature=0"),
-        "native contract pins greedy sampling: {}",
-        value["error"]["message"]
+/// Drive one request through the production router and return the sampling
+/// parameters the engine actually resolved (None when the request was rejected
+/// before admission).
+async fn post_and_capture_sampling(
+    body: Value,
+) -> (StatusCode, Option<ds41rt_core::TargetSamplingParams>) {
+    let (queue, mut rx) = tokio::sync::mpsc::channel(4);
+    let app = router(queue);
+    let (tx, sampling_rx) = tokio::sync::oneshot::channel();
+    tokio::spawn(async move {
+        if let Some(job) = rx.recv().await {
+            let _ = tx.send(job.sampling);
+            let _ = job
+                .events
+                .send(Ok(InferenceChunk::Ready {
+                    system_fingerprint: None,
+                    prompt_usage: Default::default(),
+                }))
+                .await;
+            let _ = job
+                .events
+                .send(Ok(InferenceChunk::Finish {
+                    finish_reason: InferenceFinishReason::Stop,
+                }))
+                .await;
+        }
+    });
+    let response = app.oneshot(post_json(body)).await.unwrap();
+    let status = response.status();
+    let _ = to_bytes(response.into_body(), usize::MAX).await;
+    (status, sampling_rx.await.ok())
+}
+
+#[tokio::test]
+async fn stochastic_sampling_is_accepted_and_resolved() {
+    // temperature=0.7 enables sampling; unspecified filters stay disabled so
+    // the served distribution is never silently truncated.
+    let mut body = valid_request();
+    body["temperature"] = json!(0.7);
+    let (status, sampling) = post_and_capture_sampling(body).await;
+    assert_eq!(status, StatusCode::OK, "non-greedy sampling must be served");
+    let sampling = sampling.expect("engine received the request");
+    assert!(!sampling.is_greedy());
+    assert_eq!(sampling.temperature(), 0.7);
+    assert_eq!(sampling.top_p(), 1.0, "top_p default must not truncate");
+    assert_eq!(sampling.top_k(), None, "top_k default must stay disabled");
+    assert_eq!(sampling.min_p(), 0.0);
+}
+
+#[tokio::test]
+async fn greedy_default_and_explicit_zero_stay_greedy() {
+    let (status, sampling) = post_and_capture_sampling(valid_request()).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(sampling.unwrap().is_greedy());
+    let mut zero = valid_request();
+    zero["temperature"] = json!(0);
+    let (_, sampling) = post_and_capture_sampling(zero).await;
+    assert!(sampling.unwrap().is_greedy());
+}
+
+#[tokio::test]
+async fn explicit_filters_and_signed_seed_are_resolved() {
+    let mut body = valid_request();
+    body["temperature"] = json!(0.8);
+    body["top_p"] = json!(0.9);
+    body["top_k"] = json!(7);
+    body["min_p"] = json!(0.05);
+    body["seed"] = json!(-7);
+    let (status, sampling) = post_and_capture_sampling(body).await;
+    assert_eq!(status, StatusCode::OK);
+    let sampling = sampling.unwrap();
+    assert_eq!(sampling.top_p(), 0.9);
+    assert_eq!(sampling.top_k(), Some(7));
+    assert_eq!(sampling.min_p(), 0.05);
+    assert_eq!(
+        sampling.seed(),
+        ds41rt_core::TargetSamplingParams::seed_from_i64(-7)
     );
+    // 0 and -1 both disable top_k.
+    for disabled in [json!(0), json!(-1)] {
+        let mut body = valid_request();
+        body["temperature"] = json!(1.0);
+        body["top_k"] = disabled;
+        let (_, sampling) = post_and_capture_sampling(body).await;
+        assert_eq!(sampling.unwrap().top_k(), None);
+    }
+}
+
+#[tokio::test]
+async fn out_of_range_top_k_is_accepted_as_a_no_op() {
+    // k >= vocabulary must be accepted and behave as top-k disabled, not fail.
+    for huge in [json!(129_280), json!(1_000_000), json!(u32::MAX as u64)] {
+        let mut body = valid_request();
+        body["temperature"] = json!(1.0);
+        body["top_k"] = huge.clone();
+        let (status, sampling) = post_and_capture_sampling(body).await;
+        assert_eq!(status, StatusCode::OK, "top_k={huge} must be accepted");
+        assert_eq!(
+            sampling.unwrap().top_k(),
+            Some(huge.as_u64().unwrap() as usize)
+        );
+    }
+}
+
+#[tokio::test]
+async fn invalid_sampling_parameters_are_rejected_before_admission() {
+    for (field, value) in [
+        ("temperature", json!(2.5)),
+        ("temperature", json!(-0.1)),
+        ("top_p", json!(0.0)),
+        ("top_p", json!(1.5)),
+        ("top_k", json!(-2)),
+        ("top_k", json!(1.5)),
+        ("min_p", json!(-0.1)),
+        ("min_p", json!(1.5)),
+    ] {
+        let mut body = valid_request();
+        body[field] = value.clone();
+        let (status, sampling) = post_and_capture_sampling(body).await;
+        assert_eq!(
+            status,
+            StatusCode::BAD_REQUEST,
+            "{field}={value} must be rejected"
+        );
+        assert!(sampling.is_none(), "{field}={value} must not reach admission");
+    }
 }
 
 #[tokio::test]

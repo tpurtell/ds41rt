@@ -71,4 +71,33 @@ impl State<'_> {
         }
         Ok(next)
     }
+    /// Stochastic twin of [`Self::select_verification`]. The grammar mask is
+    /// applied first along the hypothetical draft prefix; the exact sampler then
+    /// draws from the masked full-vocabulary row at the absolute emitted-token
+    /// position `base_position + index`. The resulting tokens feed the same
+    /// sample-and-match verifier, so an accepted draft never biases the target
+    /// distribution.
+    pub fn select_verification_sampled(
+        &self,
+        scores: &BatchScores,
+        offset: usize,
+        input: &[u32],
+        params: ds41rt_core::TargetSamplingParams,
+        base_position: u64,
+    ) -> Result<Vec<u32>> {
+        let mut branch = self.matcher.fork()?;
+        let mut mask = vec![0; self.mask.len()];
+        let mut next = Vec::with_capacity(input.len());
+        for index in 0..input.len() {
+            if index > 0 { ensure!(branch.accept_token(input[index])?, "illegal verification draft token"); }
+            let needs_mask = branch.fill_bitmask(&mut mask)?;
+            next.push(scores.sample(
+                offset + index,
+                needs_mask.then_some(mask.as_slice()),
+                params,
+                base_position + index as u64,
+            )?);
+        }
+        Ok(next)
+    }
 }

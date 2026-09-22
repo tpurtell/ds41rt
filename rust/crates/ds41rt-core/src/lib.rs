@@ -4,6 +4,10 @@ mod dspark_policy;
 pub use dspark_policy::{select_dspark_confidence_prefix, select_dspark_prefixes, select_dspark_prefixes_bounded, DsparkPrefixSelection};
 mod dspark_rng;
 pub use dspark_rng::{DsparkRng, DsparkRngReservation};
+mod target_sampling;
+pub use target_sampling::{
+    TargetSamplingError, TargetSamplingParams, GREEDY_TEMPERATURE_EPS, MAX_TARGET_TEMPERATURE,
+};
 mod dspark_verify;
 pub use dspark_verify::{verify_dspark_greedy, GreedyVerification, MAX_DSPARK_PROPOSALS};
 mod engram;

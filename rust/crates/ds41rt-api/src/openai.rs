@@ -50,6 +50,12 @@ pub struct ChatCompletionRequest {
     pub top_p: Option<f32>,
     #[serde(default)]
     pub top_k: Option<usize>,
+    /// vLLM-compatible minimum-probability filter. The production
+    /// `serve-native` path resolves this from the raw body; the legacy
+    /// `real-ds4-full` sampler does not implement it, so a nonzero value is
+    /// rejected by `validate_request` rather than silently ignored.
+    #[serde(default)]
+    pub min_p: Option<f32>,
     #[serde(default)]
     pub seed: Option<i64>,
     #[serde(default)]

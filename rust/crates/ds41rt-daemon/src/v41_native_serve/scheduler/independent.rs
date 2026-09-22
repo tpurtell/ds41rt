@@ -127,8 +127,13 @@ async fn lane<'a, P: VerificationTarget<'a>, C: DraftChain<'a>>(lane: usize, lib
                     }
                 }
                 let selected: Vec<_> = (0..current.cache()?.positions().len()).collect();
+                let active_borrow = active.borrow();
                 let compact = !tracing::enabled!(target: "ds41rt::logit_trace", tracing::Level::DEBUG)
-                    && members.iter().all(|&slot| active.borrow()[slot].as_ref().unwrap().constraint.is_none());
+                    && members.iter().all(|&slot| {
+                        let request = active_borrow[slot].as_ref().unwrap();
+                        request.constraint.is_none() && request.job.sampling.is_greedy()
+                    });
+                drop(active_borrow);
                 let next = if compact {
                     BatchScores::from_greedy(unsafe {
                         pass.execute_shared_greedy(requests, current, transport, 0, &selected).await?
