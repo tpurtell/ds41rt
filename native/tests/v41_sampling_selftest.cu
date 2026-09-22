@@ -30,6 +30,7 @@
 #include <cstdint>
 #include <cstring>
 #include <cstdlib>
+#include <algorithm>
 #include <iostream>
 #include <limits>
 #include <string>
@@ -39,6 +40,9 @@ namespace {
 
 int g_checks = 0;
 int g_cases = 0;
+/* Largest K3 probe-pass count observed over every eligible row of every case;
+ * the measured pass budget reported at the end of the run. */
+uint32_t g_max_pivot_passes = 0;
 
 void fail(const char* what) {
   std::cerr << "FAIL: " << what << "\n";
@@ -2152,6 +2156,841 @@ void test_k2_fallback_unreachable_like_cpu() {
             << ")\n";
 }
 
+/* ====================================================================== */
+/* Chunk 3a: K3 pivot selection + K4 exact-k membership (design §4.3-4.4)  */
+/* ====================================================================== */
+
+/* Host port of the shipped `ds41rt_v41_order_key` (design §4.3): the standard
+ * IEEE ascending u32 map, larger = better, with -0.0 canonicalized to +0.0. */
+uint32_t host_order_key(float scaled) {
+  const float value = (scaled == 0.0f) ? 0.0f : scaled;
+  uint32_t bits = 0;
+  std::memcpy(&bits, &value, sizeof(bits));
+  return (bits & 0x80000000u) != 0u ? ~bits : (bits ^ 0x80000000u);
+}
+
+/* CPU top-k branch oracle: a faithful port of `target_sampling.rs:477-497` and
+ * the served comparator `Ranked::better_than` (`:283-291`) — survivors sorted by
+ * (scaled descending, id ascending), truncated to `top_k`, plus
+ * `above_count = C_gt(kth)`. `ranked` is the CPU's `ranked[..k]`, the exact set
+ * and order K4 must materialize. */
+struct RefTopk {
+  bool greedy = false;
+  uint32_t status = DS41RT_V41_SAMPLER_STATUS_OK;
+  uint32_t survivor_count = 0;
+  bool runs = false; /* K3/K4 eligibility, `target_sampling.rs:477-501` */
+  uint32_t above_count = 0;
+  float kth_value = 0.0f;
+  std::vector<uint32_t> ranked;
+};
+
+RefTopk cpu_topk_reference(const float* logits, size_t vocab,
+                           const uint32_t* mask_words, size_t mask_words_per_row,
+                           float temperature, uint32_t top_k, float min_p,
+                           float ln_min_p, uint32_t flags) {
+  RefTopk out;
+  const RefGreedy k1 = cpu_reference(logits, vocab, mask_words, mask_words_per_row,
+                                     temperature, top_k, ln_min_p, min_p, flags);
+  out.greedy = is_greedy(temperature, top_k) ||
+               (flags & DS41RT_V41_SAMPLER_FLAG_GREEDY) != 0u;
+  out.status = k1.stochastic_status;
+  out.survivor_count = k1.survivor_count;
+  if (out.greedy || k1.stochastic_status != DS41RT_V41_SAMPLER_STATUS_OK ||
+      k1.survivor_count == 0u || top_k == 0u || top_k >= k1.survivor_count) {
+    return out;
+  }
+  out.runs = true;
+  const bool unconstrained = mask_words == nullptr || mask_words_per_row == 0u;
+  const auto allowed = [&](size_t token) {
+    return unconstrained ||
+        ((mask_words[token / 32u] >> (token % 32u)) & 1u) != 0u;
+  };
+  const float inv = 1.0f / temperature;
+  std::vector<std::pair<float, uint32_t>> ranked;
+  ranked.reserve(k1.survivor_count);
+  for (size_t token = 0; token < vocab; ++token) {
+    if (allowed(token) && logits[token] * inv >= k1.min_scaled) {
+      ranked.emplace_back(logits[token] * inv, static_cast<uint32_t>(token));
+    }
+  }
+  std::sort(ranked.begin(), ranked.end(),
+            [](const std::pair<float, uint32_t>& a, const std::pair<float, uint32_t>& b) {
+              if (a.first != b.first) {
+                return a.first > b.first;
+              }
+              return a.second < b.second;
+            });
+  const uint32_t kth_key = host_order_key(ranked[top_k - 1].first);
+  out.kth_value = ranked[top_k - 1].first;
+  for (const std::pair<float, uint32_t>& entry : ranked) {
+    if (host_order_key(entry.first) > kth_key) {
+      ++out.above_count;
+    }
+  }
+  out.ranked.reserve(top_k);
+  for (uint32_t rank = 0; rank < top_k; ++rank) {
+    out.ranked.push_back(ranked[rank].second);
+  }
+  return out;
+}
+
+/* The worst-case pass count of the ternary bisection: always keep the largest
+ * of the three sub-intervals of `[0, 0xFFFFFFFF]` (and the length-2 final
+ * single probe) and count steps until the interval holds one key. This is an
+ * upper bound on the shipped kernel's passes for any row and any k, and it is
+ * the host evidence that the loop makes progress every pass (each pass shrinks
+ * the interval to <= ~1/3). */
+uint32_t host_bisection_pass_bound() {
+  uint32_t lo = 0u;
+  uint32_t hi = 0xFFFFFFFFu;
+  uint32_t passes = 0u;
+  while (hi - lo >= 2u) {
+    uint32_t length = 0u;
+    if (hi - lo == 2u) {
+      length = 1u;
+    } else {
+      const uint32_t third = (hi - lo) / 3u;
+      const uint32_t m0 = lo + third;
+      const uint32_t m1 = hi - third;
+      length = m0 - lo;
+      if (m1 - m0 > length) {
+        length = m1 - m0;
+      }
+      if (hi - m1 > length) {
+        length = hi - m1;
+      }
+    }
+    /* `length` is strictly smaller than `hi - lo` for every `hi - lo >= 2`, so
+     * the loop cannot spin. */
+    expect(length < hi - lo, "bisection interval shrinks every pass");
+    lo = 0u;
+    hi = length;
+    ++passes;
+    expect(passes <= DS41RT_V41_TOPK_MAX_PIVOT_STEPS,
+           "bisection bound is inside the defensive cap");
+  }
+  return passes;
+}
+
+/* Device buffers for one K3/K4 run. `capacity` is the per-row rank-order id
+ * stride; 0 selects the selection-only call (null arenas). */
+struct TopkBuffers {
+  uint32_t* rank_ids = nullptr;
+  uint64_t* rank_scratch = nullptr;
+  uint32_t* retained = nullptr;
+  uint32_t* passes = nullptr;
+  size_t rows = 0;
+  size_t capacity = 0;
+};
+
+TopkBuffers make_topk_buffers(size_t rows, size_t capacity) {
+  TopkBuffers buffers;
+  buffers.rows = rows;
+  buffers.capacity = capacity;
+  if (capacity > 0) {
+    alloc_device(&buffers.rank_ids, rows * capacity * sizeof(uint32_t), "topk rank ids");
+    alloc_device(&buffers.rank_scratch, rows * capacity * sizeof(uint64_t),
+                 "topk rank scratch");
+  }
+  alloc_device(&buffers.retained, rows * sizeof(uint32_t), "topk retained count");
+  alloc_device(&buffers.passes, rows * sizeof(uint32_t), "topk pivot passes");
+  return buffers;
+}
+
+void free_topk_buffers(TopkBuffers* buffers) {
+  if (buffers->rank_ids) cudaFree(buffers->rank_ids);
+  if (buffers->rank_scratch) cudaFree(buffers->rank_scratch);
+  if (buffers->retained) cudaFree(buffers->retained);
+  if (buffers->passes) cudaFree(buffers->passes);
+  *buffers = TopkBuffers{};
+}
+
+/* Runs one K1 + K3/K4 configuration against the ported CPU top-k oracle.
+ *
+ * `capacity` is the materialization stride handed to the device (0 =
+ * selection-only). The rank-order arena is pre-filled with `0xDEADBEEF`, so a
+ * no-op row that writes anything — or an eligible row whose ids were never
+ * written — cannot pass. */
+void run_topk_case(const std::vector<float>& logits, size_t rows, size_t vocab,
+                   const std::vector<ds41rt_v41_sampler_row_t>& params,
+                   const std::vector<uint32_t>& mask, bool with_mask, bool strict_mask_bits,
+                   size_t capacity, const char* label) {
+  ++g_cases;
+  const std::string tag(label);
+  expect(params.size() == rows, tag + ": one param block per row");
+  K1 k = make_k1(rows, vocab, with_mask, false);
+  require_cuda(cudaMemcpy(k.logits, logits.data(), logits.size() * sizeof(float),
+                          cudaMemcpyHostToDevice), "topk logits h2d");
+  require_cuda(cudaMemcpy(k.params, params.data(),
+                          params.size() * sizeof(ds41rt_v41_sampler_row_t),
+                          cudaMemcpyHostToDevice), "topk params h2d");
+  std::vector<uint32_t> device_mask = mask;
+  if (with_mask) {
+    if (strict_mask_bits) {
+      for (size_t r = 0; r < rows; ++r) {
+        ds41rt_v41_sampler_clear_remainder(device_mask.data() + r * k.words, vocab);
+      }
+    }
+    require_cuda(cudaMemcpy(k.mask, device_mask.data(),
+                            device_mask.size() * sizeof(uint32_t),
+                            cudaMemcpyHostToDevice), "topk mask h2d");
+  }
+  /* K1 first: K3/K4 read its `scratch` exactly as K2 does. K2 itself is a no-op
+   * for every row here (`top_k != 0`). */
+  expect(ds41rt_cuda_v41_target_sample(
+             k.logits, rows, vocab, vocab, k.params, with_mask ? k.mask : nullptr,
+             with_mask ? k.words : 0u, k.ids, k.status, k.detail, k.scores, nullptr,
+             nullptr, k.scratch) == DS41RT_STATUS_OK,
+         tag + ": K1 launch");
+  TopkBuffers buffers = make_topk_buffers(rows, capacity);
+  const uint32_t sentinel = 0xDEADBEEFu;
+  std::vector<uint32_t> host_ids(rows * capacity, sentinel);
+  std::vector<uint64_t> host_scratch(rows * capacity, 0ull);
+  std::vector<uint32_t> host_retained(rows, sentinel);
+  std::vector<uint32_t> host_passes(rows, sentinel);
+  if (capacity > 0) {
+    require_cuda(cudaMemcpy(buffers.rank_ids, host_ids.data(),
+                            rows * capacity * sizeof(uint32_t), cudaMemcpyHostToDevice),
+                 "topk rank ids h2d");
+    require_cuda(cudaMemcpy(buffers.rank_scratch, host_scratch.data(),
+                            rows * capacity * sizeof(uint64_t), cudaMemcpyHostToDevice),
+                 "topk rank scratch h2d");
+  }
+  require_cuda(cudaMemcpy(buffers.retained, host_retained.data(), rows * sizeof(uint32_t),
+                          cudaMemcpyHostToDevice), "topk retained h2d");
+  require_cuda(cudaMemcpy(buffers.passes, host_passes.data(), rows * sizeof(uint32_t),
+                          cudaMemcpyHostToDevice), "topk passes h2d");
+  expect(ds41rt_cuda_v41_topk_select(
+             k.logits, rows, vocab, vocab, k.params, with_mask ? k.mask : nullptr,
+             with_mask ? k.words : 0u, capacity > 0 ? buffers.rank_ids : nullptr,
+             capacity > 0 ? buffers.rank_scratch : nullptr, capacity, buffers.retained,
+             buffers.passes, k.scratch) == DS41RT_STATUS_OK,
+         tag + ": topk launch");
+  require_cuda(cudaDeviceSynchronize(), "topk kernel");
+
+  std::vector<ds41rt_v41_sampler_scratch_t> scratch(rows);
+  std::vector<uint32_t> retained(rows);
+  std::vector<uint32_t> passes(rows);
+  require_cuda(cudaMemcpy(scratch.data(), k.scratch,
+                          rows * sizeof(ds41rt_v41_sampler_scratch_t),
+                          cudaMemcpyDeviceToHost), "topk scratch");
+  require_cuda(cudaMemcpy(retained.data(), buffers.retained, rows * sizeof(uint32_t),
+                          cudaMemcpyDeviceToHost), "topk retained");
+  require_cuda(cudaMemcpy(passes.data(), buffers.passes, rows * sizeof(uint32_t),
+                          cudaMemcpyDeviceToHost), "topk passes");
+  std::vector<uint32_t> rank_ids(rows * capacity, sentinel);
+  if (capacity > 0) {
+    require_cuda(cudaMemcpy(rank_ids.data(), buffers.rank_ids,
+                            rows * capacity * sizeof(uint32_t), cudaMemcpyDeviceToHost),
+                 "topk rank ids");
+  }
+
+  for (size_t r = 0; r < rows; ++r) {
+    const ds41rt_v41_sampler_row_t& p = params[r];
+    const std::string row_tag = tag + " row " + std::to_string(r);
+    const bool unconstrained = (p.flags & DS41RT_V41_SAMPLER_FLAG_NO_MASK) != 0u ||
+                               p.mask_row == DS41RT_V41_SAMPLER_NO_MASK_ROW;
+    const uint32_t* row_mask = (with_mask && !unconstrained)
+        ? device_mask.data() + static_cast<size_t>(p.mask_row) * k.words
+        : nullptr;
+    const size_t row_words = (row_mask != nullptr) ? k.words : 0u;
+    const RefTopk expected = cpu_topk_reference(
+        logits.data() + r * vocab, vocab, row_mask, row_words, p.temperature, p.top_k,
+        p.min_p, p.ln_min_p, p.flags);
+    if (!expected.runs) {
+      expect(retained[r] == 0u, row_tag + ": no-op row retains nothing");
+      expect(passes[r] == 0u, row_tag + ": no-op row runs no pivot pass");
+      expect(scratch[r].status == DS41RT_V41_SAMPLER_STATUS_OK,
+             row_tag + ": no-op row keeps its K1 status");
+      if (capacity > 0) {
+        for (size_t i = 0; i < capacity; ++i) {
+          expect(rank_ids[r * capacity + i] == sentinel,
+                 row_tag + ": no-op row leaves the arena untouched");
+        }
+      }
+      continue;
+    }
+    expect(scratch[r].status == DS41RT_V41_SAMPLER_STATUS_OK,
+           row_tag + ": K3 converged (status OK)");
+    expect(retained[r] == p.top_k, row_tag + ": retained count is exactly k");
+    expect(passes[r] >= 1u, row_tag + ": at least one pivot pass");
+    expect(passes[r] <= host_bisection_pass_bound(),
+           row_tag + ": pivot passes within the ternary bound");
+    expect(passes[r] <= DS41RT_V41_TOPK_MAX_PIVOT_STEPS,
+           row_tag + ": pivot passes within the defensive cap");
+    if (passes[r] > g_max_pivot_passes) {
+      g_max_pivot_passes = passes[r];
+    }
+    expect(scratch[r].above_count == expected.above_count,
+           row_tag + ": above_count equals C_gt(kth)");
+    /* The device publishes the *canonicalized* k-th value: `order_key` maps
+     * `-0.0` and `+0.0` to one key (as the CPU's `descending_radix_key` does),
+     * so a tie group at zero is reported as `+0.0`. Canonicalize the oracle's
+     * value the same way before comparing bits. */
+    expect(scratch[r].kth_value_bits ==
+               [&] {
+                 const float canonical =
+                     (expected.kth_value == 0.0f) ? 0.0f : expected.kth_value;
+                 uint32_t bits = 0;
+                 std::memcpy(&bits, &canonical, sizeof(bits));
+                 return bits;
+               }(),
+           row_tag + ": kth_value_bits equals the oracle's k-th value");
+    if (capacity == 0) {
+      continue; /* selection-only: no arena to compare */
+    }
+    expect(capacity >= p.top_k, row_tag + ": capacity covers k");
+    /* The id multiset, not just the count, and then the exact CPU rank order. */
+    std::vector<uint32_t> got(rank_ids.begin() + r * capacity,
+                              rank_ids.begin() + r * capacity + p.top_k);
+    std::vector<uint32_t> got_sorted = got;
+    std::vector<uint32_t> want_sorted = expected.ranked;
+    std::sort(got_sorted.begin(), got_sorted.end());
+    std::sort(want_sorted.begin(), want_sorted.end());
+    if (got_sorted != want_sorted) {
+      std::cerr << "topk multiset mismatch " << row_tag << "\n";
+    }
+    expect(got_sorted == want_sorted, row_tag + ": exact retained id multiset");
+    if (got != expected.ranked) {
+      std::cerr << "topk rank-order mismatch " << row_tag << " k=" << p.top_k << "\n";
+    }
+    expect(got == expected.ranked, row_tag + ": exact CPU rank order");
+    expect(got.size() == static_cast<size_t>(p.top_k), row_tag + ": k ids materialized");
+    /* No within-row overrun: entries `[k, capacity)` must still hold the
+     * sentinel the harness pre-filled, so a materializer that ran past the
+     * retained prefix cannot pass unnoticed (cross-row overruns are caught by
+     * the neighbouring no-op rows). */
+    for (size_t i = static_cast<size_t>(p.top_k); i < capacity; ++i) {
+      expect(rank_ids[r * capacity + i] == sentinel,
+             row_tag + ": no write past the retained prefix");
+    }
+  }
+  free_topk_buffers(&buffers);
+  free_k1(&k);
+}
+
+/* ---- deterministic row shapes ---- */
+std::vector<float> shape_descending(size_t vocab) {
+  std::vector<float> row(vocab);
+  for (size_t t = 0; t < vocab; ++t) {
+    row[t] = -0.01f * static_cast<float>(t);
+  }
+  return row;
+}
+std::vector<float> shape_periodic_ties(size_t vocab) {
+  std::vector<float> row(vocab);
+  for (size_t t = 0; t < vocab; ++t) {
+    row[t] = static_cast<float>(t % 16u) - 8.0f;
+  }
+  return row;
+}
+std::vector<float> shape_two_value(size_t vocab) {
+  std::vector<float> row(vocab);
+  for (size_t t = 0; t < vocab; ++t) {
+    row[t] = (t < vocab / 2u) ? 0.0f : -1.0f;
+  }
+  return row;
+}
+
+/* The required k grid over several row shapes and vocabularies, including
+ * `survivor_count - 1` (the last real selection), `survivor_count`,
+ * `survivor_count + 1` and `vocab` (all no-ops for a full row). */
+void test_k3_k4_k_grid() {
+  const std::vector<size_t> vocabs = {33u, 127u, 1000u, 1200u};
+  for (size_t vocab : vocabs) {
+    const std::vector<std::vector<float>> shapes = {
+        shape_descending(vocab),
+        shape_periodic_ties(vocab),
+        shape_two_value(vocab),
+    };
+    const char* shape_names[] = {"desc", "ties16", "two_value"};
+    for (size_t s = 0; s < shapes.size(); ++s) {
+      std::vector<uint32_t> ks = {
+          1u, 2u, 40u, 64u, 257u, 1000u,
+          static_cast<uint32_t>(vocab - 1u), static_cast<uint32_t>(vocab),
+          static_cast<uint32_t>(vocab + 1u),
+      };
+      for (uint32_t k : ks) {
+        std::vector<ds41rt_v41_sampler_row_t> params = {
+            row(0, 0.7f, k, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+                DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+        };
+        const size_t capacity = k; /* one row: exactly its own k */
+        const std::string label = "k3k4 grid " + std::string(shape_names[s]) +
+                                  " vocab" + std::to_string(vocab) + " k" +
+                                  std::to_string(k);
+        run_topk_case(shapes[s], 1, vocab, params, {}, false, false, capacity,
+                      label.c_str());
+      }
+    }
+  }
+  std::cout << "ok  K3/K4 k grid over " << vocabs.size() << " vocabularies (pass bound "
+            << host_bisection_pass_bound() << ")\n";
+}
+
+/* Thousands of survivors sharing the k-th value: the exact id multiset must be
+ * the CPU's (the tie cut admits the lowest-id equals), never "all ties". */
+void test_k3_k4_thousands_tied() {
+  /* 2048 survivors at 1.0 (even ids) and 2048 at 0.5 (odd ids); k = 3000 needs
+   * 952 of the 0.5 ties, which must be the 952 lowest odd ids. */
+  {
+    const size_t vocab = 4096;
+    std::vector<float> logits(vocab);
+    for (size_t t = 0; t < vocab; ++t) {
+      logits[t] = (t % 2u == 0u) ? 1.0f : 0.5f;
+    }
+    std::vector<ds41rt_v41_sampler_row_t> params = {
+        row(0, 1.0f, 3000u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+            DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+    };
+    run_topk_case(logits, 1, vocab, params, {}, false, false, 3000u,
+                  "k3k4 thousands-tied half/half k=3000");
+  }
+  /* One huge flat tie below three distinct leaders; k = 2000 cuts deep into the
+   * 4093-token tie group, so the prefix is ids 3..1999. */
+  {
+    const size_t vocab = 4096;
+    std::vector<float> logits(vocab, 0.0f);
+    logits[0] = 10.0f;
+    logits[1] = 1.0f;
+    logits[2] = 0.5f;
+    std::vector<ds41rt_v41_sampler_row_t> params = {
+        row(0, 1.0f, 2000u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+            DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+    };
+    run_topk_case(logits, 1, vocab, params, {}, false, false, 2000u,
+                  "k3k4 thousands-tied flat tail k=2000");
+    /* And pin the exact expected ids independently of the oracle helper. */
+    K1 k = make_k1(1, vocab, false, false);
+    require_cuda(cudaMemcpy(k.logits, logits.data(), logits.size() * 4,
+                            cudaMemcpyHostToDevice), "tie logits");
+    require_cuda(cudaMemcpy(k.params, params.data(), sizeof(params[0]),
+                            cudaMemcpyHostToDevice), "tie params");
+    expect(ds41rt_cuda_v41_target_sample(k.logits, 1, vocab, vocab, k.params, nullptr,
+                                         0u, k.ids, k.status, k.detail, k.scores, nullptr,
+                                         nullptr, k.scratch) == DS41RT_STATUS_OK,
+           "tie K1 launch");
+    TopkBuffers buffers = make_topk_buffers(1, 2000u);
+    expect(ds41rt_cuda_v41_topk_select(k.logits, 1, vocab, vocab, k.params, nullptr, 0u,
+                                       buffers.rank_ids, buffers.rank_scratch, 2000u,
+                                       buffers.retained, buffers.passes, k.scratch) ==
+               DS41RT_STATUS_OK,
+           "tie topk launch");
+    std::vector<uint32_t> ids(2000u);
+    std::vector<ds41rt_v41_sampler_scratch_t> scratch(1);
+    require_cuda(cudaMemcpy(ids.data(), buffers.rank_ids, 2000u * 4,
+                            cudaMemcpyDeviceToHost), "tie ids");
+    require_cuda(cudaMemcpy(scratch.data(), k.scratch, sizeof(scratch[0]),
+                            cudaMemcpyDeviceToHost), "tie scratch");
+    expect(scratch[0].above_count == 3u, "tie: exactly three survivors above the k-th value");
+    bool exact = ids.size() == 2000u;
+    for (size_t i = 0; exact && i < ids.size(); ++i) {
+      /* ranks 0..2 are the leaders, then ids 3,4,...,1999 in ascending order. */
+      exact = ids[i] == static_cast<uint32_t>(i);
+    }
+    expect(exact, "tie: the retained ids are exactly 0..1999");
+    free_topk_buffers(&buffers);
+    free_k1(&k);
+  }
+  std::cout << "ok  K3/K4 thousands-tied rows keep exactly k lowest-id ties\n";
+}
+
+/* An all-tied row: `above_count = 0`, `target_tie = k`, so the tie cut admits
+ * the first k tokens in token order, i.e. ids 0..k-1. */
+void test_k3_k4_all_tied() {
+  const size_t vocab = 1024;
+  const std::vector<uint32_t> ks = {2u, 40u, 64u, 257u, 1000u};
+  for (uint32_t k : ks) {
+    std::vector<float> logits(vocab, 0.25f);
+    std::vector<ds41rt_v41_sampler_row_t> params = {
+        row(0, 1.0f, k, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+            DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+    };
+    const std::string label = "k3k4 all-tied k" + std::to_string(k);
+    run_topk_case(logits, 1, vocab, params, {}, false, false, k, label.c_str());
+    /* Independent of the oracle helper: the ids must be exactly 0..k-1. */
+    K1 dev = make_k1(1, vocab, false, false);
+    require_cuda(cudaMemcpy(dev.logits, logits.data(), logits.size() * 4,
+                            cudaMemcpyHostToDevice), "all-tied logits");
+    require_cuda(cudaMemcpy(dev.params, params.data(), sizeof(params[0]),
+                            cudaMemcpyHostToDevice), "all-tied params");
+    expect(ds41rt_cuda_v41_target_sample(dev.logits, 1, vocab, vocab, dev.params, nullptr,
+                                         0u, dev.ids, dev.status, dev.detail, dev.scores,
+                                         nullptr, nullptr, dev.scratch) == DS41RT_STATUS_OK,
+           "all-tied K1");
+    TopkBuffers buffers = make_topk_buffers(1, k);
+    expect(ds41rt_cuda_v41_topk_select(dev.logits, 1, vocab, vocab, dev.params, nullptr,
+                                       0u, buffers.rank_ids, buffers.rank_scratch, k,
+                                       buffers.retained, buffers.passes, dev.scratch) ==
+               DS41RT_STATUS_OK,
+           "all-tied topk");
+    std::vector<uint32_t> ids(k);
+    require_cuda(cudaMemcpy(ids.data(), buffers.rank_ids, k * 4, cudaMemcpyDeviceToHost),
+                 "all-tied ids");
+    bool exact = true;
+    for (uint32_t rank = 0; rank < k; ++rank) {
+      exact = exact && ids[rank] == rank;
+    }
+    expect(exact, "all-tied row yields ids 0..k-1");
+    free_topk_buffers(&buffers);
+    free_k1(&dev);
+  }
+  /* A huge -inf tie group below one finite leader (min_p = 0 at a tiny
+   * temperature): the k-th key is key(-inf) = 0x007FFFFF, so the bisection must
+   * walk to the bottom of the key range and the tie cut still yields ascending
+   * ids. Note every survivor cannot be -inf: a fully -inf scaled maximum is
+   * `INVALID_TEMPERATURE` (K1), so at least one finite leader is required. */
+  {
+    const size_t vocab = 256;
+    const float neg_max = -std::numeric_limits<float>::max();
+    std::vector<float> logits(vocab, neg_max);
+    logits[0] = 0.0f;
+    std::vector<ds41rt_v41_sampler_row_t> params = {
+        row(0, 1.0e-5f, 64u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+            DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+    };
+    run_topk_case(logits, 1, vocab, params, {}, false, false, 64u,
+                  "k3k4 -inf tie group");
+  }
+  std::cout << "ok  K3/K4 all-tied rows yield ids 0..k-1 (incl. -inf ties)\n";
+}
+
+/* Masks (sparse, all-allowed, a mask that makes the k-th value ambiguous) and
+ * -inf survivors. */
+void test_k3_k4_masks_and_inf() {
+  /* Sparse mask: only tokens 1, 4, 5, 8, 9, 12 are allowed; k = 2. */
+  {
+    const size_t vocab = 33;
+    const size_t words = (vocab + 31u) / 32u;
+    std::vector<float> logits = shape_descending(vocab);
+    std::vector<uint32_t> mask(words, 0u);
+    const uint32_t allowed_ids[] = {1u, 4u, 5u, 8u, 9u, 12u};
+    for (uint32_t id : allowed_ids) {
+      mask[id / 32u] |= (1u << (id % 32u));
+    }
+    std::vector<ds41rt_v41_sampler_row_t> params = {
+        row(0, 0.7f, 2u, 0.0f, -inf(), 0u, 0u),
+    };
+    run_topk_case(logits, 1, vocab, params, mask, true, true, 2u,
+                  "k3k4 sparse mask k=2");
+  }
+  /* All-allowed mask with every remainder bit set (the host must still clear
+   * them; `strict_mask_bits = false` leaves the junk and the kernel's
+   * vocab-bounded loop must ignore it). */
+  {
+    const size_t vocab = 127;
+    const size_t words = (vocab + 31u) / 32u;
+    std::vector<float> logits = shape_periodic_ties(vocab);
+    std::vector<uint32_t> mask(words, 0xFFFFFFFFu);
+    std::vector<ds41rt_v41_sampler_row_t> params = {
+        row(0, 0.7f, 40u, 0.0f, -inf(), 0u, 0u),
+    };
+    run_topk_case(logits, 1, vocab, params, mask, true, false, 40u,
+                  "k3k4 all-allowed mask with junk high bits");
+  }
+  /* A mask that removes the unmasked k-th-value group: the retained set and the
+   * tie cut must be computed over survivors only. */
+  {
+    const size_t vocab = 64;
+    const size_t words = (vocab + 31u) / 32u;
+    std::vector<float> logits(vocab, 0.0f);
+    for (size_t t = 0; t < 8; ++t) {
+      logits[t] = static_cast<float>(8 - t); /* 8,7,...,1 at tokens 0..7 */
+    }
+    std::vector<uint32_t> mask(words, 0u);
+    /* Allow everything except tokens 2 and 3 (which would be ranks 5 and 6). */
+    for (size_t t = 0; t < vocab; ++t) {
+      if (t != 2u && t != 3u) {
+        mask[t / 32u] |= (1u << (t % 32u));
+      }
+    }
+    std::vector<ds41rt_v41_sampler_row_t> params = {
+        row(0, 1.0f, 4u, 0.0f, -inf(), 0u, 0u),
+    };
+    run_topk_case(logits, 1, vocab, params, mask, true, true, 4u,
+                  "k3k4 mask removes the k-th value");
+  }
+  /* -inf survivors with a real finite leader: min_p = 0 at T = 1e-5 keeps the
+   * -inf tokens, which sort last; k lands inside the -inf tie group. */
+  {
+    const size_t vocab = 128;
+    const float neg_max = -std::numeric_limits<float>::max();
+    std::vector<float> logits(vocab, neg_max);
+    logits[7] = 0.0f;
+    logits[9] = -1.0f;
+    std::vector<ds41rt_v41_sampler_row_t> params = {
+        row(0, 1.0e-5f, 10u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+            DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+    };
+    run_topk_case(logits, 1, vocab, params, {}, false, false, 10u,
+                  "k3k4 -inf survivors k=10");
+  }
+  /* min_p keeps only the scaled maximum and -inf still enters when min_p = 0. */
+  {
+    const size_t vocab = 40;
+    const size_t words = (vocab + 31u) / 32u;
+    std::vector<float> logits = shape_periodic_ties(vocab);
+    std::vector<uint32_t> mask(words, 0xFFFFFFFFu);
+    const float min_p = 0.05f;
+    const float ln_min_p = std::log(min_p);
+    std::vector<ds41rt_v41_sampler_row_t> params = {
+        row(0, 1.0f, 4u, min_p, ln_min_p, 0u, 0u),
+    };
+    run_topk_case(logits, 1, vocab, params, mask, true, true, 4u,
+                  "k3k4 min_p + all-allowed mask");
+  }
+  std::cout << "ok  K3/K4 mask and -inf survivor cases\n";
+}
+
+/* Boundary/termination: no-op rows, greedy rows, capacity-0 selection-only, a
+ * mixed batch, and a 129,280-wide row at a served k and at survivor_count - 1. */
+void test_k3_k4_boundaries_and_termination() {
+  /* A mixed batch: greedy (top_k = 1), disabled (top_k = 0), a no-op
+   * (top_k >= survivor_count), and three real selections of different sizes.
+   * Only the real rows may touch the arena; the others must stay sentinel. */
+  {
+    const size_t vocab = 300;
+    std::vector<float> logits(6 * vocab);
+    for (size_t r = 0; r < 6; ++r) {
+      for (size_t t = 0; t < vocab; ++t) {
+        logits[r * vocab + t] = shape_periodic_ties(vocab)[t] +
+                                (r == 5u ? 0.0f : static_cast<float>(r));
+      }
+    }
+    std::vector<ds41rt_v41_sampler_row_t> params = {
+        row(0, 0.7f, 1u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+            DS41RT_V41_SAMPLER_FLAG_NO_MASK), /* greedy */
+        row(1, 0.7f, 0u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+            DS41RT_V41_SAMPLER_FLAG_NO_MASK), /* disabled */
+        row(2, 0.7f, 400u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+            DS41RT_V41_SAMPLER_FLAG_NO_MASK), /* top_k > survivor_count no-op */
+        row(3, 0.7f, 17u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+            DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+        row(4, 1.0e-6f, 5u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+            DS41RT_V41_SAMPLER_FLAG_NO_MASK), /* T < 1e-5 greedy */
+        row(5, 2.0f, 64u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+            DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+    };
+    run_topk_case(logits, 6, vocab, params, {}, false, false, 64u,
+                  "k3k4 mixed no-op/greedy/selection batch");
+  }
+  /* Selection-only (capacity 0): K3 still publishes kth/above and out_retained,
+   * but no arena is touched. */
+  {
+    const size_t vocab = 500;
+    std::vector<float> logits = shape_descending(vocab);
+    std::vector<ds41rt_v41_sampler_row_t> params = {
+        row(0, 0.7f, 37u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+            DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+    };
+    run_topk_case(logits, 1, vocab, params, {}, false, false, 0u,
+                  "k3k4 selection-only capacity 0");
+  }
+  /* Realistic 129,280-wide rows: a served k = 40 and k = 1000 with full rank
+   * materialization, then survivor_count - 1 = 129,279 as a selection-only call
+   * (materializing 129k ids would be O(k^2) and is a chunk-6 item). */
+  {
+    const size_t vocab = 129280;
+    const auto splitmix_unit = [](uint64_t index) -> float {
+      uint64_t hash = index * 0x9e3779b97f4a7c15ull;
+      hash = (hash ^ (hash >> 30)) * 0xbf58476d1ce4e5b9ull;
+      hash = (hash ^ (hash >> 27)) * 0x94d049bb133111ebull;
+      hash ^= hash >> 31;
+      return static_cast<float>(hash >> 40) / 16777216.0f;
+    };
+    std::vector<float> logits(vocab);
+    for (size_t t = 0; t < vocab; ++t) {
+      logits[t] = -8.0f + 10.0f * splitmix_unit(static_cast<uint64_t>(t));
+    }
+    {
+      std::vector<ds41rt_v41_sampler_row_t> params = {
+          row(0, 0.7f, 40u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+              DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+      };
+      run_topk_case(logits, 1, vocab, params, {}, false, false, 40u,
+                    "k3k4 wide vocab 129280 k=40");
+    }
+    {
+      std::vector<ds41rt_v41_sampler_row_t> params = {
+          row(0, 0.7f, 1000u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+              DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+      };
+      run_topk_case(logits, 1, vocab, params, {}, false, false, 1000u,
+                    "k3k4 wide vocab 129280 k=1000");
+    }
+    {
+      const uint32_t k = static_cast<uint32_t>(vocab - 1u);
+      std::vector<ds41rt_v41_sampler_row_t> params = {
+          row(0, 0.7f, k, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+              DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+      };
+      run_topk_case(logits, 1, vocab, params, {}, false, false, 0u,
+                    "k3k4 wide vocab 129280 k=survivor_count-1 (selection-only)");
+    }
+  }
+  /* Independently pin the no-op and greedy outputs (a kernel that published a
+   * retention for them would fail here). */
+  {
+    const size_t vocab = 64;
+    std::vector<float> logits = shape_descending(vocab);
+    std::vector<ds41rt_v41_sampler_row_t> params = {
+        row(0, 0.7f, 1u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+            DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+        row(1, 0.7f, 0u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+            DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+        row(2, 0.7f, 64u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+            DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+        row(3, 0.7f, 65u, 0.0f, -inf(), DS41RT_V41_SAMPLER_NO_MASK_ROW,
+            DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+    };
+    const std::vector<float> four = [&] {
+      std::vector<float> all;
+      for (int i = 0; i < 4; ++i) {
+        all.insert(all.end(), logits.begin(), logits.end());
+      }
+      return all;
+    }();
+    run_topk_case(four, 4, vocab, params, {}, false, false, 2u,
+                  "k3k4 greedy/disabled/no-op rows");
+  }
+  std::cout << "ok  K3/K4 boundaries: no-op, greedy, capacity-0, wide 129280 (max passes "
+            << host_bisection_pass_bound() << ")\n";
+}
+
+/* Regression for the ternary search's length-2 interval.
+ *
+ * The ternary rule `while (hi - lo >= 3)` can stop on a length-2 interval whose
+ * *lower* value is the k-th key (reachable from a length-4 middle branch). It
+ * then returns `hi = kth + 1`, a key no survivor carries: `above_count` is right
+ * but the tie cut finds no equals, so the retained set comes up short. The
+ * shipped loop probes once more at `lo + 1` and stops at `hi - lo == 1`.
+ *
+ * Each row has three survivors: `1.0` (best), a tiny positive middle value, and
+ * `-1.0`; `k = 2`, so the k-th value is the middle one. The middle values below
+ * are keys for which the old `>= 3` termination returned `kth + 1`; the test
+ * re-derives that host-side so a future reintroduction is caught by this row and
+ * not only by the oracle comparison. */
+void test_k3_k4_length_two_interval() {
+  const uint32_t middle_bits[] = {
+      0x07EF06BDu, 0x2CDCDA2Eu, 0x27D8638Fu, 0x104FB2B1u,
+      0x1C5D7853u, 0x10DE80B5u, 0x10567722u,
+  };
+  const size_t rows = sizeof(middle_bits) / sizeof(middle_bits[0]);
+  const uint32_t top_key = host_order_key(1.0f);
+  const uint32_t bottom_key = host_order_key(-1.0f);
+  std::vector<float> logits(rows * 3);
+  std::vector<ds41rt_v41_sampler_row_t> params;
+  for (size_t r = 0; r < rows; ++r) {
+    float middle = 0.0f;
+    std::memcpy(&middle, &middle_bits[r], sizeof(middle));
+    logits[r * 3 + 0] = 1.0f;
+    logits[r * 3 + 1] = middle;
+    logits[r * 3 + 2] = -1.0f;
+    params.push_back(row(static_cast<uint32_t>(r), 1.0f, 2u, 0.0f, -inf(),
+                         DS41RT_V41_SAMPLER_NO_MASK_ROW,
+                         DS41RT_V41_SAMPLER_FLAG_NO_MASK));
+    /* Host-side two-probe bisection with the OLD `>= 3` termination; it must
+     * return `middle + 1`, which is what the fixed kernel must never return. */
+    const uint32_t keys[3] = {top_key, host_order_key(middle), bottom_key};
+    const auto count_gt = [&](uint32_t value) {
+      uint32_t above = 0u;
+      for (uint32_t key : keys) {
+        if (key > value) {
+          ++above;
+        }
+      }
+      return above;
+    };
+    uint32_t lo = 0u;
+    uint32_t hi = 0xFFFFFFFFu;
+    while (hi - lo >= 3u) {
+      const uint32_t third = (hi - lo) / 3u;
+      const uint32_t m0 = lo + third;
+      const uint32_t m1 = hi - third;
+      const uint32_t c0 = count_gt(m0);
+      const uint32_t c1 = count_gt(m1);
+      if (c0 < 2u) {
+        hi = m0;
+      } else if (c1 < 2u) {
+        lo = m0;
+        hi = m1;
+      } else {
+        lo = m1;
+      }
+    }
+    expect(hi == host_order_key(middle) + 1u,
+           "length-2 regression: the old termination returns kth + 1");
+  }
+  run_topk_case(logits, rows, 3, params, {}, false, false, 2u,
+                "k3k4 length-2 interval regression");
+  std::cout << "ok  K3 length-2 interval final probe (" << rows << " adversarial keys)\n";
+}
+
+/* Deterministic pseudo-random rows over a mixed grid of shapes, k, min_p and
+ * masks. The shapes repeat values at several granularities (six levels, a
+ * tie band, exact duplicates), which is what stresses the tie cut and the
+ * bisection's boundary landing rather than only the easy distinct-key case. */
+void test_k3_k4_randomized_rows() {
+  const size_t vocab = 257;
+  const size_t words = (vocab + 31u) / 32u;
+  const size_t rows = 24;
+  const auto unit = [](uint64_t index) -> float {
+    uint64_t hash = index * 0x9e3779b97f4a7c15ull + 0x1234567ull;
+    hash = (hash ^ (hash >> 30)) * 0xbf58476d1ce4e5b9ull;
+    hash = (hash ^ (hash >> 27)) * 0x94d049bb133111ebull;
+    hash ^= hash >> 31;
+    return static_cast<float>(hash >> 40) / 16777216.0f;
+  };
+  const uint32_t k_cycle[] = {2u, 3u, 5u, 17u, 40u, 64u, 100u, 256u, 300u};
+  std::vector<float> logits(rows * vocab);
+  std::vector<uint32_t> mask(rows * words, 0xFFFFFFFFu);
+  std::vector<ds41rt_v41_sampler_row_t> params;
+  size_t capacity = 0;
+  for (size_t r = 0; r < rows; ++r) {
+    for (size_t t = 0; t < vocab; ++t) {
+      const float value = unit(static_cast<uint64_t>(r) * vocab + t);
+      switch (r % 4u) {
+        case 0:
+          logits[r * vocab + t] = value * 2.0f - 1.0f;
+          break;
+        case 1:
+          logits[r * vocab + t] = static_cast<float>(static_cast<int>(value * 6.0f));
+          break;
+        case 2:
+          logits[r * vocab + t] = (t % 5u == 0u) ? 1.0f : 0.0f;
+          break;
+        default:
+          logits[r * vocab + t] = -0.01f * static_cast<float>(t / 3u);
+          break;
+      }
+    }
+    /* 0.7 keeps every row stochastic; min_p cycles through disabled and two
+     * finite thresholds, and one row in five is masked. */
+    const float min_p = (r % 3u == 0u) ? 0.0f : ((r % 3u == 1u) ? 0.05f : 0.5f);
+    const float ln_min_p = (min_p > 0.0f) ? std::log(min_p) : -inf();
+    bool masked = (r % 5u == 0u);
+    uint32_t mask_row = masked ? static_cast<uint32_t>(r) : DS41RT_V41_SAMPLER_NO_MASK_ROW;
+    uint32_t flags = masked ? 0u : DS41RT_V41_SAMPLER_FLAG_NO_MASK;
+    if (masked) {
+      for (size_t t = 0; t < vocab; ++t) {
+        const bool allowed = (t % 3u) != 0u;
+        mask[r * words + t / 32u] =
+            allowed ? (mask[r * words + t / 32u] | (1u << (t % 32u)))
+                    : (mask[r * words + t / 32u] & ~(1u << (t % 32u)));
+      }
+      ds41rt_v41_sampler_clear_remainder(mask.data() + r * words, vocab);
+    }
+    const uint32_t k = k_cycle[r % (sizeof(k_cycle) / sizeof(k_cycle[0]))];
+    capacity = std::max(capacity, static_cast<size_t>(k));
+    params.push_back(row(static_cast<uint32_t>(r), 0.7f, k, min_p, ln_min_p, mask_row,
+                         flags));
+  }
+  run_topk_case(logits, rows, vocab, params, mask, true, true, capacity,
+                "k3k4 randomized mixed rows");
+  std::cout << "ok  K3/K4 randomized grid: " << rows << " rows, vocab " << vocab
+            << ", capacity " << capacity << "\n";
+}
+
 }  // namespace
 
 int main() {
@@ -2176,6 +3015,16 @@ int main() {
   test_k2_batch_composition_independence();
   test_k2_non_applicable_rows_untouched();
   test_k2_fallback_unreachable_like_cpu();
+  test_k3_k4_k_grid();
+  test_k3_k4_thousands_tied();
+  test_k3_k4_all_tied();
+  test_k3_k4_masks_and_inf();
+  test_k3_k4_boundaries_and_termination();
+  test_k3_k4_length_two_interval();
+  test_k3_k4_randomized_rows();
+  std::cout << "K3 pivot pass budget (measured): max " << g_max_pivot_passes << " of "
+            << DS41RT_V41_TOPK_MAX_PIVOT_STEPS << " cap, host worst-case bound "
+            << host_bisection_pass_bound() << "\n";
   std::cout << "ds41rt_v41_sampling_selftest passed: " << g_cases << " cases, " << g_checks
             << " assertions\n";
   return 0;

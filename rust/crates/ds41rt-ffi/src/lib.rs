@@ -2786,6 +2786,40 @@ type CudaV41TargetSampleAsyncFn = unsafe extern "C" fn(
     scratch: *mut c_void,
     cuda_stream: *mut c_void,
 ) -> Ds41rtStatus;
+/// Chunk-3a K3/K4 entry points of the v4.1 GPU target-sampler
+/// (`native/cuda/kernels/v41_sampling_gpu.h`). They read K1's `scratch` and
+/// materialize the retained set in CPU rank order into the rank-order arena.
+type CudaV41TopkSelectFn = unsafe extern "C" fn(
+    logits: *const f32,
+    rows: usize,
+    vocab: usize,
+    logits_stride: usize,
+    params: *const Ds41rtV41SamplerRow,
+    mask_words: *const u32,
+    mask_words_per_row: usize,
+    rank_order_ids: *mut u32,
+    rank_order_scratch: *mut u64,
+    rank_order_capacity: usize,
+    out_retained_count: *mut u32,
+    out_pivot_passes: *mut u32,
+    scratch: *mut c_void,
+) -> Ds41rtStatus;
+type CudaV41TopkSelectAsyncFn = unsafe extern "C" fn(
+    logits: *const f32,
+    rows: usize,
+    vocab: usize,
+    logits_stride: usize,
+    params: *const Ds41rtV41SamplerRow,
+    mask_words: *const u32,
+    mask_words_per_row: usize,
+    rank_order_ids: *mut u32,
+    rank_order_scratch: *mut u64,
+    rank_order_capacity: usize,
+    out_retained_count: *mut u32,
+    out_pivot_passes: *mut u32,
+    scratch: *mut c_void,
+    cuda_stream: *mut c_void,
+) -> Ds41rtStatus;
 type CudaLogitsArgmaxF32Fn = unsafe extern "C" fn(
     logits: *const f32,
     out_indices: *mut u32,
@@ -14577,6 +14611,143 @@ impl NativeLibrary {
         self.status_to_result(NAME, status)
     }
 
+    /// Launch the chunk-3a K3/K4 stages on `cuda_stream` and return immediately.
+    ///
+    /// These read the `scratch` block a preceding K1 launch filled (the chunk-2
+    /// convention) and materialize the retained set in the CPU's exact rank
+    /// order. `rank_order_ids`/`rank_order_scratch` may both be `None` for a
+    /// selection-only call (`rank_order_capacity == 0`); when present they must
+    /// be one `rows * rank_order_capacity` arena each and
+    /// `rank_order_capacity` must cover every row's `top_k`.
+    ///
+    /// See the rank-order contract in `v41_sampling_gpu.h`.
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn cuda_v41_topk_select_async(
+        &self,
+        logits: Ds41rtDeviceBuffer,
+        rows: usize,
+        vocab: usize,
+        logits_stride: usize,
+        params: &[Ds41rtV41SamplerRow],
+        mask_words: Option<Ds41rtDeviceBuffer>,
+        mask_words_per_row: usize,
+        rank_order_ids: Option<Ds41rtDeviceBuffer>,
+        rank_order_scratch: Option<Ds41rtDeviceBuffer>,
+        rank_order_capacity: usize,
+        out_retained_count: Ds41rtDeviceBuffer,
+        out_pivot_passes: Ds41rtDeviceBuffer,
+        scratch: Ds41rtDeviceBuffer,
+        cuda_stream: *mut c_void,
+    ) -> Result<()> {
+        const NAME: &str = "ds41rt_cuda_v41_topk_select_async";
+        validate_v41_topk_select_buffers(
+            NAME,
+            logits,
+            rows,
+            vocab,
+            logits_stride,
+            params,
+            mask_words,
+            mask_words_per_row,
+            rank_order_ids,
+            rank_order_scratch,
+            rank_order_capacity,
+            out_retained_count,
+            out_pivot_passes,
+            scratch,
+        )?;
+        let kernel_fn: Symbol<CudaV41TopkSelectAsyncFn> =
+            unsafe { self.lib.get(b"ds41rt_cuda_v41_topk_select_async")? };
+        let status = unsafe {
+            kernel_fn(
+                logits.ptr.cast::<f32>() as *const f32,
+                rows,
+                vocab,
+                logits_stride,
+                params.as_ptr(),
+                mask_words
+                    .map(|buffer| buffer.ptr.cast::<u32>() as *const u32)
+                    .unwrap_or(std::ptr::null()),
+                mask_words_per_row,
+                rank_order_ids
+                    .map(|buffer| buffer.ptr.cast::<u32>())
+                    .unwrap_or(std::ptr::null_mut()),
+                rank_order_scratch
+                    .map(|buffer| buffer.ptr.cast::<u64>())
+                    .unwrap_or(std::ptr::null_mut()),
+                rank_order_capacity,
+                out_retained_count.ptr.cast::<u32>(),
+                out_pivot_passes.ptr.cast::<u32>(),
+                scratch.ptr,
+                cuda_stream,
+            )
+        };
+        self.status_to_result(NAME, status)
+    }
+
+    /// Blocking form of [`Self::cuda_v41_topk_select_async`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn cuda_v41_topk_select(
+        &self,
+        logits: Ds41rtDeviceBuffer,
+        rows: usize,
+        vocab: usize,
+        logits_stride: usize,
+        params: &[Ds41rtV41SamplerRow],
+        mask_words: Option<Ds41rtDeviceBuffer>,
+        mask_words_per_row: usize,
+        rank_order_ids: Option<Ds41rtDeviceBuffer>,
+        rank_order_scratch: Option<Ds41rtDeviceBuffer>,
+        rank_order_capacity: usize,
+        out_retained_count: Ds41rtDeviceBuffer,
+        out_pivot_passes: Ds41rtDeviceBuffer,
+        scratch: Ds41rtDeviceBuffer,
+    ) -> Result<()> {
+        const NAME: &str = "ds41rt_cuda_v41_topk_select";
+        validate_v41_topk_select_buffers(
+            NAME,
+            logits,
+            rows,
+            vocab,
+            logits_stride,
+            params,
+            mask_words,
+            mask_words_per_row,
+            rank_order_ids,
+            rank_order_scratch,
+            rank_order_capacity,
+            out_retained_count,
+            out_pivot_passes,
+            scratch,
+        )?;
+        let kernel_fn: Symbol<CudaV41TopkSelectFn> =
+            unsafe { self.lib.get(b"ds41rt_cuda_v41_topk_select")? };
+        let status = unsafe {
+            kernel_fn(
+                logits.ptr.cast::<f32>() as *const f32,
+                rows,
+                vocab,
+                logits_stride,
+                params.as_ptr(),
+                mask_words
+                    .map(|buffer| buffer.ptr.cast::<u32>() as *const u32)
+                    .unwrap_or(std::ptr::null()),
+                mask_words_per_row,
+                rank_order_ids
+                    .map(|buffer| buffer.ptr.cast::<u32>())
+                    .unwrap_or(std::ptr::null_mut()),
+                rank_order_scratch
+                    .map(|buffer| buffer.ptr.cast::<u64>())
+                    .unwrap_or(std::ptr::null_mut()),
+                rank_order_capacity,
+                out_retained_count.ptr.cast::<u32>(),
+                out_pivot_passes.ptr.cast::<u32>(),
+                scratch.ptr,
+            )
+        };
+        self.status_to_result(NAME, status)
+    }
+
     pub fn cuda_logits_argmax_f32(
         &self,
         logits: Ds41rtDeviceBuffer,
@@ -18321,6 +18492,95 @@ fn validate_v41_sampling_buffers(
     validate_device_buffer_bytes(&format!("{context} scratch"), scratch, scratch_bytes)
 }
 
+/// Host-side validation for the chunk-3a K3/K4 entry points.
+///
+/// Every field the chunk-1 validator already pins (logits extent, parameter
+/// blocks, mask width and mask semantics, status codes, `output_row` bounds,
+/// `ln_min_p` consistency) is reused verbatim: the K1/K2 output buffers do not
+/// exist on this entry point, so `scratch` stands in for them. The validator
+/// only checks pointer/extent for those, and the scratch extent (`rows * 64`)
+/// dominates each of them, so the reuse cannot weaken a check.
+///
+/// The rank-order arena is all-or-nothing: either both arenas are supplied with
+/// a positive per-row capacity that covers every row's `top_k`, or both are
+/// absent and `capacity == 0` (selection-only).
+fn validate_v41_topk_select_buffers(
+    context: &str,
+    logits: Ds41rtDeviceBuffer,
+    rows: usize,
+    vocab: usize,
+    logits_stride: usize,
+    params: &[Ds41rtV41SamplerRow],
+    mask_words: Option<Ds41rtDeviceBuffer>,
+    mask_words_per_row: usize,
+    rank_order_ids: Option<Ds41rtDeviceBuffer>,
+    rank_order_scratch: Option<Ds41rtDeviceBuffer>,
+    rank_order_capacity: usize,
+    out_retained_count: Ds41rtDeviceBuffer,
+    out_pivot_passes: Ds41rtDeviceBuffer,
+    scratch: Ds41rtDeviceBuffer,
+) -> Result<()> {
+    validate_v41_sampling_buffers(
+        context,
+        logits,
+        rows,
+        vocab,
+        logits_stride,
+        params,
+        mask_words,
+        mask_words_per_row,
+        scratch,
+        scratch,
+        scratch,
+        scratch,
+        None,
+        None,
+        scratch,
+    )?;
+    validate_u32_buffer_values(
+        &format!("{context} out_retained_count"),
+        out_retained_count,
+        rows,
+    )?;
+    validate_u32_buffer_values(&format!("{context} out_pivot_passes"), out_pivot_passes, rows)?;
+    match (rank_order_ids, rank_order_scratch) {
+        (None, None) => {
+            if rank_order_capacity != 0 {
+                anyhow::bail!(
+                    "{context} rank_order_capacity is {rank_order_capacity} but no rank-order \
+                     arenas were supplied"
+                );
+            }
+        }
+        (Some(ids), Some(rank_scratch)) => {
+            if rank_order_capacity == 0 {
+                anyhow::bail!(
+                    "{context} rank-order arenas were supplied with a zero per-row capacity"
+                );
+            }
+            let values =
+                checked_row_values(&format!("{context} rank_order_ids"), rows, rank_order_capacity)?;
+            validate_u32_buffer_values(&format!("{context} rank_order_ids"), ids, values)?;
+            validate_u64_buffer_values(
+                &format!("{context} rank_order_scratch"),
+                rank_scratch,
+                values,
+            )?;
+            let max_top_k = params.iter().map(|params| params.top_k).max().unwrap_or(0) as usize;
+            if rank_order_capacity < max_top_k {
+                anyhow::bail!(
+                    "{context} rank_order_capacity {rank_order_capacity} is below the batch's \
+                     maximum top_k {max_top_k}"
+                );
+            }
+        }
+        _ => anyhow::bail!(
+            "{context} the rank-order id and scratch arenas must be supplied together"
+        ),
+    }
+    Ok(())
+}
+
 fn validate_logits_argmax_buffers(
     context: &str,
     logits: Ds41rtDeviceBuffer,
@@ -19457,6 +19717,482 @@ mod tests {
             "v4.1 sampler fast-path FFI oracle: small_rows={rows} vocab={vocab} \
              peaked_rows={wide_rows} moderate_rows={moderate_rows} near_uniform_rows={near_rows} \
              near_uniform_diverged={near_differing}/{near_rows}"
+        );
+        Ok(())
+    }
+
+    /// One chunk-3a K3/K4 per-row parameter block (`top_p = 1.0`, so the row is
+    /// the ordered profile).
+    fn v41_topk_row(
+        output_row: u32,
+        temperature: f32,
+        top_k: u32,
+        min_p: f32,
+        mask_row: u32,
+        flags: u32,
+    ) -> Ds41rtV41SamplerRow {
+        Ds41rtV41SamplerRow {
+            seed: 0x7f4a_7c15_9e37_79b9,
+            position: output_row as u64,
+            temperature,
+            top_p: 1.0,
+            min_p,
+            top_k,
+            mask_row,
+            flags,
+            output_row,
+            ln_min_p: if min_p > 0.0 { min_p.ln() } else { f32::NEG_INFINITY },
+            ..Ds41rtV41SamplerRow::default()
+        }
+    }
+
+    /// Host port of the shipped `ds41rt_v41_order_key` (design §4.3).
+    fn v41_order_key(scaled: f32) -> u32 {
+        let value = if scaled == 0.0 { 0.0 } else { scaled };
+        let bits = value.to_bits();
+        if bits & 0x8000_0000 != 0 {
+            !bits
+        } else {
+            bits ^ 0x8000_0000
+        }
+    }
+
+    /// The CPU's ordered top-k branch (`target_sampling.rs:477-497`) as a host
+    /// oracle: survivors under `min_p` and the optional mask, sorted by the
+    /// served comparator (scaled descending, ascending id), truncated to
+    /// `top_k`. Returns the exact `ranked[..k]` and `above_count = C_gt(kth)`.
+    fn v41_expected_topk(
+        logits: &[f32],
+        temperature: f32,
+        top_k: usize,
+        min_p: f32,
+        mask: Option<&[u32]>,
+    ) -> (Vec<u32>, u32) {
+        let inv = 1.0f32 / temperature;
+        let mut max_scaled = f32::NEG_INFINITY;
+        for (token, &value) in logits.iter().enumerate() {
+            if mask.is_none_or(|words| words[token / 32] & (1 << (token % 32)) != 0) {
+                max_scaled = max_scaled.max(value * inv);
+            }
+        }
+        let min_scaled = if min_p > 0.0 {
+            max_scaled + min_p.ln()
+        } else {
+            f32::NEG_INFINITY
+        };
+        let mut ranked: Vec<(f32, u32)> = logits
+            .iter()
+            .enumerate()
+            .filter(|(token, &value)| {
+                mask.is_none_or(|words| words[token / 32] & (1 << (token % 32)) != 0)
+                    && value * inv >= min_scaled
+            })
+            .map(|(token, &value)| (value * inv, token as u32))
+            .collect();
+        ranked.sort_unstable_by(|a, b| {
+            b.0.partial_cmp(&a.0)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.1.cmp(&b.1))
+        });
+        let kth_key = v41_order_key(ranked[top_k - 1].0);
+        let above = ranked
+            .iter()
+            .filter(|(scaled, _)| v41_order_key(*scaled) > kth_key)
+            .count() as u32;
+        (
+            ranked.into_iter().take(top_k).map(|(_, id)| id).collect(),
+            above,
+        )
+    }
+
+    /// Outputs of one K1 + K3/K4 batch. `ranked` is `rows * capacity` (empty for
+    /// a selection-only call); the scratch fields are parsed at the header's
+    /// offsets (`kth_value_bits` +16, `above_count` +20).
+    struct TopkRun {
+        ranked: Vec<u32>,
+        retained: Vec<u32>,
+        passes: Vec<u32>,
+        above: Vec<u32>,
+        kth_bits: Vec<u32>,
+    }
+
+    /// Drive K1 then the chunk-3a K3/K4 stages through the FFI. Every output is
+    /// pre-filled with `0xDEADBEEF`, so a kernel that never ran cannot satisfy an
+    /// equality assertion with stale memory.
+    fn run_v41_topk_batch(
+        library: &NativeLibrary,
+        logits: &[f32],
+        rows: usize,
+        vocab: usize,
+        params: &[Ds41rtV41SamplerRow],
+        mask: Option<&[u32]>,
+        capacity: usize,
+    ) -> Result<TopkRun> {
+        assert_eq!(params.len(), rows);
+        assert_eq!(logits.len(), rows * vocab);
+        let words = vocab.div_ceil(32);
+        if let Some(mask) = mask {
+            assert_eq!(mask.len(), rows * words);
+        }
+        let logits_buffer = library.alloc_device_buffer(rows * vocab * 4)?;
+        let params_buffer = library.alloc_device_buffer(rows * DS41RT_V41_SAMPLER_PARAM_BYTES)?;
+        let mask_buffer = match mask {
+            Some(_) => Some(library.alloc_device_buffer(rows * words * 4)?),
+            None => None,
+        };
+        let ids = library.alloc_device_buffer(rows * 4)?;
+        let status = library.alloc_device_buffer(rows * 4)?;
+        let detail = library.alloc_device_buffer(rows * 4)?;
+        let scores = library.alloc_device_buffer(rows * 4)?;
+        let scratch = library.alloc_device_buffer(rows * DS41RT_V41_SAMPLER_SCRATCH_BYTES)?;
+        let retained = library.alloc_device_buffer(rows * 4)?;
+        let passes = library.alloc_device_buffer(rows * 4)?;
+        let rank_ids = match capacity {
+            0 => None,
+            _ => Some(library.alloc_device_buffer(rows * capacity * 4)?),
+        };
+        let rank_scratch = match capacity {
+            0 => None,
+            _ => Some(library.alloc_device_buffer(rows * capacity * 8)?),
+        };
+
+        let result = (|| -> Result<TopkRun> {
+            let sentinel: Vec<u8> = (0..rows).flat_map(|_| 0xDEAD_BEEFu32.to_ne_bytes()).collect();
+            library.copy_h2d(retained, &sentinel)?;
+            library.copy_h2d(passes, &sentinel)?;
+            if let Some(rank_ids) = rank_ids {
+                let arena: Vec<u8> =
+                    (0..rows * capacity).flat_map(|_| 0xDEAD_BEEFu32.to_ne_bytes()).collect();
+                library.copy_h2d(rank_ids, &arena)?;
+            }
+            let mut logits_bytes = Vec::with_capacity(logits.len() * 4);
+            for value in logits {
+                logits_bytes.extend_from_slice(&value.to_ne_bytes());
+            }
+            library.copy_h2d(logits_buffer, &logits_bytes)?;
+            if let (Some(mask), Some(mask_buffer)) = (mask, mask_buffer) {
+                let mut mask_bytes = Vec::with_capacity(mask.len() * 4);
+                for value in mask {
+                    mask_bytes.extend_from_slice(&value.to_ne_bytes());
+                }
+                library.copy_h2d(mask_buffer, &mask_bytes)?;
+            }
+            let param_bytes: Vec<u8> = unsafe {
+                std::slice::from_raw_parts(
+                    params.as_ptr().cast::<u8>(),
+                    params.len() * DS41RT_V41_SAMPLER_PARAM_BYTES,
+                )
+                .to_vec()
+            };
+            library.copy_h2d(params_buffer, &param_bytes)?;
+            library.cuda_v41_target_sample(
+                logits_buffer,
+                rows,
+                vocab,
+                vocab,
+                params,
+                params_buffer,
+                mask_buffer,
+                if mask_buffer.is_some() { words } else { 0 },
+                ids,
+                status,
+                detail,
+                scores,
+                None,
+                None,
+                scratch,
+            )?;
+            library.cuda_v41_topk_select(
+                logits_buffer,
+                rows,
+                vocab,
+                vocab,
+                params,
+                mask_buffer,
+                if mask_buffer.is_some() { words } else { 0 },
+                rank_ids,
+                rank_scratch,
+                capacity,
+                retained,
+                passes,
+                scratch,
+            )?;
+            let read_u32 = |buffer: Ds41rtDeviceBuffer, count: usize| -> Result<Vec<u32>> {
+                let mut bytes = vec![0_u8; count * 4];
+                library.copy_d2h(&mut bytes, buffer)?;
+                Ok((0..count)
+                    .map(|index| {
+                        u32::from_ne_bytes(bytes[index * 4..index * 4 + 4].try_into().unwrap())
+                    })
+                    .collect())
+            };
+            let mut scratch_bytes = vec![0_u8; rows * DS41RT_V41_SAMPLER_SCRATCH_BYTES];
+            library.copy_d2h(&mut scratch_bytes, scratch)?;
+            let field = |row: usize, offset: usize| -> u32 {
+                u32::from_ne_bytes(
+                    scratch_bytes[row * DS41RT_V41_SAMPLER_SCRATCH_BYTES + offset
+                        ..row * DS41RT_V41_SAMPLER_SCRATCH_BYTES + offset + 4]
+                        .try_into()
+                        .unwrap(),
+                )
+            };
+            Ok(TopkRun {
+                ranked: match rank_ids {
+                    Some(rank_ids) => read_u32(rank_ids, rows * capacity)?,
+                    None => Vec::new(),
+                },
+                retained: read_u32(retained, rows)?,
+                passes: read_u32(passes, rows)?,
+                above: (0..rows).map(|row| field(row, 20)).collect(),
+                kth_bits: (0..rows).map(|row| field(row, 16)).collect(),
+            })
+        })();
+
+        let mut logits_buffer = logits_buffer;
+        let mut params_buffer = params_buffer;
+        let mut mask_buffer = mask_buffer;
+        let mut ids = ids;
+        let mut status = status;
+        let mut detail = detail;
+        let mut scores = scores;
+        let mut scratch = scratch;
+        let mut retained = retained;
+        let mut passes = passes;
+        let mut rank_ids = rank_ids;
+        let mut rank_scratch = rank_scratch;
+        let cleanup = (|| -> Result<()> {
+            library.free_device_buffer(&mut logits_buffer)?;
+            library.free_device_buffer(&mut params_buffer)?;
+            if let Some(buffer) = mask_buffer.as_mut() {
+                library.free_device_buffer(buffer)?;
+            }
+            library.free_device_buffer(&mut ids)?;
+            library.free_device_buffer(&mut status)?;
+            library.free_device_buffer(&mut detail)?;
+            library.free_device_buffer(&mut scores)?;
+            library.free_device_buffer(&mut scratch)?;
+            library.free_device_buffer(&mut retained)?;
+            library.free_device_buffer(&mut passes)?;
+            if let Some(buffer) = rank_ids.as_mut() {
+                library.free_device_buffer(buffer)?;
+            }
+            if let Some(buffer) = rank_scratch.as_mut() {
+                library.free_device_buffer(buffer)?;
+            }
+            Ok(())
+        })();
+        cleanup?;
+        result
+    }
+
+    /// Chunk-3a FFI oracle: drive the shipped K3/K4 stages through the C ABI and
+    /// require the **exact retained id set and rank order** of a faithful host
+    /// port of the CPU comparator (`v41_expected_topk`) on deterministic in-tree
+    /// rows, including no-op, greedy, tie-heavy, all-tied, masked and wide
+    /// (129,280) rows. A token-level end-to-end comparison against
+    /// `ds41rt_core::TargetSamplingParams` belongs to chunk 3b, which adds K5's
+    /// nucleus and draw; K3/K4's contract is the ranked set itself.
+    ///
+    /// `#[ignore]` convention: this test needs a GPU and a built native library,
+    /// so it does not run in the default `cargo test` sweep (the design §12.2
+    /// pattern). Run it explicitly with the library path, for example:
+    ///
+    /// ```text
+    /// DS41RT_NATIVE_LIB=/path/to/libds41rt_native.so \
+    ///   cargo test -p ds41rt-ffi -- --ignored v41_sampler
+    /// ```
+    ///
+    /// The loader is deliberately loud: an explicit `--ignored` run with a
+    /// missing library FAILS (`load_device_test_library` errors); it never skips
+    /// silently.
+    #[test]
+    #[ignore = "requires a GPU and a built libds41rt_native.so; run with --ignored"]
+    fn v41_sampler_device_topk_set_and_order_matches_cpu_oracle() -> Result<()> {
+        let library = load_device_test_library()?;
+
+        // ---- small deterministic rows, vocab 8 ----
+        let vocab = 8_usize;
+        let rows = 7_usize;
+        let words = vocab.div_ceil(32);
+        let logits: Vec<f32> = vec![
+            0.5, 1.25, -0.75, 0.25, 2.0, 2.0, -1.5, 0.0, // row 0: tie at 2.0 -> k=3
+            0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5,      // row 1: all tied, k=5
+            1.0, 2.0, 3.0, 0.5, -2.0, 0.0, 0.25, -0.5,   // row 2: k=0 disabled
+            0.5, 1.25, -0.75, 0.25, 2.0, 2.0, -1.5, 0.0, // row 3: k=1 greedy
+            -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0, 2.5,    // row 4: k=V no-op
+            2.5, 2.0, 1.5, 1.0, 0.5, 0.0, -0.5, -1.0,    // row 5: k>V no-op
+            0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0,      // row 6: masked, k=2
+        ];
+        let mask: Vec<u32> = vec![
+            u32::MAX,
+            u32::MAX,
+            u32::MAX,
+            u32::MAX,
+            u32::MAX,
+            u32::MAX,
+            (1 << 1) | (1 << 4) | (1 << 7),
+        ];
+        let params = vec![
+            v41_topk_row(0, 0.7, 3, 0.0, DS41RT_V41_SAMPLER_NO_MASK_ROW, DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+            v41_topk_row(1, 0.7, 5, 0.0, DS41RT_V41_SAMPLER_NO_MASK_ROW, DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+            v41_topk_row(2, 0.7, 0, 0.0, DS41RT_V41_SAMPLER_NO_MASK_ROW, DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+            v41_topk_row(3, 0.7, 1, 0.0, DS41RT_V41_SAMPLER_NO_MASK_ROW, DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+            v41_topk_row(4, 0.7, 8, 0.0, DS41RT_V41_SAMPLER_NO_MASK_ROW, DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+            v41_topk_row(5, 0.7, 9, 0.0, DS41RT_V41_SAMPLER_NO_MASK_ROW, DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+            v41_topk_row(6, 0.7, 2, 0.0, 6, 0),
+        ];
+        let capacity = 9_usize;
+        let run = run_v41_topk_batch(&library, &logits, rows, vocab, &params, Some(&mask), capacity)?;
+        for row in 0..rows {
+            let row_logits = &logits[row * vocab..(row + 1) * vocab];
+            let top_k = params[row].top_k as usize;
+            let runs = top_k > 1 && top_k < vocab && params[row].temperature >= 1e-5;
+            if !runs {
+                assert_eq!(run.retained[row], 0, "row {row} is a no-op");
+                assert_eq!(run.passes[row], 0, "row {row} is a no-op");
+                for rank in 0..capacity {
+                    assert_eq!(
+                        run.ranked[row * capacity + rank],
+                        0xDEAD_BEEF,
+                        "row {row} must leave the rank-order arena untouched"
+                    );
+                }
+                continue;
+            }
+            let (expected, above) = {
+                let row_mask = if params[row].flags & DS41RT_V41_SAMPLER_FLAG_NO_MASK != 0 {
+                    None
+                } else {
+                    Some(&mask[row * words..(row + 1) * words])
+                };
+                v41_expected_topk(row_logits, params[row].temperature, top_k, 0.0, row_mask)
+            };
+            let got = &run.ranked[row * capacity..row * capacity + top_k];
+            assert_eq!(
+                got, expected.as_slice(),
+                "row {row} k={top_k} exact CPU rank order"
+            );
+            let mut got_sorted = got.to_vec();
+            let mut want_sorted = expected.clone();
+            got_sorted.sort_unstable();
+            want_sorted.sort_unstable();
+            assert_eq!(got_sorted, want_sorted, "row {row} exact retained id multiset");
+            assert_eq!(run.retained[row] as usize, top_k, "row {row} retained count");
+            assert!(run.passes[row] >= 1 && run.passes[row] <= 32, "row {row} passes");
+            assert_eq!(run.above[row], above, "row {row} above_count");
+            let kth_scaled = row_logits[*expected.last().unwrap() as usize]
+                * (1.0f32 / params[row].temperature);
+            // `order_key` canonicalizes -0.0 to +0.0 (the CPU's
+            // `descending_radix_key` does the same), so the device publishes +0.0.
+            let kth_scaled = if kth_scaled == 0.0 { 0.0 } else { kth_scaled };
+            assert_eq!(
+                run.kth_bits[row],
+                kth_scaled.to_bits(),
+                "row {row} kth_value_bits equals the oracle's k-th value"
+            );
+        }
+
+        // ---- tie-heavy: 2048 survivors in one flat group, k=1500 ----
+        let tie_vocab = 2048_usize;
+        let mut tie_logits = vec![0.0f32; tie_vocab];
+        tie_logits[0] = 5.0;
+        tie_logits[1] = 4.0;
+        let tie_params = vec![v41_topk_row(
+            0,
+            1.0,
+            1500,
+            0.0,
+            DS41RT_V41_SAMPLER_NO_MASK_ROW,
+            DS41RT_V41_SAMPLER_FLAG_NO_MASK,
+        )];
+        let tie_run = run_v41_topk_batch(&library, &tie_logits, 1, tie_vocab, &tie_params, None, 1500)?;
+        let (tie_expected, tie_above) = v41_expected_topk(&tie_logits, 1.0, 1500, 0.0, None);
+        assert_eq!(tie_run.above[0], tie_above, "tie-heavy above_count");
+        assert_eq!(tie_above, 2, "exactly two leaders above the flat group");
+        assert_eq!(
+            &tie_run.ranked[..1500],
+            tie_expected.as_slice(),
+            "tie-heavy exact rank order"
+        );
+        assert_eq!(tie_run.retained[0], 1500);
+
+        // ---- all-tied: ids 0..k-1 ----
+        let flat_vocab = 512_usize;
+        let flat_logits = vec![0.25f32; flat_vocab];
+        let flat_k = 40_usize;
+        let flat_params = vec![v41_topk_row(
+            0,
+            1.0,
+            flat_k as u32,
+            0.0,
+            DS41RT_V41_SAMPLER_NO_MASK_ROW,
+            DS41RT_V41_SAMPLER_FLAG_NO_MASK,
+        )];
+        let flat_run = run_v41_topk_batch(&library, &flat_logits, 1, flat_vocab, &flat_params, None, flat_k)?;
+        let expected_flat: Vec<u32> = (0..flat_k as u32).collect();
+        assert_eq!(&flat_run.ranked[..flat_k], expected_flat.as_slice(), "all-tied ids 0..k-1");
+        assert_eq!(flat_run.above[0], 0, "all-tied above_count is zero");
+
+        // ---- wide 129,280 in-tree rows (the phase-0 generator) ----
+        const WIDE: usize = 129_280;
+        let splitmix_unit = |index: u64| -> f32 {
+            let mut hash = index.wrapping_mul(0x9e37_79b9_7f4a_7c15);
+            hash = (hash ^ (hash >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+            hash = (hash ^ (hash >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+            hash ^= hash >> 31;
+            (hash >> 40) as f32 / 16_777_216.0
+        };
+        let wide_logits: Vec<f32> =
+            (0..WIDE).map(|token| -8.0 + 10.0 * splitmix_unit(token as u64)).collect();
+        for &k in &[40_u32, 1000_u32] {
+            let wide_params = vec![v41_topk_row(
+                0,
+                0.7,
+                k,
+                0.0,
+                DS41RT_V41_SAMPLER_NO_MASK_ROW,
+                DS41RT_V41_SAMPLER_FLAG_NO_MASK,
+            )];
+            let wide_run = run_v41_topk_batch(
+                &library,
+                &wide_logits,
+                1,
+                WIDE,
+                &wide_params,
+                None,
+                k as usize,
+            )?;
+            let (wide_expected, wide_above) = v41_expected_topk(&wide_logits, 0.7, k as usize, 0.0, None);
+            assert_eq!(wide_run.retained[0], k, "wide k={k} retained count");
+            assert_eq!(wide_run.above[0], wide_above, "wide k={k} above_count");
+            assert_eq!(
+                &wide_run.ranked[..k as usize],
+                wide_expected.as_slice(),
+                "wide k={k} exact rank order"
+            );
+        }
+
+        // ---- wide selection-only: survivor_count - 1 (materialization is O(k^2)) ----
+        let big_k = (WIDE - 1) as u32;
+        let big_params = vec![v41_topk_row(
+            0,
+            0.7,
+            big_k,
+            0.0,
+            DS41RT_V41_SAMPLER_NO_MASK_ROW,
+            DS41RT_V41_SAMPLER_FLAG_NO_MASK,
+        )];
+        let big_run =
+            run_v41_topk_batch(&library, &wide_logits, 1, WIDE, &big_params, None, 0)?;
+        assert_eq!(big_run.retained[0], big_k, "selection-only retained count");
+        assert!(big_run.ranked.is_empty(), "selection-only writes no arena");
+        let (big_expected, big_above) = v41_expected_topk(&wide_logits, 0.7, WIDE - 1, 0.0, None);
+        assert_eq!(big_run.above[0], big_above, "selection-only above_count");
+        assert_eq!(big_expected.len(), WIDE - 1);
+
+        println!(
+            "v4.1 sampler top-k FFI oracle: small_rows={rows} vocab={vocab} \
+             tie_rows=1 vocab={tie_vocab} all_tied_k={flat_k} wide_k=[40,1000] wide_selection_k={big_k}"
         );
         Ok(())
     }

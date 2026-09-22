@@ -210,6 +210,42 @@ __device__ __forceinline__ float ds41rt_v41_target_uniform(uint64_t seed, uint64
 __device__ __forceinline__ float ds41rt_v41_target_clamp_uniform(float uniform) {
   return fminf(fmaxf(uniform, 0.0f), __uint_as_float(DS41RT_V41_SAMPLER_MAX_UNIFORM_BITS));
 }
+
+/* ---- Chunk 3a: the order-key primitive (design §4.3) ----
+ *
+ * `order_key(x)` is the standard IEEE total-order map onto u32 with **larger =
+ * better**: `bits ^ 0x80000000` for a non-negative value, `~bits` for a negative
+ * one, after canonicalizing `-0.0` to `+0.0` (the CPU comparator's
+ * `partial_cmp` treats the two zeroes as equal, and `Ranked::better_than` then
+ * breaks the tie by id). It is the bitwise complement of
+ * `target_sampling.rs:335-344`'s `descending_radix_key`, i.e. the *ascending*
+ * form the design's `C_gt(v) < k` acceptance reads from (Appendix A.1).
+ *
+ * The full total order K4 materializes is the u64 key
+ * `(order_key(scaled) << 32) | ~id`: larger is better and an exact scaled tie
+ * goes to the **lowest token id**, matching `Ranked::better_than`
+ * (`target_sampling.rs:283-291`) and `sampling.cu:28-33`.
+ *
+ * These live in the header (under `__CUDACC__`) because the device tests and
+ * any later chunk (K5) must call the *shipped* primitive, never a copy. */
+__device__ __forceinline__ uint32_t ds41rt_v41_order_key(float scaled) {
+  /* Canonicalize -0.0 so both zeroes map to one key, exactly as
+   * `descending_radix_key` does (`target_sampling.rs:336`). */
+  const float value = (scaled == 0.0f) ? 0.0f : scaled;
+  const uint32_t bits = __float_as_uint(value);
+  return ((bits & 0x80000000u) != 0u) ? ~bits : (bits ^ 0x80000000u);
+}
+
+/* Inverse of `ds41rt_v41_order_key` on the canonical f32 bit patterns: the float
+ * whose order key is `key`. Used only to publish `scratch.kth_value_bits` in the
+ * design's §4.3 spelling (the *value bits* of the k-th value) and to feed K4's
+ * tie predicate; `order_key(ordered_value(key)) == key` for every key produced
+ * by `order_key`, and the k-th value is always a survivor's scaled value. */
+__device__ __forceinline__ float ds41rt_v41_ordered_value(uint32_t key) {
+  const uint32_t bits =
+      ((key & 0x80000000u) != 0u) ? (key ^ 0x80000000u) : ~key;
+  return __uint_as_float(bits);
+}
 #endif
 
 /* Lower `16 * DS41RT_V41_SAMPLER_ROW_PARAM_OFFSET_<field>` is the field's byte
@@ -261,6 +297,81 @@ ds41rt_status_t ds41rt_cuda_v41_target_sample(
     size_t mask_words_per_row, uint32_t* out_indices, uint32_t* out_status,
     uint32_t* out_status_detail, float* out_scores, float* out_total,
     uint32_t* out_nucleus_count, ds41rt_v41_sampler_scratch_t* scratch);
+
+/* ====================================================================== */
+/* Chunk 3a: K3 pivot selection + K4 exact-k membership (design §4.3-§4.4) */
+/* ====================================================================== */
+
+/* ---- The rank-order contract K5 (chunk 3b) consumes ----
+ *
+ * K4 materializes the retained set into `rank_order_ids` in the CPU's **exact
+ * rank order**: descending `order_key(scaled)`, with an exact `scaled` tie
+ * broken by ascending token id (`Ranked::better_than`,
+ * `target_sampling.rs:283-291`; the same total order the CPU's comparison sort
+ * and stable LSD radix sort both produce, `:323-344`).
+ *
+ * Arena layout: `rank_order_ids` is `rows * rank_order_capacity` u32 with the
+ * **block row** `b` (the `params[b]` / `logits + b * logits_stride` row) at
+ * `rank_order_ids + b * rank_order_capacity`; `rank_order_scratch` is the same
+ * layout in u64. When K3 ran on row `b`, exactly `params[b].top_k` ids are
+ * written, `rank 0` being the best. (The small `out_retained_count` /
+ * `out_pivot_passes` outputs are indexed by `output_row` like the other ABI
+ * outputs; the daemon makes the two equal.) The buffer is O(k) per row, not
+ * O(vocab): the design's §11.1 top-k bitmap arena (capacity × ceil(vocab/32)
+ * u32) is the production region once chunk 4 plumbs it, and
+ * `rank_order_capacity` is its per-row id stride.
+ *
+ * `rank_order_scratch` is the matching `rows * rank_order_capacity` u64 staging
+ * (token-order entries packed as `(order_key << 32) | id`); it is scratch, never
+ * observable. `rank_order_capacity == 0` selects a **selection-only** call: K3
+ * publishes `scratch.kth_value_bits` / `scratch.above_count`, K4 computes the
+ * membership state, but nothing is materialized and both arena pointers may be
+ * null. A non-zero capacity must be `>= max_r params[r].top_k`; the FFI wrapper
+ * enforces that on the host.
+ *
+ * Row eligibility is exactly the CPU's (`target_sampling.rs:477-501`): K3/K4
+ * run only when K1 reported `OK`, the row is **not** greedy
+ * (`temperature < 1e-5 || top_k == 1`), `top_k != 0` and
+ * `top_k < survivor_count`. Every other row is a no-op: `top_k == 0` is
+ * `Option::None` (disabled) and never enters K3; `top_k >= survivor_count`
+ * truncates nothing and falls through to the CPU's full ordering branches, so
+ * K5 must treat the retained set as *all* survivors there. For a no-op row both
+ * outputs are 0 and the arena region is untouched.
+ *
+ * `out_retained_count[r]` is `params[r].top_k` for an eligible row and 0
+ * otherwise (so a caller can tell a real selection from a no-op).
+ * `out_pivot_passes[r]` is the number of K3 bisection passes that row used
+ * (`<= DS41RT_V41_TOPK_MAX_PIVOT_STEPS`, 0 for a no-op row). A bisection that
+ * cannot converge inside the cap writes `DS41RT_V41_SAMPLER_STATUS_INTERNAL`
+ * into `scratch[r].status` and materializes nothing.
+ *
+ * `scratch[r].kth_value_bits` receives the f32 bits of the k-th largest scaled
+ * value and `scratch[r].above_count` receives `C_gt(kth) = #{survivors :
+ * order_key(scaled) > order_key(kth)}`. Membership is then exactly
+ * `{order_key > kth} ∪ {the lowest-id (k - above_count) survivors whose
+ * order_key == kth}` — ds41rt's documented deviation from vLLM/FlashInfer,
+ * which keep every k-th-value tie (`target_sampling.rs:30-33`; risk R2).
+ *
+ * These entry points are additive: `ds41rt_cuda_v41_target_sample[_async]` is
+ * byte-for-byte unchanged, so the chunk-1/chunk-2 production path and its
+ * daemon caller are untouched. K5 lands in chunk 3b on top of this contract.
+ */
+#define DS41RT_V41_TOPK_MAX_PIVOT_STEPS 32u
+
+ds41rt_status_t ds41rt_cuda_v41_topk_select_async(
+    const float* logits, size_t rows, size_t vocab, size_t logits_stride,
+    const ds41rt_v41_sampler_row_t* params, const uint32_t* mask_words,
+    size_t mask_words_per_row, uint32_t* rank_order_ids,
+    uint64_t* rank_order_scratch, size_t rank_order_capacity,
+    uint32_t* out_retained_count, uint32_t* out_pivot_passes,
+    ds41rt_v41_sampler_scratch_t* scratch, void* cuda_stream);
+ds41rt_status_t ds41rt_cuda_v41_topk_select(
+    const float* logits, size_t rows, size_t vocab, size_t logits_stride,
+    const ds41rt_v41_sampler_row_t* params, const uint32_t* mask_words,
+    size_t mask_words_per_row, uint32_t* rank_order_ids,
+    uint64_t* rank_order_scratch, size_t rank_order_capacity,
+    uint32_t* out_retained_count, uint32_t* out_pivot_passes,
+    ds41rt_v41_sampler_scratch_t* scratch);
 
 #ifdef __cplusplus
 } /* extern "C" */

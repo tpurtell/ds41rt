@@ -682,6 +682,412 @@ __device__ __forceinline__ float k2_weight(const float* row_logits, size_t token
   }
 }
 
+/* ====================================================================== */
+/* K3/K4: general-k pivot selection + exact-k lowest-id membership        */
+/* (design §4.3-§4.4, Appendix A.1; contract §1.4 / risk R2)              */
+/* ====================================================================== */
+
+/* Two independent u32 counts at once, in the fixed binary-tree shape of the
+ * other reductions. K3 needs both probes' counts per pass; combining them in
+ * one stride loop halves the barrier count relative to two `tree_add_u32`
+ * calls. Integer addition is exact and associative, so the fixed combine order
+ * is only about determinism (§4.0/§4.8), which the fixed shape gives. */
+__device__ __forceinline__ void tree_add_u32_pair(uint32_t* first, uint32_t* second,
+                                                  int tid) {
+  for (int stride = kBlock / 2; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+      first[tid] += first[tid + stride];
+      second[tid] += second[tid + stride];
+    }
+    __syncthreads();
+  }
+}
+
+/* Fixed-shape Hillis-Steele inclusive scan over `kBlock` u32 values, in place.
+ * The integer analogue of `tree_inclusive_scan_f32`; used by K4's per-segment
+ * exclusive counts (the tie prefix and the compaction offsets). Callers insert a
+ * `__syncthreads()` after the initial write. */
+__device__ __forceinline__ void tree_inclusive_scan_u32(uint32_t* values, int tid) {
+  for (int offset = 1; offset < kBlock; offset <<= 1) {
+    uint32_t addend = 0u;
+    if (tid >= offset) {
+      addend = values[tid - offset];
+    }
+    __syncthreads();
+    if (tid >= offset) {
+      values[tid] += addend;
+    }
+    __syncthreads();
+  }
+}
+
+/* `-0.0`-canonicalizing scaled value of one token, the single f32 multiply of
+ * design §4.0 (`logit * inv_temperature`, never a division). */
+__device__ __forceinline__ float k3_scaled(const float* row_logits, size_t token,
+                                           float inv_temperature) {
+  return __fmul_rn(row_logits[token], inv_temperature);
+}
+
+/* The survivor predicate shared by K3 and K4, byte-identical to K1's and to
+ * `target_sampling.rs:456-458`: `allowed(t) && scaled(t) >= min_scaled`. A
+ * masked-out token is never read, so a masked non-finite logit stays legal on a
+ * stochastic row (§4.0/§12.6). */
+__device__ __forceinline__ bool k3_survivor(const ds41rt_v41_sampler_row_t& row,
+                                            const uint32_t* mask_words,
+                                            size_t mask_words_per_row, size_t mask_rows,
+                                            const float* row_logits, size_t token,
+                                            float inv_temperature, float min_scaled) {
+  return row_allowed(row, mask_words, mask_words_per_row, mask_rows, token) &&
+      k3_scaled(row_logits, token, inv_temperature) >= min_scaled;
+}
+
+/* K3/K4 row eligibility, exactly the CPU's `top_k` branch
+ * (`target_sampling.rs:477-501`):
+ *   - K1 must have reported `OK` with at least one survivor;
+ *   - the row must not be greedy (`temperature < 1e-5 || top_k == 1`);
+ *   - `top_k == 0` is `Option::None` (disabled) and never enters K3;
+ *   - `top_k >= survivor_count` truncates nothing and is a no-op, so K5 must
+ *     treat the retained set as all survivors there.
+ * A greedy row never reaches here: the CPU short-circuits it at `:234-236`. */
+__device__ __forceinline__ bool k3_eligible(const ds41rt_v41_sampler_row_t& row,
+                                            const ds41rt_v41_sampler_scratch_t& state) {
+  if (state.status != DS41RT_V41_SAMPLER_STATUS_OK || state.survivor_count == 0u) {
+    return false;
+  }
+  const bool greedy = (row.temperature < 1e-5f) || (row.top_k == 1u) ||
+      ((row.flags & DS41RT_V41_SAMPLER_FLAG_GREEDY) != 0u);
+  return !greedy && row.top_k != 0u && row.top_k < state.survivor_count;
+}
+
+/* K3, `v41_sample_topk_pivot_kernel` (design §4.3, Appendix A.1).
+ *
+ * Finds the k-th largest order key by bisection on the monotone count
+ * `C_gt(v) = #{survivors : order_key(scaled) > v}`. `C_gt` is non-increasing in
+ * `v`, so the predicate `C_gt(v) < k` is upward-closed and the k-th value is its
+ * **smallest** satisfying key. The invariant is
+ *   `C_gt(lo) >= k` (lo rejected), `C_gt(hi) < k` (hi accepted), answer in `(lo, hi]`.
+ * It starts at `lo = 0` (below every real key: `C_gt(0) = survivor_count`, and
+ * `k < survivor_count` is the eligibility condition, so `lo` is rejected) and
+ * `hi = 0xFFFFFFFF` (above every real key, so `C_gt(hi) = 0 < k`). This also
+ * covers the all `-inf`-survivor corner: `key(-inf) = 0x007FFFFF > 0`, so the
+ * bisection walks down to it instead of needing a special case.
+ *
+ * Two probes per pass (`m0 < m1`) make it a **ternary** search: a satisfying
+ * `m0` keeps `[lo, m0]`, an unsatisfied `m0` with a satisfying `m1` keeps
+ * `[m0, m1]`, and neither satisfying keeps `[m1, hi]`. The interval shrinks to
+ * at most ~1/3 + O(1) per pass, so `2^32` converges in well under the
+ * `DS41RT_V41_TOPK_MAX_PIVOT_STEPS` (32) defensive cap; hitting the cap is
+ * reported as `INTERNAL` and materializes nothing.
+ *
+ * The ternary split needs `hi - lo >= 3`; the search therefore finishes with a
+ * **single extra probe at `m0 = lo + 1` when `hi - lo == 2`**. That final probe
+ * is load-bearing, not cosmetic: the ternary rule can land on a length-2
+ * interval (e.g. from a length-4 interval's middle branch) whose *lower* value is
+ * the true k-th key, and stopping at `hi - lo < 3` would then return `hi = kth+1`
+ * — a key no survivor carries, which silently empties the tie cut. The shipped
+ * loop probes while `hi - lo >= 2` and stops at `hi - lo == 1`, so the returned
+ * `hi` is exactly the smallest accepted key. (Adversarial single-key regression:
+ * `native/tests/v41_sampling_selftest.cu`, "K3 length-2 interval".)
+ *
+ * The final `hi` is a real survivor's key (the count can only drop at a present
+ * key, and `C_gt(hi-1) >= k`), and `above` tracks `C_gt(hi)` through the passes,
+ * so no extra count pass is needed. */
+__global__ void v41_sample_topk_pivot_kernel(
+    const float* logits, size_t rows, size_t vocab, size_t logits_stride,
+    const ds41rt_v41_sampler_row_t* params, const uint32_t* mask_words,
+    size_t mask_words_per_row, uint32_t* out_pivot_passes,
+    ds41rt_v41_sampler_scratch_t* scratch) {
+  __shared__ uint32_t probe0[kBlock];
+  __shared__ uint32_t probe1[kBlock];
+
+  const size_t block_row = blockIdx.x;
+  const int tid = threadIdx.x;
+  if (block_row >= rows) {
+    return;
+  }
+  const ds41rt_v41_sampler_row_t row = params[block_row];
+  const ds41rt_v41_sampler_scratch_t state = scratch[block_row];
+  if (!k3_eligible(row, state)) {
+    if (tid == 0 && out_pivot_passes != nullptr) {
+      out_pivot_passes[row.output_row] = 0u;
+    }
+    return;
+  }
+  const uint32_t k = row.top_k;
+  const float inv_temperature = state.inv_temperature;
+  const float min_scaled = (row.min_p > 0.0f)
+      ? state.max_scaled + row.ln_min_p
+      : -CUDART_INF_F;
+  const float* row_logits = logits + block_row * logits_stride;
+
+  uint32_t lo = 0u;          /* rejected: C_gt(lo) >= k */
+  uint32_t hi = 0xFFFFFFFFu; /* accepted: C_gt(hi) < k (vacuously, above all) */
+  uint32_t above = 0u;       /* C_gt(hi) for the current hi */
+  uint32_t passes = 0u;
+  for (; passes < DS41RT_V41_TOPK_MAX_PIVOT_STEPS && (hi - lo) >= 2u; ++passes) {
+    uint32_t m0 = 0u;
+    uint32_t m1 = 0u;
+    if (hi - lo == 2u) {
+      /* Final single probe: for a length-2 interval the only candidate below
+       * `hi` is `lo + 1`, and probing `hi` again is harmless because it is
+       * known accepted. */
+      m0 = lo + 1u;
+      m1 = hi;
+    } else {
+      const uint32_t third = (hi - lo) / 3u;
+      m0 = lo + third;
+      m1 = hi - third;
+    }
+    uint32_t count0 = 0u;
+    uint32_t count1 = 0u;
+    for (size_t token = static_cast<size_t>(tid); token < vocab;
+         token += static_cast<size_t>(blockDim.x)) {
+      if (!k3_survivor(row, mask_words, mask_words_per_row, rows, row_logits, token,
+                       inv_temperature, min_scaled)) {
+        continue;
+      }
+      const uint32_t key =
+          ds41rt_v41_order_key(k3_scaled(row_logits, token, inv_temperature));
+      if (key > m0) {
+        ++count0;
+        if (key > m1) {
+          ++count1;
+        }
+      }
+    }
+    probe0[tid] = count0;
+    probe1[tid] = count1;
+    __syncthreads();
+    tree_add_u32_pair(probe0, probe1, tid);
+    const uint32_t total0 = probe0[0];
+    const uint32_t total1 = probe1[0];
+    /* Every thread reads the same reduce result before any thread can overwrite
+     * the shared arrays on the next pass. */
+    __syncthreads();
+    if (total0 < k) {
+      hi = m0;
+      above = total0;
+    } else if (total1 < k) {
+      lo = m0;
+      hi = m1;
+      above = total1;
+    } else {
+      lo = m1;
+    }
+  }
+  const bool converged = (hi - lo) == 1u;
+  if (tid == 0) {
+    ds41rt_v41_sampler_scratch_t value = state;
+    if (!converged) {
+      value.status = DS41RT_V41_SAMPLER_STATUS_INTERNAL;
+      value.kth_value_bits = 0u;
+      value.above_count = 0u;
+    } else {
+      value.kth_value_bits = __float_as_uint(ds41rt_v41_ordered_value(hi));
+      value.above_count = above;
+    }
+    scratch[block_row] = value;
+    if (out_pivot_passes != nullptr) {
+      out_pivot_passes[row.output_row] = passes;
+    }
+  }
+}
+
+/* K4, `v41_sample_topk_membership_kernel` (design §4.4, Appendix A.2).
+ *
+ * Membership is ds41rt's exact-k rule (`target_sampling.rs:30-33`):
+ *   `{order_key > kth} ∪ {the lowest-id (k - above_count) survivors with
+ *    order_key == kth}`.
+ * A single pass over `[0, vocab)` in `kBlock` contiguous segments gives each
+ * thread the `above` and `equal` counts of its segment; a fixed-tree exclusive
+ * scan of the equal counts yields `eq_before(t)` — the number of equal-key
+ * survivors earlier in token order — and each thread admits the equal-key
+ * tokens whose running index is `< target_tie = k - above_count`. That is
+ * correct for any multiplicity, including thousands of tokens sharing the k-th
+ * value and the whole row tied (then `above = 0`, `target_tie = k`, and the
+ * first `k` tokens in token order are admitted, i.e. ids `0..k-1`).
+ *
+ * The retained set is then compacted in token order into `rank_order_scratch`
+ * as u64 `(order_key << 32) | id`, stable over token order. A second pass
+ * assigns each entry its exact rank by counting the entries that are strictly
+ * better under the u64 total order (larger key, then lower id) and writes the
+ * id at that rank into `rank_order_ids`. Stability of the compaction plus the
+ * unique id make the placement exact: the result is `ranked[..k]` in the CPU's
+ * comparison-sort order, which the CPU's stable LSD radix sort also produces
+ * (`target_sampling.rs:323-344`). No sentinel carrier is involved (contrast the
+ * chunk-2 `tree_max_u32` bug): every decision is an integer count or a scan.
+ *
+ * `rank_order_capacity == 0`, or a row whose `k` exceeds it, is a
+ * selection-only call: the membership state is computed but nothing is written.
+ * The FFI wrapper rejects a non-zero capacity below the batch's maximum `k`, so
+ * a materializing call is always in bounds; the in-kernel check is the
+ * raw-C-caller safety net. */
+__global__ void v41_sample_topk_membership_kernel(
+    const float* logits, size_t rows, size_t vocab, size_t logits_stride,
+    const ds41rt_v41_sampler_row_t* params, const uint32_t* mask_words,
+    size_t mask_words_per_row, uint32_t* rank_order_ids,
+    uint64_t* rank_order_scratch, size_t rank_order_capacity,
+    uint32_t* out_retained_count, ds41rt_v41_sampler_scratch_t* scratch) {
+  __shared__ uint32_t equal_counts[kBlock];
+  __shared__ uint32_t above_counts[kBlock];
+  __shared__ uint32_t retained_counts[kBlock];
+
+  const size_t block_row = blockIdx.x;
+  const int tid = threadIdx.x;
+  if (block_row >= rows) {
+    return;
+  }
+  const ds41rt_v41_sampler_row_t row = params[block_row];
+  const ds41rt_v41_sampler_scratch_t state = scratch[block_row];
+  if (!k3_eligible(row, state)) {
+    if (tid == 0 && out_retained_count != nullptr) {
+      out_retained_count[row.output_row] = 0u;
+    }
+    return;
+  }
+  const uint32_t k = row.top_k;
+  const float inv_temperature = state.inv_temperature;
+  const float min_scaled = (row.min_p > 0.0f)
+      ? state.max_scaled + row.ln_min_p
+      : -CUDART_INF_F;
+  const uint32_t kth_key = ds41rt_v41_order_key(__uint_as_float(state.kth_value_bits));
+  const float* row_logits = logits + block_row * logits_stride;
+
+  /* Contiguous `[begin, end)` segment, the shape the tie prefix's token order
+   * needs (design A.2). */
+  const size_t per_thread = (vocab + kBlock - 1) / kBlock;
+  const size_t begin = static_cast<size_t>(tid) * per_thread;
+  size_t end = begin + per_thread;
+  if (end > vocab) {
+    end = vocab;
+  }
+
+  uint32_t local_above = 0u;
+  uint32_t local_equal = 0u;
+  for (size_t token = begin; token < end; ++token) {
+    if (!k3_survivor(row, mask_words, mask_words_per_row, rows, row_logits, token,
+                     inv_temperature, min_scaled)) {
+      continue;
+    }
+    const uint32_t key =
+        ds41rt_v41_order_key(k3_scaled(row_logits, token, inv_temperature));
+    if (key > kth_key) {
+      ++local_above;
+    } else if (key == kth_key) {
+      ++local_equal;
+    }
+  }
+  equal_counts[tid] = local_equal;
+  above_counts[tid] = local_above;
+  __syncthreads();
+  tree_inclusive_scan_u32(equal_counts, tid);
+  const uint32_t total_above = tree_add_u32(above_counts, tid);
+  const uint32_t equal_before = (tid == 0u) ? 0u : equal_counts[tid - 1];
+  /* `total_above == C_gt(kth) < k` by construction; the guard is defensive for a
+   * malformed K3 result and keeps `target_tie` from wrapping. */
+  const uint32_t target_tie = (total_above < k) ? (k - total_above) : 0u;
+  const uint32_t admit_room = (equal_before < target_tie) ? (target_tie - equal_before) : 0u;
+  const uint32_t admitted = (admit_room < local_equal) ? admit_room : local_equal;
+  retained_counts[tid] = local_above + admitted;
+  __syncthreads();
+  tree_inclusive_scan_u32(retained_counts, tid);
+  const uint32_t retained_before = (tid == 0u) ? 0u : retained_counts[tid - 1];
+  const uint32_t total_retained = retained_counts[kBlock - 1];
+
+  const bool materialize = rank_order_capacity > 0u &&
+      rank_order_capacity >= static_cast<size_t>(total_retained) &&
+      rank_order_ids != nullptr && rank_order_scratch != nullptr;
+  if (materialize) {
+    uint64_t* const row_entries =
+        rank_order_scratch + block_row * rank_order_capacity;
+    uint32_t* const row_ids = rank_order_ids + block_row * rank_order_capacity;
+    /* Compaction, token order: retained tokens land at
+     * `retained_before + local_index`, so equal keys keep ascending ids. */
+    uint32_t write = retained_before;
+    uint32_t equal_running = equal_before;
+    for (size_t token = begin; token < end; ++token) {
+      if (!k3_survivor(row, mask_words, mask_words_per_row, rows, row_logits, token,
+                       inv_temperature, min_scaled)) {
+        continue;
+      }
+      const uint32_t key =
+          ds41rt_v41_order_key(k3_scaled(row_logits, token, inv_temperature));
+      if (key > kth_key) {
+        row_entries[write] = (static_cast<uint64_t>(key) << 32) |
+                             static_cast<uint32_t>(token);
+        ++write;
+      } else if (key == kth_key) {
+        if (equal_running < target_tie) {
+          row_entries[write] = (static_cast<uint64_t>(key) << 32) |
+                               static_cast<uint32_t>(token);
+          ++write;
+        }
+        ++equal_running;
+      }
+    }
+    __syncthreads();
+    /* Rank placement: the number of retained entries strictly better under the
+     * u64 total order is the entry's rank. */
+    for (uint32_t index = static_cast<uint32_t>(tid); index < total_retained;
+         index += static_cast<uint32_t>(blockDim.x)) {
+      const uint64_t entry = row_entries[index];
+      const uint32_t key = static_cast<uint32_t>(entry >> 32);
+      const uint32_t id = static_cast<uint32_t>(entry);
+      uint32_t rank = 0u;
+      for (uint32_t other = 0u; other < total_retained; ++other) {
+        const uint64_t candidate = row_entries[other];
+        const uint32_t candidate_key = static_cast<uint32_t>(candidate >> 32);
+        if (candidate_key > key ||
+            (candidate_key == key && static_cast<uint32_t>(candidate) < id)) {
+          ++rank;
+        }
+      }
+      row_ids[rank] = id;
+    }
+  }
+
+  if (tid == 0) {
+    ds41rt_v41_sampler_scratch_t value = state;
+    /* K4 recomputes `C_gt(kth)` from its own pass, so the published
+     * `above_count` is self-consistent with the materialized membership even if
+     * K3's probe count and this pass were to disagree. */
+    value.above_count = total_above;
+    scratch[block_row] = value;
+    if (out_retained_count != nullptr) {
+      out_retained_count[row.output_row] = total_retained;
+    }
+  }
+}
+
+ds41rt_status_t validate_topk_select_args(
+    const float* logits, size_t rows, size_t vocab, size_t logits_stride,
+    const ds41rt_v41_sampler_row_t* params, const uint32_t* mask_words,
+    size_t mask_words_per_row, uint32_t* rank_order_ids,
+    uint64_t* rank_order_scratch, size_t rank_order_capacity,
+    uint32_t* out_retained_count, uint32_t* out_pivot_passes,
+    ds41rt_v41_sampler_scratch_t* scratch) {
+  if (logits == nullptr || params == nullptr || out_retained_count == nullptr ||
+      out_pivot_passes == nullptr || scratch == nullptr) {
+    return DS41RT_STATUS_INVALID_ARGUMENT;
+  }
+  if (rows == 0 || vocab == 0 ||
+      rows > static_cast<size_t>(std::numeric_limits<int>::max()) ||
+      vocab > static_cast<size_t>(std::numeric_limits<uint32_t>::max())) {
+    return DS41RT_STATUS_INVALID_ARGUMENT;
+  }
+  if (logits_stride < vocab) {
+    return DS41RT_STATUS_INVALID_ARGUMENT;
+  }
+  if (mask_words != nullptr && mask_words_per_row == 0) {
+    return DS41RT_STATUS_INVALID_ARGUMENT;
+  }
+  if (rank_order_capacity > 0u &&
+      (rank_order_ids == nullptr || rank_order_scratch == nullptr)) {
+    return DS41RT_STATUS_INVALID_ARGUMENT;
+  }
+  return DS41RT_STATUS_OK;
+}
+
 ds41rt_status_t validate_args(const float* logits, size_t rows, size_t vocab,
                               size_t logits_stride,
                               const ds41rt_v41_sampler_row_t* params,
@@ -758,6 +1164,57 @@ extern "C" ds41rt_status_t ds41rt_cuda_v41_target_sample(
       logits, rows, vocab, logits_stride, params, mask_words, mask_words_per_row,
       out_indices, out_status, out_status_detail, out_scores, out_total,
       out_nucleus_count, scratch, nullptr);
+  if (status != DS41RT_STATUS_OK) {
+    return status;
+  }
+  return status_from_cuda(cudaStreamSynchronize(nullptr));
+}
+
+/* Chunk 3a entry points: K3 then K4 on the same stream, reading K1's `scratch`
+ * exactly as K2 does. Purely additive — the K1/K2 entry points above are
+ * unchanged, so the chunk-1/chunk-2 production path and its daemon caller do not
+ * move. See the rank-order contract in `v41_sampling_gpu.h`. */
+extern "C" ds41rt_status_t ds41rt_cuda_v41_topk_select_async(
+    const float* logits, size_t rows, size_t vocab, size_t logits_stride,
+    const ds41rt_v41_sampler_row_t* params, const uint32_t* mask_words,
+    size_t mask_words_per_row, uint32_t* rank_order_ids,
+    uint64_t* rank_order_scratch, size_t rank_order_capacity,
+    uint32_t* out_retained_count, uint32_t* out_pivot_passes,
+    ds41rt_v41_sampler_scratch_t* scratch, void* cuda_stream) {
+  const ds41rt_status_t valid = validate_topk_select_args(
+      logits, rows, vocab, logits_stride, params, mask_words, mask_words_per_row,
+      rank_order_ids, rank_order_scratch, rank_order_capacity, out_retained_count,
+      out_pivot_passes, scratch);
+  if (valid != DS41RT_STATUS_OK) {
+    return valid;
+  }
+  cudaStream_t stream = reinterpret_cast<cudaStream_t>(cuda_stream);
+  v41_sample_topk_pivot_kernel<<<static_cast<unsigned int>(rows), kBlock, 0, stream>>>(
+      logits, rows, vocab, logits_stride, params, mask_words, mask_words_per_row,
+      out_pivot_passes, scratch);
+  const ds41rt_status_t pivot = status_from_cuda(cudaGetLastError());
+  if (pivot != DS41RT_STATUS_OK) {
+    return pivot;
+  }
+  v41_sample_topk_membership_kernel<<<static_cast<unsigned int>(rows), kBlock, 0,
+                                      stream>>>(
+      logits, rows, vocab, logits_stride, params, mask_words, mask_words_per_row,
+      rank_order_ids, rank_order_scratch, rank_order_capacity, out_retained_count,
+      scratch);
+  return status_from_cuda(cudaGetLastError());
+}
+
+extern "C" ds41rt_status_t ds41rt_cuda_v41_topk_select(
+    const float* logits, size_t rows, size_t vocab, size_t logits_stride,
+    const ds41rt_v41_sampler_row_t* params, const uint32_t* mask_words,
+    size_t mask_words_per_row, uint32_t* rank_order_ids,
+    uint64_t* rank_order_scratch, size_t rank_order_capacity,
+    uint32_t* out_retained_count, uint32_t* out_pivot_passes,
+    ds41rt_v41_sampler_scratch_t* scratch) {
+  const ds41rt_status_t status = ds41rt_cuda_v41_topk_select_async(
+      logits, rows, vocab, logits_stride, params, mask_words, mask_words_per_row,
+      rank_order_ids, rank_order_scratch, rank_order_capacity, out_retained_count,
+      out_pivot_passes, scratch, nullptr);
   if (status != DS41RT_STATUS_OK) {
     return status;
   }
