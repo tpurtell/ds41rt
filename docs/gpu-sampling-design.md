@@ -1,17 +1,20 @@
 # GPU target-sampler design (implementation gate)
 
 **Status:** design gate. **Chunk 1 is delivered** on `dev` as
-`9dffad0236cae8b5398a41bea973b1ff21f2da88` (2026-09-22); §17 is the as-built
-record, and the normative sections below have been reconciled with it. Chunks 2+
-remain design-only and still require the adversarial review of §14.
+`9dffad0236cae8b5398a41bea973b1ff21f2da88` (2026-09-22); §17 is its as-built
+record. **Chunk 2 (K2 fast path) is delivered and reviewed** as uncommitted
+working-tree work on base `9dffad0`; §18 is its as-built record, and the
+normative sections below have been reconciled with both (notably §4.2, §6.3b,
+§6.3c, §6.5.3, §12.2, §12.3, §13.1). Chunk 3a is next; chunks 3a–4 remain
+design-only and still require the adversarial review of §14.
 
 **Repository revision read:** `e1f5d495b5a82fb7ddad8514cad419b6ae62c0cc` (`e1f5d49`).
-The chunk-1 as-built record reads `9dffad0`.
+The chunk-1 as-built record reads `9dffad0`; chunk 2 is uncommitted on that base.
 
 **Deliverable rule:** the original design task produced exactly this one file;
-the §17 update is design text only. Every claim about existing code carries a
-`path:line` anchor or a commit anchor; every number is labelled MEASURED (with
-its artifact), COMPUTED, ARITHMETIC or UNKNOWN.
+the as-built updates are design text only. Every claim about existing code
+carries a `path:line` anchor or a commit anchor; every number is labelled
+MEASURED (with its artifact), COMPUTED, ARITHMETIC or UNKNOWN.
 
 **Inputs read**
 
@@ -386,9 +389,10 @@ path.
 - **Inputs**: row logits, `max_scaled`, `min_scaled`, `inv`, `params[r].seed`,
   `params[r].position`, mask.
 - **Algorithm**
-  1. Two-pass within the CTA: (i) fixed-order sum of `w_t = expf(scaled_t -
-     max_scaled)` over survivors → `total`; (ii) `total = fmaxf(total, 1e-20f)`,
-     `target = clamp(u, 0, MAX_UNIFORM) * total`.
+  1. Two passes within the CTA: (i) `w_t = expf(scaled_t - max_scaled)` over
+     survivors, with `total` taken from the **crossing walk's own** accumulation
+     (step 3 — never from a separate tree reduction); (ii)
+     `total = fmaxf(total, 1e-20f)`, `target = clamp(u, 0, MAX_UNIFORM) * total`.
   2. **Ascending-id inclusive-prefix scan** `[NEW]`: partition `[0, vocab)` into
      256 contiguous segments; thread `t` sequentially prefix-sums its segment in
      ascending token order; block-exclusive-scan the segment totals (fixed tree);
@@ -401,23 +405,46 @@ path.
      reports its first token). The minimum over reported ids is still exactly the
      first crossing token, because the earliest reporting segment contains it.
      Do not implement this as "exactly one segment crosses".
-  3. **No-crossing fallback `[NEW]`**: if no thread reports, select the **last
-     survivor in ascending token order** (the CPU's `last` fallback,
-     `target_sampling.rs:606-618`). This is defensive rather than expected — the
-     best survivor has `w = 1`, so `total >= 1` and
-     `target <= 0.99999994 * total < total` — but the CPU carries the fallback
-     and the device must mirror it so that any future change to the clamp or the
-     floor cannot produce a silently different token.
-  4. Write `out_indices[r]` and `out_total[r] = total`.
+  3. **The no-crossing fallback is UNREACHABLE — chunk-2 correction.** The first
+     revision called "select the last survivor in ascending token order" a
+     reachable rule; it is not, on either side. `sample_categorical`
+     (`target_sampling.rs:590-618`) computes `total` at `:597-603` and the
+     crossing `cumulative` at `:605-614` with the **identical left-to-right f32
+     accumulation** over the same survivor set from the same `0.0f32`, so at the
+     last allowed token `cumulative == total` bit for bit. The uniform was
+     clamped at `:459` to `MAX_UNIFORM.min(uniform.max(0.0))` with
+     `MAX_UNIFORM = 1 − 2^-24` (`:52`), so `u <= 1 − 2^-24 < 1`; round-to-nearest
+     is monotone, hence `target = fl(u·total) <= total = cumulative` at that token
+     (including the ties-to-even edge, where `fl(u·total) < total` strictly), and
+     the inclusive test at `:613` returns before the `:617-618` `last` arm. The
+     CPU fallback is defensive code no user-reachable input can enter.
+     **The device must mirror this by deriving `total` from the same accumulation
+     the crossing pass reaches**: the segment owning the last survivor re-walks
+     from its exclusive prefix to that token and publishes that cumulative as
+     `total`. Taking `total` from the tree scan's inclusive prefix instead makes
+     the device fallback reachable as a **device-only** artifact — the pre-fix
+     kernel did exactly that, and on a wide row the tree prefix exceeded the walk
+     cumulative by ~3e-5, so a `MAX_UNIFORM`-scale target found no crossing. Keep
+     the last-survivor fallback only as defensive code.
+  4. **Latent bug found while fixing step 3 (fixed):** the per-segment
+     last-survivor sentinel must not be `NO_DETAIL` (`0xFFFFFFFF`, the maximum
+     u32) because it wins the `tree_max_u32` reduction whenever trailing segments
+     are empty — which is almost every vocabulary. It is now `0`, safe because
+     every real token id is `>= 0` and `k2_applicable` guarantees at least one
+     survivor (`v41_sampling_gpu.cu:534-552`).
+  5. Write `out_indices[r]` and `out_total[r] = total` (diagnostic).
 - **Why contiguous segments**: they preserve the CPU's ascending accumulation
   order *within* a segment; only the cross-segment combine uses a tree. Together
   with the `expf` difference (§6.3b) this is one of the two accumulation-order
-  sources of the residual acknowledged in §6.3c; the *option* of a strictly
-  sequential combine that would remove the K2 part is recorded in §6.5.3 and is
-  evaluated in chunk 2.
+  sources of the residual acknowledged in §6.3c. The strictly sequential
+  token-order combine was implemented and measured in chunk 2 (§6.5.3); the
+  shipped default is the tree.
 - **Limits**: `top_p >= 1.0` and `top_k` disabled only; `MAX_UNIFORM` is
   `0x3F7FFFFF` written as a bit pattern, not a decimal literal.
-- **Passes**: 2 reads.
+- **Measured cost (chunk 2, §13.1)**: K1-only 177.1 µs vs K1+K2 392.5 µs at 4
+  rows and 404.5 µs at 48 rows; the 4→48 difference is 12.0 µs (3.1%), so the
+  cost is a **fixed per-launch critical path of two ~505-iteration serial
+  dependent `expf`+add chains per thread**, not launch-count or bandwidth bound.
 - **Provenance**: `[PORT]` of `DeviceSamplingFromProb`'s "sum then inclusive
   scan then lowest crossing id" structure (`sampling.cuh:567-642`), with
   `[NEW]` contiguous-segment ordering to match ds41rt's token-order walk and
@@ -930,17 +957,42 @@ this, CUDA `logf` (documented up to ~2 ulp) could flip membership at the
 threshold permanently and the `±ULP` sweep would be unsatisfiable. Pinned by
 §12.5.
 
-**6.3b — `expf`: not bit-identical, and the dominant residual.**
+**6.3b — `expf`: DECLARED residual (chunk-2 measured decision).**
 Every weight `w_t = expf(scaled_t - max_scaled)` is evaluated by CUDA `expf`,
-which is not bit-identical to Rust `f32::exp` (glibc-backed). A 1–2 ulp
-difference in `w_t` propagates into `total`, into the normalized
-`p_t = w_t / total`, and therefore into every comparison made against an f32
-accumulation. **Chunk 2 must run the experiment**: compare CUDA `expf` (and a
-double-precision `exp`-then-round variant) against Rust `f32::exp` on all six
-phase-0 rows over the full parameter grid, record the per-weight and per-token
-differences, and either pin a bit-matching path or declare the measured residual
-here and in the release notes. This decision is a chunk-2 acceptance item, not an
-assumption.
+which is not bit-identical to glibc `expf` (what Rust `f32::exp` resolves to
+here). Chunk 2 ran the experiment (§12.9a) and the decision is **keep CUDA
+`expf` and declare the residual** — no tested path is bit-matching, and the
+alternatives are unaffordable. MEASURED over every surviving
+`delta = f32(logit·inv − max_scaled)` on the six phase-0 rows across the
+fast-path grid (temperatures `{1e-4, 0.2, 0.7, 1.0, 2.0}` × `min_p
+{0, 0.05, 0.5, 1.0}` = 120 cells):
+
+| variant | weights differing / 7,029,396 | fraction | max ulp | tokens changed / 983,040 (sequential order) |
+| --- | ---: | ---: | ---: | ---: |
+| CUDA `expf` (shipped) | 1,089,047 | 15.4928% | 2 | 85 (8.647e-05) |
+| double `exp` then round | 1,214 | 0.0173% | 1 | 0 |
+
+Reasoning, with numbers:
+
+1. **No tested path is bit-matching.** CUDA `expf` differs on 15.4928% of weights
+   (max 2 ulp); the double-`exp`-then-round variant still differs on 1,214 weights
+   (0.0173%, max 1 ulp), so it cannot be sold as a bit-pin either.
+2. **The per-token effect of CUDA `expf` under the CPU's own sequential order is
+   small**: 85/983,040 = 8.647e-05. The double variant changed 0 tokens in this
+   sweep, so it would reduce — not provably eliminate — that slice.
+3. **Double `exp` is unaffordable**: 1321.2 µs vs 392.5 µs at 4 rows (3.37×), and
+   27.68 vs 8.43 µs/row at 48 rows.
+4. `ln_min_p` stays host-precomputed and the device never calls `logf`, so `min_p`
+   membership is untouched (6.3a).
+
+Per-row and per-profile tables, plus the full 120-cell table, are in
+`runs/chunk2-scratch/REPORT.md` §6 and `out/expf.json` (sha256 in that report).
+`tied` and `min_p = 1.0` are exactly 0% because every weight is exactly
+`expf(0) = 1`; `moderate` is ~0.01% because its support has large gaps; the wide
+rows differ on 18–38% of weights by ≤2 ulp. Independent confirmation that glibc
+`expf` is what Rust resolves to here: a host sequential port reproduces the
+production CPU sampler's token on **0/983,040** draws. That is confirmation, not
+proof of weight bit-identity, and it is documented as such.
 
 **6.3c — it is not "ULP-boundary rare"; it is any accumulation comparison.**
 The first revision understated this. The differences are:
@@ -967,6 +1019,36 @@ shifted gap, the selected rank differs; in that wide-nucleus regime the
 GPU-vs-CPU token mismatch rate can therefore be **O(0.1–1)**, not ULP-rare. The
 residual is a measurable divergence, and the design accepts it explicitly.
 
+**Measured (chunk 2, fast path).** MEASURED paired GPU-vs-CPU token mismatch over
+120 cells × 8,192 seeded draws = 983,040 draws: **119,138 / 983,040 = 12.1193%**
+(12.3603% before the chunk-2 fallback fix; that delta is the fallback correction,
+not a distribution change). Per row (20 cells, 163,840 draws each, from
+`runs/chunk2-scratch/out/mismatch.json`):
+
+| row | mismatch / 163,840 | rate |
+| --- | ---: | ---: |
+| `peaked` | 3,307 | 2.0184% |
+| `moderate` | 1,031 | 0.6293% |
+| `near_uniform` | 94,618 | **57.7502%** |
+| `tied` | 0 | 0.0000% |
+| `long_tail` | 20,180 | 12.3169% |
+| `trace_anchored` | 2 | 0.0012% |
+| **all** | **119,138** | **12.1193%** |
+
+The `near_uniform` figure lands in the O(0.1–1) band predicted above, exactly
+because adjacent cumulative gaps there are ~`1/129,280` and a ~1e-5 relative
+accumulation difference moves the crossing by one or two tokens; `tied` is 0%
+because its weights are integer-exact.
+
+**Distribution vs mapping.** Every cell's device histogram matches the
+independent f64 analytic oracle within the phase-0 seeded-multinomial noise
+reference, and `TV(device, oracle) ≈ TV(cpu, oracle) ≈ noise` in every cell.
+`TV(device, cpu)` *below* the noise reference is the signature of a **mapping**
+difference — adjacent-token shifts that share the same uniforms — not a
+distribution error. The divergence is therefore a uniform→token mapping shift on
+wide-support rows, not a wrong distribution, and the release wording must say
+exactly that.
+
 **Precedent already in-tree.** The CPU itself uses two different accumulation
 orders for the same draw: the fast path accumulates in **token order**
 (`target_sampling.rs:597-618`) and the ordered path in **rank order**
@@ -974,10 +1056,12 @@ orders for the same draw: the fast path accumulates in **token order**
 accepted property of the released sampler; this design adds a third, fixed,
 per-row order and does not introduce a new class of behaviour.
 
-**Required measurement (not optional).** The GPU-vs-CPU token mismatch rate per
-phase-0 cell must be measured with the planned 8,192 seeded draws per cell
-(§12.9), reported in the chunk-7 campaign, and published in the release notes.
-Bit-identity is not claimed for the token; the mismatch rate is.
+**Required measurement.** Measured for the fast path above. It is still required
+for the ordered path (chunks 3a/3b, the 8,192-draw protocol of §12.9), and
+**must be re-measured in full after any change that alters the segment count or
+the tree association**, because such a change moves the uniform→token mapping
+(see the §13.1 caveat). Bit-identity is not claimed for the token; the mismatch
+rate is, and it is published in the release notes.
 
 **Documentation rules**
 
@@ -1060,7 +1144,7 @@ precisely:
 
 **Disposition.** Out of scope for this release. Reconsider **only if** the
 measured GPU-vs-CPU token mismatch rate from §12.9/§13 proves unacceptably large
-(the chunk-7 gate decides). The design keeps the CPU mapping intact and accepts a
+(the chunk-6/7 gate decides). The design keeps the CPU mapping intact and accepts a
 measured GPU divergence, which is the authorized scope.
 
 #### 6.5.3 Documented option for the fast path: strict token-order accumulation
@@ -1075,11 +1159,24 @@ one-thread-per-row fallback for small `vocab` — would make K2's crossing
 comparison bit-identical to the CPU's token-order accumulation, leaving `expf`
 (§6.3b) as the only residual on that path.
 
-**Disposition.** Evaluate in the chunk-2 experiment: measure the sequential
-combine's cost against the tree combine at `rows` 1–64 and report which is used.
-It is cheaper and lower-risk than the Gumbel alternative because it changes no
-mapping at all; it is not adopted up front only to avoid a serialization
-bottleneck in the wide-nucleus case.
+**Measured outcome (chunk 2): ship the tree combine; the sequential combine is
+not a candidate.**
+Both variants are compiled (`DS41RT_V41_K2_SEQUENTIAL_COMBINE` in
+`v41_sampling_gpu.cu:42-49`, default off). MEASURED at 4 rows: tree 392.5 µs vs
+sequential 8251.6 µs (8.25 ms, ~2 ms/row — worse than the CPU sampler); at 64
+rows the sequential cost is flat (8.35 ms) because each CTA serializes ~2 ×
+129,280 `expf` and dependent adds while 255 threads idle. The sequential combine
+does **not** buy bit-identity either: it removes the order term but leaves the
+CUDA-`expf` term (§6.3b), still diverging on 85/983,040 draws
+(0.0086%); tree+CUDA-`expf` diverges on 119,138 (12.1193%). Only
+sequential+double-`exp` reached zero divergence in the sweep (0/983,040, model
+plus a 1,536-draw GPU spot check), and that path is 3.37× slower than the tree
+and still not weight-bit-identical. The default is therefore the tree; the
+sequential macro is retained as a build knob for diagnosis, never an ABI field.
+The full-grid sequential rate is partly model-derived: the expf experiment's
+sequential-order accumulation plus a GPU spot check (0/1,536), because running
+the sequential GPU over 983,040 draws would take ~2.2 h — recorded as an honest
+limit in §18.
 
 ---
 
@@ -1475,12 +1572,34 @@ extend that file rather than `cuda_selftest.cc`; the style reference remains
   and compares token id + distribution elsewhere. It also **records** the token
   mismatch count against the CPU oracle per cell rather than asserting zero
   (§6.3c).
+- **Convention (chunk-2 decision): GPU-requiring FFI device tests are
+  `#[ignore]`d and run explicitly**, matching the CUDA-ignored daemon tests
+  (`v41_memory/download.rs:49`) and the ignored pattern above, so a plain
+  `cargo test` stays green on a host without the native library. Documented
+  explicit-run command:
+  `DS41RT_NATIVE_LIB=/abs/path/libds41rt_native.so cargo test -p ds41rt-ffi --lib v41_sampler -- --ignored`
+  (an explicit `--ignored` run asserts the library is present, so it cannot
+  silently no-op).
+- The loader used by those tests, `load_device_test_library`
+  (`lib.rs:18535-18560`), **never skips**: on an explicit run with no locatable
+  library it returns an error, so the test **FAILS rather than passing unrun**.
+  Chunk 2 landed `v41_sampler_device_fast_path_matches_cpu_oracle`
+  (`lib.rs:19245` in the current tree, `:19215` in the reviewed revision; the
+  name is the stable anchor as later chunks add lines)
+  against the **production** CPU sampler (`ds41rt_core::TargetSamplingParams`),
+  not a reimplementation; it pre-fills outputs with `0xDEADBEEF` so an unrun
+  kernel cannot pass.
 
 ### 12.3 Full parameter grid × masks × boundary uniforms
 
 Mirror `param_grid` (`target_sampling.rs:1496-1524`):
 
-- temperatures `{1e-5, 1e-4, 0.2, 0.7, 2.0}`;
+- temperatures `{1e-5, 1e-4, 0.2, 0.7, 2.0}`; **chunk-2 decision: the
+  fast-path temperature grid includes the greedy epsilon boundary `1e-5`**
+  (`GREEDY_TEMPERATURE_EPS`, `target_sampling.rs:49`; `is_greedy` is a strict
+  `<` at `:172-174`, so `T = 1e-5` is stochastic and is the highest-value
+  boundary to cover). Chunk 2's device fast-path grid ran
+  `{1e-4, 0.2, 0.7, 2.0}`; chunk 5's full grid must include `1e-5`;
 - top_k `{1, 2, 40, V-1, V, V+1, None}`;
 - top_p `{1e-6, 0.5, 0.9, 0.95, 1-1e-7, 1.0}`;
 - min_p `{0, 1e-6, 0.05, 0.5, 1.0}`;
@@ -1592,7 +1711,7 @@ the harness rows in the repo as part of chunk 6/7 or assert their sha256
 (§16 D4).
 
 The same 8,192-draw sweep must also record the **GPU-vs-CPU token mismatch count
-and rate per cell** (§6.3c). That number is a required chunk-7 deliverable and
+and rate per cell** (§6.3c). That number is a required chunk-6/7 deliverable and
 must appear in the release notes; the distribution can match within noise while
 the per-draw token differs, and both facts must be reported.
 
@@ -1612,6 +1731,10 @@ differences and record it in §6.3b; or (ii) keep CUDA `expf` and record the
 measured residual. Either way the result is written into this document before
 chunk 3a/3b start, and no bit-identity claim is made on the strength of an
 unmeasured assumption.
+
+**DONE (chunk 2).** Outcome (ii): CUDA `expf` kept, residual declared, with the
+full table in §6.3b and the report in `runs/chunk2-scratch/REPORT.md` §6 /
+`out/expf.json`. The prerequisite for chunk 3a/3b is therefore satisfied.
 
 ### 12.10 Constrained speculation tests
 
@@ -1670,10 +1793,46 @@ never be published without that mismatch rate beside it.
   `top_k40` profile also pays the top-p search (`top_p = 1.0`), so its ~60-read
   budget must be measured, not assumed.
 - Also measure the §6.3b `expf` variants and the §6.5.3 sequential-combine option
-  here, so the chunk-2 decision is made on data.
-- **Proposed gate (not measured yet):** the sampler+D2H must add ≤ 0.25 ms to a
-  48-row ordered round and ≤ 0.10 ms to a 4-row round. If it does not, chunk 6/7
+  here, so the chunk-2 decision is made on data. **Done for the fast path in
+  chunk 2** (MEASURED, see below).
+- **Proposed gate (original):** the sampler+D2H must add ≤ 0.25 ms to a 48-row
+  ordered round and ≤ 0.10 ms to a 4-row round. If it does not, chunk 6/7
   (radix histogram) is mandatory before any E2E claim.
+
+**Chunk-2 measured result (fast path only; MEASURED).** Blocking C-ABI entry
+point plus ids D2H, 5 warmups, 50 timed calls, `peaked` row
+(`runs/chunk2-scratch/out/latency_tree_cuda.json`):
+
+| rows | K1 only (µs) | K1+K2 tree, CUDA `expf` (µs) | K2 delta (µs) | sequential (µs) | double `exp` (µs) |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 172.3 | 382.6 | 210.3 | 8,175.8 | 1,316.3 |
+| 4 | 177.1 | 392.5 | 215.4 | 8,251.6 | 1,321.2 |
+| 16 | 183.2 | 404.4 | 221.1 | 8,353.5 | 1,327.0 |
+| 48 | 183.3 | 404.5 | 221.2 | 8,354.1 | 1,328.5 |
+| 64 | 183.3 | 404.7 | 221.5 | 8,352.6 | 1,328.6 |
+
+- **The proposed ≤0.10 ms/4-row gate is EXCEEDED and is now a chunk-6/7 item.**
+  The tree K2 adds ~215 µs at 4 rows (and K1 alone ~177 µs), against a 100 µs
+  gate. Recorded honestly; chunk 2's acceptance item was the measured comparison,
+  not the gate.
+- **The excess is per-launch critical-path-bound, not launch-count-bound and not
+  row-count-bound.** The 4-row and 48-row calls differ by 12.0 µs (3.1%), and it
+  is not bandwidth-bound (48 rows × 517 KB × ~4 reads ≈ 99 MB ≈ 55 µs at HBM
+  speed). The critical path is two full passes over the row, each a
+  ~`vocab / kBlock ≈ 505`-iteration serial dependent `expf`+add chain per thread,
+  plus the step-3 owner walk (~33 µs/launch) and two Hillis-Steele barrier sets.
+- **Cheapest levers, in order:** (1) raise the per-row thread count from 256 to
+  512/1024, halving/quartering the per-thread serial chain — a launch-geometry
+  change under contract §7.2.6 with no semantic change, and the largest lever;
+  (2) fold the owner walk into an existing pass or replace the tree scan with a
+  cheaper fixed-shape combine; (3) the chunk-6 radix histogram, which attacks the
+  pass count but not the per-thread dependent chain.
+- **Caveat on any lever that changes the segment count:** the tree association
+  changes, hence the uniform→token mapping changes. Determinism is preserved and
+  it is contract-§7.2.6-legal, but the published GPU-vs-CPU mismatch rate **must
+  be re-measured afterwards** (the 8,192-draw protocol of §12.9); the chunk-2
+  figures in §6.3c are valid only for the shipped 256-thread/segment-count
+  configuration.
 
 ### 13.2 D2H bytes and synchronizations before/after
 
@@ -1800,18 +1959,21 @@ evidence; the wiring chunk is gated on wiring evidence plus the four §17.5 gaps
 | --- | --- | --- | --- | --- | --- |
 | 0 | **Design gate** | doc | this document | adversarial review passes; corrected facts §2 accepted | required |
 | 1 ✓ | **ABI + GPU prepare/greedy — DELIVERED (`9dffad0`)** | kernel + wiring | as planned: `ds41rt_v41_sampler_row_t` + helpers in `v41_sampling_gpu.h`, mask arena, `TargetSamplingWave`, C-ABI registration, FFI wrappers + `validate_v41_sampling_buffers`, `execute_block_sampled`, scheduler/pass wiring, K1 with the greedy/constrained branch. Passed three adversarial review rounds (two found wiring defects, one found a third; all fixed before commit) | **met for the delivered scope**: ABI validated end to end; device greedy/constrained-greedy parity vs the CPU oracle (81 device cases / 6552 assertions; 63-cell greedy parity grid); compact greedy path behaviourally unchanged; no full-row D2H for greedy rows; stochastic path behaviourally unchanged. Four coverage gaps carried to chunk 4 (§17.5) | required |
-| 2 | **KERNEL-ONLY, in progress: K2 fast path + device RNG + accumulation-order/`expf` evaluation** | kernel only | K1 stochastic reductions with host `ln_min_p`; the K2 fast path; the **accumulation-order evaluation** (sequential token-order scan vs parallel segmented scan, both measured on latency **and** GPU-vs-CPU token mismatch rate); the §12.9a `expf` parity experiment as a gate; per-cell mismatch rates at 8,192 seeded draws; device tests plus an **FFI-level oracle test against the production CPU sampler**. **No daemon/scheduler/scores changes.** | device RNG bit-equal on the extended seed/position grid (`2^63`, `u64::MAX`); `expf` outcome written into §6.3b (pinned variant or declared residual); per-cell mismatch rate recorded (not asserted zero); accumulation-order choice justified by the measured latency **and** mismatch pair; phase-0 `moderate`/`long_tail` histogram within TV noise; FFI oracle green. **The gate is kernel-only and deliberately does not close the §17.5 gaps** (they are chunk 4's) | required |
+| 2 ✓ | **KERNEL-ONLY: K2 fast path + device RNG + accumulation-order/`expf` evaluation — DELIVERED (working tree, commit pending; base `9dffad0`)** | kernel only | as planned: K1 stochastic reductions with host `ln_min_p`; the K2 fast path; the accumulation-order evaluation (sequential vs parallel segmented scan); the §12.9a `expf` experiment; per-cell mismatch rates at 8,192 seeded draws; device tests plus the FFI-level oracle test against the production CPU sampler. **No daemon/scheduler/scores changes** | **met and reviewed.** RNG **345/345 bit-equal** (extended grid incl. `2^63`, `u64::MAX`); `expf` **declared residual** with numbers (§6.3b: CUDA 15.4928% of weights / max 2 ulp, double 0.0173% / max 1 ulp and 3.37× slower); mismatch rates recorded per cell (§6.3c: 12.1193% overall, `near_uniform` 57.7502%, `tied` 0.0000%); distribution matches the analytic oracle within noise in every cell; device selftest **90 cases / 7,172 assertions** incl. the fast-path grid, seeded-replay, min_p-threshold and fallback regression cases; FFI oracle green (`v41_sampler_device_fast_path_matches_cpu_oracle`); both arches compile. **Honest limits (§18.4):** no daemon/E2E path; `sm_121` compile-only; the sequential full-grid rate is partly model-derived; the design's ≤0.10 ms/4-row gate is **missed** and is now a chunk-6/7 item. **The gate was kernel-only and deliberately did not close the §17.5 gaps** (chunk 4's) | required |
 | 3a | **KERNEL-ONLY: K3 + K4** | kernel only | K3 general-k pivot selection and K4 exact-k lowest-id tie prefix, with device tests against the CPU oracle | device top-k membership set equals the oracle's `ranked[..k]` for the full grid, all tie rows, `k ∈ {2,40,V-1,V,V+1}`, `top_p = 1.0` included; K3+K4 pass budget measured against §13.1 | required |
 | 3b | **KERNEL-ONLY: K5** | kernel only | K5 inclusive-prefix top-p (largest-key boundary, no `top_p = 1.0` shortcut, full-`S` fallback) plus the rank-order draw with the `nucleus_count - 1` fallback, with device tests | full parameter grid × masks × boundaries vs the ported `reference_select` (device level); the §12.3 `top_k + top_p = 1.0` prefix-overshoot oracle; all tie cases; `-inf`/NaN/min_p sweeps; vocab-not-divisible-by-32; total pass budget measured | required |
 | 4 | **WIRING — the single consolidated daemon chunk** | wiring | put stochastic rows on the sampled terminal; capability gates for layouts without the terminal (`DistributedTargetPass`); constrained mask preparation/upload for stochastic verification rows; retention gating and the incidental-download fix; remove the remaining full-row D2H for stochastic rows; **add the executed `upload → launch → output` end-to-end test**; delete the residual single-lane blocking `copy_d2h` for stochastic rounds | **closes all four §17.5 gaps**: the executed `upload → launch → output` end-to-end test (a chunk-4 acceptance gate, not chunk 2's); a daemon-level GPU end-to-end constrained-greedy round; the distributed capability gate; mixed greedy+stochastic rounds wired. Plus: §13.2 D2H accounting holds for stochastic rounds; sync count unchanged; no 517 KB per-row `Vec`; retention tests green; error strings per §5.4 and D1 | required |
 | 5 | **Full correctness validation + independent review** | validation | the complete matrix vs the CPU oracle: grid × masks × boundaries × ties; seeded replay across batch sizes, lanes, orderings and rejected drafts; distributional comparison; constrained speculation | §12.3–§12.10 all green; the `reference_select` port reviewed as a separate artifact from the kernel (§12.11) | required |
-| 6/7 | **Pass-budget optimisation (conditional), then measurement** | kernel/measurement | deterministic integer radix histogram (≤2048 buckets, fixed-order combine, u64 fixed-point mass) **only if the measured kernel cost demands it**; then fixed-logit latency vs CPU and the published per-cell mismatch-rate measurement | pass budget ≤ the §13.1 gate if optimisation ran; §13.7 criteria 3, 4 and 7 | required |
+| 6/7 | **Pass-budget optimisation (conditional), then measurement** | kernel/measurement | **now triggered for the launch-critical-path cost measured in chunk 2** (§13.1): try the levers in order — wider per-row blocks (256→512/1024), fold the owner walk into an existing pass, then the deterministic integer radix histogram (≤2048 buckets, fixed-order combine, u64 fixed-point mass) — and re-measure the per-cell mismatch rate after any segment-count change; then fixed-logit latency vs CPU and the published per-cell mismatch-rate measurement | pass budget ≤ the §13.1 gate after the chosen lever; mismatch rate re-measured for the shipped configuration; §13.7 criteria 3, 4 and 7 | required |
 | Phase 3–4 | **E2E campaign + release** | release | end-to-end campaign on 1× RTX + 4× Spark with dSpark (§13.3–§13.5), per-round timing (§13.6), README five-profile measurement update (`:214-260`), `docs/release-v11-performance.md` and release notes (§6.4), and the upstream/placement decision memo (former chunk 8) | §13.7 all criteria; workload identity; provenance/identity files; validated campaign | required |
 
 **Current position:** chunk 1 is delivered (`9dffad0`, §17) and its own review is
-closed; **chunk 2 is in progress and is kernel-only**. The four chunk-1 coverage
-gaps (§17.5) belong to the **chunk-4 gate**, not chunk 2's. The design gate
-(chunk 0) is what this document is.
+closed. **Chunk 2 is delivered** — kernel-only, reviewed, working-tree changes
+pending commit (base `9dffad0`; §18 is the as-built record) — so its RNG and
+`expf` prerequisites for §12.9a are satisfied. **Chunk 3a (K3 + K4) is NEXT**, and
+remains kernel-only. The four chunk-1 coverage gaps (§17.5) belong to the
+**chunk-4 gate**, not chunk 2's. The design gate (chunk 0) is what this document
+is.
 
 Do not start chunk 3a before chunk 2's RNG **and** `expf` gates pass exactly: the
 RNG equality test is the only cheap way to separate a draw-stream bug from a
@@ -1828,7 +1990,7 @@ remaining token differences are the expected residual or a real defect.
 | R2 | **Tie-rule drift** | FlashInfer/vLLM keep all k-th ties (`sampling.cuh:945`); ds41rt keeps exactly k lowest-id (`target_sampling.rs:30-33`). A naive port silently changes every tied row | K3/K4 implement the total-order rule explicitly; §12.4 pins it; the reviewer diffs the `reference_select` port |
 | R3 | **top-p tail-mass vs inclusive prefix, and boundary direction** | FlashInfer accepts the strict tail-mass criterion (`sampling.cuh:1072`), excluding the boundary tie; ds41rt is inclusive (`target_sampling.rs:544-554`). A monotonicity slip (`M` decreases as the key gets *better*) would select the whole vocabulary | K5 uses the **largest key with `M >= top_p`** = the last rank of the prefix; §4.5 states the direction and the bisection invariant; no `top_p = 1.0` shortcut; §12.3 boundary-uniform probes and the `top_k + top_p = 1.0` overshoot oracle |
 | R4 | **Mask-width bug / out-of-vocab id** | The native path never masks the last word's high bits; a whole-word GPU reader could select `id >= vocab` on a non-divisible vocabulary | Bounded loops + host remainder-mask + kernel re-check (§5.3); vocab-33/127/129281 tests |
-| R5 | **FP non-bit-identity** | `expf` is not bit-identical (1–2 ulp per weight) and the reduction order differs, so any comparison against an f32 accumulation can move the token — including the top-p membership, which shifts the draw by a rank; in the wide-nucleus case the mismatch rate can be O(0.1–1), not ULP-rare | `min_p` made exact by host `ln` (§6.3a); `expf` experiment and pin/declare in chunk 2 (§6.3b, §12.9a); measured per-cell mismatch rate required before any claim (§6.3c, §13.7 criterion 7); Gumbel-max alternative recorded and out of scope (§6.5.2) |
+| R5 | **FP non-bit-identity** | `expf` is not bit-identical (1–2 ulp per weight) and the reduction order differs, so any comparison against an f32 accumulation can move the token — including the top-p membership, which shifts the draw by a rank; in the wide-nucleus case the mismatch rate can be O(0.1–1), not ULP-rare. **Realized and measured** (chunk 2): fast-path 12.1193% overall, `near_uniform` 57.7502% | `min_p` made exact by host `ln` (§6.3a); **DECLARED** in chunk 2 (§6.3b: CUDA `expf` kept, double variant 0.0173% residual at 3.37× cost); measured per-cell rates published (§6.3c, §18.3); Gumbel-max alternative recorded and out of scope (§6.5.2); re-measure after any segment-count change (§13.1) |
 | R6 | **Graph-capture issues** | Kernel-node index patching is fragile (`sampling.cu:1203,1268`); captured row count is a key (`v41_target_head.rs:226`) | Sampler launched outside the graph; parameters from device memory; no cooperative launch; §11.3 |
 | R7 | **Greedy regression** | Mixed-lane heterogeneity, an extra kernel launch, or per-row parameters could slow greed; forcing a lane-wide full download would be catastrophic | Compact path untouched; per-row params; §13.7 criterion 1; mixed-lane test |
 | R8 | **Arch 120/121 build and AOT packaging** | Coordinator builds `CUDA_ARCH=120` (rewritten to `120f` only for the FlashInfer packed-MLA source, `native/CMakeLists.txt:317-319`) and Spark `121` (`build.sh:427`, `:558`); only one native arch per image | New plain `.cu` in `DS41RT_NATIVE_SOURCES` needs no AOT exporter; build and selftest on both images; verify the `120f` rewrite is not accidentally triggered |
@@ -2062,6 +2224,104 @@ graph legality) now matches the as-built code above and is the baseline chunks
 
 ---
 
+## 18. Chunk 2 as-built record (kernel-only, reviewed; working tree, commit pending)
+
+Chunk 2 (K2 fast path) passed adversarial review and is recorded here **before
+chunk 3a/3b start**, because §12.9a makes the `expf` outcome a prerequisite for
+the ordered path. Chunk 2 is uncommitted working-tree work on base revision
+`9dffad0`; no daemon, scheduler or scores file was touched, and the kernel
+`.cu`/`.h` plus the FFI diff are purely additive (`0` deleted lines).
+
+### 18.1 Files and content hashes (from `runs/chunk2-scratch/REPORT.md` §1)
+
+| File | sha256 | Change |
+| --- | --- | --- |
+| `native/cuda/kernels/v41_sampling_gpu.h` | `a5286f336abe4cd15e70d0759736b2079f5e7dbd74a3a65c4e44568e1ed06b74` | adds `ds41rt_v41_target_uniform` (`:198`) and `ds41rt_v41_target_clamp_uniform` (`:210`) |
+| `native/cuda/kernels/v41_sampling_gpu.cu` | `0f79fa3bd3ba279e71c3fa13fef8afe00294479d7b49a854859d9c44c91d0dfd` | adds `v41_sample_categorical_kernel` (`:475`), `k2_applicable` (`:418`), `k2_weight` (`:447`), `tree_max_u32` (`:142`), the launch switch (`:738-744`) and the two build macros (`:42-57`) |
+| `native/tests/v41_sampling_selftest.cu` | `aac44c9e8533825401bca13ba2ba67001d237d8fd084ecdfcb8bec4386883da6` | `+801/−0`: the K2 test set, existing K1 assertions untouched |
+| `rust/crates/ds41rt-ffi/src/lib.rs` | `97135f6806f5174ec343da2af700a71c80ab06c7bc1e2e0538fc39179d929da1` | adds the device-test loader (`:18535`) and the production-oracle test (`:19245` now; `:19215` in the reviewed revision) |
+
+**Hash provenance and working-tree drift.** The hashes above are the reviewed
+chunk-2 revision recorded in `runs/chunk2-scratch/REPORT.md` §1. As of this
+document edit the working tree has already advanced:
+`v41_sampling_gpu.cu` = `b313fd82b15ba5f011dce284ed6fa4fd3919df7185ffae9cfc9ba9231584bc4f`,
+`native/tests/v41_sampling_selftest.cu` =
+`48b8cb0b99d195a0fddabe3d8b0eaae55cc55149210c2a0db166f1e34a2716f8`,
+`rust/crates/ds41rt-ffi/src/lib.rs` =
+`e9652d0c56bea7d7bc1f010d086e2d73642610de02dd9fdd34a884792ddeb583` (the `.h` is
+unchanged at `a5286f33…`). Chunk 2's commit must therefore either capture the
+reviewed revision or re-verify the delta; the line numbers in this section are
+from the current tree and drift as later chunks add lines.
+
+Build macros are `DS41RT_V41_K2_SEQUENTIAL_COMBINE` (default 0) and
+`DS41RT_V41_K2_WEIGHT_DOUBLE` (default 0), compile-time switches only — neither
+is an ABI field, so the 64-byte struct, the validator and the daemon are
+unchanged.
+
+### 18.2 Decisions settled by chunk 2
+
+1. **`expf`: declared residual** (§6.3b) — keep CUDA `expf`; no tested path is
+   bit-matching and double-`exp` is 3.37× slower for 0.0173% residual.
+2. **Accumulation order: ship the parallel segmented scan** (§6.5.3); the
+   strictly sequential token-order combine is 8.25 ms at 4 rows and is not a
+   candidate. It is retained as a compile knob for diagnosis.
+3. **K2's no-crossing fallback is unreachable on both sides** (§4.2 step 3). The
+   device derives `total` from the crossing walk's own accumulation, never from
+   the tree prefix. The pre-fix device reached the fallback because the tree
+   prefix exceeded the walk cumulative by ~3e-5 on a wide row.
+4. **Latent sentinel bug fixed** (§4.2 step 4): the per-segment last-survivor
+   sentinel was `NO_DETAIL` (`0xFFFFFFFF`), the max-u32, so it won
+   `tree_max_u32` whenever trailing segments were empty; it is now `0`.
+5. **`ln_min_p` unchanged**: still host-precomputed, no device `logf` (6.3a).
+6. **Mismatch rates are measured, not asserted** (§6.3c): 12.1193% overall,
+   `near_uniform` 57.7502%, `tied` 0.0000%, with distribution-vs-mapping argued
+   from `TV`.
+7. **Test conventions** (§12.2, §12.3): GPU-requiring FFI tests are `#[ignore]`d
+   with a documented explicit-run command and a loader that fails rather than
+   skips; the fast-path temperature grid includes the `1e-5` greedy boundary.
+
+### 18.3 Evidence (MEASURED)
+
+- RNG bit-equality: **345/345** device-vs-host cases including `2^63` and
+  `u64::MAX`; `MAX_UNIFORM` clamp pinned separately.
+- Device selftest: **90 cases / 7,172 assertions** (K1's 81 cases unchanged and
+  green), including the fast-path grid, seeded replay, min_p-threshold-token
+  cases, tied/edge rows, `k2_applicable == false` rows, and the fallback
+  regression.
+- FFI: **7/7** `v41_sampler` tests green, including the production-oracle
+  fast-path test; both arches (`sm_120`, `sm_121`) compile.
+- Latency and `expf`/mismatch measurements: `runs/chunk2-scratch/out/*.json`
+  (sha256 in the report); the six phase-0 logits rows still match
+  `out/logits-manifest.json`.
+- `runs/` is gitignored (risk R10): the committed evidence is the selftest
+  source, the FFI test and the report's hash table.
+
+### 18.4 Honest limits
+
+1. **No daemon or end-to-end path.** Chunk 2 is kernel-only; nothing serves a
+   request through K2 yet. That is chunk-4 work, and the §17.5 gaps remain open.
+2. **`sm_121` is compile-only** for this chunk; execution was on the coordinator
+   (`sm_120`). The Spark arch is not exercised until the phase-3 campaign.
+3. **The sequential full-grid mismatch rate is partly model-derived**: the
+   `expf` experiment's sequential-order accumulation plus a GPU spot check
+   (0/1,536), because a full 983,040-draw sequential GPU run would take ~2.2 h.
+   The shipped tree figures are all GPU-measured.
+4. **The design's own ≤0.10 ms/4-row gate is missed** (~215 µs K2 delta, ~392 µs
+   total); it is now an explicit chunk-6/7 item with the lever list in §13.1.
+5. **The mismatch figures are valid only for the shipped 256-thread layout**;
+   any segment-count change requires re-measurement (§13.1 caveat).
+
+### 18.5 What chunks 3a/3b inherit
+
+The K2 entry-point placement, mask handling, `NO_MASK`/`STRICT_FINITE` semantics,
+the 64-byte ABI and the §4.0 no-fast-math/FTZ rule are unchanged. K3/K4/K5 must
+reuse the same `order_key`/total-order primitive (§4.3–§4.5), keep `total` out of
+the tree for any categorical walk, and follow the §12.2 test conventions. The
+`expf` and accumulation-order decisions of §6.3b/§6.5.3 are settled and are not
+re-litigated in the ordered path.
+
+---
+
 ## Appendix A — two primitives, precisely
 
 **A.1 The probe primitive.** One pass over the row, with the mask and survivor
@@ -2135,6 +2395,18 @@ normalize (`target_sampling.rs:597-618`); in K4 the scanned quantity is the
 indicator "token equals the k-th value", and the answer is the admit boundary for
 the lowest-id tie prefix.
 
+For K2 the tree scan produces only the per-segment carries; **`total` must come
+from the crossing walk's own accumulation at the last survivor, never from the
+tree's inclusive prefix** (§4.2 step 3). That is what makes the device no-crossing
+fallback unreachable exactly as on the CPU: the CPU's `total` and crossing
+`cumulative` are the same left-to-right accumulation, so at the last allowed token
+`cumulative == total` and the clamped uniform cannot overshoot it. Deriving
+`total` from the tree introduces a device-only artifact (measured ~3e-5 on a wide
+row pre-fix).
+
 Deterministic for any grid shape; order-exact within a segment; the cross-segment
 tree is one of the two accumulation-order differences from the CPU (the other is
-`expf`) — §6.3c.
+`expf`) — §6.3c. Any change to the segment count changes the tree association and
+therefore the uniform→token mapping; determinism is preserved and it is
+contract-§7.2.6-legal, but the published GPU-vs-CPU mismatch rate must be
+re-measured afterwards (§13.1).
