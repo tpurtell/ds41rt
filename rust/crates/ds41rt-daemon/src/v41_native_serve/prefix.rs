@@ -55,6 +55,16 @@ impl<'a> PrefixCache<'a> {
     pub fn host_metrics(&self) -> Option<ds41rt_hostcache::metrics::Snapshot> {
         self.host.as_ref().map(HostCacheBinding::metrics)
     }
+    /// Whether the completed-turn bank will actually store a frontier.
+    ///
+    /// This is the same `bank.limit()` guard `retain`/`queue_retain` apply
+    /// (`prefix.rs:177`, `:206`): a zero limit disables retention entirely, so a
+    /// finishing request must not pay the one-row frontier D2H (design §10.4).
+    /// The scheduler consults this **before** scheduling a retention download, so
+    /// a cache-disabled deployment downloads no frontier row at all.
+    pub fn turn_bank_enabled(&self) -> bool {
+        self.retained.bank(SnapshotKind::Turn).limit() > 0
+    }
     /// The host cache's effective configuration, exported with the metrics.
     pub fn host_config(&self) -> Option<&ds41rt_hostcache::config::Config> {
         self.host.as_ref().map(HostCacheBinding::config)

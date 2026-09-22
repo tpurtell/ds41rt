@@ -170,7 +170,7 @@ impl State<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::collect_row_masks;
+    use super::*;
 
     /// The XGrammar matcher's mask buffer is reused across rows and
     /// `fill_bitmask` returns whether that row needs a mask at all. A row whose
@@ -231,5 +231,65 @@ mod tests {
             all_masked.iter().map(|mask| mask.as_deref().unwrap()[0]).collect::<Vec<_>>(),
             vec![0, 1, 2, 3, 4]
         );
+    }
+
+    /// Chunk 4b: the **real** xgrammar matcher, forked per speculative prefix row.
+    ///
+    /// This is the one test that exercises `prepare_verification_masks` and
+    /// `prepare_verification_mask_row` against a compiled grammar (the other tests
+    /// drive `collect_row_masks` with a synthetic fill). It pins the three chunk-4b
+    /// constraints on the mask-preparation half of the flow:
+    /// per-row masks follow the hypothetical prefix, the single-row retention
+    /// variant agrees with the batch form, and the authoritative matcher is never
+    /// advanced (fork/rollback: the branches are dropped, so the committed state
+    /// still governs the next authoritative `accept`).
+    ///
+    /// Skips without `DS41RT_NATIVE_LIB`; uses the committed tiny tokenizer
+    /// (vocab 8) so the test does not need a model snapshot.
+    #[test]
+    fn verification_masks_fork_per_row_without_mutating_the_authoritative_matcher() {
+        let Some(path) = std::env::var_os("DS41RT_NATIVE_LIB") else {
+            eprintln!("skipping: DS41RT_NATIVE_LIB is not set");
+            return;
+        };
+        let library = unsafe { NativeLibrary::load(path).unwrap() };
+        let tokenizer = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../native/tests/fixtures/xgrammar_tiny_tokenizer.json");
+        let compiler = library.xgrammar_compiler(&tokenizer, 8, &[6]).unwrap();
+        let schema = r#"{"type":"object","properties":{"x":{"type":"string"}},"required":["x"],"additionalProperties":false}"#;
+        let grammar = compiler
+            .compile(ds41rt_ffi::DS41RT_XGRAMMAR_JSON_SCHEMA, Some(schema), true)
+            .unwrap();
+        let mut matcher = grammar.matcher().unwrap();
+        // The committed anchor `{` (token 1) is already in the authoritative state.
+        assert!(matcher.accept_token(1).unwrap(), "the anchor must be an allowed token");
+        let mut state = State { matcher, mask: vec![0u32; 1] };
+        let before = state.mask().unwrap().map(<[u32]>::to_vec);
+
+        // Hypothetical draft prefix: anchor, space, "x", colon.
+        let input = [1u32, 7, 2, 3];
+        let masks = state.prepare_verification_masks(&input).unwrap();
+        assert_eq!(masks.len(), input.len());
+        assert!(masks.iter().all(Option::is_some), "this grammar needs a mask on every row");
+        // Per-row masks follow the prefix: after `{ "x"` the allowed set is no
+        // longer the anchor's.
+        assert_ne!(masks[0], masks[2], "row 2 must follow the x-token prefix, not the anchor");
+        assert_ne!(masks[0], masks[3], "row 3 must follow the colon prefix");
+        // The retention-time single-row form agrees with the batch form.
+        for (row, mask) in masks.iter().enumerate() {
+            let single = state.prepare_verification_mask_row(&input, row).unwrap();
+            assert_eq!(mask, &single, "row {row}: single-row mask differs from the batch form");
+        }
+        // Fork/rollback: preparing (and dropping) every branch left the
+        // authoritative state exactly where it was.
+        let after = state.mask().unwrap().map(<[u32]>::to_vec);
+        assert_eq!(before, after, "verification mask preparation mutated the authoritative matcher");
+
+        // An illegal draft token is the same hard error the CPU path reports.
+        let illegal = state.prepare_verification_masks(&[1, 5]).unwrap_err();
+        assert!(illegal.to_string().contains("illegal verification draft token"),
+            "unexpected error: {illegal}");
+        // A row outside the round is rejected rather than silently clamped.
+        assert!(state.prepare_verification_mask_row(&input, input.len()).is_err());
     }
 }

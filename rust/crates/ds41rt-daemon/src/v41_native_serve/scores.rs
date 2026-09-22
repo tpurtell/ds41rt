@@ -202,7 +202,12 @@ impl BatchScores {
         Ok(TokenScores { bytes: Arc::from(bytes), best: self.best[row] })
     }
     /// Reuse logits this batch already holds, with the same cross-check.
-    fn retain_packed(&self, row: usize, mask: Option<&[u32]>) -> Result<TokenScores> {
+    ///
+    /// `pub(crate)` for the chunk-4b retention gate: a finishing fallback row
+    /// whose bytes were downloaded for the CPU re-sample is retained in place by
+    /// both lanes through this function, with no second transfer (see
+    /// `scheduler::retain_packed_frontier`).
+    pub(crate) fn retain_packed(&self, row: usize, mask: Option<&[u32]>) -> Result<TokenScores> {
         let range = self.row_range(row)?;
         let best = argmax(&self.bytes[range.clone()], mask)?;
         ensure!(best == self.best[row], "GPU and retained CPU greedy selection differs");

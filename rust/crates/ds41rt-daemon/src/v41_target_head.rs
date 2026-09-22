@@ -2639,6 +2639,39 @@ mod sampler_device_tests {
                       (K1 over 48 greedy rows)",
                 median(sampled_greedy_us), median(sampled_greedy_gpu_us));
         }
+
+        // Chunk 4b retention gate: the one-row frontier transfer the gate removes
+        // when the turn bank is disabled. This is the production pageable D2H
+        // (`BatchScores::retain_from_device`), measured per row and extrapolated
+        // to a representative finishing batch (every one of 8 requests finishing
+        // in its last round).
+        {
+            let rows = 8usize;
+            let values = smooth_narrow(rows);
+            let buffer = library.alloc_device_buffer(rows * VOCAB * 4)?;
+            library.copy_h2d(buffer, &bytes(&values))?;
+            let mut host = vec![0u8; VOCAB * 4];
+            let mut one_row = buffer;
+            one_row.bytes = VOCAB * 4;
+            let mut frontier_us = Vec::new();
+            for iteration in 0..40 {
+                let start = std::time::Instant::now();
+                library.copy_d2h(&mut host, one_row)?;
+                if iteration >= 4 { frontier_us.push(start.elapsed().as_secs_f64() * 1e6); }
+            }
+            let mut buffer = buffer;
+            drop(one_row);
+            library.free_device_buffer(&mut buffer)?;
+            let mut median = |mut values: Vec<f64>| {
+                values.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                values[values.len() / 2]
+            };
+            let per_row = median(frontier_us);
+            println!("chunk4b retention gate: one-row frontier D2H={per_row:.1}us \
+                      ({}B); gated 1-row round saves {per_row:.1}us / {}B; \
+                      representative 8-finishing-row round saves {:.1}us / {}B",
+                VOCAB * 4, VOCAB * 4, 8.0 * per_row, 8 * VOCAB * 4);
+        }
         Ok(())
     }
 
@@ -2833,6 +2866,522 @@ mod sampler_device_tests {
             plan.rows[0].row.mask_row, arena[0] & 0xff);
         assert!(ids[0] < 3, "row 0 must draw inside its mask, got {}", ids[0]);
         assert_eq!(ids[1], expected1);
+        Ok(())
+    }
+
+    // ==================================================================
+    // Chunk 4b: the executed upload -> launch -> output tests on the real
+    // production launcher (`NativeSamplerStages`), plus the retention gate.
+    // ==================================================================
+
+    /// The packed arena row that allows exactly `tokens`.
+    fn allowed_mask(tokens: &[u32]) -> Vec<u32> {
+        let mut words = vec![0u32; VOCAB.div_ceil(32)];
+        for &token in tokens {
+            words[token as usize / 32] |= 1u32 << (token % 32);
+        }
+        ds41rt_ffi::ds41rt_v41_sampler_clear_remainder(&mut words, VOCAB);
+        words
+    }
+
+    /// The unmasked host argmax of one row.
+    fn row_argmax_dev(values: &[f32], row: usize) -> u32 {
+        values[row * VOCAB..(row + 1) * VOCAB].iter().enumerate()
+            .max_by(|left, right| left.1.partial_cmp(right.1).unwrap())
+            .unwrap().0 as u32
+    }
+
+    /// A wave staged through the **production** `TargetSamplingWave` (the real
+    /// `NativeSamplerStages`, i.e. the C ABI entry points), with its device
+    /// buffers and stream owned so a test can read the uploaded params/masks back.
+    struct StagedWave<'a> {
+        library: &'a NativeLibrary,
+        logits: Ds41rtDeviceBuffer,
+        stream: *mut std::ffi::c_void,
+        wave: TargetSamplingWave<'a>,
+        rows: usize,
+    }
+
+    /// The pinned mask arena is primed with this before `upload`, so the test can
+    /// tell "`upload` deliberately skipped this `NO_MASK` row" from "the
+    /// allocator happened to hand back zeroes". `upload` never writes a row it
+    /// skips, so asserting zero there (the pre-review helper) tested
+    /// uninitialized `cudaMalloc` memory, not the staging contract.
+    const MASK_STAGING_SENTINEL: u32 = 0xDEAD_BEEF;
+
+    impl<'a> StagedWave<'a> {
+        fn new(library: &'a NativeLibrary, rows: usize, values: &[f32],
+            plan: &crate::v41_native_serve::scheduler::SamplingPlan, arena: Option<&[u32]>,
+        ) -> Result<Self> {
+            let logits = library.alloc_device_buffer(rows * VOCAB * 4)?;
+            library.copy_h2d(logits, &bytes(values))?;
+            let stream = library.cuda_stream_create()?;
+            let mut wave = TargetSamplingWave::new(library, rows)?;
+            if arena.is_some() {
+                let staging = wave.mask_pinned.bytes_mut();
+                for word in staging.chunks_exact_mut(4) {
+                    word.copy_from_slice(&MASK_STAGING_SENTINEL.to_ne_bytes());
+                }
+            }
+            wave.upload(&plan.rows, arena, VOCAB.div_ceil(32), stream)?;
+            wave.launch(logits, rows, plan.routes_need_ordered_tail(), stream)?;
+            unsafe { library.cuda_stream_synchronize(stream)?; }
+            Ok(Self { library, logits, stream, wave, rows })
+        }
+
+        fn output(&mut self) -> Result<SampledTargetRows> {
+            self.wave.output(self.logits, self.rows)
+        }
+
+        /// The per-row parameter blocks actually resident on the device.
+        fn device_params(&self) -> Result<Vec<u8>> {
+            let mut raw = vec![0u8; self.rows * ds41rt_ffi::DS41RT_V41_SAMPLER_PARAM_BYTES];
+            self.library.copy_d2h(&mut raw, self.wave.param_device.buffer)?;
+            Ok(raw)
+        }
+
+        /// The packed mask arena actually resident on the device, limited to the
+        /// `mask_rows` the upload wrote. Reading past that would touch rows
+        /// `cudaMalloc` never initialized.
+        fn device_masks(&self) -> Result<Vec<u32>> {
+            let words = VOCAB.div_ceil(32);
+            let rows = self.wave.mask_rows;
+            if rows == 0 {
+                return Ok(Vec::new());
+            }
+            let mut raw = vec![0u8; rows * words * 4];
+            self.library.copy_d2h(&mut raw, self.wave.mask_device.buffer)?;
+            Ok(raw.chunks_exact(4).map(|word| u32::from_ne_bytes(word.try_into().unwrap())).collect())
+        }
+
+        /// Download one row's full logits (the per-row D2H the production
+        /// `BatchScores::retain_from_device` performs).
+        fn download_row(&self, row: usize) -> Result<Vec<u8>> {
+            let mut slice = self.logits;
+            slice.ptr = unsafe { slice.ptr.cast::<u8>().add(row * VOCAB * 4).cast() };
+            slice.bytes = VOCAB * 4;
+            let mut bytes = vec![0u8; VOCAB * 4];
+            self.library.copy_d2h(&mut bytes, slice)?;
+            Ok(bytes)
+        }
+    }
+
+    impl Drop for StagedWave<'_> {
+        fn drop(&mut self) {
+            unsafe { let _ = self.library.cuda_stream_synchronize(self.stream); }
+            let _ = unsafe { self.library.cuda_stream_destroy(self.stream) };
+            let mut logits = self.logits;
+            let _ = self.library.free_device_buffer(&mut logits);
+        }
+    }
+
+    /// The uploaded parameter blocks and mask arena are the plan's own, per row,
+    /// on the real device buffers.
+    ///
+    /// Only the `mask_rows` rows `upload` actually wrote are read. A `NO_MASK`
+    /// row below `mask_rows` must still carry the primed sentinel, which proves
+    /// the upload skipped it rather than relying on allocator zeroing; rows at or
+    /// after `mask_rows` are never written and are not read at all (review FIX 3).
+    fn assert_uploaded_matches(wave: &StagedWave<'_>,
+        plan: &crate::v41_native_serve::scheduler::SamplingPlan, arena: &[u32],
+    ) -> Result<()> {
+        let params = wave.device_params()?;
+        for (row, request) in plan.rows.iter().enumerate() {
+            let expected = bytemuck_bytes(&request.row);
+            assert_eq!(&params[row * 64..(row + 1) * 64], expected,
+                "device row {row} parameter block differs");
+        }
+        let masks = wave.device_masks()?;
+        let words = VOCAB.div_ceil(32);
+        assert_eq!(masks.len(), wave.wave.mask_rows * words,
+            "the read back must cover exactly the uploaded mask rows");
+        for row in 0..wave.wave.mask_rows {
+            let no_mask = plan.rows[row].row.flags
+                & ds41rt_ffi::DS41RT_V41_SAMPLER_FLAG_NO_MASK != 0;
+            let staged = &masks[row * words..(row + 1) * words];
+            if no_mask {
+                assert!(staged.iter().all(|word| *word == MASK_STAGING_SENTINEL),
+                    "unconstrained row {row} must not have been written by upload");
+            } else {
+                assert_eq!(staged, &arena[row * words..(row + 1) * words],
+                    "masked row {row} staged the wrong arena slice");
+            }
+        }
+        Ok(())
+    }
+
+    /// **(a) The executed mixed `upload -> launch -> output` test.**
+    ///
+    /// One real production launch carries a greedy row, a constrained greedy row,
+    /// a fast-path stochastic row, an ordered `top_k = 40` constrained row, an
+    /// ordered `top_p` row and a `top_k = 300` planned fallback. It asserts:
+    /// the per-row launch sequence, the per-row params **and masks actually
+    /// resident on the device**, the returned tokens, CPU equality for the
+    /// greedy/retained rows, in-mask membership for every constrained row (over a
+    /// seeded sweep), and that the fallback row's CPU re-sample is stored.
+    #[test]
+    #[ignore = "requires a GPU and DS41RT_NATIVE_LIB; run with --ignored"]
+    fn v41_device_mixed_batch_upload_launch_output_with_masks() -> Result<()> {
+        let library = unsafe { NativeLibrary::load(std::env::var("DS41RT_NATIVE_LIB")?)? };
+        let rows = 6usize;
+        let words = VOCAB.div_ceil(32);
+        let values = smooth_narrow(rows);
+        let small = allowed_mask(&[3, 11, 29]);
+        let retained_mask = allowed_mask(&[1, 2, 4, 8, 16]);
+        let params = vec![
+            TargetSamplingParams::greedy().with_seed(0x11),
+            TargetSamplingParams::greedy().with_seed(0x12),
+            TargetSamplingParams::new(0.7, 1.0, None, 0.05, 0x13)?,
+            TargetSamplingParams::new(0.7, 1.0, Some(40), 0.0, 0x14)?,
+            TargetSamplingParams::new(0.7, 0.9, None, 0.0, 0x15)?,
+            TargetSamplingParams::new(0.7, 1.0, Some(300), 0.0, 0x16)?,
+        ];
+        let row_masks: Vec<Vec<Option<Vec<u32>>>> = vec![
+            vec![None], vec![Some(small.clone())], vec![None],
+            vec![Some(retained_mask.clone())], vec![None], vec![None],
+        ];
+        let build = |seed_shift: u64| -> Result<(
+            crate::v41_native_serve::scheduler::SamplingPlan, Vec<u32>)> {
+            let members: Vec<SamplingMember> = params.iter().enumerate().map(|(row, &params)| {
+                let params = if seed_shift == 0 { params }
+                    else { params.with_seed(params.seed().wrapping_add(seed_shift * 0x9e37)) };
+                SamplingMember { params, base_position: 1000 + 97 * row as u64,
+                    row_masks: row_masks[row].clone() }
+            }).collect();
+            let inputs: Vec<Vec<u32>> = vec![vec![0]; rows];
+            let plan = build_target_sampling_plan(&members, &inputs)?;
+            let mut arena = vec![0u32; rows * words];
+            let staged: Vec<Vec<Option<Vec<u32>>>> = plan.mask.iter()
+                .enumerate().map(|(row, mask)| vec![
+                    if plan.planned_fallback(row) { None } else { mask.clone() }]).collect();
+            build_sampling_masks(&staged, &mut arena)?;
+            Ok((plan, arena))
+        };
+        let (plan, arena) = build(0)?;
+        assert_eq!(plan.route.iter().filter(|route| route.device_served()).count(), 5);
+        assert_eq!(plan.planned_fallback_count(), 1);
+        assert!(plan.routes_need_ordered_tail());
+
+        let mut staged = StagedWave::new(&library, rows, &values, &plan, Some(&arena))?;
+        let stages = staged.wave.last_stages();
+        assert!(stages.prepare, "K1 always runs");
+        assert_eq!(stages.topk_select, Some(DS41RT_V41_SAMPLING_MAX_RETAINED as usize),
+            "one ordered row forces K3/K4");
+        assert!(stages.nucleus, "one ordered row forces K5");
+        let sampled = staged.output()?;
+        assert_uploaded_matches(&staged, &plan, &arena)?;
+
+        // Exact classes: greedy (rows 0,1) and the retained domain (row 3), whose
+        // divergence is 0.00% by the design's §6.3c measurement. Constrained rows
+        // must be inside their mask whatever the residual does.
+        for row in [0usize, 1, 3] {
+            let expected = plan.params[row].select_token(
+                &values[row * VOCAB..(row + 1) * VOCAB], plan.mask[row].as_deref(),
+                plan.position[row])? as u32;
+            assert_eq!(sampled.ids[row], expected, "row {row} must be token-exact");
+        }
+        for row in [1usize, 3] {
+            let mask = plan.mask[row].as_deref().unwrap();
+            let allowed = |token: u32| mask[token as usize / 32] & (1 << (token % 32)) != 0;
+            assert!(allowed(sampled.ids[row]), "row {row} left its mask: {}", sampled.ids[row]);
+            assert!(!allowed(row_argmax_dev(&values, row)),
+                "row {row}'s fixture must make the mask change the token");
+        }
+        // Residual domains (rows 2 and 4) are device draws: only the declared
+        // class is allowed, never an invalid or out-of-range id.
+        for row in [2usize, 4] {
+            assert_eq!(sampled.status[row], ds41rt_ffi::DS41RT_V41_SAMPLER_STATUS_OK);
+            assert!((sampled.ids[row] as usize) < VOCAB);
+        }
+        // The fallback row's device block is the neutral greedy no-op; the host
+        // re-samples it from its own values and stores the token.
+        let expected_fallback = plan.params[5]
+            .select_token(&values[5 * VOCAB..6 * VOCAB], None, plan.position[5])? as u32;
+        let round = crate::v41_native_serve::scheduler::SamplingRound {
+            plan, arena: arena.clone(), trace_rows: Vec::new() };
+        let (device_rows, refused) =
+            crate::v41_native_serve::scheduler::admit_device_rows(&round, &sampled)?;
+        assert!(refused.is_empty(), "the planned fallback is excluded from the device set");
+        assert_eq!(device_rows.len(), 5);
+        let fallback = round.fallback_rows(&refused);
+        assert_eq!(fallback, vec![5]);
+        let bytes5 = staged.download_row(5)?;
+        let mut next = sampled.with_full_logits(&[5], bytes5)?;
+        crate::v41_native_serve::scheduler::resolve_fallback_rows(&mut next, &round, &fallback)?;
+        assert_eq!(next.best[5], expected_fallback,
+            "the fallback row commits the CPU draw");
+
+        // Seeded sweep over the constrained rows: every draw stays inside its mask.
+        for sweep in 1..=48u64 {
+            let (plan, arena) = build(sweep)?;
+            let mut staged = StagedWave::new(&library, rows, &values, &plan, Some(&arena))?;
+            let sampled = staged.output()?;
+            for row in [1usize, 3] {
+                assert_eq!(sampled.status[row], ds41rt_ffi::DS41RT_V41_SAMPLER_STATUS_OK,
+                    "sweep {sweep} row {row} status");
+                let mask = plan.mask[row].as_deref().unwrap();
+                let allowed = |token: u32| mask[token as usize / 32] & (1 << (token % 32)) != 0;
+                assert!(allowed(sampled.ids[row]),
+                    "sweep {sweep} row {row} drew {} outside its mask", sampled.ids[row]);
+            }
+        }
+        println!("chunk4b mixed batch: ids={:?} fallback={}", next.best, next.best[5]);
+        Ok(())
+    }
+
+    /// **(c) A daemon-level GPU constrained-greedy round** (chunk 1's outstanding
+    /// coverage gap): K1's masked argmax path on the real device, for a
+    /// constrained round that never enqueues K3/K4/K5.
+    #[test]
+    #[ignore = "requires a GPU and DS41RT_NATIVE_LIB; run with --ignored"]
+    fn v41_device_constrained_greedy_round_matches_the_masked_cpu_argmax() -> Result<()> {
+        let library = unsafe { NativeLibrary::load(std::env::var("DS41RT_NATIVE_LIB")?)? };
+        let rows = 3usize;
+        let words = VOCAB.div_ceil(32);
+        let values = smooth_narrow(rows);
+        let masks: Vec<Option<Vec<u32>>> = vec![
+            Some(allowed_mask(&[3, 11, 29])),
+            None,
+            Some(allowed_mask(&[7])),
+        ];
+        let params = TargetSamplingParams::greedy().with_seed(0x21);
+        let members: Vec<SamplingMember> = masks.iter().enumerate().map(|(row, mask)| SamplingMember {
+            params, base_position: row as u64, row_masks: vec![mask.clone()],
+        }).collect();
+        let inputs: Vec<Vec<u32>> = vec![vec![0]; rows];
+        let plan = build_target_sampling_plan(&members, &inputs)?;
+        let mut arena = vec![0u32; rows * words];
+        build_sampling_masks(&[vec![masks[0].clone()], vec![None], vec![masks[2].clone()]],
+            &mut arena)?;
+        let mut staged = StagedWave::new(&library, rows, &values, &plan, Some(&arena))?;
+        let stages = staged.wave.last_stages();
+        assert!(stages.prepare && stages.topk_select.is_none() && !stages.nucleus,
+            "an all-greedy round takes K1 only");
+        assert_uploaded_matches(&staged, &plan, &arena)?;
+        let sampled = staged.output()?;
+        for row in 0..rows {
+            assert_eq!(sampled.status[row], ds41rt_ffi::DS41RT_V41_SAMPLER_STATUS_OK, "row {row}");
+            let expected = plan.params[row].select_token(
+                &values[row * VOCAB..(row + 1) * VOCAB], plan.mask[row].as_deref(),
+                plan.position[row])? as u32;
+            assert_eq!(sampled.ids[row], expected, "row {row} masked argmax");
+        }
+        // Non-vacuity: the constrained rows' masks really change the token.
+        for row in [0usize, 2] {
+            assert_ne!(sampled.ids[row], row_argmax_dev(&values, row),
+                "row {row}'s mask must change the argmax");
+        }
+        println!("chunk4b constrained greedy: ids={:?}", sampled.ids);
+        Ok(())
+    }
+
+    /// **(1) Constrained stochastic rows stay inside their mask on both the fast
+    /// path (K1 -> K2) and the ordered path (K1 -> K3 -> K4 -> K5)**, over a
+    /// seeded sweep, and a multi-row speculative prefix does not let one row
+    /// inherit a neighbour's mask.
+    #[test]
+    #[ignore = "requires a GPU and DS41RT_NATIVE_LIB; run with --ignored"]
+    fn v41_device_constrained_stochastic_stays_inside_its_mask_on_both_paths() -> Result<()> {
+        let library = unsafe { NativeLibrary::load(std::env::var("DS41RT_NATIVE_LIB")?)? };
+        let words = VOCAB.div_ceil(32);
+        let allowed = allowed_mask(&[1, 2, 4, 8]);
+        let allowed_set = [1u32, 2, 4, 8];
+        // (name, params, ordered?) — one fast-path and two ordered profiles.
+        let profiles: Vec<(&str, TargetSamplingParams, bool)> = vec![
+            ("fast path (top_p disabled, min_p)",
+                TargetSamplingParams::new(0.7, 1.0, None, 0.05, 0x31)?, false),
+            ("ordered top_p",
+                TargetSamplingParams::new(0.7, 0.9, None, 0.0, 0x32)?, true),
+            ("ordered retained top_k=40",
+                TargetSamplingParams::new(0.7, 1.0, Some(40), 0.0, 0x33)?, true),
+        ];
+        for (name, base, ordered) in profiles {
+            // Sweep seeds; each launch is a fresh plan/arena/wave.
+            for sweep in 0..64u64 {
+                let params = base.with_seed(base.seed().wrapping_add(sweep * 0x9e37));
+                let members = vec![SamplingMember {
+                    params, base_position: 100, row_masks: vec![Some(allowed.clone())] }];
+                let inputs: Vec<Vec<u32>> = vec![vec![0]];
+                let plan = build_target_sampling_plan(&members, &inputs)?;
+                assert_eq!(plan.routes_need_ordered_tail(), ordered, "{name}");
+                let mut arena = vec![0u32; words];
+                build_sampling_masks(&[vec![Some(allowed.clone())]], &mut arena)?;
+                let values = smooth_narrow(1);
+                let mut staged = StagedWave::new(&library, 1, &values, &plan, Some(&arena))?;
+                let sampled = staged.output()?;
+                assert_eq!(sampled.status[0], ds41rt_ffi::DS41RT_V41_SAMPLER_STATUS_OK,
+                    "{name} sweep {sweep}");
+                assert!(allowed_set.contains(&sampled.ids[0]),
+                    "{name} sweep {sweep} drew {} outside its mask", sampled.ids[0]);
+                // The constrained row's unmasked argmax is outside the mask, so a
+                // kernel that ignored the mask could not pass the line above.
+                assert!(!allowed_set.contains(&row_argmax_dev(&values, 0)));
+            }
+            println!("chunk4b constrained stochastic {name}: 64/64 inside the mask");
+        }
+
+        // Multi-row speculative prefix, per-row `needs_mask`: row 0 masked to
+        // {1,2}, row 1 unconstrained, row 2 masked to {100,101}. On the device the
+        // `NO_MASK` row must not read row 0's or row 2's bits.
+        let first = allowed_mask(&[1, 2]);
+        let third = allowed_mask(&[100, 101]);
+        let members = vec![SamplingMember {
+            params: TargetSamplingParams::new(0.7, 0.9, None, 0.0, 0x34)?,
+            base_position: 0,
+            row_masks: vec![Some(first.clone()), None, Some(third.clone())],
+        }];
+        let inputs: Vec<Vec<u32>> = vec![vec![0, 0, 0]];
+        let plan = build_target_sampling_plan(&members, &inputs)?;
+        let mut arena = vec![0u32; 3 * words];
+        build_sampling_masks(&[vec![Some(first.clone()), None, Some(third.clone())]], &mut arena)?;
+        let values = smooth_narrow(3);
+        let mut staged = StagedWave::new(&library, 3, &values, &plan, Some(&arena))?;
+        assert_uploaded_matches(&staged, &plan, &arena)?;
+        let sampled = staged.output()?;
+        for (row, set) in [(0usize, [1u32, 2].as_slice()), (2, [100u32, 101].as_slice())] {
+            assert_eq!(sampled.status[row], ds41rt_ffi::DS41RT_V41_SAMPLER_STATUS_OK);
+            assert!(set.contains(&sampled.ids[row]),
+                "row {row} drew {} outside its own mask", sampled.ids[row]);
+        }
+        assert_eq!(sampled.status[1], ds41rt_ffi::DS41RT_V41_SAMPLER_STATUS_OK);
+        // The unconstrained middle row matches the CPU exactly on `smooth_narrow`.
+        let expected1 = plan.params[1].select_token(&values[VOCAB..2 * VOCAB], None, 1)? as u32;
+        assert_eq!(sampled.ids[1], expected1, "the NO_MASK row must be unmasked");
+        println!("chunk4b per-row masks: ids={:?}", sampled.ids);
+        Ok(())
+    }
+
+    /// **(b) The finishing PLANNED-FALLBACK frontier end to end.**
+    ///
+    /// A `top_k = 300` row co-scheduled with a servable row, finishing at its
+    /// frontier with tracing off, must not error the lane and must retain the
+    /// stored CPU draw. The pre-chunk-4b review could only verify this at the
+    /// function level; this drives real kernels through the production admission,
+    /// fallback, retention-classification and retention-resolution functions.
+    #[test]
+    #[ignore = "requires a GPU and DS41RT_NATIVE_LIB; run with --ignored"]
+    fn v41_device_finishing_fallback_frontier_end_to_end() -> Result<()> {
+        use crate::v41_native_serve::scheduler::{admit_device_rows, frontier_retain,
+            resolve_fallback_rows, retain_packed_frontier, FrontierRetain, SamplingRound};
+        let library = unsafe { NativeLibrary::load(std::env::var("DS41RT_NATIVE_LIB")?)? };
+        let rows = 3usize;
+        let words = VOCAB.div_ceil(32);
+        // Row 0: servable stochastic peer. Row 1: greedy peer. Row 2: top_k=300.
+        let params = vec![
+            TargetSamplingParams::new(0.7, 1.0, None, 0.05, 0x41)?,
+            TargetSamplingParams::greedy().with_seed(0x42),
+            TargetSamplingParams::new(0.7, 1.0, Some(300), 0.0, 0x43)?,
+        ];
+        let members: Vec<SamplingMember> = params.iter().enumerate().map(|(row, &params)| {
+            SamplingMember { params, base_position: 10 * row as u64, row_masks: vec![None] }
+        }).collect();
+        let inputs: Vec<Vec<u32>> = vec![vec![0]; rows];
+        let plan = build_target_sampling_plan(&members, &inputs)?;
+        assert!(plan.planned_fallback(2));
+        assert!(plan.route[0].device_served() && plan.route[1].device_served());
+        let mut arena = vec![0u32; rows * words];
+        build_sampling_masks(&vec![vec![None]; rows], &mut arena)?;
+        let values = smooth_narrow(rows);
+        let mut staged = StagedWave::new(&library, rows, &values, &plan, Some(&arena))?;
+        let sampled = staged.output()?;
+        let device_ids = sampled.ids.clone();
+        // Tracing off: only the fallback row is downloaded, exactly as
+        // `execute_sampled_rows` would.
+        let round = SamplingRound { plan, arena, trace_rows: Vec::new() };
+        let (device_rows, refused) = admit_device_rows(&round, &sampled)?;
+        assert_eq!(device_rows, vec![0, 1], "the two servable rows are admitted");
+        assert!(refused.is_empty());
+        let fallback = round.fallback_rows(&refused);
+        assert_eq!(fallback, vec![2], "the top_k = 300 row is the only fallback");
+        let bytes = staged.download_row(2)?;
+        let mut next = sampled.with_full_logits(&[2], bytes)?;
+        resolve_fallback_rows(&mut next, &round, &fallback)?;
+        let draw = next.best[2];
+        let frontier_params = round.plan.params[2];
+        assert_eq!(frontier_retain(Some(&round), frontier_params), FrontierRetain::RecordedSample,
+            "a non-greedy frontier in a device round is a recorded draw");
+        // The reviewer's exact failure: a finishing fallback row in a device round
+        // took the `Checked` classification and compared the draw against the
+        // row's argmax. The fixture must distinguish the two.
+        let argmax = row_argmax_dev(&values, 2);
+        assert_ne!(draw, argmax, "the fixture must distinguish the stored draw from the argmax");
+        // The fix: the packed frontier (the fallback row was already downloaded)
+        // is retained without a second transfer, and the stored draw survives.
+        let retained = retain_packed_frontier(&next, 2, FrontierRetain::RecordedSample, None)?;
+        assert_eq!(retained.select(None)?, draw, "the retained frontier is the stored draw");
+        assert!(retain_packed_frontier(&next, 2, FrontierRetain::Checked, None).is_err(),
+            "the pre-fix classification must reject the draw, else this test is vacuous");
+        // The lane's serial `commit_lane` resolves a Device frontier through
+        // `retain_from_device`; a packed row must take the same no-transfer path.
+        let retained = next.retain_recorded_from_device(&library, staged.logits, 2)?;
+        assert_eq!(retained.select(None)?, draw);
+        // The servable peers keep their device ids and the lane does not error.
+        assert_eq!(next.best[1], device_ids[1], "the greedy peer keeps its id");
+        println!("chunk4b finishing fallback: draw={draw} argmax={argmax} ids={device_ids:?}");
+        Ok(())
+    }
+
+    /// An all-zero mask is the same hard error on the device that it is on the
+    /// CPU: `EMPTY_CANDIDATES`, mapped by `check_status` to the CPU's own
+    /// `"grammar allows no target token"`. It is never a silent unmasked draw.
+    ///
+    /// One row per route (review FIX 4): constrained greedy (K1), the fast path
+    /// (K1→K2), the ordered retained path (K1→K3→K4→K5, `top_k = 40`) and the
+    /// ordered survivor path (K1→K5 case 3, `top_p < 1`). K1 reports the empty
+    /// candidate set before K3/K4/K5 can act, so the ordered rows never enter
+    /// their retained search and keep K1's status.
+    #[test]
+    #[ignore = "requires a GPU and DS41RT_NATIVE_LIB; run with --ignored"]
+    fn v41_device_empty_mask_is_a_hard_error_in_every_mode() -> Result<()> {
+        use crate::v41_native_serve::scheduler::{admit_device_rows, SamplingRound};
+        use crate::v41_native_serve::scheduler::SamplingRoute;
+        let library = unsafe { NativeLibrary::load(std::env::var("DS41RT_NATIVE_LIB")?)? };
+        let rows = 4usize;
+        let words = VOCAB.div_ceil(32);
+        let params = vec![
+            // 0: constrained greedy.
+            TargetSamplingParams::greedy().with_seed(1),
+            // 1: constrained stochastic fast path (K1 -> K2).
+            TargetSamplingParams::new(0.7, 1.0, None, 0.05, 2)?,
+            // 2: constrained ordered retained (K1 -> K3 -> K4 -> K5).
+            TargetSamplingParams::new(0.7, 1.0, Some(40), 0.0, 3)?,
+            // 3: constrained ordered survivor (K1 -> K5 case 3).
+            TargetSamplingParams::new(0.7, 0.9, None, 0.0, 4)?,
+        ];
+        let expected_routes = [
+            SamplingRoute::DeviceGreedy,
+            SamplingRoute::DeviceFastPath,
+            SamplingRoute::DeviceOrdered,
+            SamplingRoute::DeviceOrdered,
+        ];
+        let empty = vec![0u32; words];
+        let members: Vec<SamplingMember> = params.iter().enumerate().map(|(row, &params)| {
+            SamplingMember { params, base_position: row as u64, row_masks: vec![Some(empty.clone())] }
+        }).collect();
+        let inputs: Vec<Vec<u32>> = vec![vec![0]; rows];
+        let plan = build_target_sampling_plan(&members, &inputs)?;
+        assert_eq!(plan.route, expected_routes, "one row per route");
+        assert!((0..rows).all(|row| !plan.planned_fallback(row)),
+            "an empty mask is a device-served row, not a fallback");
+        assert!(plan.routes_need_ordered_tail(), "rows 2/3 force K3/K4/K5");
+        let mut arena = vec![0u32; rows * words];
+        build_sampling_masks(&vec![vec![Some(empty.clone())]; rows], &mut arena)?;
+        let values = smooth_narrow(rows);
+        let mut staged = StagedWave::new(&library, rows, &values, &plan, Some(&arena))?;
+        let sampled = staged.output()?;
+        for row in 0..rows {
+            assert_eq!(sampled.status[row], ds41rt_ffi::DS41RT_V41_SAMPLER_STATUS_EMPTY_CANDIDATES,
+                "row {row} ({:?}) must report EMPTY_CANDIDATES, not a silent fallback",
+                expected_routes[row]);
+        }
+        let round = SamplingRound { plan, arena, trace_rows: Vec::new() };
+        let (device_rows, refused) = admit_device_rows(&round, &sampled)?;
+        assert_eq!(device_rows, vec![0, 1, 2, 3], "an empty mask is the request's fault");
+        assert!(refused.is_empty(), "an empty mask is never a capability fallback");
+        let error = sampled.check_status(&device_rows).unwrap_err();
+        assert_eq!(error.to_string(), "grammar allows no target token",
+            "the device error must be the CPU path's own message");
+        println!("chunk4b empty mask: status={:?}", sampled.status);
         Ok(())
     }
 }

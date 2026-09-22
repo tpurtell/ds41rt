@@ -164,9 +164,22 @@ async fn lane<'a, P: VerificationTarget<'a>, C: DraftChain<'a>>(lane: usize, lib
                 tracing::debug!(target: "ds41rt::cost_model", batch=batch_id, lane, round_id,
                     requests=members.len(), rows=selected.len(), prepared_us, verify_us,
                     "verification round cost");
+                let retain_enabled = prefixes.borrow().turn_bank_enabled();
                 let mut decision = prepare_commit_lane(lane, &requests.borrow(),
                     &active.borrow(), &members, &inputs, &next, draft.borrow().as_deref(),
-                    verify_us, round.as_ref())?;
+                    verify_us, round.as_ref(), retain_enabled)?;
+                // A frontier row whose bytes are already packed (a fallback row
+                // the CPU re-sampled) is retained in place: the pre-chunk-4b
+                // code downloaded it here a second time even though it was
+                // already on the host. This lane paid that transfer, so the
+                // saving is counted here and not on the serial lane.
+                let packed = std::mem::take(&mut decision.frontier_packed);
+                sampling_stats::record_frontier_packed(packed.len(),
+                    scores::ROW_BYTES, true);
+                for (member, row, mask, retain) in packed {
+                    decision.next_after_commit[member] =
+                        Some(retain_packed_frontier(&next, row, retain, mask.as_deref())?);
+                }
                 if !decision.frontier_downloads.is_empty() {
                     let rows: Vec<_> = decision.frontier_downloads.iter().map(|&(_, row, _, _)| row).collect();
                     let bytes = pass.download_logits(batch.as_ref().unwrap(), &rows).await?;
@@ -256,7 +269,11 @@ async fn lane<'a, P: VerificationTarget<'a>, C: DraftChain<'a>>(lane: usize, lib
 
 async fn retire<'a, C: DraftChain<'a>>(lane: usize, request: Active<'a>, requests: &RefCell<&mut Requests<'a>>,
     prefixes: &RefCell<&mut PrefixCache<'a>>, draft: &RefCell<Option<&mut DraftRuntime<'_, 'a, C>>>) -> Result<()> {
-    let cacheable = request.cacheable && requests.borrow().cache().request_id(request.lease).is_ok();
+    // Chunk-4b: consult the turn bank before requiring the retained frontier, so
+    // a cache-disabled deployment does not warn about a frontier it correctly
+    // chose not to download.
+    let cacheable = request.cacheable && prefixes.borrow().turn_bank_enabled()
+        && requests.borrow().cache().request_id(request.lease).is_ok();
     if cacheable {
         let retained: Result<()> = async {
             let next = request.next_after_commit.as_ref().context("finished request has no retained logits")?;

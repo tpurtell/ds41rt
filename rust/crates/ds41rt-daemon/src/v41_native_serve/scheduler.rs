@@ -118,7 +118,13 @@ impl Active<'_> {
 
 fn retire_request<'a, C: DraftChain<'a>>(request: Active<'a>, requests: &mut Requests<'a>,
     prefixes: &mut PrefixCache<'a>, mut draft: Option<&mut DraftRuntime<'_, 'a, C>>) -> Result<()> {
-    if request.cacheable && requests.cache().request_id(request.lease).is_ok() {
+    // Chunk-4b: retention is consulted **before** the retained frontier is
+    // required. With the turn bank disabled `retain` early-returns, so requiring
+    // `next_after_commit` first would turn a cache-disabled deployment into a
+    // spurious "finished request has no retained logits" warning -- and the
+    // scheduler correctly skipped that transfer.
+    if request.cacheable && prefixes.turn_bank_enabled()
+        && requests.cache().request_id(request.lease).is_ok() {
         let retained = request.next_after_commit.as_ref().context("finished request has no retained logits")
             .and_then(|next| prefixes.retain(SnapshotKind::Turn, &request.tokens, &request.image_keys,
                 next, request.id, request.lease, requests, draft.as_deref_mut()));
@@ -155,6 +161,27 @@ pub(super) fn prepare_prefix_cache<'a>(lib: &'a NativeLibrary, args: &crate::cli
     Ok(PrefixCache::new(args.prefix_cache_entries as usize).with_host_cache(host_cache))
 }
 
+/// The per-second `stats` payload for the serving worker.
+///
+/// `target_sampling` (and therefore every `frontier_*` counter) is published
+/// **unconditionally**. Before the chunk-4b review it was nested under
+/// `if let Some(metrics) = prefixes.host_metrics()`, so the retention-gate
+/// counters vanished in exactly the cache-disabled deployment the gate targets
+/// and the phase-3 campaign could not measure the saving there (review FIX 1).
+/// `host_cache`/`host_cache_config` are `null` without a cache, which preserves
+/// the previous key shape when one is bound.
+fn serving_stats(prefixes: &PrefixCache<'_>) -> serde_json::Value {
+    // Deliberately exports the cache's whole effective `Config` under
+    // `host_cache_config` (packet HC-9), not just `store_pace_ns`: fleet
+    // operators tune several of these knobs, and one key keeps the export
+    // forward-compatible as new knobs land.
+    serde_json::json!({
+        "host_cache": prefixes.host_metrics(),
+        "host_cache_config": prefixes.host_config(),
+        "target_sampling": sampling_stats::snapshot(),
+    })
+}
+
 pub(super) fn serve<'w, 'a, P: ServingTarget<'w, 'a>>(lib: &'a NativeLibrary, args: &crate::cli::NativeServeArgs,
     runtime: &tokio::runtime::Runtime, receive: &mut mpsc::Receiver<NativeRequest>,
     first: &mut P, second: &mut P,
@@ -175,20 +202,8 @@ pub(super) fn serve<'w, 'a, P: ServingTarget<'w, 'a>>(lib: &'a NativeLibrary, ar
         prefixes.tick();
         if stats_published.elapsed() >= std::time::Duration::from_secs(1) {
             stats_published = Instant::now();
-            if let Some(metrics) = prefixes.host_metrics() {
-                if let Ok(mut slot) = stats.lock() {
-                    // Deliberately exports the cache's whole effective `Config` under
-                    // `host_cache_config` (packet HC-9), not just `store_pace_ns`: fleet
-                    // operators tune several of these knobs, and one key keeps the export
-                    // forward-compatible as new knobs land.
-                    *slot = serde_json::json!({
-                        "host_cache": metrics,
-                        "host_cache_config": prefixes.host_config(),
-                        // Chunk 4a: device-vs-CPU routing and fallback counters,
-                        // so a row the device could not serve is observable.
-                        "target_sampling": sampling_stats::snapshot(),
-                    });
-                }
+            if let Ok(mut slot) = stats.lock() {
+                *slot = serving_stats(&prefixes);
             }
         }
         // This point is reached only after both complete stacks have drained and
@@ -416,6 +431,48 @@ pub(super) mod sampling_stats {
     /// Rows the device launched but reported a non-OK, non-request-fault status
     /// for (`INTERNAL`), and which the host re-sampled on the CPU.
     pub(super) static REFUSED_FALLBACK_ROWS: AtomicU64 = AtomicU64::new(0);
+    /// Finishing frontier rows whose full row was downloaded from the device
+    /// because retention needed it (prefix caching enabled and the row was not
+    /// already on the host).
+    pub(super) static FRONTIER_DOWNLOAD_ROWS: AtomicU64 = AtomicU64::new(0);
+    /// Finishing frontier rows the retention gate **skipped**: prefix caching is
+    /// disabled and no frontier will be stored, or the finishing client has
+    /// disconnected. Each skipped row is one `ROW_BYTES` full-row transfer the
+    /// pre-chunk-4b code issued unconditionally (design §10.4).
+    pub(super) static FRONTIER_GATED_ROWS: AtomicU64 = AtomicU64::new(0);
+    /// Bytes [`FRONTIER_GATED_ROWS`] would have cost. This is the **gate**
+    /// removal only (serial and independent lane both paid it before 4b).
+    pub(super) static FRONTIER_GATED_BYTES: AtomicU64 = AtomicU64::new(0);
+    /// Finishing frontier rows retained in place from bytes the round had already
+    /// downloaded (a fallback row). On the **serial** lane the pre-4b code never
+    /// transferred these (`retain_from_device` short-circuited on packed bytes);
+    /// on the **independent** lane it did (`download_logits` downloaded every
+    /// entry of `frontier_downloads`), so only the independent-lane rows are a
+    /// byte saving. The two cases are therefore counted separately.
+    pub(super) static FRONTIER_PACKED_ROWS: AtomicU64 = AtomicU64::new(0);
+    /// Independent-lane packed-frontier transfers removed. Kept apart from
+    /// [`FRONTIER_GATED_BYTES`] so no number is presented as the total saving
+    /// (chunk-4b review FIX 2).
+    pub(super) static FRONTIER_PACKED_SAVED_BYTES: AtomicU64 = AtomicU64::new(0);
+
+    pub(super) fn record_frontier_download(rows: usize) {
+        FRONTIER_DOWNLOAD_ROWS.fetch_add(rows as u64, Ordering::Relaxed);
+    }
+
+    /// Record `rows` frontiers the gate skipped, and the bytes they would have cost.
+    pub(super) fn record_frontier_gated(rows: usize, row_bytes: usize) {
+        FRONTIER_GATED_ROWS.fetch_add(rows as u64, Ordering::Relaxed);
+        FRONTIER_GATED_BYTES.fetch_add(rows as u64 * row_bytes as u64, Ordering::Relaxed);
+    }
+
+    /// Record `rows` packed frontier retentions. `transferred_before` is true only
+    /// on the independent lane, which downloaded every frontier row before 4b.
+    pub(super) fn record_frontier_packed(rows: usize, row_bytes: usize, transferred_before: bool) {
+        FRONTIER_PACKED_ROWS.fetch_add(rows as u64, Ordering::Relaxed);
+        if transferred_before {
+            FRONTIER_PACKED_SAVED_BYTES.fetch_add(rows as u64 * row_bytes as u64, Ordering::Relaxed);
+        }
+    }
 
     pub(super) fn record_round(device_round: bool, device_rows: usize, planned: usize) {
         if device_round {
@@ -442,6 +499,11 @@ pub(super) mod sampling_stats {
             "device_rows": get(&DEVICE_ROWS),
             "planned_fallback_rows": get(&PLANNED_FALLBACK_ROWS),
             "refused_fallback_rows": get(&REFUSED_FALLBACK_ROWS),
+            "frontier_download_rows": get(&FRONTIER_DOWNLOAD_ROWS),
+            "frontier_gated_rows": get(&FRONTIER_GATED_ROWS),
+            "frontier_gated_bytes": get(&FRONTIER_GATED_BYTES),
+            "frontier_packed_rows": get(&FRONTIER_PACKED_ROWS),
+            "frontier_packed_saved_bytes": get(&FRONTIER_PACKED_SAVED_BYTES),
         })
     }
 }
@@ -1069,7 +1131,7 @@ fn prepare_decode_lane<'a>(requests: &mut Requests<'a>, active: &[Option<Active<
 fn single_lane_round<'w, 'a>(lib: &'a NativeLibrary, runtime: &tokio::runtime::Runtime,
     lane: usize, pass: &mut TargetPass<'w, 'a>, requests: &mut Requests<'a>,
     transport: &mut NativeTp4Wave<'a>, active: &mut [Option<Active<'a>>],
-    members: &[usize], mut draft: Option<&mut DraftRuntime<'_, 'a>>,
+    members: &[usize], mut draft: Option<&mut DraftRuntime<'_, 'a>>, retain_enabled: bool,
 ) -> Result<()> {
     let started = Instant::now();
     ensure!(!members.is_empty() && members.len() <= 8, "invalid single decode lane");
@@ -1145,7 +1207,7 @@ fn single_lane_round<'w, 'a>(lib: &'a NativeLibrary, runtime: &tokio::runtime::R
         };
         let (accepted, emitted, emissions) = commit_lane(lib, lane, pass, requests,
             active, members, &inputs, &mut batch, &next, draft.as_deref_mut(), capture_routes, 0,
-            Some(&round))?;
+            Some(&round), retain_enabled)?;
         for (&slot, tokens) in members.iter().zip(emissions) {
             let request = active[slot].as_mut().unwrap();
             if let Err(error) = request.emit(&tokens) {
@@ -1175,7 +1237,7 @@ fn single_lane_round<'w, 'a>(lib: &'a NativeLibrary, runtime: &tokio::runtime::R
             prepared_us, verify_us=executed_us-prepared_us, "verification round cost");
         let (accepted, emitted, emissions) = commit_lane(lib, lane, pass, requests,
             active, members, &inputs, &mut batch, &next, draft.as_deref_mut(), capture_routes,
-            executed_us-prepared_us, None)?;
+            executed_us-prepared_us, None, retain_enabled)?;
         for (&slot, tokens) in members.iter().zip(emissions) {
             let request = active[slot].as_mut().unwrap();
             if let Err(error) = request.emit(&tokens) {
@@ -1231,6 +1293,80 @@ pub(crate) enum FrontierRetain {
     RecordedSample,
 }
 
+/// How a finishing row's retained frontier is obtained.
+///
+/// Retention is the **only** consumer of a finishing row's full logits, so the
+/// frontier transfer must be scheduled against the retention decision, not
+/// against "this round did not download the whole batch" (design §10.4). Chunk
+/// 4b additionally distinguishes a row that already carries its own packed
+/// logits — a fallback row the CPU re-sampled, whose row was downloaded inside
+/// the round — from a row that genuinely needs a transfer.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum FrontierDownload {
+    /// The whole batch already holds its logits (the CPU path or a traced
+    /// round): retain in place exactly as before.
+    WholeBatch,
+    /// This row's own logits are already on the host (a fallback row): retain in
+    /// place; no second transfer.
+    PackedRow,
+    /// Retention is enabled and the row is not on the host: issue the one-row D2H.
+    Device,
+    /// No retention will consume this row: no transfer, and no retained frontier.
+    Skip,
+}
+
+/// The retention gate for one finishing frontier row.
+///
+/// `retain_enabled` is [`PrefixCache::turn_bank_enabled`]: with prefix caching
+/// disabled (`prefix_cache_entries == 0`) the finishing request's snapshot is
+/// dropped by `retain`/`queue_retain` early-return, so its frontier row is never
+/// read. Before chunk 4b that row was still downloaded (`finishing &&
+/// !next.has_full_logits()`), a `517,120 B` D2H per finishing request that bought
+/// nothing. `row_has_logits` is the **row's** packed state, not the batch's: a
+/// finishing fallback row was downloaded so the CPU could re-sample it, and
+/// re-downloading it on the independent lane was wasted.
+///
+/// `events_open` mirrors the one case in which `finishing` does not become
+/// `cacheable`: `Active::emit_one` refuses a closed client before it can set the
+/// flag, so a disconnected request must not pay a retention transfer either.
+pub(crate) fn frontier_download(whole_batch_has_logits: bool, row_has_logits: bool,
+    retain_enabled: bool, finishing: bool, events_open: bool,
+) -> FrontierDownload {
+    if !finishing || !events_open {
+        return FrontierDownload::Skip;
+    }
+    if whole_batch_has_logits {
+        return FrontierDownload::WholeBatch;
+    }
+    if row_has_logits {
+        return FrontierDownload::PackedRow;
+    }
+    if retain_enabled {
+        FrontierDownload::Device
+    } else {
+        FrontierDownload::Skip
+    }
+}
+
+/// Retain a frontier row whose bytes are already packed into `next`, applying
+/// the same [`FrontierRetain`] rule as the downloaded path.
+///
+/// A packed row in a **device** round is a fallback row the CPU re-sampled, so
+/// its `best` is a draw (stochastic) or the masked CPU argmax (greedy) and the
+/// cross-check is meaningful. This is the no-transfer twin of
+/// [`resolve_frontier`], used by both the serial and the independent lane so the
+/// two cannot drift. (`WholeBatch` keeps its own `next.retain` path: a fully
+/// downloaded batch is CPU-selected, where the stored `best` is the unmasked
+/// argmax and the mask cross-check would be spurious.)
+pub(crate) fn retain_packed_frontier(next: &BatchScores, row: usize, retain: FrontierRetain,
+    mask: Option<&[u32]>,
+) -> Result<TokenScores> {
+    match retain {
+        FrontierRetain::Checked => next.retain_packed(row, mask),
+        FrontierRetain::RecordedSample => next.retain(row),
+    }
+}
+
 /// Which retention a finishing frontier row takes.
 ///
 /// **In a device round, `best[row]` of a non-greedy row is always a draw**,
@@ -1263,7 +1399,12 @@ struct CommitDecision {
     accepted: Vec<u32>,
     emissions: Vec<Vec<u32>>,
     next_after_commit: Vec<Option<TokenScores>>,
+    /// Finishing frontier rows that need the one-row device D2H: retention is
+    /// enabled and the row is not already on the host.
     frontier_downloads: Vec<(usize, usize, Option<Vec<u32>>, FrontierRetain)>,
+    /// Finishing frontier rows whose bytes are already packed into `next`
+    /// (fallback rows in a device round): retained without a transfer.
+    frontier_packed: Vec<(usize, usize, Option<Vec<u32>>, FrontierRetain)>,
 }
 /// The per-row target selection of a round.
 ///
@@ -1353,7 +1494,7 @@ where
 fn prepare_commit_lane<'a, C: DraftChain<'a>>(lane: usize,
     requests: &Requests<'a>, active: &[Option<Active<'a>>], members: &[usize], inputs: &[Vec<u32>],
     next: &BatchScores, draft: Option<&DraftRuntime<'_, 'a, C>>, verify_us: u64,
-    round: Option<&SamplingRound>,
+    round: Option<&SamplingRound>, retain_enabled: bool,
 ) -> Result<CommitDecision> {
     let mut accepted_drafts = 0u32;
     let mut emitted = 0usize;
@@ -1362,6 +1503,7 @@ fn prepare_commit_lane<'a, C: DraftChain<'a>>(lane: usize,
     let mut emissions = Vec::new();
     let mut next_after_commit = Vec::new();
     let mut frontier_downloads = Vec::new();
+    let mut frontier_packed = Vec::new();
     for (&slot, input) in members.iter().zip(inputs) {
         let request = active[slot].as_ref().unwrap();
         let params = request.job.sampling;
@@ -1431,10 +1573,28 @@ fn prepare_commit_lane<'a, C: DraftChain<'a>>(lane: usize,
         let finishing = decision.emitted.contains(&1)
             || request.generated + decision.emitted.len() >= request.job.max_tokens;
         let frontier = offset + decision.accepted_inputs as usize - 1;
-        next_after_commit.push(if finishing && next.has_full_logits() {
-            Some(next.retain(frontier)?)
-        } else {
-            if finishing {
+        // Chunk-4b retention gate. Retention is the only reader of a finishing
+        // frontier row, so the one-row D2H is scheduled only when a snapshot will
+        // actually store it. `whole_batch_has_logits` (a CPU round or a traced
+        // round) keeps the pre-existing in-place retain exactly; a fallback row
+        // whose bytes were already downloaded is retained from its own packed
+        // slice; and a device row in a cache-disabled deployment is skipped
+        // entirely instead of paying a 517,120 B transfer per finishing request.
+        let action = frontier_download(next.has_full_logits(),
+            next.has_row_logits(frontier), retain_enabled, finishing,
+            !request.job.events.is_closed());
+        let member = next_after_commit.len();
+        match action {
+            FrontierDownload::Skip => {
+                if finishing && !next.has_full_logits() && !next.has_row_logits(frontier) {
+                    // The pre-chunk-4b code downloaded this row here; count the
+                    // transfer the gate removed.
+                    sampling_stats::record_frontier_gated(1, crate::v41_native_serve::scores::ROW_BYTES);
+                }
+                next_after_commit.push(None);
+            }
+            FrontierDownload::WholeBatch => next_after_commit.push(Some(next.retain(frontier)?)),
+            FrontierDownload::PackedRow | FrontierDownload::Device => {
                 // The frontier belongs to this member's own hypothetical
                 // prefix, so a constrained row retains against its grammar
                 // mask rather than the plain argmax.
@@ -1449,20 +1609,27 @@ fn prepare_commit_lane<'a, C: DraftChain<'a>>(lane: usize,
                 // `frontier_retain` for why the route is deliberately not part of
                 // the decision.
                 let retain = frontier_retain(round, params);
-                frontier_downloads.push((next_after_commit.len(), frontier, mask, retain));
+                if action == FrontierDownload::Device {
+                    sampling_stats::record_frontier_download(1);
+                    frontier_downloads.push((member, frontier, mask, retain));
+                } else {
+                    frontier_packed.push((member, frontier, mask, retain));
+                }
+                next_after_commit.push(None);
             }
-            None
-        });
+        }
         offset += input.len(); accepted.push(decision.accepted_inputs); emissions.push(decision.emitted);
     }
-    Ok(CommitDecision { accepted_drafts, emitted, accepted, emissions, next_after_commit, frontier_downloads })
+    Ok(CommitDecision { accepted_drafts, emitted, accepted, emissions, next_after_commit,
+        frontier_downloads, frontier_packed })
 }
 fn publish_commit_lane<'a, C: DraftChain<'a>>(pass: &impl VerificationTarget<'a>, active: &mut [Option<Active<'a>>],
     members: &[usize], inputs: &[Vec<u32>], owned_batch: &mut Option<RequestBatch>,
     mut draft: Option<&mut DraftRuntime<'_, 'a, C>>, capture_routes: bool, decision: CommitDecision,
 ) -> Result<(u32, usize, Vec<Vec<u32>>)> {
-    let CommitDecision { accepted_drafts, emitted, accepted, emissions, next_after_commit, frontier_downloads } = decision;
+    let CommitDecision { accepted_drafts, emitted, accepted, emissions, next_after_commit, frontier_downloads, frontier_packed } = decision;
     ensure!(frontier_downloads.is_empty(), "retained frontier downloads are incomplete");
+    ensure!(frontier_packed.is_empty(), "retained packed frontier is incomplete");
     if let Some(draft) = draft.as_deref_mut() {
         if capture_routes {
             let mut offset = 0;
@@ -1508,14 +1675,27 @@ fn commit_lane<'w, 'a>(lib: &'a NativeLibrary, lane: usize,
     active: &mut [Option<Active<'a>>], members: &[usize], inputs: &[Vec<u32>],
     owned_batch: &mut Option<RequestBatch>, next: &BatchScores,
     mut draft: Option<&mut DraftRuntime<'_, 'a>>, capture_routes: bool, verify_us: u64,
-    round: Option<&SamplingRound>,
+    round: Option<&SamplingRound>, retain_enabled: bool,
 ) -> Result<(u32, usize, Vec<Vec<u32>>)> {
     let Some(batch) = owned_batch else { return Ok((0, 0, Vec::new())); };
     let mut decision = prepare_commit_lane(lane, requests, active, members, inputs,
-        next, draft.as_deref(), verify_us, round)?;
-    // Each finishing frontier row is downloaded by itself through the head's
-    // existing per-row D2H path (the same one the greedy device path used in
-    // chunk 1), because a finishing row is rare and it is the only route that
+        next, draft.as_deref(), verify_us, round, retain_enabled)?;
+    // A frontier row whose bytes are already packed (a fallback row the CPU
+    // re-sampled) is retained in place: no second transfer.
+    let packed: Vec<(usize, usize, Option<Vec<u32>>, FrontierRetain)> =
+        std::mem::take(&mut decision.frontier_packed);
+    // Serial lane: the pre-4b code reached these rows through
+    // `retain_from_device`, which short-circuits on packed bytes, so no transfer
+    // is saved here -- only the independent lane's `download_logits` paid one.
+    sampling_stats::record_frontier_packed(packed.len(),
+        crate::v41_native_serve::scores::ROW_BYTES, false);
+    for (member, row, mask, retain) in packed {
+        decision.next_after_commit[member] =
+            Some(retain_packed_frontier(next, row, retain, mask.as_deref())?);
+    }
+    // Each remaining finishing frontier row is downloaded by itself through the
+    // head's existing per-row D2H path (the same one the greedy device path used
+    // in chunk 1), because a finishing row is rare and it is the only route that
     // reuses the batch's own logits view without a second head pass.
     let frontier: Vec<(usize, usize, Option<Vec<u32>>, FrontierRetain)> =
         std::mem::take(&mut decision.frontier_downloads);
@@ -1807,6 +1987,141 @@ mod sampling_tests {
         assert_eq!(field(&after, "refused_fallback_rows"),
             field(&before, "refused_fallback_rows") + 2);
         assert_eq!(field(&after, "cpu_fallback_rounds"), field(&before, "cpu_fallback_rounds"));
+    }
+
+    /// Chunk-4b retention gate: a finishing frontier is downloaded **only** when
+    /// a snapshot will consume it, and a row already packed into the batch is
+    /// never transferred twice.
+    ///
+    /// The table is the exact policy `prepare_commit_lane` applies; each row is a
+    /// reachable production shape (whole-CPU round, cache-disabled device round,
+    /// cache-enabled device round, fallback row with packed bytes, disconnected
+    /// finishing client).
+    #[test]
+    fn frontier_transfer_is_gated_on_retention_and_per_row_logits() {
+        // (whole_batch, row_packed, retain_enabled, finishing, events_open)
+        let cases: [((bool, bool, bool, bool, bool), FrontierDownload); 8] = [
+            // Whole-CPU or fully traced round: retain in place, no transfer.
+            ((true, true, false, true, true), FrontierDownload::WholeBatch),
+            ((true, true, true, true, true), FrontierDownload::WholeBatch),
+            // Device round, cache enabled, ordinary finishing row: one-row D2H.
+            ((false, false, true, true, true), FrontierDownload::Device),
+            // Device round, cache **disabled**: the pre-4b unconditional transfer
+            // is gone; `retain` would have early-returned.
+            ((false, false, false, true, true), FrontierDownload::Skip),
+            // A fallback row already packed by the round's own download: reused,
+            // never transferred a second time (the independent lane's old waste).
+            ((false, true, true, true, true), FrontierDownload::PackedRow),
+            ((false, true, false, true, true), FrontierDownload::PackedRow),
+            // Not finishing: nothing to retain.
+            ((false, false, true, false, true), FrontierDownload::Skip),
+            // A finishing client that has disconnected never becomes cacheable
+            // (`Active::emit_one` refuses before it can set the flag).
+            ((false, false, true, true, false), FrontierDownload::Skip),
+        ];
+        for ((whole, packed, enabled, finishing, open), expected) in cases {
+            assert_eq!(frontier_download(whole, packed, enabled, finishing, open), expected,
+                "whole={whole} packed={packed} enabled={enabled} finishing={finishing} open={open}");
+        }
+    }
+
+    /// The turn-bank capability answers exactly what `retain`/`queue_retain` use
+    /// (`bank.limit() > 0`), so a zero-entry cache disables the frontier transfer
+    /// and a configured one keeps it.
+    #[test]
+    fn turn_bank_enabled_mirrors_the_retention_limit() {
+        assert!(!PrefixCache::new(0).turn_bank_enabled(), "limit 0 disables retention");
+        assert!(PrefixCache::new(1).turn_bank_enabled());
+        assert!(PrefixCache::new(32).turn_bank_enabled());
+    }
+
+    /// The bytes the gate removes are exported, so the saving is observable and
+    /// not just a code-path claim. The gate removal and the independent lane's
+    /// packed-row removal are counted separately (review FIX 2).
+    ///
+    /// Fragility note (delta review): `sampling_stats` counters are process-global
+    /// and this test uses before/after deltas, so it is deterministic only while
+    /// no other test running in parallel touches the frontier counters. Today no
+    /// CPU test calls `prepare_commit_lane`/`record_frontier_*`, so it is safe; a
+    /// future parallel test that does would make it flaky.
+    #[test]
+    fn frontier_gate_instrumentation_is_exported_in_bytes() {
+        let before = sampling_stats::snapshot();
+        sampling_stats::record_frontier_gated(2, ROW_BYTES);
+        sampling_stats::record_frontier_download(1);
+        // Serial: a reuse only. Independent: the same row was a real transfer.
+        sampling_stats::record_frontier_packed(1, ROW_BYTES, false);
+        sampling_stats::record_frontier_packed(3, ROW_BYTES, true);
+        let after = sampling_stats::snapshot();
+        let field = |value: &serde_json::Value, name: &str| value[name].as_u64().unwrap();
+        assert_eq!(field(&after, "frontier_gated_rows"),
+            field(&before, "frontier_gated_rows") + 2);
+        assert_eq!(field(&after, "frontier_gated_bytes"),
+            field(&before, "frontier_gated_bytes") + 2 * ROW_BYTES as u64);
+        assert_eq!(field(&after, "frontier_download_rows"),
+            field(&before, "frontier_download_rows") + 1);
+        assert_eq!(field(&after, "frontier_packed_rows"),
+            field(&before, "frontier_packed_rows") + 4);
+        assert_eq!(field(&after, "frontier_packed_saved_bytes"),
+            field(&before, "frontier_packed_saved_bytes") + 3 * ROW_BYTES as u64,
+            "only the independent lane's packed rows were transfers before 4b");
+    }
+
+    /// Review FIX 1: `target_sampling` must be published even with **no** host
+    /// cache, because the frontier counters exist for exactly that deployment.
+    ///
+    /// Scope caveat (delta review): this pins the payload built **inside**
+    /// [`serving_stats`], for both a disabled and a configured bank. It does not
+    /// run the `serve` loop, so it cannot prove the call site at
+    /// `scheduler.rs:206` will never be re-gated; that would need a running
+    /// worker.
+    #[test]
+    fn serving_stats_publish_sampling_counters_without_a_host_cache() {
+        const COUNTERS: [&str; 10] = ["device_rounds", "cpu_fallback_rounds", "device_rows",
+            "planned_fallback_rows", "refused_fallback_rows", "frontier_download_rows",
+            "frontier_gated_rows", "frontier_gated_bytes", "frontier_packed_rows",
+            "frontier_packed_saved_bytes"];
+        // `PrefixCache::new(0)` has no host cache and a disabled turn bank.
+        let disabled = PrefixCache::new(0);
+        assert!(disabled.host_metrics().is_none());
+        assert!(!disabled.turn_bank_enabled());
+        let snapshot = serving_stats(&disabled);
+        assert!(snapshot["host_cache"].is_null(), "{snapshot}");
+        assert!(snapshot["host_cache_config"].is_null(), "{snapshot}");
+        for key in COUNTERS {
+            assert!(snapshot["target_sampling"][key].is_u64(), "missing {key} in {snapshot}");
+        }
+        // A configured bank keeps the **full** key set (the host keys stay null
+        // here, because this fixture has no host cache attached either).
+        let configured = serving_stats(&PrefixCache::new(8));
+        assert!(configured["host_cache"].is_null(), "{configured}");
+        assert!(configured["host_cache_config"].is_null(), "{configured}");
+        for key in COUNTERS {
+            assert!(configured["target_sampling"][key].is_u64(),
+                "missing {key} in {configured}");
+        }
+    }
+
+    /// A packed frontier is retained under the same Checked/RecordedSample rule
+    /// as a downloaded one, so the independent lane's no-transfer path cannot
+    /// drift from `resolve_frontier`.
+    #[test]
+    fn packed_frontier_retention_matches_the_downloaded_rule() {
+        let logits: Vec<f32> = (0..VOCAB).map(|token| if token == 5 { 4.0 } else { -1.0 }).collect();
+        let bytes: Vec<u8> = logits.iter().flat_map(|value| value.to_ne_bytes()).collect();
+        let batch = BatchScores::new(bytes).unwrap();
+        // Greedy (Checked): the cross-check passes and the id is the argmax.
+        let checked = retain_packed_frontier(&batch, 0, FrontierRetain::Checked, None).unwrap();
+        assert_eq!(checked.select(None).unwrap(), 5);
+        // A packed row whose stored draw is not the argmax must be retained
+        // as-is under RecordedSample, and rejected under Checked.
+        let mut drawn = BatchScores::new(
+            logits.iter().flat_map(|value| value.to_ne_bytes()).collect()).unwrap();
+        drawn.best[0] = 7;
+        assert_eq!(retain_packed_frontier(&drawn, 0, FrontierRetain::RecordedSample, None)
+            .unwrap().select(None).unwrap(), 7);
+        assert!(retain_packed_frontier(&drawn, 0, FrontierRetain::Checked, None).is_err(),
+            "the Checked rule must still reject a draw");
     }
 
     /// A layout without the sampled terminal keeps the CPU path. Routing it into

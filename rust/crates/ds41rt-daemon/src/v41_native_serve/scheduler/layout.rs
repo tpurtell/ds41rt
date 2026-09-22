@@ -39,7 +39,7 @@ impl<'w, 'a: 'w> ServingTarget<'w, 'a> for TargetPass<'_, 'a> {
             let (pass, transport) = if lane == 0 { (first, first_transport) }
                 else { (second, second_transport) };
             single_lane_round(lib, runtime, lane, pass, requests, transport,
-                active, &members[lane], draft)
+                active, &members[lane], draft, prefixes.turn_bank_enabled())
         }
     }
 }
