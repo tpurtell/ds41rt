@@ -24,6 +24,7 @@ whose `build.sh` is a stub.
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 import textwrap
@@ -330,6 +331,33 @@ def test_build_runner_usage_error_without_config(tmp_path: Path) -> None:
     result = run_build_runner(tmp_path, "--evidence", str(tmp_path / "ev"))
     assert result.returncode == 2
     assert "--config" in result.stderr or "Usage" in result.stderr
+
+
+def test_build_runner_resolves_evidence_and_remote_dir_to_absolute_paths(tmp_path: Path) -> None:
+    """build.sh rejects a non-absolute remote build dir, and the build runs from
+    inside the source clone, so a relative --evidence must be pinned to the
+    caller's cwd before any `cd`."""
+    source = make_source(tmp_path)
+    repo_runs = REPO / "runs" / "v11-release-helper-selftest"
+    shutil.rmtree(repo_runs, ignore_errors=True)
+    try:
+        result = run_build_runner(
+            tmp_path, "--config", str(V10_CONFIG), "--source", str(source),
+            "--evidence", "runs/v11-release-helper-selftest", "--label", "abs",
+            cwd=REPO,
+        )
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        log = (repo_runs / "abs-build.log").read_text(encoding="utf-8")
+        assert f"--config {V10_CONFIG}" in log
+        remote_line = [l for l in log.splitlines()
+                       if l.startswith("DS41RT_RELEASE_REMOTE_BUILD_DIR=")][0]
+        assert remote_line.split("=", 1)[1].startswith("/"), remote_line
+        build_root_line = [l for l in log.splitlines()
+                           if l.startswith("DS41RT_RELEASE_BUILD_ROOT=")][0]
+        assert build_root_line.split("=", 1)[1].startswith("/"), build_root_line
+        assert (repo_runs / "abs-build.rc").is_file()
+    finally:
+        shutil.rmtree(repo_runs, ignore_errors=True)
 
 
 def test_build_runner_refuses_a_missing_config(tmp_path: Path) -> None:

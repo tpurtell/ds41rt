@@ -84,10 +84,18 @@ release_load_config "$config"
 release_version="${COORDINATOR_DOCKER_INFERENCE##*:}"
 [[ -n "$label" ]] || label="$release_version"
 [[ -n "$evidence" ]] || { usage >&2; exit 2; }
+# Canonicalize before anything else. The build runs from inside the source clone,
+# so a relative evidence path would be created and logged there instead of in the
+# repository's runs/ tree, and the operator's cwd must not decide where evidence
+# lands.
+evidence="$(realpath -m "$evidence")" || die "cannot canonicalize evidence path: $evidence"
 mkdir -p "$evidence" || die "cannot create evidence directory: $evidence"
 
+# DS41RT_RELEASE_REMOTE_BUILD_DIR is validated by build.sh against
+# release_canonical_path: it must be an absolute path. Default it under $HOME on
+# the seed Spark rather than a bare name, or build.sh refuses to start.
 build_root="${DS41RT_RELEASE_BUILD_ROOT:-$HOME/.cache/ds41rt/builds/${release_version}-build-root}"
-remote_dir="${DS41RT_RELEASE_REMOTE_BUILD_DIR:-ds41rt-release-build-${release_version}}"
+remote_dir="${DS41RT_RELEASE_REMOTE_BUILD_DIR:-$HOME/ds41rt-release-build-${release_version}}"
 export DS41RT_RELEASE_BUILD_ROOT="$build_root"
 export DS41RT_RELEASE_REMOTE_BUILD_DIR="$remote_dir"
 export DS41RT_RELEASE_SPARK_TP_ROLES="$roles"
