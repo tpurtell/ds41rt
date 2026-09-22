@@ -722,12 +722,15 @@ pub(crate) fn build_target_sampling_plan(members: &[SamplingMember], inputs: &[V
             let output_row = u32::try_from(plan.rows.len()).context("sampled row index overflow")?;
             let needs_mask = meta.row_masks[index].is_some();
             let route = sampling_route(params);
-            // `STRICT_FINITE` is set for masked and greedy rows, which are
-            // exactly the rows whose finiteness must be checked before the mask
-            // test (`scores.rs::argmax`). A stochastic unmasked row stays
-            // permissive, which is what the validator also requires.
+            // `STRICT_FINITE` is set for greedy rows only. Greedy/constrained
+            // rows are checked over the whole row before the mask test
+            // (`scores.rs::argmax`). A stochastic row — masked or not — is
+            // permissive: a masked non-finite value is legal and unread,
+            // matching the CPU arbiter (`target_sampling.rs:430-436`) and
+            // design §4.1/§12.6/D9. `needs_mask` is deliberately NOT part of
+            // this condition (chunk 5b F1 alignment to the reference).
             let mut flags = 0u32;
-            if needs_mask || greedy {
+            if greedy {
                 flags |= ds41rt_ffi::DS41RT_V41_SAMPLER_FLAG_STRICT_FINITE;
             }
             if greedy {
@@ -2299,6 +2302,47 @@ mod sampling_tests {
             let strict = flags & ds41rt_ffi::DS41RT_V41_SAMPLER_FLAG_STRICT_FINITE != 0;
             assert_eq!(no_mask, index < 3, "row {index} NO_MASK");
             assert_eq!(strict, index >= 3, "row {index} STRICT_FINITE");
+        }
+    }
+
+    /// Chunk 5b R2 / F1: a masked **stochastic** row is permissive. The CPU
+    /// arbiter checks finiteness only after the `allowed()` skip
+    /// (`target_sampling.rs:430-436`), so the device plan must not set
+    /// `STRICT_FINITE` for it. Greedy rows stay strict whether masked or not.
+    /// This pins the permissive rule so it cannot silently flip back.
+    #[test]
+    fn masked_stochastic_rows_stay_permissive_and_greedy_rows_stay_strict() {
+        use ds41rt_core::TargetSamplingParams;
+        let stochastic = TargetSamplingParams::new(0.7, 0.9, None, 0.0, 3).unwrap();
+        let greedy = TargetSamplingParams::greedy();
+        let members = vec![
+            // stochastic: masked, masked, unmasked
+            SamplingMember {
+                params: stochastic,
+                base_position: 0,
+                row_masks: vec![Some(pattern(7)), Some(pattern(8)), None],
+            },
+            // greedy: masked, unmasked
+            SamplingMember {
+                params: greedy,
+                base_position: 10,
+                row_masks: vec![Some(pattern(9)), None],
+            },
+        ];
+        let inputs = vec![vec![0, 1, 2], vec![3, 4]];
+        let plan = build_target_sampling_plan(&members, &inputs).unwrap();
+        for (index, request) in plan.rows.iter().enumerate() {
+            let strict = request.row.flags & ds41rt_ffi::DS41RT_V41_SAMPLER_FLAG_STRICT_FINITE != 0;
+            let masked = request.row.mask_row != ds41rt_ffi::DS41RT_V41_SAMPLER_NO_MASK_ROW;
+            match index {
+                0 | 1 => {
+                    assert!(masked, "row {index} must be masked");
+                    assert!(!strict, "masked stochastic row {index} must be permissive");
+                }
+                2 => assert!(!strict, "unmasked stochastic row 2 must be permissive"),
+                3 | 4 => assert!(strict, "greedy row {index} must stay strict"),
+                _ => unreachable!(),
+            }
         }
     }
 

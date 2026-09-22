@@ -1500,6 +1500,24 @@ pub(crate) mod recording_sampler {
         Some(&arena[start..start + words])
     }
 
+    /// Whether one dense mask bit allows `token`. Absent/`NO_MASK`/sentinel
+    /// semantics are handled by [`row_mask`] before this is reached.
+    fn mask_allows(mask: &[u32], token: usize) -> bool {
+        mask[token / 32] >> (token % 32) & 1 != 0
+    }
+
+    /// Whether the row has a non-finite logit **where it could act on it** — a
+    /// mirror of the shipped kernel/CPU strictness rule. Chunk 5b R2 aligned the
+    /// production plan with the CPU arbiter, which checks finiteness *after* the
+    /// `allowed()` skip (`target_sampling.rs:430-436`): a masked-out non-finite
+    /// value is legal and unread for a stochastic row, while any unmasked row —
+    /// and any position its own mask allows — is still strict.
+    pub(crate) fn nonfinite_where_allowed(logits: &[f32], mask: Option<&[u32]>) -> bool {
+        logits.iter().enumerate().any(|(token, value)| {
+            !value.is_finite() && mask.is_none_or(|mask| mask_allows(mask, token))
+        })
+    }
+
     fn greedy(params: Ds41rtV41SamplerRow) -> bool {
         params.temperature < 1e-5 || params.top_k == 1
             || params.flags & ds41rt_ffi::DS41RT_V41_SAMPLER_FLAG_GREEDY != 0
@@ -1561,9 +1579,11 @@ pub(crate) mod recording_sampler {
             for (block_row, params) in params.iter().enumerate() {
                 let row_logits = &logits[block_row * vocab..(block_row + 1) * vocab];
                 let mask = row_mask(*params, arena.as_deref(), vocab);
-                if (greedy(*params) || mask.is_some())
-                    && !row_logits.iter().all(|value| value.is_finite())
-                {
+                // Chunk 5b R2/F5: strict only where the row can act. The old
+                // `greedy(*params) || mask.is_some()` made every masked row
+                // strict, which no longer mirrors `build_target_sampling_plan`
+                // (greedy rows only) nor the CPU arbiter.
+                if nonfinite_where_allowed(row_logits, mask) {
                     status[block_row] = ds41rt_ffi::DS41RT_V41_SAMPLER_STATUS_NONFINITE_LOGIT;
                     continue;
                 }
@@ -1668,6 +1688,12 @@ pub(crate) mod recording_sampler {
                 }
                 let row_logits = &logits[block_row * vocab..(block_row + 1) * vocab];
                 let mask = row_mask(*params, arena.as_deref(), vocab);
+                // Same post-R2 rule as `launch_prepare`: a masked-out
+                // non-finite value is unread, not a fault.
+                if nonfinite_where_allowed(row_logits, mask) {
+                    status[block_row] = ds41rt_ffi::DS41RT_V41_SAMPLER_STATUS_NONFINITE_LOGIT;
+                    continue;
+                }
                 ids[block_row] = cpu_token(params, row_logits, mask);
                 status[block_row] = ds41rt_ffi::DS41RT_V41_SAMPLER_STATUS_OK;
             }
@@ -2141,6 +2167,28 @@ mod sampler_wiring_tests {
         // A greedy frontier peer still gets the cross-check and still passes it.
         let retained = next.retain_from_device(&library, fixture.logits_buffer, 0, None).unwrap();
         assert_eq!(retained.select(None).unwrap(), next.best[0]);
+    }
+
+    /// Chunk 5b F5: the recording double's strictness decision must mirror the
+    /// **post-R2** rule — strict only where the row can act on the value
+    /// (unmasked, or an allowed position), *not* `greedy || mask.is_some()`,
+    /// which made every masked stochastic row strict and no longer matched
+    /// `build_target_sampling_plan`.
+    #[test]
+    fn the_recording_double_is_strict_only_where_the_row_can_act() {
+        use super::recording_sampler::nonfinite_where_allowed;
+        // `0b1111` allows tokens 0..=3; token 4 is masked out.
+        let allows_low_four = [0b1111u32];
+        // A non-finite value at an allowed position: strict under every rule.
+        assert!(nonfinite_where_allowed(&[0.0, f32::NAN, 2.0, 3.0, 4.0], Some(&allows_low_four)));
+        // The same row with the non-finite token masked out is permissive —
+        // exactly the case the old `mask.is_some()` clause wrongly made strict.
+        assert!(!nonfinite_where_allowed(&[0.0, 1.0, 2.0, 3.0, f32::NAN], Some(&allows_low_four)));
+        // No mask at all is strict regardless of the row's class.
+        assert!(nonfinite_where_allowed(&[0.0, 1.0, 2.0, 3.0, f32::NAN], None));
+        // All-finite rows are clean either way.
+        assert!(!nonfinite_where_allowed(&[0.0, 1.0, 2.0, 3.0, 4.0], None));
+        assert!(!nonfinite_where_allowed(&[0.0, 1.0, 2.0, 3.0, 4.0], Some(&allows_low_four)));
     }
 }
 
