@@ -1,21 +1,18 @@
 # GPU target-sampler design (implementation gate)
 
-**Status:** design gate. **Chunk 1 is delivered** on `dev` as
-`9dffad0236cae8b5398a41bea973b1ff21f2da88` (2026-09-22); §17 is its as-built
-record. **Chunk 2 (K2 fast path) is delivered and reviewed** as `f0e7902`
-(committed on `9dffad0`); §18 is its as-built record. **Chunk 3a (K3 + K4) is
-delivered and reviewed** as `90f745c` (committed on `4277898`); §19 is its
-as-built record. **Chunk 3b (K5 nucleus + draw) is delivered and reviewed** as
-uncommitted working-tree work on base `ddae9bc`; §21 is its as-built record and
-§20 lists the interface changes chunk 4 must honour. The normative sections below
-have been reconciled with all four (notably §4.2, §4.3, §4.4, §4.5, §5.4, §6.3b,
-§6.3c, §6.5.3, §11.1, §12.2, §12.3, §12.4, §12.12, §13.1, §14). **Chunk 4
-(wiring) is next**; it remains design-only and still requires the adversarial
-review of §14.
+**Status:** design gate. **Chunks 1–4 are delivered and reviewed.** Chunk 1 is
+`9dffad0` (§17); chunk 2 `f0e7902` (§18); chunk 3a `90f745c` (§19); chunk 3b
+`ad9ea72` (§21); chunk 4 is split — **4a committed as `3572101`, 4b committed as
+`b38e910`**, both recorded in **§22** (which also answers §20's hand-off
+list). The normative sections below have been reconciled with all five (notably
+§4.2–§4.5, §5.4–§5.5, §6.3, §8.2–§8.4, §9.2, §10.4, §12.4, §12.12–§12.13, §13.1,
+§13.2, §16, §20). **Chunk 5 (full correctness validation + independent review) is
+next**; chunks 5–7 and the phase-3–4 campaign remain design-only and still require
+the adversarial review of §14.
 
 **Repository revision read:** `e1f5d495b5a82fb7ddad8514cad419b6ae62c0cc` (`e1f5d49`).
-Chunk 1 reads `9dffad0`, chunk 2 `f0e7902`, chunk 3a `90f745c`, and chunk 3b is
-uncommitted on base `ddae9bc`.
+Chunk 1 reads `9dffad0`, chunk 2 `f0e7902`, chunk 3a `90f745c`, chunk 3b
+`ad9ea72`, chunk 4a `3572101`, and chunk 4b `b38e910`.
 
 **Deliverable rule:** the original design task produced exactly this one file;
 the as-built updates are design text only. Every claim about existing code
@@ -1274,6 +1271,33 @@ labelled mechanisms:
   largely removed by the per-token division** — the retained domain is
   token-exact — so Residual A on the survivor domain is what remains.
 
+**Numbers of record, and what a daemon-level sweep does NOT mean (chunk 4).** The
+per-row-class rates are the published numbers, measured on the **real phase-0
+fixtures** with the shipped kernels (independently reproduced in
+`ADVERSARIAL-REVIEW` for chunks 3b/4a):
+
+| class | rate | draws |
+| --- | ---: | ---: |
+| retained domain (`top_k != 0`, ordered) | **0 / 147,456 = 0.00%** | 18 cells |
+| survivor domain (`top_k = 0`, ordered) | **50,927 / 196,608 = 25.9028%** | 24 cells |
+| ordered overall | 50,927 / 344,064 = 14.8016% | 42 cells |
+| fast path (K1+K2) | **121,047 / 983,040 = 12.3135%** | 120 cells |
+| real `long_tail`, `temp0.7 + top_p0.9` | **1,368 / 8,192 = 16.70%** | 1 row |
+| real `long_tail`, `temp1.0 + top_p0.5` | 2,936 / 8,192 = 35.84% | 1 row |
+| real `near_uniform`, `temp0.7 + top_p0.9` | 8,110 / 8,192 = 99.00% | 1 row |
+
+The daemon wiring's own device sweep measured **0/1024 (and 0/256 per profile) on a
+`smooth_narrow` synthetic row**. That is a **wiring result**, not evidence that the
+rates above were pessimistic, and it must never be published as the residual.
+Mechanism: divergence scales with **nucleus width and mass-gap structure**. The
+synthetic row has a nucleus of tens of ranks and a minimum adjacent normalized gap
+of ≈`1e-4`; the real `long_tail` row has a **90,426-token nucleus** and a minimum
+adjacent gap of ≈`3.3e-9`, so a 1–2 ulp `expf`/association difference can move the
+crossing. The fixture was renamed **`smooth_narrow`** precisely so it cannot be
+confused with the real `long_tail` row (it was mislabelled in an earlier revision
+of the chunk-4 report). Re-run the real-fixture harnesses to describe the residual;
+use the synthetic row only to prove routing and mask plumbing.
+
 **Precedent already in-tree.** The CPU itself uses two different accumulation
 orders for the same draw: the fast path accumulates in **token order**
 (`target_sampling.rs:597-618`) and the ordered path in **rank order**
@@ -1460,14 +1484,15 @@ test. "Anchor" is the CPU rule the device must reproduce.
 
 ### 8.2 What replaces the full-row D2H
 
-For a **device-selected all-greedy round**, a lane downloads `rows × (4 + 4 + 4)`
-B (ids, status, detail/score) instead of `rows × 517,120` B. ARITHMETIC: 48 rows
-× 12 B = 576 B versus 24.8 MB before. **Chunk-1 qualifier:** a round containing
-any stochastic member is still entirely on the CPU path and still downloads every
-member's full rows, greedy ones included (`scheduler.rs` `round_is_fully_greedy`
-doc). Removing that qualifier is the chunk-4 wiring work. The retained frontier is still
-the only full-row transfer for a device-selected round, and it is one row per
-*finishing* request (§10).
+For a **device-selected round**, a lane downloads `rows × 16 B` (ids, status,
+detail, scores) instead of `rows × 517,120` B. ARITHMETIC: 48 rows × 16 B = 768 B
+versus 24.8 MB before.
+
+**Chunk-4 update — the chunk-1 qualifier is gone.** A round containing any
+stochastic member is no longer pushed entirely onto the CPU: each row is routed
+individually (§8.4). A **fallback** row still downloads its own full row (the CPU
+re-sample needs it), and the retained frontier is still the only other full-row
+transfer, gated per §10.4. The rounding is unchanged for the greedy compact lane.
 
 ### 8.3 How per-row parameters and masks reach the device
 
@@ -1481,35 +1506,83 @@ the only full-row transfer for a device-selected round, and it is one row per
    `flags GREEDY` from `params.is_greedy()`, `ln_min_p` from the host `f32::ln`,
    and `mask_row = 0xFFFFFFFF` + `NO_MASK` for a row that needs no mask
    (`SamplingRound`/`TargetSamplingRowRequest`, `scheduler.rs:556-586`).
+   **As built in chunk 4**, `build_target_sampling_plan` (`scheduler.rs:708`)
+   produces the per-row `route`/`mask`/`params`/`position`, and a row the device
+   cannot serve gets a **device-neutral greedy no-op** block
+   (`fallback_sampling_row`, `:767`) while its real values are kept in the plan
+   for the CPU re-sample.
 3. Constrained members' masks are prepared once per step (§9.2) into
    `mask_pinned`; the `(mask buffer, mask_words_per_row)` pair is produced by one
    helper so the two cannot diverge (`v41_target_head.rs:114-120`).
-4. `TargetSamplingWave::upload` fills the pinned staging and issues one
-   `copy_h2d_async` for params and one for masks on the head stream, then
-   `launch` runs the kernel, all before the existing drain. `require_complete()`
+4. `TargetSamplingWave::upload` fills the pinned staging and issues two
+   `copy_h2d_async` calls (params and masks) on the head stream, then `launch`
+   runs the kernel sequence, all before the existing drain. `require_complete()`
    guards overwriting staging on the next round (the pattern at
    `v41_memory.rs:75-78`).
 
-### 8.4 Greedy compact path and mixed-lane poisoning
+### 8.4 Per-row routing and fallback (implemented in chunk 4)
 
-- The compact predicate is unchanged (`scheduler.rs:458-462`,
-  `independent.rs:131-135`). An all-greedy, unconstrained lane never calls the
-  sampler and keeps `execute_block_greedy` byte-for-byte
-  (`v41_target_head.rs:350-377`).
-- **Chunk-1 scope, recorded verbatim:** all-greedy rounds — unconstrained and/or
-  constrained — are device-selected and greedy rows no longer download full
-  logits. Any round containing a stochastic member stays entirely on the CPU path
-  and downloads its full rows for every member, greedy ones included; **mixed
-  greedy+stochastic rounds are NOT wired**. `round_is_fully_greedy`
-  (`scheduler.rs:537-545`) is the gate, and it is a *precondition* for the
-  terminal, not an optimization: routing a stochastic round into K1 would
-  silently produce a greedy token for it.
-- `VerificationTarget::SUPPORTS_SAMPLED_TERMINAL` is an associated const
-  (`verification.rs:32`, default `false`; `TargetPass` `true` at `:64`), so
-  `DistributedTargetPass` keeps the CPU fallback and has no sampled terminal yet —
-  a documented limitation for a later chunk. `use_sampled_terminal(supports,
-  fully_greedy)` requires both, and a layout without the terminal is never routed
-  into the default bail (`verification.rs:36-42`).
+**The gate is now per row, not per round**, replacing the chunk-1 whole-round
+`round_is_fully_greedy` precondition. `sampling_route()` (`scheduler.rs:587`)
+classifies each row from its **own request parameters**, mirroring the kernels'
+own eligibility blocks:
+
+| route | condition | kernels | selection source |
+| --- | --- | --- | --- |
+| compact lane (not built) | every member greedy + unconstrained + untraced | existing `execute_block_greedy` | untouched (chunk-1 path) |
+| `DeviceGreedy` | `temperature < 1e-5` or `top_k == 1` | K1 | K1 `out_indices` |
+| `DeviceFastPath` | `top_k == 0 && top_p >= 1.0` | K1 → K2 | K2 `out_indices` |
+| `DeviceOrdered` | `top_k ∈ 1..=256`, or `top_k == 0 && top_p < 1.0` | K1 → K3 → K4 → K5 | K5 `out_indices` (K5's `out_status` read) |
+| `CpuFallback` | the device cannot serve the row | none | CPU sampler, from the row's downloaded logits |
+
+- **`MAX_RETAINED = 256`** (`DS41RT_V41_SAMPLING_MAX_RETAINED`,
+  `v41_target_head.rs:45`) is pinned to K5's `kBlock = 256`.
+  `top_k ∈ [257, survivor_count)` is **unsupported and loud** (INTERNAL); the host
+  routes it to the CPU fallback **before** the launch rather than enqueueing a
+  list K5 would refuse.
+- `DeviceOrdered` deliberately does not split `top_k < survivor_count` from
+  `top_k >= survivor_count`: K3/K4 are a per-row no-op in the second case and K5
+  then treats the retained set as every survivor.
+- **Greedy is not regressed:** the compact lane is byte-identical and measures
+  **83.4 µs at 48 rows**; a greedy row that goes through the sampled route costs
+  the K1 level (98 µs GPU / 103 µs round), never the stochastic level.
+- **Per-row fallback, not whole-round, is deliberate.** A whole-round fallback
+  would force greedy peers to download full logits, which contract §7.1.15
+  forbids and which would defeat the acceptance gate. Per-row keeps the
+  verification shape exact: a device row consumes the device id, a fallback row
+  consumes the CPU id produced from the same parameters, mask and absolute
+  position.
+- **Fallback cases, all counted and logged at WARN on `ds41rt::sampling`:**
+  (1) `top_k > 256`; (2) a parameter outside the validator's range
+  (`temperature` not finite or outside `[0,2]`; `top_p` not finite or outside
+  `(0,1]`; `min_p` not finite or outside `[0,1]`); (3) `min_p > 1.0` (defensive:
+  K1 would report zero survivors while the CPU filter chain keeps the best token);
+  (4) a row the device **refused after the launch** with `INTERNAL`.
+- **One round-level fallback remains, deliberately:** a layout without the
+  sampled terminal (`DistributedTargetPass`, `SUPPORTS_SAMPLED_TERMINAL = false`,
+  `verification.rs:32`) keeps the whole round on the CPU, and so does a round in
+  which every row is unservable (the logits must be downloaded anyway).
+- **Never a silent fallback.** (a) A fallback row's device-facing block is the
+  neutral no-op, so the batch validator accepts it and no kernel publishes a token
+  for it. (b) `resolve_fallback_rows` (`scheduler.rs:967`) **stores** the CPU
+  token in `BatchScores.best[row]`, and `select_routed` (`:1449`) consumes a row
+  as stored when it is device-served **or** carries logits
+  (`has_row_logits`); the commit path therefore never reads a stale device slot.
+  (c) `store_sampled` (`scores.rs:329`) recomputes from the row's own logits for
+  **every** parameter shape and errors if the row has no logits.
+- **The finishing-frontier retention classifier is keyed on the parameters, not
+  the route:** `frontier_retain(round, params) = round.is_some() &&
+  !params.is_greedy()` (`scheduler.rs:1386`). In a device round a non-greedy
+  `best` is a draw whoever produced it — K2, K5 or a CPU fallback — and a greedy
+  `best` is an argmax whichever path produced it, so the route is deliberately not
+  consulted.
+- **Three wiring defects the chunk-4 reviews caught, recorded as the lesson:**
+  the discarded fallback write-back (a post-launch refusal committed the stale
+  device slot); the route-keyed frontier classifier (a planned-fallback
+  stochastic frontier was classified `Checked` and its draw rejected as an argmax
+  mismatch); and the `target_sampling` counters hidden under `host_metrics()`
+  (§13.2 item 3). The invariant: **`best[row]` semantics across the fallback
+  boundary must be keyed on the parameters, not the route.**
 - The existing lane-level split is preserved: two requests in *different* lanes
   never contaminate each other (`independent.rs:52-54`,
   `layout.rs:33-36`).
@@ -1587,6 +1660,17 @@ Preserved exactly: row 0 uses the mask before any draft accept; later rows use
 the mask after accepting the preceding draft; `input[0]` is the committed anchor
 already accepted by the authoritative matcher; the authoritative matcher still
 advances only on emitted tokens.
+
+**Chunk-4 as-built correction.** Chunk 4a claimed the K3/K4/K5 entry points "do
+not consume a mask" for their retained search; that was **wrong** (4b REPORT §6
+item 4). All four kernels already take `mask_words`/`mask_words_per_row` and K1
+applies the mask before anything else, so no kernel change was needed. What chunk
+4b added is **coverage**: a real-xgrammar per-prefix fork/rollback test
+(`prepare_verification_mask_row` agrees with the batch form on every row without
+mutating the authoritative matcher) and device sweeps proving masked stochastic
+draws stay inside their own mask on the fast path, the ordered `top_p` path and
+the ordered retained `top_k = 40` path (64/64 per profile), with a mixed round
+proving no stale mask inheritance.
 
 ### 9.3 Mask applied before filtering
 
@@ -1687,19 +1771,59 @@ changes: from "slice of the already-downloaded batch" (`scores.rs:144-151`) to
 
 ### 10.4 The incidental unconditional frontier download
 
-`scheduler.rs:597-603` schedules `frontier_downloads` whenever a request is
-`finishing && !next.has_full_logits()`, and `commit_lane` performs it at
-`:638-639`; `independent.rs:151-158` does the same. That happens **regardless of
-whether prefix caching is enabled**, and only later does
-`prefix.rs:177`/`:206` early-return when `bank.limit() == 0`. So a greedy
-finishing request in a cache-disabled deployment still pays a 517,120 B D2H.
+**Pre-chunk-4 defect (recorded; line numbers are pre-chunk-4).**
+`scheduler.rs:597-603` (pre-4b) scheduled `frontier_downloads` whenever a request
+was `finishing && !next.has_full_logits()`, and `commit_lane` performed it at
+`:638-639`; `independent.rs:151-158` did the same. That happened **regardless of
+whether prefix caching was enabled**, and only later did
+`prefix.rs:177`/`:206` (now `:187`/`:216`) early-return when `bank.limit() == 0`,
+so a finishing request in a cache-disabled deployment still paid a 517,120 B D2H.
 
-Replacement: query the bank state before scheduling (add
-`PrefixCache::turn_bank_enabled(lane)` reading the same `bank.limit()` used at
-`prefix.rs:177`), and skip the frontier download entirely when caching is
-disabled or the request is not cacheable (`cacheable` is already tracked,
-`scheduler.rs:325`, set in `emit_one` `:106`). When caching is enabled, keep the
-single-row download.
+**Implemented gate (chunk 4b, MEASURED).** The decision is now the pure function
+`frontier_download(whole_batch_has_logits, row_has_logits, retain_enabled,
+finishing, events_open)` (`scheduler.rs:1332`):
+
+| condition | action | transfer |
+| --- | --- | --- |
+| not finishing, or the client disconnected | `Skip` | none |
+| whole batch already on the host (CPU path / traced round) | `WholeBatch` | none (pre-4b behaviour preserved exactly) |
+| this row already packed (a fallback row downloaded for the CPU re-sample) | `PackedRow` | **none** (was a second transfer on the independent lane) |
+| retention enabled, row not on the host | `Device` | one `ROW_BYTES` D2H |
+| retention disabled (`prefix_cache_entries == 0`) | `Skip` | **none** (was an unconditional 517,120 B per finishing request) |
+
+- `PrefixCache::turn_bank_enabled()` (`prefix.rs:65`, built on the chunk-4b
+  `prefix.rs` changes) reads `bank(Turn).limit() > 0`; `retire_request`
+  (`scheduler.rs:119`) and `independent::retire` (`independent.rs:275`) also check it before
+  requiring `next_after_commit`, so a cache-disabled deployment no longer logs a
+  spurious `"finished request has no retained logits"`.
+- **Correctness:** `next_after_commit`'s only readers are the gated retire paths
+  and `PrefixCache::retain`/`queue_retain`, which early-return at `limit() == 0`
+  before touching the host cache, so no snapshot can lose bytes it would have
+  kept. A `PackedRow` is retained from bytes the round already holds
+  (`retain_packed` for greedy, `retain` for a stochastic draw). The whole-batch
+  path is byte-for-byte the pre-4b behaviour.
+- **The saving is reported as TWO distinguishable counters, never a combined
+  total** (§13.2): `frontier_gated_rows`/`frontier_gated_bytes` (both lanes; the
+  gate removal — the primary saving) and
+  `frontier_packed_rows`/`frontier_packed_saved_bytes` (independent lane only; the
+  serial lane's `retain_from_device` already short-circuited on packed bytes, so
+  the serial side deliberately does not count a saving).
+- **`target_sampling` (including these counters) is published
+  UNCONDITIONALLY** by `serving_stats(&PrefixCache)` (`scheduler.rs:173`);
+  `host_cache`/`host_cache_config` are `null` without a bound cache. This was a
+  4b review fix, **stated precisely**: the object was previously nested under
+  `host_metrics()`, so it was published **only when a host cache was attached**
+  and was invisible in the **no-host-cache** deployment. That is a *different
+  condition* from the retention gate, which keys on the **turn bank**
+  (`turn_bank_enabled()` = `bank(Turn).limit() > 0`, i.e. `prefix_cache_entries
+  == 0` disables it, `prefix.rs:65`). The two knobs are **independent**: a host
+  cache with a disabled turn bank means the gate is active while the counters
+  were previously still visible; no host cache at all means the gate is inactive
+  while the counters were previously hidden. The hidden configuration was the
+  no-host-cache one, **not** the gated one — do not conflate them.
+- **Measured cost of the removed transfer** (release, RTX PRO 6000, pageable
+  `copy_d2h` of one row): one-row frontier D2H **29.2 µs / 517,120 B**; a
+  representative 8-finishing-row round **233.9 µs / 4,136,960 B**.
 
 ---
 
@@ -2066,6 +2190,38 @@ files abort first on the new P0-1 test purely as a **test-ordering artifact**
 (all embed the pre-fix K2 walk and P0-1 runs first) — verified by removing that
 call, after which each fails at its intended test.
 
+### 12.13 Verification semantics across the fallback boundary (chunk 4, settled)
+
+Recorded so they are not re-litigated:
+
+- **A stochastic device frontier is NOT argmax-cross-checked**, and that is
+  faithful: the CPU path already skipped that check for stochastic rows. Only a
+  greedy frontier takes `FrontierRetain::Checked`
+  (`retain_packed`/`retain_downloaded_with`); a non-greedy frontier takes
+  `RecordedSample` (`retain_recorded_from_device`).
+- **The classifier is keyed on the PARAMETERS alone:**
+  `frontier_retain(round, params) = round.is_some() && !params.is_greedy()`
+  (`scheduler.rs:1386`). In a device round a non-greedy row's `best` is a draw
+  whichever producer selected it — K2, K5 or a CPU fallback — and a greedy row's
+  `best` is an argmax whichever path produced it, so the **route is deliberately
+  not consulted**. Keying on the route was the delta-review P1 defect: a
+  planned-fallback stochastic frontier was classified `Checked`, its stored draw
+  was recomputed as an argmax, and the lane failed with `"GPU and retained CPU
+  greedy selection differ"`.
+- **`store_sampled` recomputes from the row's own logits for every parameter
+  shape** (`argmax` with the mask for greedy, `select_token` for stochastic) and
+  errors if the row has no logits, so **no stale device slot can ever be
+  committed** — hardened rather than merely documented after two consecutive
+  latent-to-real bugs in this area.
+- **A whole-CPU round never reaches the classifier:** `has_full_logits()`
+  short-circuits to the trusted `WholeBatch` retain path, and the CPU-sampled
+  token never occupies the device `best` slot in that shape.
+- **Lesson, stated once:** `best[row]` semantics across the fallback boundary
+  must be keyed on the **parameters**, not the route. The three wiring defects the
+  chunk-4 reviews caught — the discarded fallback write-back, the route-keyed
+  frontier classifier, and the counters hidden under `host_metrics()` — are all
+  instances of getting that boundary wrong.
+
 ---
 
 ## 13. Measurement plan
@@ -2166,14 +2322,63 @@ mapping shift from the same fix, not invalidity (0/983,040 invalid selections).
 
 Count from code plus a device-side byte counter test:
 
-| Item | Before | After (chunk 1) |
+| Item | Before | After (chunk 4) |
 | --- | --- | --- |
-| device-selected all-greedy round D2H | `rows × 517,120 B` (`scheduler.rs:401-403`, `independent.rs:143`) | `rows × 16 B` (ids, status, detail, greedy scores) |
-| stochastic / mixed round D2H | `rows × 517,120 B` | **unchanged in chunk 1** (§8.4 gate); becomes `rows × 16 B` in the chunk-4 wiring |
-| per-row host materialization | `rows × 517,120 B` host Vec (`scores.rs:47`, `:119`) | 0 for a device-selected round; unchanged for a stochastic round |
-| finishing frontier | `1 × 517,120 B` (`scores.rs:88`, `independent.rs:153`) | unchanged, now gated on caching being enabled (§10.4) |
-| per-step syncs | head `wait()`/`synchronize()` + one pinned async D2H; single-lane adds a blocking pageable `cudaMemcpy` | device-selected round: head `wait()`/`synchronize()` + one pinned async D2H, nothing added; stochastic single-lane round still uses the blocking copy until the chunk-4 wiring |
-| greedy compact round | `2 × rows × 4 B` (`v41_target_head.rs:367-369`) | unchanged |
+| device-served round D2H | `rows × 517,120 B` (`scheduler.rs:401-403`, `independent.rs:143`) | `rows × 16 B` (ids, status, detail, scores) for device rows |
+| stochastic / mixed round D2H | `rows × 517,120 B` | `rows × 16 B` for device rows; a **fallback** row keeps its own full row (the CPU re-sample needs it) |
+| per-row host materialization | `rows × 517,120 B` host Vec (`scores.rs:47`, `:119`) | 0 for a device row; 1 row for a fallback row |
+| finishing frontier | `1 × 517,120 B`, unconditional (`scores.rs:88`, `independent.rs:153`) | **`0 B` when the turn bank is disabled or the row is already packed; `1 × 517,120 B` otherwise** (§10.4) |
+| per-step syncs | head `wait()`/`synchronize()` + one pinned async D2H; single-lane adds a blocking pageable `cudaMemcpy` | device round: head `wait()`/`synchronize()` + one pinned async D2H; the single-lane blocking copy for stochastic rounds is removed |
+| greedy compact round | `2 × rows × 4 B` (`v41_target_head.rs:367-369`) | unchanged (83.4 µs at 48 rows) |
+
+**Chunk-4 measured removals — TWO counters, never a combined total (MEASURED).**
+
+| counter | scope | meaning |
+| --- | --- | --- |
+| `frontier_gated_rows` / `frontier_gated_bytes` | both lanes | frontiers the gate skipped because no snapshot could consume them (cache disabled, or client disconnected) — the primary saving |
+| `frontier_packed_rows` | serial lane (a reuse, not a saving) | frontiers retained in place from bytes the round already held |
+| `frontier_packed_saved_bytes` | **independent lane only** | the removed second transfer of an already-packed fallback row; the serial lane deliberately does not count it |
+
+Measured cost of the removed transfer (release, RTX PRO 6000, pageable `copy_d2h`
+of one 517,120 B row): **29.2 µs / row**; a representative 8-finishing-row round
+**233.9 µs / 4,136,960 B**. The counters are published **unconditionally** under
+the stats JSON's `target_sampling` key (`serving_stats(&PrefixCache)`,
+`scheduler.rs:173`), with `host_cache`/`host_cache_config` `null` when no cache is
+bound. Stated precisely: the pre-fix nesting under `host_metrics()` published the
+object **only when a host cache was attached**, so it was invisible in the
+**no-host-cache** deployment. The retention gate is a **separate** knob keyed on
+the **turn bank** (`turn_bank_enabled()`, `prefix.rs:65`) — a deployment can have
+a host cache with a disabled turn bank (gate active, counters previously
+*visible*) or no host cache at all (gate inactive, counters previously *hidden*).
+The two conditions are independent; the hidden one was not the gated one.
+
+**Chunk-4 measured sampler latency and the honest crossover (MEASURED).** Same
+protocol as §13.1, release, 1× RTX PRO 6000, vocab 129,280. **Only the device
+columns are load-independent**; the CPU column is a host-throughput measurement
+and must be quoted as a range:
+
+| batch | device round | GPU | CPU (D2H + sample) | speedup |
+| ---: | ---: | ---: | ---: | ---: |
+| 4 rows, ordered (`0.7 / top_p 0.9 / top_k 40 / min_p 0.05`) | **2,190 µs** | 2,185 µs | 1,460–1,470 µs | **0.67× — the device LOSES** |
+| 48 rows, ordered (same profile) | **2,264 µs** | 2,258 µs | 17.3–22.1 ms | **7.65×–9.54×** |
+| 4 rows, fast path (K1+K2) | — | **343 µs** | — | — |
+| 48 rows, fast path (K1+K2) | — | **356 µs** | — | — |
+| 48 rows, greedy compact argmax (chunk-1 fast path) | — | **83.4 µs** | — | — |
+| 48 rows, greedy sampled route (K1) | 103 µs | 98 µs | — | — |
+
+- The ordered device path pays K3's up-to-21 dual-probe passes over the
+  vocabulary (~1.9 ms of K3/K4/K5 over 48 rows), so below the crossover it is
+  slower than the CPU sampler. The measured 4-row and 48-row points **bracket**
+  the crossover; contract §3.5 caps a request at ≤6 rows, so the practically
+  relevant ordered small-batch regime sits at or just below it — the design
+  records the crossover as **≈6 rows** and gives its reduction to chunk 6/7.
+  An adaptive "ordered rows + small row count → CPU sampler" route is a
+  legitimate chunk-6 option.
+- The fast path is already 343 µs at 4 rows, so it is never the loser.
+- Greedy is unchanged: the compact lane is byte-identical (83.4 µs), and a greedy
+  row on the sampled route costs 98 µs GPU / 103 µs round — the K1 level.
+- The device round is essentially all GPU time (1.5–1.9 µs host staging), so the
+  cost is the kernels, not the staging.
 
 ### 13.3 End-to-end per profile on 1× RTX + 4× Spark with dSpark
 
@@ -2289,21 +2494,21 @@ evidence; the wiring chunk is gated on wiring evidence plus the four §17.5 gaps
 | 1 ✓ | **ABI + GPU prepare/greedy — DELIVERED (`9dffad0`)** | kernel + wiring | as planned: `ds41rt_v41_sampler_row_t` + helpers in `v41_sampling_gpu.h`, mask arena, `TargetSamplingWave`, C-ABI registration, FFI wrappers + `validate_v41_sampling_buffers`, `execute_block_sampled`, scheduler/pass wiring, K1 with the greedy/constrained branch. Passed three adversarial review rounds (two found wiring defects, one found a third; all fixed before commit) | **met for the delivered scope**: ABI validated end to end; device greedy/constrained-greedy parity vs the CPU oracle (81 device cases / 6552 assertions; 63-cell greedy parity grid); compact greedy path behaviourally unchanged; no full-row D2H for greedy rows; stochastic path behaviourally unchanged. Four coverage gaps carried to chunk 4 (§17.5) | required |
 | 2 ✓ | **KERNEL-ONLY: K2 fast path + device RNG + accumulation-order/`expf` evaluation — DELIVERED (`f0e7902`, on `9dffad0`)** | kernel only | as planned: K1 stochastic reductions with host `ln_min_p`; the K2 fast path; the accumulation-order evaluation (sequential vs parallel segmented scan); the §12.9a `expf` experiment; per-cell mismatch rates at 8,192 seeded draws; device tests plus the FFI-level oracle test against the production CPU sampler. **No daemon/scheduler/scores changes** | **met and reviewed.** RNG **345/345 bit-equal** (extended grid incl. `2^63`, `u64::MAX`); `expf` **declared residual** with numbers (§6.3b: CUDA 15.4928% of weights / max 2 ulp, double 0.0173% / max 1 ulp and 3.37× slower); mismatch rates recorded per cell (§6.3c: 12.1193% overall, `near_uniform` 57.7502%, `tied` 0.0000%); distribution matches the analytic oracle within noise in every cell; device selftest **90 cases / 7,329 assertions** incl. the fast-path grid, seeded-replay, min_p-threshold and fallback regression cases; FFI oracle green (`v41_sampler_device_fast_path_matches_cpu_oracle`); both arches compile. **Honest limits (§18.4):** no daemon/E2E path; `sm_121` compile-only; the sequential full-grid rate is partly model-derived; the design's ≤0.10 ms/4-row gate is **missed** and is now a chunk-6/7 item. **The gate was kernel-only and deliberately did not close the §17.5 gaps** (chunk 4's) | required |
 | 3a ✓ | **KERNEL-ONLY: K3 + K4 — DELIVERED (`90f745c`, on `4277898`)** | kernel only | K3 general-k pivot selection (true bound 21 passes, §4.3) and K4 exact-k lowest-id tie prefix plus the **rank-ordered id list** the §4.5 K5 contract consumes (§4.4), with device tests against the CPU oracle | **met and reviewed (mergeable).** Device selftest **219 cases / 44,780 assertions** (MEASURED) incl. the k-grid over 4 vocabularies, thousands-tied/all-tied/`-inf`/mask cases and the length-2 regression; **K3 max 21 passes** of the 32 cap (host recurrence, randomized simulation, device measurement); FFI **set-and-order** oracle green; **mutation-tested** — keep-all-ties and old-termination mutants both fail; both arches compile; purely additive diffs (0 deletions). **Honest limits (§19.4):** token-level end-to-end vs the production sampler deferred to 3b; no daemon/E2E; `sm_121` compile-only; large-k rank placement deferred to chunk 6 | required |
-| 3b ✓ | **KERNEL-ONLY: K5 nucleus + rank-order draw — DELIVERED (working tree, commit pending; base `ddae9bc`)** | kernel only | K5 inclusive-prefix top-p (largest-key boundary, no `top_p = 1.0` shortcut, full-`S` fallback) and the rank-order draw with the `nucleus_count - 1` fallback, consuming the chunk-3a rank-ordered id list through the §4.5 entry point; the chunk-3b fix round adds `out_status`, the unconditional row-identity guard, the fixed prefix association and the K2 rewrite | **met and reviewed (mergeable after two documentation/test-message fixes, applied).** Device selftest **400 cases / 47,754 assertions**; six final-source single-defect mutants all fail (M1–M6) plus auxiliary M7/M8; K5 ordered path **344,064 draws = 14.8016%** overall with the retained domain at **0/147,456 (0.00%)**; `sm_120` + `sm_121` compile clean; per-domain divergence published. **Honest limits (§21.4):** P0-3 portability cannot be exercised on this HMM/ATS host; `sm_121` compile-only; no daemon end-to-end; the non-monotone K2 saturation residual (§4.2); wide-row nucleus delta 28 against a 64 bound; the 71-fixture's kernel `!p_found` branch not directly pinned | required |
-| 4 | **WIRING — NEXT (single consolidated daemon chunk)** | wiring | put stochastic rows on the sampled terminal; capability gates for layouts without the terminal (`DistributedTargetPass`); constrained mask preparation/upload for stochastic verification rows; retention gating and the incidental-download fix; remove the remaining full-row D2H for stochastic rows; **add the executed `upload → launch → output` end-to-end test**; delete the residual single-lane blocking `copy_d2h` for stochastic rounds. **Must honour the §20 interface changes** (K5 `out_status`, `output_row == block_row`, K1's new INTERNAL statuses, `params_device` wrappers, the re-published 12.3135% fast-path rate, `top_k ∈ [257, survivor_count)` loud INTERNAL) | **closes all four §17.5 gaps**: the executed `upload → launch → output` end-to-end test (a chunk-4 acceptance gate, not chunk 2's); a daemon-level GPU end-to-end constrained-greedy round; the distributed capability gate; mixed greedy+stochastic rounds wired. Plus: §13.2 D2H accounting holds for stochastic rounds; sync count unchanged; no 517 KB per-row `Vec`; retention tests green; error strings per §5.4 and D1 | required |
-| 5 | **Full correctness validation + independent review** | validation | the complete matrix vs the CPU oracle: grid × masks × boundaries × ties; seeded replay across batch sizes, lanes, orderings and rejected drafts; distributional comparison; constrained speculation | §12.3–§12.10 all green; the `reference_select` port reviewed as a separate artifact from the kernel (§12.11) | required |
+| 3b ✓ | **KERNEL-ONLY: K5 nucleus + rank-order draw — DELIVERED (`ad9ea72`, on `ddae9bc`)** | kernel only | K5 inclusive-prefix top-p (largest-key boundary, no `top_p = 1.0` shortcut, full-`S` fallback) and the rank-order draw with the `nucleus_count - 1` fallback, consuming the chunk-3a rank-ordered id list through the §4.5 entry point; the chunk-3b fix round adds `out_status`, the unconditional row-identity guard, the fixed prefix association and the K2 rewrite | **met and reviewed (mergeable after two documentation/test-message fixes, applied).** Device selftest **401 cases / 47,767 assertions** (the reviewed rev-4 tree measured 400/47,754; the commit added one case); six final-source single-defect mutants all fail (M1–M6) plus auxiliary M7/M8; K5 ordered path **344,064 draws = 14.8016%** overall with the retained domain at **0/147,456 (0.00%)**; `sm_120` + `sm_121` compile clean; per-domain divergence published. **Honest limits (§21.4):** P0-3 portability cannot be exercised on this HMM/ATS host; `sm_121` compile-only; no daemon end-to-end; the non-monotone K2 saturation residual (§4.2); wide-row nucleus delta 28 against a 64 bound; the 71-fixture's kernel `!p_found` branch not directly pinned | required |
+| 4 ✓ | **WIRING — DELIVERED (4a `3572101`, 4b `b38e910`)** | wiring | stochastic rows on the sampled terminal with **per-row routing** (§8.4); per-row CPU fallback (planned and post-launch refused) with the token stored and committed; capability gate for layouts without the terminal; constrained mask plumbing (already kernel-complete) now executed-tested; retention gating (§10.4) and the two removed full-row D2H; the executed `upload → launch → output` end-to-end tests; the single-lane blocking stochastic copy removed. Honoured the §20 interface changes | **met for the deliverable scope.** GPU `v41_device` **10 passed / 0 failed**; sampling CPU families **39 passed / 0 failed / 12 ignored**; both arches compile; kernels frozen at the chunk-3b hashes; greedy unchanged (compact 83.4 µs at 48 rows); constrained stochastic draws in-mask on three routes (64/64 each) and constrained-greedy device round token-exact; D2H saving measured as two separate counters (29.2 µs / 517,120 B per gated row). **Honest limits (§22.5):** there is no loaded `TargetPass`/`BlockOutput` fixture (it needs the official head weights plus a backbone output, and that fixture family needs torch/triton, which the container lacks), so `TargetHeadWave::copy_block`, the head graph and `execute_block_sampled` itself are **UNEXECUTED** and the lane-level gate is not run end-to-end; `sm_121` compile-only; residual rates not re-measured (kernels unchanged); full-suite counts are host-dependent and must always be quoted with their command | required |
+| 5 | **Full correctness validation + independent review — NEXT** | validation | the complete matrix vs the CPU oracle: grid × masks × boundaries × ties; seeded replay across batch sizes, lanes, orderings and rejected drafts; distributional comparison; constrained speculation | §12.3–§12.10 all green; the `reference_select` port reviewed as a separate artifact from the kernel (§12.11) | required |
 | 6/7 | **Pass-budget optimisation (conditional), then measurement** | kernel/measurement | **now triggered for the launch-critical-path cost measured in chunk 2** (§13.1): try the levers in order — wider per-row blocks (256→512/1024), fold the owner walk into an existing pass, then the deterministic integer radix histogram (≤2048 buckets, fixed-order combine, u64 fixed-point mass) — and re-measure the per-cell mismatch rate after any segment-count change; then fixed-logit latency vs CPU and the published per-cell mismatch-rate measurement | pass budget ≤ the §13.1 gate after the chosen lever; mismatch rate re-measured for the shipped configuration; §13.7 criteria 3, 4 and 7 | required |
 | Phase 3–4 | **E2E campaign + release** | release | end-to-end campaign on 1× RTX + 4× Spark with dSpark (§13.3–§13.5), per-round timing (§13.6), README five-profile measurement update (`:214-260`), `docs/release-v11-performance.md` and release notes (§6.4), and the upstream/placement decision memo (former chunk 8) | §13.7 all criteria; workload identity; provenance/identity files; validated campaign | required |
 
-**Current position:** chunk 1 is delivered (`9dffad0`, §17) and its review is
-closed; **chunk 2 is delivered** (`f0e7902`, §18), so its RNG and `expf`
-prerequisites for §12.9a are satisfied; **chunk 3a is delivered** (`90f745c`, on
-`4277898`; §19); **chunk 3b is delivered** — kernel-only, reviewed across three
-adversarial rounds, working-tree changes pending commit on base `ddae9bc` (§21 is
-the as-built record). **Chunk 4 (the consolidated wiring chunk) is NEXT** and must
-honour the interface changes listed in §20. The four chunk-1 coverage gaps
-(§17.5) belong to the **chunk-4 gate**, not to any kernel chunk. The design gate
-(chunk 0) is what this document is.
+**Current position:** chunks 1 (`9dffad0`, §17), 2 (`f0e7902`, §18), 3a
+(`90f745c`, §19), 3b (`ad9ea72`, §21) and **4 (4a `3572101`, 4b `b38e910`, §22)
+are all delivered and reviewed**; the design gate (chunk 0) is this document.
+**Chunk 5 — full correctness validation plus an independent review — is NEXT**,
+followed by chunk 6/7 (pass-budget optimisation and the published measurement) and
+the phase-3–4 campaign; those remain design-only and still require the adversarial
+review of §14. The four chunk-1 coverage gaps (§17.5) are now **closed at the
+test/function-chain level** by chunk 4b, with the `TargetPass`-level portion
+explicitly unexecuted (§22.5).
 
 Do not start a later ordered-path chunk before chunk 2's RNG **and** `expf` gates
 pass exactly: the RNG equality test is the only cheap way to separate a
@@ -2417,6 +2622,16 @@ rows; it must be in the release notes. The flag exists so that a reviewer who
 prefers zero observable change can set strict for stochastic rows with a one-line
 host change, and so that the constrained/greedy path can never be loosened by
 accident.
+
+**Implementation note (chunk 4) — verification semantics are settled, not open.**
+The wiring settled them; the detail and the three defects they caught are in
+§12.13. In one line: a stochastic device frontier is **not** argmax-cross-checked
+(faithful to the CPU path), the finishing-frontier classifier is
+`frontier_retain(round, params)` keyed on the **parameters** and deliberately not
+on the route, `store_sampled` recomputes from the row's own logits for every
+parameter shape so no stale device slot can be committed, and a whole-CPU round
+never reaches the classifier because `has_full_logits()` takes the trusted path.
+No further review is needed on these points; a change here is a new defect.
 
 ---
 
@@ -2747,7 +2962,7 @@ settled and must be pinned unchanged by K5's tests.
 
 ---
 
-## 20. Chunk-4 inheritance: interface changes to honour
+## 20. Chunk-4 hand-off: interface changes, and their chunk-4 disposition
 
 Chunk 4 (wiring) is the first chunk that calls K3/K4/K5 from the daemon. It must
 honour every interface change the kernel chunks settled; this list is the
@@ -2779,24 +2994,43 @@ authoritative hand-off (`runs/chunk3b-scratch/REPORT.md` §8).
    test remain chunk-4's acceptance gate**, as does the daemon-level
    constrained-greedy round.
 
+**Chunk-4 disposition — what chunk 5 and the campaign now inherit (all seven
+items verified).** Items 1–5 are honoured in the shipped wiring: K5's
+`out_status` is K1's buffer; the `output_row == block_row` rule has both the FFI
+validator and an **unconditional kernel guard**; K1's loud INTERNAL statuses for
+a non-finite `top_p` and a non-greedy zero-survivor row propagate to the caller;
+all four K3/K4/K5 wrappers take a validated `params_device`; and the published
+fast-path divergence for the campaign is **12.3135%** (§6.3c). Item 6 is resolved
+as a **counted CPU fallback**: `top_k > 256` is routed to the CPU before the
+launch and counted (`planned_fallback_rows`, plus `refused_fallback_rows` for a
+post-launch refusal) and logged at WARN — it is no longer an unservable shape and
+no longer silent; a raw-C caller of K5 directly still gets a loud `INTERNAL` for
+`top_k ∈ [257, survivor_count)`. Item 7 is **partially** closed: the executed
+`upload → launch → output` tests, the constrained-greedy device round and the
+finishing-fallback-frontier end-to-end test landed in chunk 4b, but no loaded
+`TargetPass`/`BlockOutput` fixture could be run, so `execute_block_sampled`
+itself and the lane-level retention gate remain unexecuted (§22.5). Chunk 5's
+validation matrix and the phase-3 campaign inherit the §22.1 hashes and the
+§6.3c/§13.2 figures of record.
+
 ---
 
-## 21. Chunk 3b as-built record (K5 nucleus + draw, kernel-only, reviewed; working tree on `ddae9bc`)
+## 21. Chunk 3b as-built record (K5 nucleus + draw, kernel-only, reviewed; committed as `ad9ea72`)
 
 Chunk 3b passed three adversarial review rounds and is mergeable after the two
-documentation/test-message fixes those rounds required (applied). It is
-uncommitted working-tree work on base `ddae9bc` (chunks 1, 2 and 3a committed).
+documentation/test-message fixes those rounds required (applied). It is committed
+as `ad9ea72` on base `ddae9bc` (chunks 1, 2 and 3a committed).
 K3/K4/K5 kernel math is unchanged by the fix round — the rev3→rev4 diff contains
 only the K1 status branches, the K2 rewrite, the K5 identity guard and
 additive/test hunks.
 
-### 21.1 Files and content hashes (rev 4, verified by the reviewer)
+### 21.1 Files and content hashes (hashes of the committed `ad9ea72` blobs)
 
 | File | sha256 | diff vs `HEAD` |
 | --- | --- | --- |
 | `native/cuda/kernels/v41_sampling_gpu.cu` | `637db1e8c7d8aa51a8a866a65843f1c418a38e9275f24ccfeeb6f8cd8754035c` | +911 / −61 |
 | `native/cuda/kernels/v41_sampling_gpu.h` | `0972d432a81dc075d237174dd1628aca41d44717141927fb05f64ae488054d77` | +133 / −5 |
-| `native/tests/v41_sampling_selftest.cu` | `85da1e1b24be3f7a178decb585797a7dcae038a0eb7cc91118b78caf8ec150cf` | +1876 / −0 |
+| `native/tests/v41_sampling_selftest.cu` | `6e915ea919313b6970ef85fc6ffa3af42f05ad40d3e3a17bf85e9d251873bda3` | +2015 / −0 (the rev-4 tree's was +1876) |
 | `rust/crates/ds41rt-ffi/src/lib.rs` | `9cbcf2677f1c6a056c185f6d6b20b8e70674fe0f30c602dd51a7e149d484b1b8` | +804 / −2 |
 
 The 68 deleted lines are fully accounted for (`ADVERSARIAL-REVIEW-rev4`,
@@ -2824,8 +3058,9 @@ host-`params` launches. No K1/K3/K4/K5 functional line or arch guard is deleted.
 
 ### 21.3 Evidence (MEASURED)
 
-- Device selftest: **400 cases / 47,754 assertions**, exit 0 (rev3 was
-  395/47,371); the reviewer rebuilt and re-ran it independently.
+- Device selftest: **401 cases / 47,767 assertions**, exit 0 as committed (the
+  reviewed rev-4 tree measured 400/47,754; rev-3 was 395/47,371); the reviewer
+  rebuilt and re-ran it independently.
 - **Six final-source single-defect mutants all fail** (M1–M6) plus auxiliary M7
   (conditional identity guard) and M8 (K1 branches removed); the older
   rev3-based mutant files abort first on the new P0-1 test purely as a
@@ -2869,6 +3104,143 @@ host-`params` launches. No K1/K3/K4/K5 functional line or arch guard is deleted.
 Everything in §20. K5's entry point, `out_status`, the identity rule, the
 `params_device` wrappers, the K1 statuses and the published divergence rates are
 the contract chunk 4 wires to.
+
+---
+
+## 22. Chunk 4 as-built record (per-row routing, fallback, retention gating; 4a `3572101`, 4b `b38e910`)
+
+Chunk 4 is split. **4a** (committed as `3572101`, base `dd457de`) wired
+stochastic rows onto the sampled terminal with per-row routing and fallback.
+**4b** (committed as `b38e910`, on `3572101`) added the executed constrained-mask
+coverage, the retention gate, the remaining full-row D2H removals and the executed
+end-to-end tests. The kernels and the FFI are **frozen at the chunk-3b hashes**
+throughout. The two reviews that gated it are
+`runs/chunk4a-scratch/ADVERSARIAL-REVIEW.md` + `DELTA-REVIEW-2.md` (no
+`DELTA-REVIEW-3.md` exists) and `runs/chunk4b-scratch/ADVERSARIAL-REVIEW.md`.
+
+### 22.1 Files and content hashes
+
+**Frozen (unchanged by chunk 4):** `v41_sampling_gpu.cu` = `637db1e8…`,
+`v41_sampling_gpu.h` = `0972d432…`, `v41_sampling_selftest.cu` = `6e915ea9…`,
+`ds41rt-ffi/src/lib.rs` = `9cbcf267…` (all of the committed `ad9ea72`).
+
+**Chunk-4b (7 daemon files; committed as `b38e910`, hashes verified from the
+committed blobs):**
+
+| file | sha256 | diff vs `3572101` |
+| --- | --- | --- |
+| `v41_native_serve/constraints.rs` | `c69fa646830cf00fe8498751e367649c2b3a7e30f217ff83c7f113ce8754c265` | +61 / −1 |
+| `v41_native_serve/prefix.rs` | `cca8de9a6d6ab6f22e4b0f3cf14b5de63b495eaebf9794140af7ab17c008d889` | +10 / −0 |
+| `v41_native_serve/scheduler.rs` | `02cb83ef17e5a453b05434262ba64f82e582fb63996500efafd5059dd80ceb1a` | +348 / −33 |
+| `v41_native_serve/scheduler/independent.rs` | `1d82e1d4798afd569758b7783958e1fd5850430b00acb395b8926e5a39d0cb71` | +19 / −2 |
+| `v41_native_serve/scheduler/layout.rs` | `6cea09116aaa1382808b796cd08bd3c3b318307d6af1aeaca8ae68f1f5608a63` | +1 / −1 |
+| `v41_native_serve/scores.rs` | `536245293110f46645a91fc7bd35479d3d28a93c005172561a0edc9e2e877630` | +6 / −1 |
+| `v41_target_head.rs` | `abbb5a49ffabf486091ca085010f3b6b28b904d57719d2f899d622d97e4e7a1b` | +549 / −0 |
+
+`git diff --stat` for the **final revision** — the state recorded here — is
+**`+994 / −38`** across the seven daemon files (which is exactly the per-file
+column above), so the diffstat and the hashes describe the **same** revision. The
+progression is `+843 / −24` (chunk-4b revision 1, the state the 4b
+`ADVERSARIAL-REVIEW` §6 deletion accounting classified: 24 deletions) →
+`+978 / −38` (revision 2, the five review fixes) → **`+994 / −38` (final; the two
+extra revisions are the test-only scheduler extension described below). No
+assertion, guard, error string or frozen-interface line is removed in any
+revision. The 4a revision-3 hashes are in `runs/chunk4a-scratch/REPORT.md` §12.2.
+
+**Resolved provenance for the drift (recorded, not hidden).** An earlier pass of
+this section recorded the reviewed revision-2 blob for `scheduler.rs`
+(`e7bffc6e…`) and flagged that the live tree had advanced to `b3a6ba76…`. That
+drift is now resolved: it was the **authorized, test-only** extension of
+`serving_stats_publish_sampling_counters_without_a_host_cache`, which now asserts
+the full ten-counter key set for both `PrefixCache::new(0)` and
+`PrefixCache::new(8)` inside `#[cfg(test)] mod sampling_tests` (`scheduler.rs`;
+the +16 insertions over revision 2). The non-test build, the GPU path and the
+frozen kernel/FFI blobs are unaffected; the current `scheduler.rs` hash
+(`02cb83ef…`) and the `+994 / −38` diffstat are the recorded final values, and the
+other six daemon blobs and the four frozen blobs are unchanged.
+
+**Scope note.** The design document is committed **separately** from the daemon
+code, so this file's own hash is not part of the `+994 / −38` daemon diffstat and
+must not be folded into it.
+
+### 22.2 What was built
+
+- **Per-row routing and fallback** (§8.4), replacing the whole-round greedy gate:
+  `DeviceGreedy` → K1, `DeviceFastPath` → K1→K2, `DeviceOrdered` → K1→K3→K4→K5,
+  `CpuFallback` → CPU; per-row CPU re-sample for planned and post-launch-refused
+  rows, stored into `best[row]`; `MAX_RETAINED = 256`; counted and WARN-logged.
+- **Retention gating** (§10.4) and the **two removed full-row D2H transfers**,
+  counted separately (`frontier_gated_*`, `frontier_packed_*`), with
+  `target_sampling` published unconditionally.
+- **Constrained masks:** the kernel path was already complete; 4b added the
+  executed coverage (§9.2).
+- **Executed end-to-end tests** (the 4b gate): mixed-batch
+  `upload → launch → output` with device read-back of params/masks; the finishing
+  planned-fallback frontier through `admit_device_rows` → `resolve_fallback_rows`
+  → `frontier_retain` → `retain_packed_frontier` / `retain_recorded_from_device`;
+  the constrained-greedy device round (chunk 1's outstanding gap); the four-route
+  empty-mask hard error; masked stochastic in-mask sweeps on fast/ordered
+  paths; and a real-xgrammar per-row fork/rollback test.
+- **4a review fixes** (all applied): the fallback write-back (FIX 1), the
+  route-keyed frontier classifier (delta-review P1), the counters (FIX 4), the
+  mixed-round statistic (FIX 5), plus the latent `store_sampled` hardening.
+
+### 22.3 Evidence (MEASURED)
+
+- GPU `v41_device`: **10 passed / 0 failed** (4a was 5).
+- Sampling CPU families: **39 passed / 0 failed / 12 ignored**.
+- Native selftest: **401 cases / 47,767 assertions** (kernels frozen).
+- FFI: **108 passed / 1 pre-existing unrelated / 10 ignored**.
+- Both arches compile (`sm_120`, `sm_121`); all four frozen hashes match.
+- Greedy compact **83.4 µs** at 48 rows, greedy sampled route 98 µs GPU / 103 µs
+  round; fast path **343 / 356 µs**; ordered **2,190 / 2,264 µs**.
+- Full-suite counts are **host-dependent** and must always be quoted with their
+  command (this container `877 / 7 / 111`; 4a's host `871 / 7 / 106`; the 7 are
+  pre-existing missing-`torch` fixtures; zero failures in this chunk's families).
+
+### 22.4 Latency and the crossover
+
+See §13.2. The ordered device path loses below the crossover (2,190 µs vs
+1,460–1,470 µs at 4 rows) and wins 7.65×–9.54× at 48 rows; the crossover is
+bracketed between 4 and 48 rows and is ≈6 rows at the served-shape boundary.
+Reducing it is **chunk-6/7** work, including an adaptive small-batch CPU route
+for the ordered class. Greedy and the fast path are never the losers.
+
+### 22.5 Honest limits
+
+1. **No loaded `TargetPass`/`BlockOutput` fixture.** It needs the official head
+   weights plus a backbone output, and that fixture family needs `torch`/`triton`,
+   which the container lacks. `TargetHeadWave::copy_block`, the head graph and
+   `execute_block_sampled` itself are therefore **UNEXECUTED**, and the
+   lane-level retention gate is not run end-to-end (it is covered by the pure
+   policy table, `turn_bank_enabled`, the byte-export, publish-without-cache and
+   `retain_packed_frontier` tests plus the 4a recording double).
+2. **`sm_121` is compile-only.**
+3. **No served HTTP / full-model round.**
+4. **The residual rates were not re-measured** (kernels byte-identical): the
+   §6.3c numbers remain those of record, and the device suite's `0/256` and
+   `0/4096` on `smooth_narrow` are **wiring** results, not rates.
+5. **The lane-level D2H saving is measured in isolation** (29.2 µs / 517,120 B
+   per row); the in-situ number needs a served workload (`ds41rt::timing`).
+6. **The counters are verified at the payload level**, not through a running
+   `serve` loop.
+7. **The distributed layout's retention gate is not exercised** (no sampled
+   terminal).
+8. **Two cosmetic counter inconsistencies are recorded, not fixed:** a
+   single-lane `compact` round increments `cpu_fallback_rounds` even though
+   nothing fell back (the counter really means "rounds that did not use the device
+   terminal"), and the independent lane's `compact` branch records nothing. Neither
+   claims device work; `device_rows` stays 0 on both.
+
+### 22.6 What chunk 5 and the campaign inherit
+
+The §20 disposition and §22.1/§22.3: `output_row == block_row` is mandatory for
+K5-class rows (FFI validator plus an unconditional kernel guard); K1 writes loud
+`INTERNAL` for a non-finite `top_p` and a non-greedy zero-survivor row; the
+K3/K4/K5 FFI wrappers take a validated `params_device`; `top_k > 256` is a
+**counted CPU fallback** (`planned_fallback_rows` / `refused_fallback_rows`,
+WARN-logged), not an unservable shape; and the fast-path divergence published for
+the campaign is **12.3135%** (ordered overall 14.8016%, retained domain 0.00%).
 
 ---
 
