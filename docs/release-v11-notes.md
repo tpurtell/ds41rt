@@ -69,17 +69,45 @@ Prepared from [the v10 notes](release-v10-notes.md); the ordered gate sheet is
 | Coordinator | `ghcr.io/tpurtell/ds41rt-coordinator:v11` | amd64 | PENDING - §Registry publication |
 | Spark expert (all four) | `ghcr.io/tpurtell/ds41rt-spark-expert:v11` | arm64 | PENDING - §Registry publication |
 
-- Image source commit: **PENDING** (bare 40-hex revision, no `-dirty-`; recorded
-  at the source freeze after runtime tests and independent review).
+### Commit and identity separation
+
+These are deliberately different commits; no row implies byte identity with
+another. The tag annotation names the image build source, and the checkout at
+that tag is **not** claimed to be byte-identical to the image build source.
+
+| Role | Commit / value | Meaning |
+| --- | --- | --- |
+| Engine (sampling runtime) | `3f8ea80d8e728cf04832dd520c22a9bbf71f8827` | the reviewed runtime change |
+| Image build source | `9d9b3e0ce8bd85f6b8eced515d0ab00be015f2d0` | exports `org.opencontainers.image.revision` |
+| Host tools (qualifier/validator) | PENDING - separate evidence-tools commit | committed before the live host run |
+| Release docs / tag commit | PENDING - final reviewed documentation commit | `main`/`release/v11` point here |
+| Image identity | local ids below + version `v11` | the measured artifacts |
+
+- Image build source commit **`9d9b3e0ce8bd85f6b8eced515d0ab00be015f2d0`**
+  (bare, no `-dirty-`), which carries the engine change
+  `3f8ea80d8e728cf04832dd520c22a9bbf71f8827`; recorded from the build log header
+  and asserted by `verify-release-artifacts.sh` on both roles.
 - Version `v11`; role labels `coordinator` / `expert`; CUDA arch `120` / `121`;
-  Spark expert roles `tp2;tp3;tp6` (universal); SparkInfer and XGrammar revisions
-  from `third_party/*.lock.json` at the frozen commit.
-- Local image ids, per-role sizes and fleet identity: **PENDING** in
-  `runs/v11-release/build/10-local-coordinator-image.txt`,
-  `10-fleet-spark-images.txt`, `10-verify-summary.txt`.
-- Build evidence root: `runs/v11-release/build/` (repo-ignored), with
-  `RUN-SUMMARY.md`, the build log and the verification artifacts named in
-  [release-v11-checklist.md](release-v11-checklist.md) §2.
+  Spark expert roles `tp2;tp3;tp6` (universal); SparkInfer
+  `4b0954148523b5a2e93813f963d483ffd350b9c9` and XGrammar
+  `557becfb64c503ae9c04344b0047661f43f44320` at the frozen commit.
+- **Built local image ids (not registry digests):** coordinator
+  `sha256:54c70eae326b7793bb2c6e34466179286b0861b991fd97ade0b99d69e79e4c41`;
+  Spark expert on all four required hosts
+  `sha256:b38647281b18f0a64c46b18417b74bf2027020583717fdceaba7a686be63369e`.
+- **Shipped native libraries:** coordinator
+  `11660155299d23b8fa14d68a74a34ae66ced497df442f84371626ce0a3aed701`; Spark
+  expert `77c54a5a3c9b66ea43f362eac66dfde10e8de10694e41909bc6930fb598cdc35`;
+  both equal the value in their dist `V41_EXPERT_TP_AOT.json`.
+- Build result: `runs/v11-release/build/v11-build.rc` = `0`
+  (05:23:43Z, source `9d9b3e0`); artifact verification
+  `10-verify-summary.txt` = **ALL CHECKS PASS** over the four required hosts and
+  `dist/SHA256SUMS` (`10-dist-sha256sums.txt` `sha256sums_rc=0`), with EXL3
+  package and SparkInfer provenance steps all `rc=0`.
+- Build evidence root: `runs/v11-release/build/` (repo-ignored), with the build
+  log, `v11-build.rc`, the verification artifacts named in
+  [release-v11-checklist.md](release-v11-checklist.md) §2, and the
+  `SHA256SUMS` manifest written at archive time.
 
 ### Registry publication
 

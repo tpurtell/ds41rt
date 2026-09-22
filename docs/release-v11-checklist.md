@@ -39,6 +39,30 @@ published; `release/vX` is created at the qualified commit.
       commit; `main`/`dev` ancestry recorded (`main` is an ancestor of `dev`; no
       force, no rebase).
 
+### Commit and identity separation (record every SHA explicitly)
+
+The git tag, the runtime engine source, the image build source and the
+host/documentation commits may each be a **different** commit; this repository's
+convention already separates them. The release record must state which commit
+produced which artifact and must **never claim the checkout at a tag is
+byte-identical to the image build source**. Fill this table in
+[release-v11-notes.md](release-v11-notes.md) rather than inferring equality:
+
+| Role | Commit / value | Meaning |
+| --- | --- | --- |
+| Engine (sampling runtime) | `3f8ea80d8e728cf04832dd520c22a9bbf71f8827` | the reviewed runtime change |
+| Image build source | `9d9b3e0ce8bd85f6b8eced515d0ab00be015f2d0` | exports `org.opencontainers.image.revision` |
+| Host tools (qualifier/validator) | PENDING - separate evidence-tools commit | must be committed before the live host run |
+| Release docs / tag commit | PENDING - final reviewed documentation commit | `main`/`release/v11` point here |
+| Image identity | PENDING - local image ids + version `v11` + registry digests | the measured artifacts |
+
+- [ ] Every row above is filled with a real SHA/value; the tag annotation names
+      the immutable image build source, and the notes state explicitly that the
+      tag commit's checkout is not claimed to be byte-identical to the image
+      build source.
+- [ ] The host tools/qualifier commit is a separate committed SHA from the
+      image build source and from the documentation commit.
+
 ## 1. Build
 
 Run from a standalone clone of the frozen commit (a linked `git worktree` cannot
