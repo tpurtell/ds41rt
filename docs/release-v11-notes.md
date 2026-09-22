@@ -196,14 +196,44 @@ repositories, so the push creates the tag rather than moving it:
   during v11 preparation; re-verify at publication instead of assuming. Only if a
   package has gone private is a manual repository-owner action required.
 
+## GitHub release and evidence package
+
+The release is published at
+[github.com/tpurtell/ds41rt/releases/tag/v11](https://github.com/tpurtell/ds41rt/releases/tag/v11)
+and is neither a draft nor a prerelease. The annotated tag `v11` points at
+`b6eceba7db7f46380ac7b74e093fb9ba748b0e73`; its annotation names the immutable
+image build source `fb5115466a8c70c063280e25957577f284e903e3` and states that the
+tag's checkout is not claimed byte-identical to it.
+
+| Asset | Size (bytes) | SHA-256 of the asset |
+| --- | ---: | --- |
+| `v11-evidence.tar.gz` | 1,388,281 | `4e7058c41bec7b433128526e7259edc14b1cfed52a43b284f1edff34672c6629` |
+| `SHA256SUMS` | 18,323 | `2ff225d2273b87f633b23f6b496b764e4950ce9f9ff864520ef04675b5c54670` |
+| `v11-release-assets.sha256` | 402 | `5baa701810c10e88e6c2cab2e742a88eb5a1f2830248013945d577b9d1aba8da` |
+
+**Scope of `SHA256SUMS` - do not conflate it with a manifest of the release
+assets.** That asset is the *payload* manifest: it lists the **148 files inside
+`v11-evidence.tar.gz`** and verifies them (`sha256sum -c` -> 148 OK, 0 failed). It
+is not a manifest of the release assets, and its own SHA-256 (`2ff225d2...`) is a
+different value from the tarball's (`4e7058c4...`). The additive
+`v11-release-assets.sha256` asset lists those two asset hashes, so the asset-level
+record is explicit and the two kinds of value are not merged.
+
+Package contents: the 15 final raw reports, the baseline attempt-02 package, the
+no-dSpark control package, the dSpark debug traces, the re-qualification
+artifacts, the validator and aggregator outputs, the build and source-gate logs,
+and the publication records. The package was secret-scanned before upload.
+
+**Post-tag accuracy addendum.** This record and the README image-id labelling were
+added after the `v11` tag was created, so they are not part of the tagged tree;
+the tag remains at `b6eceba`. No measured number, digest or image reference was
+changed by this addendum.
+
 ## Runtime default and rollback
 
-- `ds41rt.config` and the `examples/configs/*` files now name `:v11`, and
-  `./build.sh --dry-run` reports `v11`. `ds41rt.build-v11.config` is identical to
-  `ds41rt.config`.
-- Promotion moved `ds41rt.config`, `examples/configs/*` and their README pair
-  lines to `:v11`, so `ds41rt.build-v11.config` is now identical to
-  `ds41rt.config`.
+- `ds41rt.config`, the `examples/configs/*` files and their README pair lines now
+  name `:v11`, and `./build.sh --dry-run` reports `v11`.
+  `ds41rt.build-v11.config` is therefore identical to `ds41rt.config`.
 - The v10 images remain published as
   `ghcr.io/tpurtell/ds41rt-coordinator:v10` and
   `ghcr.io/tpurtell/ds41rt-spark-expert:v10`

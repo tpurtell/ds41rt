@@ -214,9 +214,12 @@ the other filters.
 **Measured sampling comparison (2026-09-22, v11 final build, dSpark on).** One
 deployment on the real topology — one RTX of the two present plus the four
 configured Spark workers, dSpark on — measured from image source
-`fb5115466a8c70c063280e25957577f284e903e3` (coordinator
+`fb5115466a8c70c063280e25957577f284e903e3` (coordinator local image id
 `sha256:e0e5d631a54e84f36cd1cd99e2a7cf4e2092c15919c8c79403007ba0852d0d89`, Spark
-`sha256:f1233987c3b9ba13d468d621c96945052db15e7ede9a8feaf101f506aee85516`) at
+expert local image id
+`sha256:f1233987c3b9ba13d468d621c96945052db15e7ede9a8feaf101f506aee85516`; the
+published registry manifest digests are different values, listed in the release
+notes) at
 host HEAD `fb51154`, run identity
 `285544d4e350bacc4137031ac884aded92e73f6fc207ccaf44584e18bedc3653`. Five
 discarded warmups preceded a rotating five-mode by three-repeat campaign of 15

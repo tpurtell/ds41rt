@@ -343,3 +343,7 @@ provenance.
   (`runs/v11-release/publication/v11-absence-recheck.txt`).
 - The runtime default is promoted to `:v11`; rollback is the promotion change
   reverted plus the recorded `latest` re-point.
+- The release and its evidence package are published at
+  [github.com/tpurtell/ds41rt/releases/tag/v11](https://github.com/tpurtell/ds41rt/releases/tag/v11);
+  the asset hashes and the payload-manifest scope are recorded in
+  [release-v11-notes.md](release-v11-notes.md).
