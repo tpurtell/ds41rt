@@ -18890,7 +18890,22 @@ mod tests {
     /// End-to-end ABI check: build the parameter block in Rust, drive the
     /// shipped device kernel through the FFI wrapper, and require the device id
     /// to equal the production CPU oracle exactly (design §12.2).
+    ///
+    /// `#[ignore]` convention: this test needs a GPU and a built native library,
+    /// so it does not run in the default `cargo test` sweep (the design §12.2
+    /// pattern, matching the CUDA-ignored daemon tests). Run it explicitly with
+    /// the library path, for example:
+    ///
+    /// ```text
+    /// DS41RT_NATIVE_LIB=/path/to/libds41rt_native.so \
+    ///   cargo test -p ds41rt-ffi -- --ignored v41_sampler
+    /// ```
+    ///
+    /// The loader is deliberately loud: an explicit `--ignored` run with a
+    /// missing library FAILS (`load_device_test_library` errors); it never skips
+    /// silently.
     #[test]
+    #[ignore = "requires a GPU and a built libds41rt_native.so; run with --ignored"]
     fn v41_sampler_device_greedy_matches_cpu_oracle() -> Result<()> {
         let library = load_device_test_library()?;
         // Five tiny rows, exercising ties, a mask, and a strict-finites row.
@@ -19052,6 +19067,396 @@ mod tests {
             "v4.1 sampler device oracle: rows={rows} vocab={vocab} device_ids={selected:?} \
              cpu_ids={expected:?} masked_row3={} unmasked_row3={unmasked_row3}",
             expected[3]
+        );
+        Ok(())
+    }
+
+    /// Drive one v4.1 sampler batch through the C ABI and return
+    /// `(ids, status, total)`. Outputs are pre-filled with a sentinel so a
+    /// kernel that never ran cannot satisfy an equality assertion with stale
+    /// memory. `total` is the diagnostic `out_total` (so every row here is
+    /// launched with `DIAGNOSE`).
+    fn run_v41_fast_path_batch(
+        library: &NativeLibrary,
+        logits: &[f32],
+        rows: usize,
+        vocab: usize,
+        params: &[Ds41rtV41SamplerRow],
+        mask: Option<&[u32]>,
+        mask_words_per_row: usize,
+    ) -> Result<(Vec<u32>, Vec<u32>, Vec<f32>)> {
+        assert_eq!(params.len(), rows);
+        assert_eq!(logits.len(), rows * vocab);
+        let words = vocab.div_ceil(32);
+        if let Some(mask) = mask {
+            assert_eq!(mask.len(), rows * words);
+            assert_eq!(mask_words_per_row, words);
+        }
+        let logits_buffer = library.alloc_device_buffer(rows * vocab * 4)?;
+        let params_buffer = library.alloc_device_buffer(rows * DS41RT_V41_SAMPLER_PARAM_BYTES)?;
+        let mask_buffer = match mask {
+            Some(_) => Some(library.alloc_device_buffer(rows * words * 4)?),
+            None => None,
+        };
+        let ids = library.alloc_device_buffer(rows * 4)?;
+        let status = library.alloc_device_buffer(rows * 4)?;
+        let detail = library.alloc_device_buffer(rows * 4)?;
+        let scores = library.alloc_device_buffer(rows * 4)?;
+        let total = library.alloc_device_buffer(rows * 4)?;
+        let scratch = library.alloc_device_buffer(rows * DS41RT_V41_SAMPLER_SCRATCH_BYTES)?;
+
+        let result = (|| -> Result<(Vec<u32>, Vec<u32>, Vec<f32>)> {
+            let sentinel: Vec<u8> = (0..rows).flat_map(|_| 0xDEAD_BEEFu32.to_ne_bytes()).collect();
+            library.copy_h2d(ids, &sentinel)?;
+            library.copy_h2d(status, &sentinel)?;
+            let mut logits_bytes = Vec::with_capacity(logits.len() * 4);
+            for value in logits {
+                logits_bytes.extend_from_slice(&value.to_ne_bytes());
+            }
+            library.copy_h2d(logits_buffer, &logits_bytes)?;
+            if let (Some(mask), Some(mask_buffer)) = (mask, mask_buffer) {
+                let mut mask_bytes = Vec::with_capacity(mask.len() * 4);
+                for value in mask {
+                    mask_bytes.extend_from_slice(&value.to_ne_bytes());
+                }
+                library.copy_h2d(mask_buffer, &mask_bytes)?;
+            }
+            let param_bytes: Vec<u8> = unsafe {
+                std::slice::from_raw_parts(
+                    params.as_ptr().cast::<u8>(),
+                    params.len() * DS41RT_V41_SAMPLER_PARAM_BYTES,
+                )
+                .to_vec()
+            };
+            library.copy_h2d(params_buffer, &param_bytes)?;
+            library.cuda_v41_target_sample(
+                logits_buffer,
+                rows,
+                vocab,
+                vocab,
+                params,
+                params_buffer,
+                mask_buffer,
+                if mask_buffer.is_some() { words } else { 0 },
+                ids,
+                status,
+                detail,
+                scores,
+                Some(total),
+                None,
+                scratch,
+            )?;
+            let read_u32 = |buffer: Ds41rtDeviceBuffer| -> Result<Vec<u32>> {
+                let mut bytes = vec![0_u8; rows * 4];
+                library.copy_d2h(&mut bytes, buffer)?;
+                Ok((0..rows)
+                    .map(|row| {
+                        u32::from_ne_bytes(bytes[row * 4..row * 4 + 4].try_into().unwrap())
+                    })
+                    .collect())
+            };
+            let read_f32 = |buffer: Ds41rtDeviceBuffer| -> Result<Vec<f32>> {
+                let mut bytes = vec![0_u8; rows * 4];
+                library.copy_d2h(&mut bytes, buffer)?;
+                Ok((0..rows)
+                    .map(|row| {
+                        f32::from_ne_bytes(bytes[row * 4..row * 4 + 4].try_into().unwrap())
+                    })
+                    .collect())
+            };
+            Ok((read_u32(ids)?, read_u32(status)?, read_f32(total)?))
+        })();
+
+        let mut logits_buffer = logits_buffer;
+        let mut params_buffer = params_buffer;
+        let mut mask_buffer = mask_buffer;
+        let mut ids = ids;
+        let mut status = status;
+        let mut detail = detail;
+        let mut scores = scores;
+        let mut total = total;
+        let mut scratch = scratch;
+        let cleanup = (|| -> Result<()> {
+            library.free_device_buffer(&mut logits_buffer)?;
+            library.free_device_buffer(&mut params_buffer)?;
+            if let Some(buffer) = mask_buffer.as_mut() {
+                library.free_device_buffer(buffer)?;
+            }
+            library.free_device_buffer(&mut ids)?;
+            library.free_device_buffer(&mut status)?;
+            library.free_device_buffer(&mut detail)?;
+            library.free_device_buffer(&mut scores)?;
+            library.free_device_buffer(&mut total)?;
+            library.free_device_buffer(&mut scratch)
+        })();
+        cleanup?;
+        result
+    }
+
+    /// Build a fast-path (`top_k` disabled, `top_p = 1.0`) per-row block with the
+    /// host-precomputed `ln_min_p` the validator requires.
+    fn v41_fast_row(
+        output_row: u32,
+        temperature: f32,
+        min_p: f32,
+        seed: u64,
+        position: u64,
+        mask_row: u32,
+        flags: u32,
+    ) -> Ds41rtV41SamplerRow {
+        Ds41rtV41SamplerRow {
+            seed,
+            position,
+            temperature,
+            top_p: 1.0,
+            min_p,
+            top_k: 0,
+            mask_row,
+            flags: flags | DS41RT_V41_SAMPLER_FLAG_DIAGNOSE,
+            output_row,
+            ln_min_p: if min_p > 0.0 { min_p.ln() } else { f32::NEG_INFINITY },
+            ..Ds41rtV41SamplerRow::default()
+        }
+    }
+
+    /// Chunk-2 FFI oracle: drive the shipped K2 fast path through the C ABI and
+    /// compare against the **production** CPU sampler
+    /// (`ds41rt_core::TargetSamplingParams`), not a reimplementation. Small
+    /// deterministic rows pin the filter/RNG/mask chain exactly; two realistic
+    /// 129,280-wide rows pin the full-vocabulary scan. A near-uniform row is
+    /// included to record the documented accumulation residual rather than to
+    /// assert zero (§6.3c): the device token must still be a real survivor.
+    ///
+    /// `#[ignore]` convention: this test needs a GPU and a built native library,
+    /// so it does not run in the default `cargo test` sweep (the design §12.2
+    /// pattern, matching the CUDA-ignored daemon tests). Run it explicitly with
+    /// the library path, for example:
+    ///
+    /// ```text
+    /// DS41RT_NATIVE_LIB=/path/to/libds41rt_native.so \
+    ///   cargo test -p ds41rt-ffi -- --ignored v41_sampler
+    /// ```
+    ///
+    /// The loader is deliberately loud: an explicit `--ignored` run with a
+    /// missing library FAILS (`load_device_test_library` errors); it never skips
+    /// silently.
+    #[test]
+    #[ignore = "requires a GPU and a built libds41rt_native.so; run with --ignored"]
+    fn v41_sampler_device_fast_path_matches_cpu_oracle() -> Result<()> {
+        let library = load_device_test_library()?;
+
+        // ---- small deterministic rows, vocab 6 ----
+        let vocab = 6_usize;
+        let rows = 4_usize;
+        let words = vocab.div_ceil(32);
+        let logits: Vec<f32> = vec![
+            0.5, 1.25, -0.75, 0.25, 2.0, -1.5, // row 0
+            -0.5, 0.0, 0.75, -1.25, 1.5, 0.25, // row 1
+            1.0, 2.0, 3.0, 0.5, -2.0, 0.0,     // row 2: masked to tokens 0,3,4
+            -1.0, -0.5, 0.0, 0.5, 1.0, 1.5,    // row 3
+        ];
+        // Row 2 allows tokens 0, 3 and 4; unmasked the argmax is token 2 (3.0),
+        // so the mask must remove the *winner* to be non-vacuous, leaving token 0
+        // (1.0) as the masked winner.
+        let mask: Vec<u32> = vec![u32::MAX, u32::MAX, (1 << 0) | (1 << 3) | (1 << 4), u32::MAX];
+        let small = vec![
+            v41_fast_row(0, 0.7, 0.0, 1, 0, DS41RT_V41_SAMPLER_NO_MASK_ROW, DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+            v41_fast_row(1, 0.7, 0.5, 1, 1, DS41RT_V41_SAMPLER_NO_MASK_ROW, DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+            v41_fast_row(2, 0.2, 0.0, 0xDEAD_BEEF, 2, 2, 0),
+            v41_fast_row(3, 2.0, 0.0, 7, 3, DS41RT_V41_SAMPLER_NO_MASK_ROW, DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+        ];
+        let (small_ids, small_status, small_total) = run_v41_fast_path_batch(
+            &library,
+            &logits,
+            rows,
+            vocab,
+            &small,
+            Some(&mask),
+            words,
+        )?;
+        for row in 0..rows {
+            assert_eq!(
+                small_status[row], DS41RT_V41_SAMPLER_STATUS_OK,
+                "small row {row} status"
+            );
+            assert_ne!(small_ids[row], 0xDEAD_BEEF, "small row {row} was not written");
+            assert!(small_ids[row] < vocab as u32, "small row {row} in-vocab");
+            assert!(small_total[row] > 0.0, "small row {row} total");
+            let row_mask = &mask[row * words..(row + 1) * words];
+            let mask_arg = if small[row].flags & DS41RT_V41_SAMPLER_FLAG_NO_MASK != 0 {
+                None
+            } else {
+                Some(row_mask)
+            };
+            let oracle = ds41rt_core::TargetSamplingParams::new(
+                small[row].temperature,
+                small[row].top_p,
+                None,
+                small[row].min_p,
+                small[row].seed,
+            )
+            .expect("oracle params")
+            .select_token(&logits[row * vocab..(row + 1) * vocab], mask_arg, small[row].position)
+            .expect("oracle selection") as u32;
+            assert_eq!(
+                small_ids[row], oracle,
+                "small row {row} device id must equal the production CPU sampler"
+            );
+        }
+        // Non-vacuity for the mask chain: row 2 allows tokens 0, 3 and 4 (the
+        // mask removes the unmasked winner, token 2). If the mask were ignored the
+        // ids could still coincide, so pin the masked top set explicitly.
+        let masked_oracle = ds41rt_core::TargetSamplingParams::new(0.2, 1.0, None, 0.0, 0xDEAD_BEEF)
+            .expect("params")
+            .select_token(&logits[2 * vocab..3 * vocab], Some(&mask[2 * words..3 * words]), 2)
+            .expect("masked oracle") as u32;
+        assert!(
+            [0u32, 3, 4].contains(&masked_oracle),
+            "masked oracle {masked_oracle} must be one of the allowed tokens"
+        );
+
+        // ---- realistic 129,280-wide rows ----
+        const WIDE: usize = 129_280;
+        // Phase-0 generator, in tree: `-8 + 10*splitmix_unit(i)`, with a +20
+        // boost on the first four tokens. Token 0 dominates by many nats at any
+        // sampled temperature, so the drawn id is deterministic and exact.
+        let splitmix_unit = |index: u64| -> f32 {
+            let mut hash = index.wrapping_mul(0x9e37_79b9_7f4a_7c15);
+            hash = (hash ^ (hash >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+            hash = (hash ^ (hash >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+            hash ^= hash >> 31;
+            (hash >> 40) as f32 / 16_777_216.0
+        };
+        let mut peaked = Vec::with_capacity(4 * WIDE);
+        let mut moderate = Vec::with_capacity(4 * WIDE);
+        let mut near_uniform = Vec::with_capacity(4 * WIDE);
+        for _ in 0..4 {
+            for token in 0..WIDE {
+                let mut value = -8.0 + 10.0 * splitmix_unit(token as u64);
+                if token < 4 {
+                    value += 20.0 - token as f32 * 2.0;
+                }
+                peaked.push(value);
+                moderate.push(if token < 64 { -0.25 * token as f32 } else { -30.0 });
+                near_uniform.push((splitmix_unit(token as u64) - 0.5) * 1.0e-3);
+            }
+        }
+        let wide_rows = 4_usize;
+        let wide_seeds = [1_u64, 20_260_922, 0xDEAD_BEEF, 987_654_321];
+        let wide = vec![
+            v41_fast_row(0, 0.7, 0.0, wide_seeds[0], 0, DS41RT_V41_SAMPLER_NO_MASK_ROW, DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+            v41_fast_row(1, 0.7, 0.05, wide_seeds[1], 1, DS41RT_V41_SAMPLER_NO_MASK_ROW, DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+            v41_fast_row(2, 1.0, 0.0, wide_seeds[2], 2, DS41RT_V41_SAMPLER_NO_MASK_ROW, DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+            v41_fast_row(3, 0.7, 0.0, wide_seeds[3], 5, DS41RT_V41_SAMPLER_NO_MASK_ROW, DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+        ];
+
+        let (peaked_ids, peaked_status, peaked_total) =
+            run_v41_fast_path_batch(&library, &peaked, wide_rows, WIDE, &wide, None, 0)?;
+        for row in 0..wide_rows {
+            assert_eq!(peaked_status[row], DS41RT_V41_SAMPLER_STATUS_OK);
+            assert!(
+                (peaked_ids[row] as usize) < 4,
+                "peaked row {row}: the first four tokens carry the +20 boost, device id {}",
+                peaked_ids[row]
+            );
+            assert!(peaked_total[row].is_finite() && peaked_total[row] > 0.0);
+            let oracle = ds41rt_core::TargetSamplingParams::new(
+                wide[row].temperature,
+                wide[row].top_p,
+                None,
+                wide[row].min_p,
+                wide[row].seed,
+            )
+            .expect("params")
+            .select_token(&peaked[row * WIDE..(row + 1) * WIDE], None, wide[row].position)
+            .expect("oracle selection") as u32;
+            assert_eq!(
+                peaked_ids[row], oracle,
+                "peaked row {row} device id must equal the production CPU sampler"
+            );
+        }
+
+        let moderate_rows = 2_usize;
+        let moderate_params = vec![
+            v41_fast_row(0, 0.7, 0.05, wide_seeds[0], 0, DS41RT_V41_SAMPLER_NO_MASK_ROW, DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+            v41_fast_row(1, 0.7, 0.05, wide_seeds[1], 1, DS41RT_V41_SAMPLER_NO_MASK_ROW, DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+        ];
+        let moderate_prefix = &moderate[..moderate_rows * WIDE];
+        let (moderate_ids, moderate_status, _) = run_v41_fast_path_batch(
+            &library,
+            moderate_prefix,
+            moderate_rows,
+            WIDE,
+            &moderate_params,
+            None,
+            0,
+        )?;
+        for row in 0..moderate_rows {
+            assert_eq!(moderate_status[row], DS41RT_V41_SAMPLER_STATUS_OK);
+            let oracle = ds41rt_core::TargetSamplingParams::new(
+                moderate_params[row].temperature,
+                moderate_params[row].top_p,
+                None,
+                moderate_params[row].min_p,
+                moderate_params[row].seed,
+            )
+            .expect("params")
+            .select_token(
+                &moderate[row * WIDE..(row + 1) * WIDE],
+                None,
+                moderate_params[row].position,
+            )
+            .expect("oracle selection") as u32;
+            assert_eq!(
+                moderate_ids[row], oracle,
+                "moderate row {row}: device id must equal the production CPU sampler"
+            );
+        }
+
+        // Near-uniform is the pathological wide-support row: the accumulation
+        // residual can move the crossing by a token, so this records the
+        // divergence (§6.3c) and only requires a valid survivor.
+        let near_rows = 2_usize;
+        let near_params = vec![
+            v41_fast_row(0, 0.7, 0.0, wide_seeds[0], 5, DS41RT_V41_SAMPLER_NO_MASK_ROW, DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+            v41_fast_row(1, 0.7, 0.0, wide_seeds[1], 6, DS41RT_V41_SAMPLER_NO_MASK_ROW, DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+        ];
+        let near_prefix = &near_uniform[..near_rows * WIDE];
+        let (near_ids, near_status, _) = run_v41_fast_path_batch(
+            &library,
+            near_prefix,
+            near_rows,
+            WIDE,
+            &near_params,
+            None,
+            0,
+        )?;
+        let mut near_differing = 0_usize;
+        for row in 0..near_rows {
+            assert_eq!(near_status[row], DS41RT_V41_SAMPLER_STATUS_OK);
+            assert!((near_ids[row] as usize) < WIDE);
+            let oracle = ds41rt_core::TargetSamplingParams::new(
+                near_params[row].temperature,
+                near_params[row].top_p,
+                None,
+                near_params[row].min_p,
+                near_params[row].seed,
+            )
+            .expect("params")
+            .select_token(
+                &near_uniform[row * WIDE..(row + 1) * WIDE],
+                None,
+                near_params[row].position,
+            )
+            .expect("oracle selection") as u32;
+            if near_ids[row] != oracle {
+                near_differing += 1;
+            }
+        }
+        println!(
+            "v4.1 sampler fast-path FFI oracle: small_rows={rows} vocab={vocab} \
+             peaked_rows={wide_rows} moderate_rows={moderate_rows} near_uniform_rows={near_rows} \
+             near_uniform_diverged={near_differing}/{near_rows}"
         );
         Ok(())
     }

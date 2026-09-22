@@ -23,6 +23,15 @@
  * temperature scaling, scaled maximum, the `min_p` survivor count and the
  * greedy / constrained-greedy device argmax. `k`-selection and top-p land in
  * later chunks; the scratch and arena regions they need are already allocated.
+ *
+ * Chunk 2 adds K2 (`v41_sample_categorical_kernel`): the fast-path categorical
+ * draw for rows with `top_k` disabled and `top_p >= 1.0` (the temperature-only
+ * and `min_p`-only profiles), the device port of the `(seed, position)` draw,
+ * the inclusive ascending-token-order prefix scan, and the CPU's no-crossing
+ * `last`-survivor fallback. Both accumulation orders are compiled: the shipped
+ * default is the fixed-tree segmented scan, and
+ * `DS41RT_V41_K2_SEQUENTIAL_COMBINE` selects the strictly sequential
+ * token-order combine evaluated by the chunk-2 measurement.
  */
 #ifndef DS41RT_V41_SAMPLING_GPU_H
 #define DS41RT_V41_SAMPLING_GPU_H
@@ -163,6 +172,45 @@ static inline void ds41rt_v41_sampler_clear_remainder(uint32_t* words, size_t vo
   }
   words[(vocab - 1u) / 32u] &= (uint32_t{1} << remainder) - 1u;
 }
+
+/* ---- Device draw: SplitMix64, ported bit-identically (design §6.1) ----
+ *
+ * The target draw is `TargetSamplingParams::random_uniform`
+ * (`rust/crates/ds41rt-core/src/target_sampling.rs:187-199`) reproduced exactly,
+ * so the `(seed, position)` -> uniform mapping is unchanged from the CPU. The
+ * mantissa is truncated to 24 bits and scaled by the exact `2^-24`, so the
+ * product is a single exact f32 operation and the device value is bit-identical
+ * to the host for every `(seed, position)`.
+ *
+ * `DS41RT_V41_SAMPLER_MAX_UNIFORM_BITS` is the `0x3F7FFFFF` (= 0.99999994) clamp
+ * of `target_sampling.rs:51-52`, applied after the draw and before the CDF
+ * comparison (`:459`). It is a bit pattern, never a decimal literal.
+ *
+ * These live in the header (under `__CUDACC__`, so host C++ that includes
+ * `ds41rt_native.h` never sees them) because the device tests must call the
+ * *shipped* function from a probe kernel, not a copy of it.
+ */
+#define DS41RT_V41_SAMPLER_MAX_UNIFORM_BITS 0x3F7FFFFFu
+#define DS41RT_V41_SAMPLER_RNG_DOMAIN 0x7f4a7c159e3779b9ull
+#define DS41RT_V41_SAMPLER_RNG_MUL 0x9e3779b97f4a7c15ull
+
+#if defined(__CUDACC__)
+__device__ __forceinline__ float ds41rt_v41_target_uniform(uint64_t seed, uint64_t position) {
+  uint64_t mixed = seed + DS41RT_V41_SAMPLER_RNG_DOMAIN +
+                   position * DS41RT_V41_SAMPLER_RNG_MUL + DS41RT_V41_SAMPLER_RNG_MUL;
+  mixed = (mixed ^ (mixed >> 30)) * 0xbf58476d1ce4e5b9ull;
+  mixed = (mixed ^ (mixed >> 27)) * 0x94d049bb133111ebull;
+  mixed ^= mixed >> 31;
+  const uint32_t mantissa = static_cast<uint32_t>(mixed >> 40);
+  return static_cast<float>(mantissa) * (1.0f / 16777216.0f);
+}
+
+/* The clamp of design §4.8 / §6.1, in the exact CPU order
+ * (`MAX_UNIFORM.min(uniform.max(0.0))`). */
+__device__ __forceinline__ float ds41rt_v41_target_clamp_uniform(float uniform) {
+  return fminf(fmaxf(uniform, 0.0f), __uint_as_float(DS41RT_V41_SAMPLER_MAX_UNIFORM_BITS));
+}
+#endif
 
 /* Lower `16 * DS41RT_V41_SAMPLER_ROW_PARAM_OFFSET_<field>` is the field's byte
  * offset inside `ds41rt_v41_sampler_row_t`; the Rust ABI test pins these. */

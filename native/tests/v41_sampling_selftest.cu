@@ -59,6 +59,24 @@ void require_cuda(cudaError_t status, const char* action) {
   }
 }
 
+/* Chunk-2 shorthand; identical to the `std::numeric_limits` spellings used
+ * above. */
+float inf() { return std::numeric_limits<float>::infinity(); }
+uint32_t u32max() { return std::numeric_limits<uint32_t>::max(); }
+
+/* K2 tests reuse one logits row across many (seed, position) cells, so the
+ * device buffer must hold a real copy per row: the kernel reads
+ * `logits + block_row * logits_stride`. */
+std::vector<float> repeat_row(const std::vector<float>& row, size_t rows) {
+  std::vector<float> out(rows * row.size());
+  for (size_t r = 0; r < rows; ++r) {
+    for (size_t i = 0; i < row.size(); ++i) {
+      out[r * row.size() + i] = row[i];
+    }
+  }
+  return out;
+}
+
 /* ---- CPU oracle: a faithful port of `reference_select`'s greedy branch and of
  * the K1 scalar chain (`target_sampling.rs`, the design's correctness oracle).
  * Only the greedy/constrained path is ported in chunk 1: chunk 1's device scope
@@ -1235,6 +1253,905 @@ void test_subnormal_and_nonfinite_grid() {
   std::cout << "ok  subnormal per-token bits, survivors and non-finite grid\n";
 }
 
+/* ==================================================================== */
+/* Chunk 2: K2 fast path (`top_k` disabled, `top_p >= 1.0`)             */
+/* ==================================================================== */
+
+/* Host port of `TargetSamplingParams::random_uniform`
+ * (`target_sampling.rs:187-199`). This is the value the CPU sampler draws and
+ * the value the shipped device function must reproduce bit for bit. */
+float host_target_uniform(uint64_t seed, uint64_t position) {
+  const uint64_t domain = 0x7f4a7c159e3779b9ull;
+  const uint64_t mul = 0x9e3779b97f4a7c15ull;
+  uint64_t mixed = seed + domain + position * mul + mul;
+  mixed = (mixed ^ (mixed >> 30)) * 0xbf58476d1ce4e5b9ull;
+  mixed = (mixed ^ (mixed >> 27)) * 0x94d049bb133111ebull;
+  mixed ^= mixed >> 31;
+  const uint32_t mantissa = static_cast<uint32_t>(mixed >> 40);
+  return static_cast<float>(mantissa) * (1.0f / 16777216.0f);
+}
+
+/* 0x3F7FFFFF as a bit pattern, the design's `MAX_UNIFORM` (§4.8/§6.1). */
+float max_uniform_bits() {
+  const uint32_t bits = 0x3F7FFFFFu;
+  float value = 0.0f;
+  std::memcpy(&value, &bits, sizeof(value));
+  return value;
+}
+
+float host_clamp_uniform(float uniform) {
+  /* `MAX_UNIFORM.min(uniform.max(0.0))` (`target_sampling.rs:459`). */
+  return std::fmin(std::fmax(uniform, 0.0f), max_uniform_bits());
+}
+
+__global__ void v41_uniform_probe_kernel(const uint64_t* seeds, const uint64_t* positions,
+                                         size_t count, float* out_uniforms) {
+  const size_t index = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (index < count) {
+    out_uniforms[index] = ds41rt_v41_target_uniform(seeds[index], positions[index]);
+  }
+}
+
+__global__ void v41_clamp_probe_kernel(const float* in, size_t count, float* out_clamped) {
+  const size_t index = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (index < count) {
+    out_clamped[index] = ds41rt_v41_target_clamp_uniform(in[index]);
+  }
+}
+
+/* Faithful C port of the CPU fast path (`target_sampling.rs:430-465` plus
+ * `sample_categorical`, `:596-618`). Chunk 2's device scope is exactly this
+ * branch, so this is the oracle the device draw must reproduce. */
+struct RefFast {
+  uint32_t status = DS41RT_V41_SAMPLER_STATUS_OK;
+  uint32_t token = 0;
+  float total = 0.0f;
+  float max_scaled = 0.0f;
+  uint32_t survivor_count = 0;
+  /* True when the inclusive crossing fired. False would mean the CPU took its
+   * `last` fallback (`target_sampling.rs:616-618`), which is unreachable. */
+  bool crossed = false;
+  /* True when every cumulative boundary is at least 1e-4 * total away from the
+   * target, so a 1-ulp accumulation difference cannot change the crossing. */
+  bool margin_safe = false;
+};
+
+RefFast cpu_fast_reference(const float* logits, size_t vocab, const uint32_t* mask_words,
+                           bool unconstrained, float temperature, float min_p, float ln_min_p,
+                           uint64_t seed, uint64_t position) {
+  RefFast out;
+  const auto allowed = [&](size_t token) {
+    return unconstrained || ((mask_words[token / 32u] >> (token % 32u)) & 1u) != 0u;
+  };
+  const float inv = 1.0f / temperature;
+  float max_scaled = -std::numeric_limits<float>::infinity();
+  uint32_t allowed_count = 0;
+  for (size_t token = 0; token < vocab; ++token) {
+    if (!allowed(token)) {
+      continue;
+    }
+    const float logit = logits[token];
+    if (!std::isfinite(logit)) {
+      out.status = DS41RT_V41_SAMPLER_STATUS_NONFINITE_LOGIT;
+      return out;
+    }
+    ++allowed_count;
+    max_scaled = std::fmax(max_scaled, logit * inv);
+  }
+  if (allowed_count == 0) {
+    out.status = DS41RT_V41_SAMPLER_STATUS_EMPTY_CANDIDATES;
+    return out;
+  }
+  if (!std::isfinite(max_scaled)) {
+    out.status = DS41RT_V41_SAMPLER_STATUS_INVALID_TEMPERATURE;
+    return out;
+  }
+  out.max_scaled = max_scaled;
+  const float min_scaled = min_p > 0.0f ? max_scaled + ln_min_p
+                                        : -std::numeric_limits<float>::infinity();
+  const auto survivor = [&](size_t token) {
+    return allowed(token) && logits[token] * inv >= min_scaled;
+  };
+  const float uniform = host_clamp_uniform(host_target_uniform(seed, position));
+  float total = 0.0f;
+  for (size_t token = 0; token < vocab; ++token) {
+    if (survivor(token)) {
+      total += std::exp(logits[token] * inv - max_scaled);
+      ++out.survivor_count;
+    }
+  }
+  total = std::fmax(total, 1.0e-20f);
+  const float target = uniform * total;
+  float cumulative = 0.0f;
+  float min_distance = std::numeric_limits<float>::infinity();
+  bool crossed = false;
+  uint32_t last = 0u;
+  for (size_t token = 0; token < vocab; ++token) {
+    if (!survivor(token)) {
+      continue;
+    }
+    last = static_cast<uint32_t>(token);
+    cumulative += std::exp(logits[token] * inv - max_scaled);
+    min_distance = std::fmin(min_distance, std::fabs(cumulative - target));
+    if (!crossed && target <= cumulative) {
+      out.token = static_cast<uint32_t>(token);
+      crossed = true;
+    }
+  }
+  if (!crossed) {
+    /* The CPU's `last` fallback (`target_sampling.rs:616-618`). Unreachable by
+     * construction: `total` and `cumulative` are the same left-to-right sum, so
+     * the last survivor's cumulative equals `total >= target`. Kept so a port
+     * that diverges is visible. */
+    out.token = last;
+  }
+  out.total = total;
+  out.crossed = crossed;
+  out.margin_safe = min_distance > 1.0e-4f * total;
+  return out;
+}
+
+/* Runs one K2 configuration against the ported CPU fast path. `exact` says the
+ * rows' weights are exactly representable in both implementations (all equal or
+ * zero), so token and `total` equality are asserted unconditionally; otherwise
+ * token equality is asserted only where the crossing has a safe margin and
+ * `total` is compared with a loose relative bound. */
+void run_fast_case(const std::vector<float>& logits, size_t rows, size_t vocab,
+                   const std::vector<ds41rt_v41_sampler_row_t>& params,
+                   const std::vector<uint32_t>& mask, bool with_mask, bool strict_mask_bits,
+                   bool exact, const char* label) {
+  ++g_cases;
+  K1 k = make_k1(rows, vocab, with_mask, true);
+  require_cuda(cudaMemcpy(k.logits, logits.data(), logits.size() * sizeof(float),
+                          cudaMemcpyHostToDevice), "k2 logits h2d");
+  require_cuda(cudaMemcpy(k.params, params.data(),
+                          params.size() * sizeof(ds41rt_v41_sampler_row_t),
+                          cudaMemcpyHostToDevice), "k2 params h2d");
+  std::vector<uint32_t> device_mask = mask;
+  if (with_mask) {
+    if (strict_mask_bits) {
+      for (size_t r = 0; r < rows; ++r) {
+        ds41rt_v41_sampler_clear_remainder(device_mask.data() + r * k.words, vocab);
+      }
+    }
+    require_cuda(cudaMemcpy(k.mask, device_mask.data(),
+                            device_mask.size() * sizeof(uint32_t),
+                            cudaMemcpyHostToDevice), "k2 mask h2d");
+  }
+  const ds41rt_status_t launch = ds41rt_cuda_v41_target_sample(
+      k.logits, rows, vocab, vocab, k.params, with_mask ? k.mask : nullptr,
+      with_mask ? k.words : 0u, k.ids, k.status, k.detail, k.scores, k.total,
+      k.nucleus, k.scratch);
+  expect(launch == DS41RT_STATUS_OK, std::string(label) + ": launch status");
+  std::vector<uint32_t> ids(rows), status(rows);
+  std::vector<float> total(rows);
+  require_cuda(cudaMemcpy(ids.data(), k.ids, rows * 4, cudaMemcpyDeviceToHost), "k2 ids");
+  require_cuda(cudaMemcpy(status.data(), k.status, rows * 4, cudaMemcpyDeviceToHost), "k2 status");
+  require_cuda(cudaMemcpy(total.data(), k.total, rows * 4, cudaMemcpyDeviceToHost), "k2 total");
+  for (size_t r = 0; r < rows; ++r) {
+    const ds41rt_v41_sampler_row_t& p = params[r];
+    const bool unconstrained = (p.flags & DS41RT_V41_SAMPLER_FLAG_NO_MASK) != 0u ||
+                               p.mask_row == DS41RT_V41_SAMPLER_NO_MASK_ROW;
+    const uint32_t* row_mask = (with_mask && !unconstrained)
+        ? device_mask.data() + static_cast<size_t>(p.mask_row) * k.words
+        : nullptr;
+    const RefFast expected = cpu_fast_reference(
+        logits.data() + r * vocab, vocab, row_mask, unconstrained, p.temperature, p.min_p,
+        p.ln_min_p, p.seed, p.position);
+    const std::string tag = std::string(label) + " row " + std::to_string(r);
+    if (status[r] != expected.status) {
+      std::cerr << "k2 status mismatch " << tag << " expected=" << expected.status
+                << " device=" << status[r] << "\n";
+    }
+    expect(status[r] == expected.status, tag + ": status");
+    if (expected.status != DS41RT_V41_SAMPLER_STATUS_OK) {
+      continue;
+    }
+    /* The CPU port must have crossed, never taken its `last` fallback. */
+    expect(expected.crossed, tag + ": CPU crossing exists (last fallback unreachable)");
+    /* The device draw must land in-vocab and on a survivor. */
+    expect(ids[r] < vocab, tag + ": in-vocab id");
+    const float inv = 1.0f / p.temperature;
+    const float min_scaled = p.min_p > 0.0f
+        ? expected.max_scaled + p.ln_min_p
+        : -std::numeric_limits<float>::infinity();
+    const bool allowed_id = unconstrained ||
+        ((row_mask[ids[r] / 32u] >> (ids[r] % 32u)) & 1u) != 0u;
+    expect(allowed_id, tag + ": selected token is allowed");
+    expect(logits[r * vocab + ids[r]] * inv >= min_scaled, tag + ": selected token is a survivor");
+    if (exact || expected.margin_safe) {
+      if (ids[r] != expected.token) {
+        std::cerr << "k2 token mismatch " << tag << " expected=" << expected.token
+                  << " device=" << ids[r] << " total=" << total[r] << "\n";
+      }
+      expect(ids[r] == expected.token, tag + ": fast-path token");
+    }
+    if (exact) {
+      expect(total[r] == expected.total, tag + ": fast-path total bits");
+    } else {
+      if (!(std::fabs(total[r] - expected.total) <= 1.0e-3f * expected.total)) {
+        std::cerr << "k2 total mismatch " << tag << " device=" << total[r]
+                  << " port=" << expected.total << "\n";
+      }
+      expect(std::fabs(total[r] - expected.total) <= 1.0e-3f * expected.total,
+             tag + ": fast-path total within 1e-3");
+    }
+  }
+  free_k1(&k);
+}
+
+ds41rt_v41_sampler_row_t fast_row(uint32_t output_row, float temperature, float min_p,
+                                  float ln_min_p, uint64_t seed, uint64_t position,
+                                  uint32_t mask_row, uint32_t flags) {
+  ds41rt_v41_sampler_row_t value = {};
+  value.seed = seed;
+  value.position = position;
+  value.temperature = temperature;
+  value.top_p = 1.0f;
+  value.min_p = min_p;
+  value.top_k = 0u;
+  value.mask_row = mask_row;
+  /* DIAGNOSE is always set so K2's `out_total` (and K1's `out_nucleus_count`) are
+   * observable; it changes no draw. */
+  value.flags = flags | DS41RT_V41_SAMPLER_FLAG_DIAGNOSE;
+  value.output_row = output_row;
+  value.ln_min_p = ln_min_p;
+  return value;
+}
+
+/* The device SplitMix64 must equal the host port bit for bit on the design's
+ * §6.2/§12.8 grid, including positions 0, 2^63 and u64::MAX. */
+void test_k2_rng_bit_equality() {
+  std::vector<uint64_t> seeds = {0ull, 1ull, std::numeric_limits<uint64_t>::max(),
+                                 0x8000000000000000ull, 4242ull};
+  std::vector<uint64_t> positions;
+  for (uint64_t p = 0; p <= 64; ++p) {
+    positions.push_back(p);
+  }
+  positions.push_back(1ull << 31);
+  positions.push_back((1ull << 32) - 1ull);
+  positions.push_back(1ull << 63);
+  positions.push_back(std::numeric_limits<uint64_t>::max());
+  std::vector<uint64_t> host_seeds, host_positions;
+  for (uint64_t seed : seeds) {
+    for (uint64_t position : positions) {
+      host_seeds.push_back(seed);
+      host_positions.push_back(position);
+    }
+  }
+  const size_t count = host_seeds.size();
+  uint64_t* device_seeds = nullptr;
+  uint64_t* device_positions = nullptr;
+  float* device_uniforms = nullptr;
+  alloc_device(&device_seeds, count * sizeof(uint64_t), "rng seeds");
+  alloc_device(&device_positions, count * sizeof(uint64_t), "rng positions");
+  alloc_device(&device_uniforms, count * sizeof(float), "rng uniforms");
+  require_cuda(cudaMemcpy(device_seeds, host_seeds.data(), count * sizeof(uint64_t),
+                          cudaMemcpyHostToDevice), "rng seeds h2d");
+  require_cuda(cudaMemcpy(device_positions, host_positions.data(), count * sizeof(uint64_t),
+                          cudaMemcpyHostToDevice), "rng positions h2d");
+  const unsigned int block = 256;
+  v41_uniform_probe_kernel<<<static_cast<unsigned int>((count + block - 1) / block), block>>>(
+      device_seeds, device_positions, count, device_uniforms);
+  require_cuda(cudaDeviceSynchronize(), "rng probe");
+  std::vector<float> observed(count);
+  require_cuda(cudaMemcpy(observed.data(), device_uniforms, count * sizeof(float),
+                          cudaMemcpyDeviceToHost), "rng probe d2h");
+  size_t differing = 0;
+  for (size_t i = 0; i < count; ++i) {
+    const float expected = host_target_uniform(host_seeds[i], host_positions[i]);
+    uint32_t a = 0;
+    uint32_t b = 0;
+    std::memcpy(&a, &expected, 4);
+    std::memcpy(&b, &observed[i], 4);
+    if (a != b) {
+      ++differing;
+      if (differing <= 3) {
+        std::cerr << "rng mismatch seed=" << host_seeds[i] << " position=" << host_positions[i]
+                  << " host=" << a << " device=" << b << "\n";
+      }
+    }
+  }
+  expect(differing == 0, "device SplitMix64 is bit-identical to the host port");
+  expect(count == 5 * 69, "rng grid size");
+  require_cuda(cudaFree(device_seeds), "free rng seeds");
+  require_cuda(cudaFree(device_positions), "free rng positions");
+  require_cuda(cudaFree(device_uniforms), "free rng uniforms");
+  std::cout << "ok  K2 device RNG bit-identical over " << count << " (seed, position) pairs\n";
+}
+
+/* The `MAX_UNIFORM` clamp is applied in the CPU order on device, including
+ * values above the bound (which SplitMix64 itself cannot produce, so this is
+ * also the guard against a future draw change). */
+void test_k2_max_uniform_clamp() {
+  const float nan_value = std::numeric_limits<float>::quiet_NaN();
+  std::vector<float> inputs = {
+      0.0f, -0.0f, 0.5f, max_uniform_bits(), 1.0f, 2.0f, -1.0f, -1.0e-30f,
+      std::nextafter(max_uniform_bits(), 1.0f), std::nextafter(max_uniform_bits(), 0.0f),
+      nan_value};
+  const size_t count = inputs.size();
+  float* device_in = nullptr;
+  float* device_out = nullptr;
+  alloc_device(&device_in, count * sizeof(float), "clamp in");
+  alloc_device(&device_out, count * sizeof(float), "clamp out");
+  require_cuda(cudaMemcpy(device_in, inputs.data(), count * sizeof(float),
+                          cudaMemcpyHostToDevice), "clamp h2d");
+  v41_clamp_probe_kernel<<<1, static_cast<int>(count)>>>(device_in, count, device_out);
+  require_cuda(cudaDeviceSynchronize(), "clamp probe");
+  std::vector<float> observed(count);
+  require_cuda(cudaMemcpy(observed.data(), device_out, count * sizeof(float),
+                          cudaMemcpyDeviceToHost), "clamp d2h");
+  for (size_t i = 0; i < count; ++i) {
+    const float expected = host_clamp_uniform(inputs[i]);
+    uint32_t a = 0;
+    uint32_t b = 0;
+    std::memcpy(&a, &expected, 4);
+    std::memcpy(&b, &observed[i], 4);
+    expect(a == b, "clamp result bits");
+  }
+  /* The largest SplitMix64 output is exactly MAX_UNIFORM, so the upper clamp is
+   * a no-op for every real draw; the lower clamp is the only binding one. */
+  expect(host_target_uniform(0ull, 0ull) >= 0.0f, "draw is non-negative");
+  require_cuda(cudaFree(device_in), "free clamp in");
+  require_cuda(cudaFree(device_out), "free clamp out");
+  std::cout << "ok  K2 MAX_UNIFORM clamp matches the CPU order (" << count << " inputs)\n";
+}
+
+/* Full fast-path parameter grid x masks: temperatures `{1e-5, 1e-4, 0.2, 0.7, 2.0}`
+ * (1e-5 is the design §12.3 boundary: `is_greedy` is strictly `< 1e-5`, so it is
+ * a valid non-greedy fast-path cell) x min_p `{0, 1e-6, 0.05, 0.5, 1.0}`, over
+ * all-allowed, `token < 5` and `token % 3 != 0`. */
+void test_k2_fast_path_grid() {
+  const size_t vocab = 65;
+  const size_t words = (vocab + 31u) / 32u;
+  const std::vector<float> temperatures = {1.0e-5f, 1.0e-4f, 0.2f, 0.7f, 2.0f};
+  const std::vector<float> min_ps = {0.0f, 1.0e-6f, 0.05f, 0.5f, 1.0f};
+  const size_t cells = temperatures.size() * min_ps.size();
+  std::vector<float> base_row(vocab);
+  for (size_t token = 0; token < vocab; ++token) {
+    /* Deterministic, sign-changing, with a clear maximum so the crossing has a
+     * safe margin on every cell. */
+    base_row[token] = 0.75f * std::sin(static_cast<float>(token) * 0.7f) -
+                      0.02f * static_cast<float>(token);
+  }
+  base_row[7] = 3.5f;
+  const std::vector<float> logits = repeat_row(base_row, cells);
+
+  /* Three mask rows, built programmatically so no hand-computed bit pattern can
+   * be wrong: unconstrained, `token < 5`, and `token % 3 != 0`. */
+  const auto build_mask = [&](int kind) {
+    std::vector<uint32_t> mask(cells * words, 0u);
+    for (size_t r = 0; r < cells; ++r) {
+      for (size_t token = 0; token < vocab; ++token) {
+        const bool allow = kind == 0 ? true : (kind == 1 ? token < 5u : (token % 3u) != 0u);
+        if (allow) {
+          mask[r * words + token / 32u] |= 1u << (token % 32u);
+        }
+      }
+    }
+    return mask;
+  };
+  const std::vector<std::pair<const char*, int>> masks = {
+      {"all-allowed", 0}, {"token<5", 1}, {"token%3!=0", 2}};
+  for (const auto& [name, kind] : masks) {
+    std::vector<ds41rt_v41_sampler_row_t> params;
+    for (size_t t = 0; t < temperatures.size(); ++t) {
+      for (size_t m = 0; m < min_ps.size(); ++m) {
+        const size_t r = params.size();
+        const float min_p = min_ps[m];
+        const float ln_min_p = min_p > 0.0f ? std::log(min_p) : -inf();
+        params.push_back(fast_row(
+            static_cast<uint32_t>(r), temperatures[t], min_p, ln_min_p, 1000u + r, 37u * r + 1u,
+            kind == 0 ? DS41RT_V41_SAMPLER_NO_MASK_ROW : 0u,
+            kind == 0 ? DS41RT_V41_SAMPLER_FLAG_NO_MASK : 0u));
+      }
+    }
+    const std::vector<uint32_t> mask = build_mask(kind);
+    run_fast_case(logits, cells, vocab, params, mask, kind != 0, true, false, name);
+  }
+  std::cout << "ok  K2 fast-path grid: " << cells * masks.size() << " cells across 3 masks\n";
+}
+
+/* min_p membership at the exact threshold and one ULP below, seen through the
+ * drawn token. `scaled == max_scaled + ln_min_p` is retained (inclusive `>=`);
+ * one ULP below is rejected. With a uniform above `1 / total`, the draw lands on
+ * the threshold token iff it survives, so the two rows below differ exactly when
+ * the boundary rule is wrong. */
+void test_k2_min_p_threshold_tokens() {
+  const float min_p = 0.5f;
+  const float ln_min_p = std::log(0.5f);        /* = -0.6931472, the shipped value */
+  const float temperature = 2.0f;               /* inv = 0.5 exactly */
+  const float exact_logit = -1.3862944f;        /* scaled == max + ln_min_p exactly */
+  const float below_logit = -1.3862945f;        /* scaled == threshold - 1 ULP */
+  const size_t vocab = 4;
+  /* u = 0.843... > 1 / 1.5, so the crossing is the second survivor. */
+  const uint64_t seed = 0ull;
+  const uint64_t position = 5ull;
+  const std::vector<float> logits = {
+      0.0f, exact_logit, below_logit, -8.0f,   /* row 0: token 1 at the threshold */
+      0.0f, below_logit, exact_logit, -8.0f,   /* row 1: token 2 at the threshold */
+  };
+  std::vector<ds41rt_v41_sampler_row_t> params = {
+      fast_row(0, temperature, min_p, ln_min_p, seed, position,
+               DS41RT_V41_SAMPLER_NO_MASK_ROW, DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+      fast_row(1, temperature, min_p, ln_min_p, seed, position,
+               DS41RT_V41_SAMPLER_NO_MASK_ROW, DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+  };
+  /* Non-zero surviving weight, so the crossing is a real weight boundary. */
+  expect(host_target_uniform(seed, position) * (1.0f + std::exp(ln_min_p)) > 1.0f,
+         "threshold draw lands on the second survivor");
+  run_fast_case(logits, 2, vocab, params, {}, false, false, false, "min_p threshold tokens");
+  /* Exact expected ids: the at-threshold token is the second survivor. */
+  K1 k = make_k1(2, vocab, false, true);
+  require_cuda(cudaMemcpy(k.logits, logits.data(), logits.size() * 4, cudaMemcpyHostToDevice),
+               "threshold logits");
+  require_cuda(cudaMemcpy(k.params, params.data(), params.size() * sizeof(params[0]),
+                          cudaMemcpyHostToDevice), "threshold params");
+  expect(ds41rt_cuda_v41_target_sample(k.logits, 2, vocab, vocab, k.params, nullptr, 0u, k.ids,
+                                       k.status, k.detail, k.scores, k.total, k.nucleus,
+                                       k.scratch) == DS41RT_STATUS_OK, "threshold launch");
+  std::vector<uint32_t> ids(2);
+  require_cuda(cudaMemcpy(ids.data(), k.ids, 2 * 4, cudaMemcpyDeviceToHost), "threshold ids");
+  expect(ids[0] == 1u, "at-threshold survivor on row 0 is drawn");
+  expect(ids[1] == 2u, "at-threshold survivor on row 1 is drawn");
+  free_k1(&k);
+  std::cout << "ok  K2 min_p threshold membership is inclusive on the drawn token\n";
+}
+
+/* Edge cases: all-tied weights (exact, exercises the RNG + crossing), a single
+ * survivor (`min_p = 1`), and all-`-inf` survivors at `min_p = 0` (zero weights,
+ * every survivor's weight exactly 0 except the maximum). */
+void test_k2_tied_and_edge_cases() {
+  const float neg_max = -std::numeric_limits<float>::max();
+  const float neg_inf = -std::numeric_limits<float>::infinity();
+  /* All logits equal -> every weight exactly 1 -> exact arithmetic in both
+   * implementations, so token equality is asserted unconditionally. */
+  {
+    const size_t vocab = 97;
+    std::vector<float> logits = repeat_row(std::vector<float>(vocab, 0.25f), 4);
+    std::vector<ds41rt_v41_sampler_row_t> params;
+    for (size_t r = 0; r < 4; ++r) {
+      params.push_back(fast_row(static_cast<uint32_t>(r), 0.7f, 0.0f, neg_inf, 1u + r, r * 11u,
+                                DS41RT_V41_SAMPLER_NO_MASK_ROW,
+                                DS41RT_V41_SAMPLER_FLAG_NO_MASK));
+    }
+    run_fast_case(logits, params.size(), vocab, params, {}, false, false, true, "all-tied");
+  }
+  /* One survivor: min_p = 1 keeps exactly the strict maximum. */
+  {
+    const size_t vocab = 8;
+    const std::vector<float> base = {0.5f, 2.0f, -1.0f, 0.0f, 0.25f, -3.0f, 1.0f, -0.5f};
+    const std::vector<float> logits = repeat_row(base, 2);
+    std::vector<ds41rt_v41_sampler_row_t> params = {
+        fast_row(0, 1.0f, 1.0f, 0.0f, 42u, 0u, DS41RT_V41_SAMPLER_NO_MASK_ROW,
+                 DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+        fast_row(1, 1.0f, 1.0f, 0.0f, 42u, 99u, DS41RT_V41_SAMPLER_NO_MASK_ROW,
+                 DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+    };
+    run_fast_case(logits, 2, vocab, params, {}, false, false, true, "single survivor");
+  }
+  /* -inf survivors at min_p = 0: their weights are exactly 0, so the maximum
+   * token always wins and `total` is exactly 1. */
+  {
+    const size_t vocab = 4;
+    std::vector<float> logits = {neg_max, neg_max, neg_max, neg_max};
+    std::vector<ds41rt_v41_sampler_row_t> params = {
+        fast_row(0, 1.0e-5f, 0.0f, neg_inf, 7u, 5u, DS41RT_V41_SAMPLER_NO_MASK_ROW,
+                 DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+    };
+    run_fast_case(logits, 1, vocab, params, {}, false, false, true, "-inf survivors");
+  }
+  /* Tied maximum with min_p = 1: every tied token survives and the draw picks
+   * among them in ascending token order. */
+  {
+    const size_t vocab = 6;
+    const std::vector<float> logits =
+        repeat_row({1.0f, 1.0f, 1.0f, 0.0f, -1.0f, 1.0f}, 3);
+    std::vector<ds41rt_v41_sampler_row_t> params;
+    for (size_t r = 0; r < 3; ++r) {
+      params.push_back(fast_row(static_cast<uint32_t>(r), 1.0f, 1.0f, 0.0f, 5u + r, 2u,
+                                DS41RT_V41_SAMPLER_NO_MASK_ROW,
+                                DS41RT_V41_SAMPLER_FLAG_NO_MASK));
+    }
+    run_fast_case(logits, params.size(), vocab, params, {}, false, false, false,
+                  "tied maximum with min_p=1");
+  }
+  std::cout << "ok  K2 tied / single-survivor / -inf-survivor edge cases\n";
+}
+
+/* Seeded replay: the token is a pure function of `(seed, position)` and the row,
+ * across positions 0, 2^31, 2^32-1, 2^63 and u64::MAX, and independent of the
+ * wave it is run in. */
+void test_k2_seeded_replay() {
+  const size_t vocab = 33;
+  const size_t words = (vocab + 31u) / 32u;
+  std::vector<float> base_row(vocab);
+  for (size_t token = 0; token < vocab; ++token) {
+    base_row[token] = 0.5f * std::cos(static_cast<float>(token) * 0.31f);
+  }
+  base_row[3] = 2.25f;
+  const std::vector<uint64_t> positions = {0ull, 1ull << 31, (1ull << 32) - 1ull, 1ull << 63,
+                                           std::numeric_limits<uint64_t>::max()};
+  const std::vector<uint64_t> seeds = {0ull, 0xDEADBEEFull};
+  std::vector<ds41rt_v41_sampler_row_t> params;
+  for (uint64_t seed : seeds) {
+    for (uint64_t position : positions) {
+      const size_t r = params.size();
+      params.push_back(fast_row(static_cast<uint32_t>(r), 0.7f, 0.05f, std::log(0.05f), seed,
+                                position, 0u, 0u));
+    }
+  }
+  const size_t rows = params.size();
+  const std::vector<float> logits = repeat_row(base_row, rows);
+  std::vector<uint32_t> mask(rows * words, u32max());
+  run_fast_case(logits, rows, vocab, params, mask, true, true, false, "seeded replay");
+  /* Determinism: run the same wave again and require identical ids. */
+  K1 k = make_k1(rows, vocab, true, true);
+  require_cuda(cudaMemcpy(k.logits, logits.data(), logits.size() * 4, cudaMemcpyHostToDevice),
+               "replay logits");
+  require_cuda(cudaMemcpy(k.params, params.data(), rows * sizeof(params[0]),
+                          cudaMemcpyHostToDevice), "replay params");
+  require_cuda(cudaMemcpy(k.mask, mask.data(), mask.size() * 4, cudaMemcpyHostToDevice),
+               "replay mask");
+  std::vector<uint32_t> first(rows), second(rows);
+  for (int pass = 0; pass < 2; ++pass) {
+    expect(ds41rt_cuda_v41_target_sample(k.logits, rows, vocab, vocab, k.params, k.mask, words,
+                                         k.ids, k.status, k.detail, k.scores, k.total, k.nucleus,
+                                         k.scratch) == DS41RT_STATUS_OK, "replay launch");
+    require_cuda(cudaMemcpy(pass == 0 ? first.data() : second.data(), k.ids, rows * 4,
+                            cudaMemcpyDeviceToHost), "replay ids");
+  }
+  expect(first == second, "K2 seeded replay is deterministic");
+  free_k1(&k);
+  std::cout << "ok  K2 seeded replay over " << rows << " (seed, position) cells\n";
+}
+
+/* Design §6.2 claim (b) for stochastic (non-greedy) rows: a row's draw depends
+ * only on its own params and `(seed, position)`, never on how it is batched or
+ * where it sits in the wave. The same row, params, seed and position must select
+ * the same token at batch size 1, at index 0 and at the last index of an 8-wave,
+ * in the middle of a 16-wave with peers on both sides, and on a bit-identical
+ * replay. Cheap: 65-token rows, a handful of <=16-row launches. */
+void test_k2_batch_composition_independence() {
+  const size_t vocab = 65;
+
+  auto make_row = [&](size_t shift, float peak) {
+    std::vector<float> row(vocab);
+    for (size_t t = 0; t < vocab; ++t) {
+      row[t] = 0.2f * static_cast<float>((t * 7u + shift) % 13u) - 1.2f;
+    }
+    row[7] = peak;
+    return row;
+  };
+  const std::vector<float> row_a = make_row(0u, 3.5f);
+  const std::vector<float> row_b = make_row(5u, 1.0f);
+  /* One-hot-style row: the crossing is token 7 with a wide margin, so the
+   * CPU-equality assertion below is never vacuous. */
+  std::vector<float> row_onehot(vocab, -100.0f);
+  row_onehot[7] = 0.0f;
+
+  struct Cell {
+    uint64_t seed;
+    uint64_t position;
+  };
+  const std::vector<Cell> cells = {
+      {0xDEADBEEFull, 0ull}, {1ull, 2ull}, {7ull, 4096ull}, {25015ull, 24ull},
+  };
+
+  auto launch = [&](const std::vector<std::vector<float>>& rows,
+                    const std::vector<ds41rt_v41_sampler_row_t>& params) {
+    const size_t n = rows.size();
+    std::vector<float> flat;
+    flat.reserve(n * vocab);
+    for (const std::vector<float>& r : rows) {
+      flat.insert(flat.end(), r.begin(), r.end());
+    }
+    K1 k = make_k1(n, vocab, false, true);
+    require_cuda(cudaMemcpy(k.logits, flat.data(), flat.size() * 4, cudaMemcpyHostToDevice),
+                 "wave logits");
+    require_cuda(cudaMemcpy(k.params, params.data(), n * sizeof(params[0]),
+                            cudaMemcpyHostToDevice), "wave params");
+    expect(ds41rt_cuda_v41_target_sample(k.logits, n, vocab, vocab, k.params, nullptr, 0u, k.ids,
+                                         k.status, k.detail, k.scores, k.total, k.nucleus,
+                                         k.scratch) == DS41RT_STATUS_OK, "wave launch");
+    std::vector<uint32_t> ids(n);
+    require_cuda(cudaMemcpy(ids.data(), k.ids, n * 4, cudaMemcpyDeviceToHost), "wave ids");
+    free_k1(&k);
+    return ids;
+  };
+  auto wave_params = [&](const std::vector<Cell>& cs, size_t focus) {
+    std::vector<ds41rt_v41_sampler_row_t> p;
+    for (size_t i = 0; i < cs.size(); ++i) {
+      const bool is_focus = i == focus;
+      p.push_back(fast_row(static_cast<uint32_t>(i), 0.7f, 0.0f, -inf(),
+                           is_focus ? cs[i].seed : 1000ull + i,
+                           is_focus ? cs[i].position : i, DS41RT_V41_SAMPLER_NO_MASK_ROW,
+                           DS41RT_V41_SAMPLER_FLAG_NO_MASK));
+    }
+    return p;
+  };
+
+  for (const Cell& cell : cells) {
+    const ds41rt_v41_sampler_row_t solo = fast_row(
+        0, 0.7f, 0.0f, -inf(), cell.seed, cell.position, DS41RT_V41_SAMPLER_NO_MASK_ROW,
+        DS41RT_V41_SAMPLER_FLAG_NO_MASK);
+    const uint32_t token = launch({row_a}, {solo})[0];
+
+    std::vector<std::vector<float>> wave8(8, row_b);
+    wave8[0] = row_a;
+    expect(launch(wave8, wave_params(std::vector<Cell>(8, cell), 0))[0] == token,
+           "A at index 0 of an 8-wave equals solo");
+
+    wave8[0] = row_b;
+    wave8[7] = row_a;
+    expect(launch(wave8, wave_params(std::vector<Cell>(8, cell), 7))[7] == token,
+           "A at the last index of an 8-wave equals solo");
+
+    std::vector<std::vector<float>> wave16(16, row_b);
+    wave16[8] = row_a;
+    std::vector<Cell> c16(16, cell);
+    const std::vector<uint32_t> r16 = launch(wave16, wave_params(c16, 8));
+    expect(r16[8] == token, "A in the middle of a 16-wave with peers equals solo");
+    expect(launch(wave16, wave_params(c16, 8)) == r16, "identical wave replays bit-identically");
+
+    const RefFast ref = cpu_fast_reference(row_a.data(), vocab, nullptr, true, 0.7f, 0.0f, -inf(),
+                                           cell.seed, cell.position);
+    expect(ref.crossed, "batch-independence cell crosses on the CPU");
+    if (ref.margin_safe) {
+      expect(token == ref.token, "batch composition does not change the CPU-matching token");
+    }
+  }
+
+  /* A single wave carrying the same row at four indices with four different
+   * `(seed, position)` cells, compared cell-by-cell to the production-order CPU
+   * port. These cells have `u` in (0.4, 0.62), so `row_onehot`'s `min(u, 1-u)`
+   * margin makes the assertion non-vacuous by construction. */
+  const std::vector<Cell> onehot_cells = {
+      {0ull, 0ull}, {0ull, 4ull}, {0ull, 6ull}, {1ull, 0ull},
+  };
+  std::vector<std::vector<float>> wave4(4, row_onehot);
+  std::vector<ds41rt_v41_sampler_row_t> p4;
+  for (size_t i = 0; i < 4; ++i) {
+    p4.push_back(fast_row(static_cast<uint32_t>(i), 0.7f, 0.0f, -inf(), onehot_cells[i].seed,
+                          onehot_cells[i].position, DS41RT_V41_SAMPLER_NO_MASK_ROW,
+                          DS41RT_V41_SAMPLER_FLAG_NO_MASK));
+  }
+  const std::vector<uint32_t> r4 = launch(wave4, p4);
+  for (size_t i = 0; i < 4; ++i) {
+    const RefFast ref = cpu_fast_reference(row_onehot.data(), vocab, nullptr, true, 0.7f, 0.0f,
+                                           -inf(), onehot_cells[i].seed, onehot_cells[i].position);
+    expect(ref.crossed && ref.margin_safe, "one-hot cell has a wide CPU margin");
+    expect(r4[i] == ref.token, "same row at four in-wave indices equals the CPU port");
+  }
+
+  std::cout << "ok  K2 batch composition / in-wave index / replay independence ("
+            << cells.size() << " cells)\n";
+}
+
+/* K2 must leave every row it does not own untouched: a `top_k` row, a `top_p < 1`
+ * row and a greedy row. Pre-filled output memory makes a stale value visible. */
+void test_k2_non_applicable_rows_untouched() {
+  const size_t vocab = 8;
+  const std::vector<float> logits =
+      repeat_row({0.0f, 4.0f, 1.0f, 2.0f, 3.0f, -1.0f, 1.5f, 0.5f}, 4);
+  std::vector<ds41rt_v41_sampler_row_t> params = {
+      /* top_k = 40: ordered path, not the fast path (even though it is a no-op). */
+      [] {
+        ds41rt_v41_sampler_row_t p = fast_row(0, 0.7f, 0.0f, -inf(), 3u, 1u,
+                                              DS41RT_V41_SAMPLER_NO_MASK_ROW,
+                                              DS41RT_V41_SAMPLER_FLAG_NO_MASK);
+        p.top_k = 40u;
+        return p;
+      }(),
+      /* top_p = 0.9: ordered path. */
+      [] {
+        ds41rt_v41_sampler_row_t p = fast_row(1, 0.7f, 0.0f, -inf(), 3u, 1u,
+                                              DS41RT_V41_SAMPLER_NO_MASK_ROW,
+                                              DS41RT_V41_SAMPLER_FLAG_NO_MASK);
+        p.top_p = 0.9f;
+        return p;
+      }(),
+      /* Greedy: K1 owns the id. */
+      fast_row(2, 0.0f, 0.0f, -inf(), 3u, 1u, DS41RT_V41_SAMPLER_NO_MASK_ROW,
+               DS41RT_V41_SAMPLER_FLAG_GREEDY | DS41RT_V41_SAMPLER_FLAG_STRICT_FINITE |
+                   DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+      /* Fast path: K2 owns the id. */
+      fast_row(3, 0.7f, 0.0f, -inf(), 3u, 1u, DS41RT_V41_SAMPLER_NO_MASK_ROW,
+               DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+  };
+  K1 k = make_k1(4, vocab, false, true);
+  require_cuda(cudaMemcpy(k.logits, logits.data(), logits.size() * 4, cudaMemcpyHostToDevice),
+               "nonapp logits");
+  require_cuda(cudaMemcpy(k.params, params.data(), params.size() * sizeof(params[0]),
+                          cudaMemcpyHostToDevice), "nonapp params");
+  const std::vector<uint32_t> sentinel(4, 0xCAFEBABEu);
+  require_cuda(cudaMemcpy(k.ids, sentinel.data(), 4 * 4, cudaMemcpyHostToDevice),
+               "nonapp sentinel");
+  expect(ds41rt_cuda_v41_target_sample(k.logits, 4, vocab, vocab, k.params, nullptr, 0u, k.ids,
+                                       k.status, k.detail, k.scores, k.total, k.nucleus,
+                                       k.scratch) == DS41RT_STATUS_OK, "nonapp launch");
+  std::vector<uint32_t> ids(4);
+  require_cuda(cudaMemcpy(ids.data(), k.ids, 4 * 4, cudaMemcpyDeviceToHost), "nonapp ids");
+  expect(ids[0] == 0xCAFEBABEu, "top_k row untouched by K2");
+  expect(ids[1] == 0xCAFEBABEu, "top_p<1 row untouched by K2");
+  expect(ids[2] == 1u, "greedy row still argmax");
+  expect(ids[3] != 0xCAFEBABEu, "fast-path row written by K2");
+  free_k1(&k);
+  std::cout << "ok  K2 leaves non-fast-path rows to K1 / the CPU\n";
+}
+
+/* Host model of the shipped tree kernel's two quantities, used to prove that the
+ * device takes its `total` from the walk (the crossing accumulation) and not
+ * from the tree scan's inclusive prefix. Association-for-association f32
+ * simulation of `v41_sample_categorical_kernel`. */
+struct K2TreeModel {
+  float walk_total = 0.0f;
+  float tree_total = 0.0f;
+  /* 0 marks "no survivor" here, matching the kernel's `lasts` sentinel. */
+  uint32_t global_last_survivor = 0u;
+  size_t per_thread = 0;
+};
+
+K2TreeModel k2_tree_model(const float* logits, size_t vocab, float temperature, float min_p,
+                          float ln_min_p) {
+  K2TreeModel out;
+  constexpr int kBlockLocal = 256;
+  out.per_thread = (vocab + kBlockLocal - 1) / kBlockLocal;
+  const float inv = 1.0f / temperature;
+  float max_scaled = -std::numeric_limits<float>::infinity();
+  for (size_t token = 0; token < vocab; ++token) {
+    max_scaled = std::fmax(max_scaled, logits[token] * inv);
+  }
+  const float min_scaled =
+      min_p > 0.0f ? max_scaled + ln_min_p : -std::numeric_limits<float>::infinity();
+  const auto survivor = [&](size_t token) { return logits[token] * inv >= min_scaled; };
+  const auto weight = [&](size_t token) { return std::exp(logits[token] * inv - max_scaled); };
+  float seg[kBlockLocal];
+  uint32_t last_seg[kBlockLocal];
+  for (int s = 0; s < kBlockLocal; ++s) {
+    const size_t begin = static_cast<size_t>(s) * out.per_thread;
+    const size_t end = std::min(begin + out.per_thread, vocab);
+    float local = 0.0f;
+    uint32_t last = 0u;   /* 0 marks an empty segment, matching the kernel */
+    for (size_t token = begin; token < end; ++token) {
+      if (survivor(token)) {
+        last = static_cast<uint32_t>(token);
+        local += weight(token);
+      }
+    }
+    seg[s] = local;
+    last_seg[s] = last;
+  }
+  float inclusive[kBlockLocal];
+  for (int s = 0; s < kBlockLocal; ++s) inclusive[s] = seg[s];
+  for (int offset = 1; offset < kBlockLocal; offset <<= 1) {
+    float addend[kBlockLocal];
+    for (int s = 0; s < kBlockLocal; ++s) {
+      addend[s] = (s >= offset) ? inclusive[s - offset] : 0.0f;
+    }
+    for (int s = 0; s < kBlockLocal; ++s) {
+      if (s >= offset) inclusive[s] += addend[s];
+    }
+  }
+  out.tree_total = inclusive[kBlockLocal - 1];
+  for (int s = 0; s < kBlockLocal; ++s) {
+    out.global_last_survivor = std::max(out.global_last_survivor, last_seg[s]);
+  }
+  float walk = 0.0f;
+  if (out.global_last_survivor != DS41RT_V41_SAMPLER_NO_DETAIL) {    const size_t owner = static_cast<size_t>(out.global_last_survivor) / out.per_thread;
+    float running = (owner == 0u) ? 0.0f : inclusive[owner - 1];
+    const size_t owner_begin = owner * out.per_thread;
+    for (size_t token = owner_begin; token <= static_cast<size_t>(out.global_last_survivor);
+         ++token) {
+      if (survivor(token)) {
+        running += weight(token);
+      }
+    }
+    walk = running;
+  }
+  out.walk_total = std::fmax(walk, 1.0e-20f);
+  return out;
+}
+
+/* The CPU's `last` fallback is UNREACHABLE, and the device must now match that.
+ *
+ * Proof from `target_sampling.rs::sample_categorical` (`:590-618`): the first loop
+ * accumulates `total` and the second loops `cumulative` with the identical
+ * left-to-right f32 expression over the same survivor set, so at the last
+ * survivor `cumulative == total` bit for bit; `MAX_UNIFORM` (`:52`) is
+ * `0.99999994 < 1` and is applied at `:459`, so `target = uniform * total <=
+ * total`; the inclusive test `target <= cumulative` (`:613`) therefore fires
+ * before the `last.map(...)` fallback (`:616-618`). User code cannot reach the
+ * fallback; it is defensive only.
+ *
+ * Chunk 2's first kernel violated this on device by taking `total` from the tree
+ * scan's inclusive prefix while the crossing walk accumulated per segment, so the
+ * walk's final cumulative could sit below `target`. This row is that adversarial
+ * case: one survivor of weight 1 and 129,279 survivors of weight
+ * `expf(-16.6355324) = 2^-24`. The tree prefix reports 1.00767553 while the walk
+ * loses the tiny weights at the start of the row, so the old kernel fired the
+ * fallback and returned token 129,279. The fix derives `total` from the walk's
+ * own cumulative at the last survivor; the fallback no longer fires and the
+ * kernel returns a legitimate crossing in the last segment. */
+void test_k2_fallback_unreachable_like_cpu() {
+  const size_t vocab = 129280;
+  const uint32_t tiny_bits = 0xc1851592u;   /* expf(-16.6355324) == 2^-24 on device */
+  float tiny = 0.0f;
+  std::memcpy(&tiny, &tiny_bits, sizeof(tiny));
+  std::vector<float> logits(vocab, tiny);
+  logits[0] = 0.0f;                          /* the weight-1 survivor */
+  const uint32_t last_token = static_cast<uint32_t>(vocab - 1);
+
+  const K2TreeModel model = k2_tree_model(logits.data(), vocab, 1.0f, 0.0f, -inf());
+  expect(model.global_last_survivor == last_token, "model: every token survives");
+  expect(model.tree_total > 1.0f, "model: the tree prefix retains the grouped tiny weights");
+  expect(model.walk_total > 1.0f, "model: the walk total also retains them");
+  expect(std::fabs(model.walk_total - model.tree_total) < 1e-3f,
+         "model: walk and tree totals are close but associated differently");
+  const size_t owner = static_cast<size_t>(last_token) / model.per_thread;
+  expect(owner == 255u, "model: the last survivor is in the final segment");
+
+  /* (a) MAX_UNIFORM-scale draw: the old kernel took the fallback here. */
+  const uint64_t seed = 5020ull;
+  const uint64_t position = 1ull;            /* u = 0.999993801 */
+  std::vector<ds41rt_v41_sampler_row_t> params = {
+      fast_row(0, 1.0f, 0.0f, -inf(), seed, position, DS41RT_V41_SAMPLER_NO_MASK_ROW,
+               DS41RT_V41_SAMPLER_FLAG_NO_MASK),
+  };
+  K1 k = make_k1(1, vocab, false, true);
+  require_cuda(cudaMemcpy(k.logits, logits.data(), logits.size() * 4, cudaMemcpyHostToDevice),
+               "fallback logits");
+  require_cuda(cudaMemcpy(k.params, params.data(), sizeof(params[0]), cudaMemcpyHostToDevice),
+               "fallback params");
+  expect(ds41rt_cuda_v41_target_sample(k.logits, 1, vocab, vocab, k.params, nullptr, 0u, k.ids,
+                                       k.status, k.detail, k.scores, k.total, k.nucleus,
+                                       k.scratch) == DS41RT_STATUS_OK, "fallback launch");
+  std::vector<uint32_t> ids(1);
+  std::vector<float> total(1);
+  require_cuda(cudaMemcpy(ids.data(), k.ids, 4, cudaMemcpyDeviceToHost), "fallback id");
+  require_cuda(cudaMemcpy(total.data(), k.total, 4, cudaMemcpyDeviceToHost), "fallback total");
+  const RefFast cpu = cpu_fast_reference(logits.data(), vocab, nullptr, true, 1.0f, 0.0f, -inf(),
+                                         seed, position);
+  expect(cpu.crossed, "CPU port crosses (its last fallback is unreachable)");
+  expect(cpu.total == 1.0f, "CPU sequential total loses every sub-half-ulp weight");
+  expect(cpu.token == 0u, "CPU crosses at token 0");
+  if (ids[0] == last_token) {
+    std::cerr << "spurious fallback returned " << ids[0] << "\n";
+  }
+  expect(ids[0] != last_token, "device no longer returns the last survivor via the fallback");
+  expect(ids[0] < last_token, "device crossing is a real token");
+  expect(ids[0] >= static_cast<uint32_t>(owner * model.per_thread),
+         "device crossing is inside the final segment (the walk's own total)");
+  /* The device's `out_total` must be the walk total, not the tree total. */
+  expect(std::fabs(total[0] - model.walk_total) <=
+             std::fabs(total[0] - model.tree_total) + 1.0e-7f,
+         "device total comes from the walk, not the tree scan");
+  expect(total[0] > 1.0f, "device total retains the tiny weights");
+
+  /* (b) CPU == GPU on the same adversarial row where the crossing agrees: a
+   * mid-range uniform lands on token 0 in both accumulations. */
+  const uint64_t mid_seed = 0ull;
+  const uint64_t mid_position = 0ull;        /* u = 0.400835 */
+  params[0] = fast_row(0, 1.0f, 0.0f, -inf(), mid_seed, mid_position,
+                       DS41RT_V41_SAMPLER_NO_MASK_ROW, DS41RT_V41_SAMPLER_FLAG_NO_MASK);
+  require_cuda(cudaMemcpy(k.params, params.data(), sizeof(params[0]), cudaMemcpyHostToDevice),
+               "fallback params mid");
+  expect(ds41rt_cuda_v41_target_sample(k.logits, 1, vocab, vocab, k.params, nullptr, 0u, k.ids,
+                                       k.status, k.detail, k.scores, k.total, k.nucleus,
+                                       k.scratch) == DS41RT_STATUS_OK, "fallback launch mid");
+  require_cuda(cudaMemcpy(ids.data(), k.ids, 4, cudaMemcpyDeviceToHost), "fallback id mid");
+  const RefFast mid_cpu = cpu_fast_reference(logits.data(), vocab, nullptr, true, 1.0f, 0.0f,
+                                             -inf(), mid_seed, mid_position);
+  expect(mid_cpu.crossed && mid_cpu.token == 0u, "CPU mid-uniform crosses at token 0");
+  if (ids[0] != mid_cpu.token) {
+    std::cerr << "mid-uniform mismatch: device=" << ids[0] << " cpu=" << mid_cpu.token << "\n";
+  }
+  expect(ids[0] == mid_cpu.token, "GPU == CPU on the fallback row at a mid-range uniform");
+  free_k1(&k);
+  std::cout << "ok  K2 last fallback unreachable (device and CPU both cross; row=" << vocab
+            << ")\n";
+}
+
 }  // namespace
 
 int main() {
@@ -1250,6 +2167,15 @@ int main() {
   test_greedy_parity_grid();
   test_batch_independence();
   test_subnormal_and_nonfinite_grid();
+  test_k2_rng_bit_equality();
+  test_k2_max_uniform_clamp();
+  test_k2_fast_path_grid();
+  test_k2_min_p_threshold_tokens();
+  test_k2_tied_and_edge_cases();
+  test_k2_seeded_replay();
+  test_k2_batch_composition_independence();
+  test_k2_non_applicable_rows_untouched();
+  test_k2_fallback_unreachable_like_cpu();
   std::cout << "ds41rt_v41_sampling_selftest passed: " << g_cases << " cases, " << g_checks
             << " assertions\n";
   return 0;
