@@ -425,7 +425,7 @@ mod tests {
         assert_eq!(args.max_output_tokens, 393_216);
         assert_eq!(args.concurrency, 16);
         assert_eq!(args.prefix_cache_entries, 20);
-        assert_eq!(args.dspark_draft_limit, 5);
+        assert_eq!(args.dspark_draft_limit, 7);
         assert!(!args.exl3_paired_tp4);
         let super::Commands::ServeNative(paired) = super::Cli::try_parse_from(
             base.into_iter().chain(["--exl3-paired-tp4"])).unwrap().command else {
@@ -450,8 +450,8 @@ mod tests {
             assert!(super::Cli::try_parse_from(base.into_iter().chain(removed.iter().copied())).is_err());
         }
         for (flags, expected) in [
-            (vec!["--dspark"], 5),
-            (vec!["--dspark", "--rtx-gpus", "1"], 5),
+            (vec!["--dspark"], 7),
+            (vec!["--dspark", "--rtx-gpus", "1"], 7),
             (vec!["--dspark", "--rtx-gpus", "2"], 7),
             (vec!["--dspark", "--rtx-gpus", "2", "--dspark-draft-limit", "5"], 5),
             (vec!["--dspark", "--dspark-draft-limit", "5", "--rtx-gpus", "2"], 5),
@@ -700,8 +700,9 @@ pub(crate) struct NativeServeArgs {
 
     /// Enable greedy RTX dSpark proposal generation and target verification.
     #[arg(long)] pub dspark: bool,
-    /// Maximum draft tokens per request: defaults to 5 with one RTX, 7 with two.
-    #[arg(long, default_value_t = 5, default_value_if("rtx_gpus", "2", "7"), value_parser = clap::value_parser!(u8).range(1..=7))]
+    /// Draft width (tokens proposed per request). Defaults to the widest
+    /// supported block; the length policy chooses how many to verify.
+    #[arg(long, default_value_t = 7, value_parser = clap::value_parser!(u8).range(1..=7))]
     pub dspark_draft_limit: u8,
     /// Verify every available draft instead of the online bandwidth-balance
     /// length selection (the default whenever dSpark is enabled).

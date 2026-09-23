@@ -32,7 +32,7 @@ Command-line values override ds41rt.config for this launch.
   --max-output-tokens N         output limit (default 393216)
   --prefill-batch-tokens N      prefill step, 80..4096 (default 2048)
   --dspark | --no-dspark        enable or disable native dSpark
-  --dspark-draft-limit N        fixed draft tokens per request, 1..7 (default 5/7)
+  --dspark-draft-limit N        draft width per request, 1..7 (default 7)
   --tp2-attention               split attention heads; replicate KV (default off)
   --tp2-query-projection        split query-B projection (default off)
   --tp2-output-projection       split output-B projection (default off)
@@ -385,7 +385,7 @@ if ((dry_run)); then
   fi
   echo "  coordinator memory reservation: ${MEMORY_RESERVATION:-runtime default}"
   echo "  prefill batch tokens: $PREFILL_BATCH_TOKENS; expert capacity: $expert_capacity"
-  echo "  dSpark draft: policy=$DSPARK_DRAFT_POLICY limit=${dspark_draft_limit:-auto-by-rtx-count}"
+  echo "  dSpark draft: policy=$DSPARK_DRAFT_POLICY limit=${dspark_draft_limit:-7}"
   [[ -z "${DS41RT_PROTOCOL_V2_VERBS_HOST_DEVICE_MAP:-}" ]] || echo "  RDMA device map: $DS41RT_PROTOCOL_V2_VERBS_HOST_DEVICE_MAP"
   [[ -z "${DS41RT_VERBS_APP_IB_PORT_NUM:-}" ]] || echo "  RDMA IB port: $DS41RT_VERBS_APP_IB_PORT_NUM"
   [[ -z "${DS41RT_PROTOCOL_V2_VERBS_HOST_EXECUTION_LANES:-}" ]] || echo "  RDMA execution lanes: $DS41RT_PROTOCOL_V2_VERBS_HOST_EXECUTION_LANES"

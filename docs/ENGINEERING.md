@@ -58,6 +58,8 @@ The dSpark drafter has three stages with 128 experts and top-3 routing per stage
 
 Draft tokens are private until the target backbone verifies them. The target accepts the matching prefix, emits those tokens, and commits the identical length to target cache, draft cache, and Engram state. Rejection cannot advance draft history. `--no-dspark` runs the same target path without proposals; this provides a direct correctness and performance control.
 
+Each round, an online bandwidth-balance policy chooses how many of the drafted tokens each request verifies. It maximizes expected committed tokens per unit of predicted round time. Each layer is priced from its routed-expert weight traffic (known slice bytes per 16-row group) over an effective bandwidth fitted continuously from the lane's own layer timings, separately for RTX-local and Spark-remote layers. Draft traffic is forecast from each request's recent committed routes. No offline calibration is used; see [the policy design](dspark-bandwidth-policy.md).
+
 ## Vision
 
 The native vision owner loads the checkpoint encoder and aligner on the RTX. CPU preparation decodes JPEG, PNG, WebP, and GIF, normalizes image identity, applies the pinned resize/grid policy, and produces patch input. The API accepts up to sixteen images, with bounded encoded bytes, decoded features, decoder concurrency, redirects, and deadlines.

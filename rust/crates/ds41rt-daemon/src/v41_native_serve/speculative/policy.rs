@@ -87,6 +87,9 @@ pub(super) fn publish(policy: &DsparkPolicy, draft_limit: usize) {
         "reached": stats.position_reached[p],
         "mean_confidence": if stats.position_reached[p] > 0 {
             stats.position_confidence[p] / stats.position_reached[p] as f64 } else { 0. },
+        "mean_raw_confidence": if stats.position_reached[p] > 0 {
+            stats.position_raw_confidence[p] / stats.position_reached[p] as f64 } else { 0. },
+        "logit_offset": policy.calibration()[p],
         "accept_rate": if stats.position_reached[p] > 0 {
             stats.position_accepted[p] as f64 / stats.position_reached[p] as f64 } else { 0. },
     })).collect();
@@ -104,6 +107,7 @@ pub(super) fn publish(policy: &DsparkPolicy, draft_limit: usize) {
         "request_rounds": stats.emitted_requests,
         "draft_rows_histogram": stats.draft_rows,
         "confidence_reliability": reliability,
+        "time_bias_us": { "solo": policy.time_bias()[0], "shared": policy.time_bias()[1] },
         "prediction": {
             "rounds": stats.predicted_rounds,
             "mean_error_us": if stats.predicted_rounds > 0 {

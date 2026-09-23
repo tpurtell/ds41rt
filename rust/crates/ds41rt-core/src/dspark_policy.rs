@@ -43,6 +43,12 @@ const WINDOWS: usize = 4;
 const WARM_LAYER_SAMPLES: u64 = 120;
 /// Round samples needed before the policy engages.
 const WARM_ROUND_SAMPLES: u64 = 12;
+/// Step size of the per-position logit calibration (log-loss gradient).
+const CALIBRATION_RATE: f64 = 0.01;
+/// Bound on each position's learned logit offset.
+const CALIBRATION_LIMIT: f64 = 4.;
+/// Per-round weight of the mean prediction-residual correction.
+const BIAS_RATE: f64 = 0.02;
 
 /// Execution resource of one layer's routed experts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -344,7 +350,10 @@ pub struct DsparkPolicyStats {
     /// Per draft position: times reached with all earlier drafts accepted,
     /// summed conditional confidence there, and acceptances there.
     pub position_reached: [u64; 7],
+    /// Summed calibrated confidence where reached (what the policy used).
     pub position_confidence: [f64; 7],
+    /// Summed raw drafter confidence where reached.
+    pub position_raw_confidence: [f64; 7],
     pub position_accepted: [u64; 7],
     pub predicted_rounds: u64,
     pub prediction_error_us: f64,
@@ -362,6 +371,16 @@ pub struct DsparkPolicy {
     /// Expected new expert groups per layer contributed by a token whose routes
     /// are not yet known (short histories), from observed novelty.
     novelty: [f64; DSPARK_LAYERS],
+    /// Learned logit offset per draft position. The drafter's confidence is
+    /// conditional on earlier positions being accepted; its reliability varies
+    /// by position (positions past the drafter's native block are strongly
+    /// overconfident), so each position is recalibrated online from the
+    /// outcomes of the rounds that reached it.
+    calibration: [f64; crate::MAX_DSPARK_PROPOSALS],
+    /// Mean residual of the predicted round time per regime. The robust fit
+    /// tracks typical rounds, while throughput depends on mean time including
+    /// stalls; this constant restores the mean without moving the marginals.
+    bias: [f64; 2],
     stats: DsparkPolicyStats,
     counts: Vec<[[u8; EXPERTS]; DSPARK_LAYERS]>,
 }
@@ -375,6 +394,8 @@ impl DsparkPolicy {
             fixed,
             history: BTreeMap::new(),
             novelty: [2.5; DSPARK_LAYERS],
+            calibration: [0.; crate::MAX_DSPARK_PROPOSALS],
+            bias: [0.; 2],
             stats: DsparkPolicyStats::default(),
             counts: vec![[[0; EXPERTS]; DSPARK_LAYERS]; WINDOWS],
         }
@@ -397,6 +418,19 @@ impl DsparkPolicy {
     pub fn release(&mut self, id: u64) {
         self.history.remove(&id);
     }
+    /// Learned logit offset per draft position.
+    pub fn calibration(&self) -> &[f64; crate::MAX_DSPARK_PROPOSALS] {
+        &self.calibration
+    }
+    /// Mean prediction-residual correction per regime (solo, shared), µs.
+    pub fn time_bias(&self) -> [f64; 2] {
+        self.bias
+    }
+    fn calibrated(&self, position: usize, probability: f64) -> f64 {
+        let p = probability.clamp(1e-6, 1. - 1e-6);
+        let logit = (p / (1. - p)).ln() + self.calibration[position];
+        1. / (1. + (-logit).exp())
+    }
 
     /// Predicted lane µs for explicit lengths, if the fit is usable.
     pub fn predict(&mut self, shared: bool, ids: &[u64], lengths: &[usize]) -> Option<f64> {
@@ -411,7 +445,7 @@ impl DsparkPolicy {
             }
         }
         let rows = ids.len() + lengths.iter().sum::<usize>();
-        Some(self.cost.predict(regime, rows as f64, ids.len() as f64, megabytes))
+        Some(self.cost.predict(regime, rows as f64, ids.len() as f64, megabytes) + self.bias[regime])
     }
 
     /// Choose draft lengths for one lane. Returns `None` while the fit is still
@@ -431,9 +465,12 @@ impl DsparkPolicy {
             return Ok(None);
         }
         let Some(regime) = self.cost.usable_regime(shared) else { return Ok(None) };
+        // Survival of row k: the product of calibrated conditional acceptance
+        // probabilities of positions 1..=k.
         let cumulative: Vec<Vec<f64>> = candidates.iter().map(|c| {
             let mut product = 1.;
-            c.confidence.iter().map(|p| { product *= p; product }).collect()
+            c.confidence.iter().enumerate()
+                .map(|(position, &p)| { product *= self.calibrated(position, p); product }).collect()
         }).collect();
         self.clear_counts();
         let mut megabytes = [0.; 2];
@@ -446,7 +483,7 @@ impl DsparkPolicy {
         let mut rows = candidates.len();
         let mut lengths = vec![0usize; candidates.len()];
         let mut expected = requests;
-        let mut time = self.cost.predict(regime, rows as f64, requests, megabytes);
+        let mut time = self.cost.predict(regime, rows as f64, requests, megabytes) + self.bias[regime];
         let mut best = DsparkSelection {
             lengths: lengths.clone(), expected_tokens: expected, predicted_us: time, evaluated: 1,
         };
@@ -584,10 +621,18 @@ impl DsparkPolicy {
             self.stats.emitted_requests += 1;
             self.stats.draft_rows[drafts.min(7)] += 1;
             if let Some(confidence) = request.confidence {
+                // Only positions whose predecessors were all accepted carry
+                // evidence about the conditional acceptance probability.
                 for position in 0..drafts.min(confidence.len()).min(accepted + 1) {
+                    let outcome = f64::from(u8::from(position < accepted));
+                    let calibrated = self.calibrated(position, confidence[position]);
                     self.stats.position_reached[position] += 1;
-                    self.stats.position_confidence[position] += confidence[position];
+                    self.stats.position_confidence[position] += calibrated;
+                    self.stats.position_raw_confidence[position] += confidence[position];
                     self.stats.position_accepted[position] += u64::from(position < accepted);
+                    let offset = &mut self.calibration[position];
+                    *offset = (*offset + CALIBRATION_RATE * (outcome - calibrated))
+                        .clamp(-CALIBRATION_LIMIT, CALIBRATION_LIMIT);
                 }
             }
         }
@@ -596,6 +641,9 @@ impl DsparkPolicy {
         if let Some(predicted) = round.predicted_us {
             self.stats.selected_rounds += 1;
             if round.total_us.is_finite() {
+                // Bounded step: one stalled round cannot swing the correction.
+                let residual = (round.total_us - predicted).clamp(-0.5 * predicted.abs(), 0.5 * predicted.abs());
+                self.bias[regime] += BIAS_RATE * residual;
                 self.stats.predicted_rounds += 1;
                 self.stats.prediction_error_us += predicted - round.total_us;
                 self.stats.prediction_abs_error_us += (predicted - round.total_us).abs();
@@ -735,7 +783,7 @@ mod tests {
         let certain = [1.; 5];
         let selection = policy.select(false, &[DsparkCandidate { id: 1, confidence: &certain }]).unwrap().unwrap();
         assert_eq!(selection.lengths, [5]);
-        assert!((selection.expected_tokens - 6.).abs() < 1e-12);
+        assert!((selection.expected_tokens - 6.).abs() < 1e-4);
         let hopeless = [0.02; 5];
         let selection = policy.select(false, &[DsparkCandidate { id: 1, confidence: &hopeless }]).unwrap().unwrap();
         assert_eq!(selection.lengths, [0]);
@@ -814,6 +862,50 @@ mod tests {
         assert_eq!(stats.position_reached, [1, 1, 0, 0, 0, 0, 0]);
         assert_eq!(stats.position_accepted, [1, 0, 0, 0, 0, 0, 0]);
         assert_eq!(stats.draft_rows[4], 1);
+    }
+
+    #[test]
+    fn overconfident_positions_are_recalibrated_from_reached_outcomes() {
+        let mut policy = DsparkPolicy::new(placement(5), false);
+        let routes: Vec<Vec<[u32; 6]>> = (0..40).map(|_| vec![[1, 2, 3, 4, 5, 6]; 8]).collect();
+        // The drafter reports 0.95 at every position; position 1 is truly 0.95,
+        // position 6 only 0.8.
+        let confidence = [0.95; 7];
+        let mut state = 99u64;
+        let mut uniform = || { state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            (state >> 11) as f64 / (1u64 << 53) as f64 };
+        for _ in 0..20_000 {
+            let truth = [0.95, 0.95, 0.95, 0.95, 0.95, 0.8, 0.8];
+            let accepted = truth.iter().take_while(|&&p| uniform() < p).count();
+            let requests = [DsparkObservedRequest { id: 1, rows: 8, accepted: accepted + 1, confidence: Some(&confidence) }];
+            policy.observe(DsparkRoundObservation { shared: false, requests: &requests, routes: &routes,
+                layer_us: &[None; 40], total_us: f64::NAN, predicted_us: None }).unwrap();
+        }
+        assert!((policy.calibrated(0, 0.95) - 0.95).abs() < 0.02, "{:?}", policy.calibration());
+        assert!((policy.calibrated(5, 0.95) - 0.8).abs() < 0.03, "{:?}", policy.calibration());
+        // Reliability stats report the calibrated confidence the policy used.
+        let stats = policy.stats();
+        let mean = stats.position_confidence[5] / stats.position_reached[5] as f64;
+        let observed = stats.position_accepted[5] as f64 / stats.position_reached[5] as f64;
+        assert!((mean - observed).abs() < 0.03, "{mean} vs {observed}");
+    }
+
+    #[test]
+    fn mean_time_bias_absorbs_skewed_stalls() {
+        let mut policy = DsparkPolicy::new(placement(5), false);
+        let truth = truth();
+        let mut token = 0;
+        for round in 0..300 { run_round(&mut policy, &truth, &mut token, 1 + round % 6, 1 + round % 6, None); }
+        let routes: Vec<Vec<[u32; 6]>> = (0..40).map(|_| vec![[1, 2, 3, 4, 5, 6]]).collect();
+        for round in 0..2000 {
+            let predicted = policy.predict(false, &[1], &[0]).unwrap();
+            // Every tenth round stalls by 10 ms: mean excess 1 ms.
+            let total = predicted - policy.time_bias()[0] + if round % 10 == 0 { 10_000. } else { 0. };
+            let requests = [DsparkObservedRequest { id: 1, rows: 1, accepted: 1, confidence: None }];
+            policy.observe(DsparkRoundObservation { shared: false, requests: &requests, routes: &routes,
+                layer_us: &[None; 40], total_us: total, predicted_us: Some(predicted) }).unwrap();
+        }
+        assert!((policy.time_bias()[0] - 1000.).abs() < 250., "{:?}", policy.time_bias());
     }
 
     #[test]
