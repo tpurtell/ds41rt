@@ -1391,6 +1391,32 @@ __device__ __forceinline__ unsigned long long k5_fixed_weight(float weight) {
   return static_cast<unsigned long long>(static_cast<double>(weight) * 4294967296.0 + 0.5);
 }
 
+/* Combine equal histogram bins within each warp before touching shared memory.
+ * Three 16-bit reductions reconstruct an exact u64 Q32 sum without overflow:
+ * each reduction contains at most 32 * 65535. All lanes participate, including
+ * those with no eligible token (the sentinel bin never receives an atomic). */
+__device__ __forceinline__ void k5_warp_add_mass(
+    unsigned long long* bins, uint32_t bin, unsigned long long mass) {
+  const uint32_t peers = __match_any_sync(0xFFFFFFFFu, bin);
+  const uint32_t lo = __reduce_add_sync(peers, static_cast<uint32_t>(mass & 0xFFFFull));
+  const uint32_t mid = __reduce_add_sync(peers, static_cast<uint32_t>((mass >> 16) & 0xFFFFull));
+  const uint32_t hi = __reduce_add_sync(peers, static_cast<uint32_t>(mass >> 32));
+  if (bin != 0xFFFFFFFFu && (threadIdx.x & 31) == (__ffs(peers) - 1)) {
+    atomicAdd(&bins[bin], static_cast<unsigned long long>(lo) +
+                           (static_cast<unsigned long long>(mid) << 16) +
+                           (static_cast<unsigned long long>(hi) << 32));
+  }
+}
+
+__device__ __forceinline__ void k5_warp_add_count(
+    unsigned long long* bins, uint32_t bin) {
+  const uint32_t peers = __match_any_sync(0xFFFFFFFFu, bin);
+  const uint32_t count = __reduce_add_sync(peers, bin == 0xFFFFFFFFu ? 0u : 1u);
+  if (bin != 0xFFFFFFFFu && (threadIdx.x & 31) == (__ffs(peers) - 1)) {
+    atomicAdd(&bins[bin], static_cast<unsigned long long>(count));
+  }
+}
+
 /* Select the value whose descending cumulative mass first reaches target.
  * The first pass also measures the fixed-point total for a top-p search. The
  * The three radix digits use an 11/11/10 split. `state` and `bins` are
@@ -1412,21 +1438,20 @@ __device__ __forceinline__ bool k5_radix_value(
       bins[b] = 0ull;
     }
     __syncthreads();
-    for (size_t token = static_cast<size_t>(tid); token < vocab; token += blockDim.x) {
-      if (!k3_survivor(row, mask_words, mask_words_per_row, rows, row_logits, token,
-                       inv_temperature, min_scaled)) {
-        continue;
+    for (size_t base = 0; base < vocab; base += blockDim.x) {
+      const size_t token = base + static_cast<size_t>(tid);
+      uint32_t bin = 0xFFFFFFFFu;
+      unsigned long long mass = 0ull;
+      if (token < vocab &&
+          k3_survivor(row, mask_words, mask_words_per_row, rows, row_logits, token,
+                      inv_temperature, min_scaled)) {
+        const uint32_t key = k3_masked_key(row_logits, token, inv_temperature);
+        if (pass == 0 || (pass == 1 ? (key >> 21) : (key >> 10)) == prefix) {
+          mass = k5_fixed_weight(k5_weight(row_logits, token, inv_temperature, max_scaled));
+          if (mass != 0ull) bin = (key >> shift) & (width - 1u);
+        }
       }
-      const uint32_t key = k3_masked_key(row_logits, token, inv_temperature);
-      if ((pass == 1 && (key >> 21) != prefix) ||
-          (pass == 2 && (key >> 10) != prefix)) {
-        continue;
-      }
-      const unsigned long long mass = k5_fixed_weight(
-          k5_weight(row_logits, token, inv_temperature, max_scaled));
-      if (mass != 0ull) {
-        atomicAdd(&bins[(key >> shift) & (width - 1u)], mass);
-      }
+      k5_warp_add_mass(bins, bin, mass);
     }
     __syncthreads();
     if (tid == 0) {
@@ -1484,15 +1509,18 @@ __device__ __forceinline__ bool k5_radix_tie_id(
       bins[b] = 0ull;
     }
     __syncthreads();
-    for (size_t token = static_cast<size_t>(tid); token < vocab; token += blockDim.x) {
-      if ((pass == 1 && (token >> 21) != prefix) ||
-          (pass == 2 && (token >> 10) != prefix) ||
-          !k3_survivor(row, mask_words, mask_words_per_row, rows, row_logits, token,
-                       inv_temperature, min_scaled) ||
-          k3_masked_key(row_logits, token, inv_temperature) != value) {
-        continue;
+    for (size_t base = 0; base < vocab; base += blockDim.x) {
+      const size_t token = base + static_cast<size_t>(tid);
+      uint32_t bin = 0xFFFFFFFFu;
+      if (token < vocab &&
+          (pass == 0 ||
+           (pass == 1 ? (token >> 21) : (token >> 10)) == prefix) &&
+          k3_survivor(row, mask_words, mask_words_per_row, rows, row_logits, token,
+                      inv_temperature, min_scaled) &&
+          k3_masked_key(row_logits, token, inv_temperature) == value) {
+        bin = (static_cast<uint32_t>(token) >> shift) & (width - 1u);
       }
-      atomicAdd(&bins[(token >> shift) & (width - 1u)], 1ull);
+      k5_warp_add_count(bins, bin);
     }
     __syncthreads();
     if (tid == 0) {
