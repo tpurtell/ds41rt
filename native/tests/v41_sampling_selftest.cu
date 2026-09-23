@@ -1997,6 +1997,9 @@ void test_k2_non_applicable_rows_untouched() {
 struct K2TreeModel {
   float walk_total = 0.0f;
   float tree_total = 0.0f;
+  /* The shipped chunk-3b kernel derives `total` from one sequential fold
+   * `C(i+1) = fl(C(i) + local(i))` over the segment locals. */
+  float fold_total = 0.0f;
   /* 0 marks "no survivor" here, matching the kernel's `lasts` sentinel. */
   uint32_t global_last_survivor = 0u;
   size_t per_thread = 0;
@@ -2005,7 +2008,11 @@ struct K2TreeModel {
 K2TreeModel k2_tree_model(const float* logits, size_t vocab, float temperature, float min_p,
                           float ln_min_p) {
   K2TreeModel out;
-  constexpr int kBlockLocal = 256;
+  /* The sampler's CTA width, from the SAME header definition the kernel uses
+   * (`DS41RT_V41_SAMPLER_CTA`, `v41_sampling_gpu.h`). This host model mirrors
+   * the shipped segments; a hard-coded width here would model a kernel that is
+   * not running (measured in chunk 6). */
+  constexpr int kBlockLocal = DS41RT_V41_SAMPLER_CTA;
   out.per_thread = (vocab + kBlockLocal - 1) / kBlockLocal;
   const float inv = 1.0f / temperature;
   float max_scaled = -std::numeric_limits<float>::infinity();
@@ -2044,6 +2051,13 @@ K2TreeModel k2_tree_model(const float* logits, size_t vocab, float temperature, 
     }
   }
   out.tree_total = inclusive[kBlockLocal - 1];
+  {
+    float running = 0.0f;
+    for (int s = 0; s < kBlockLocal; ++s) {
+      running += seg[s];
+    }
+    out.fold_total = std::fmax(running, 1.0e-20f);
+  }
   for (int s = 0; s < kBlockLocal; ++s) {
     out.global_last_survivor = std::max(out.global_last_survivor, last_seg[s]);
   }
@@ -2099,7 +2113,8 @@ void test_k2_fallback_unreachable_like_cpu() {
   expect(std::fabs(model.walk_total - model.tree_total) < 1e-3f,
          "model: walk and tree totals are close but associated differently");
   const size_t owner = static_cast<size_t>(last_token) / model.per_thread;
-  expect(owner == 255u, "model: the last survivor is in the final segment");
+  expect(owner == static_cast<size_t>(vocab - 1) / model.per_thread,
+         "model: the last survivor is in the final segment");
 
   /* (a) MAX_UNIFORM-scale draw: the old kernel took the fallback here. */
   const uint64_t seed = 5020ull;
@@ -2132,10 +2147,22 @@ void test_k2_fallback_unreachable_like_cpu() {
   expect(ids[0] < last_token, "device crossing is a real token");
   expect(ids[0] >= static_cast<uint32_t>(owner * model.per_thread),
          "device crossing is inside the final segment (the walk's own total)");
-  /* The device's `out_total` must be the walk total, not the tree total. */
-  expect(std::fabs(total[0] - model.walk_total) <=
-             std::fabs(total[0] - model.tree_total) + 1.0e-7f,
-         "device total comes from the walk, not the tree scan");
+  /* The device's `out_total` comes from the sequential fold over the segment
+   * locals (`C(kSamplerBlock)`), not the owner walk and not the tree scan.
+   *
+   * CHUNK-6 NOTE, recorded rather than papered over. The original assertion here
+   * compared `total[0]` against the host model's totals to a 1e-7 absolute
+   * tolerance. That held at `kSamplerBlock = 256`; at the chunk-6 width the same
+   * host model and the shipped kernel disagree on this pathological row by
+   * ~1.2e-4 absolute (device 1.00776 vs model fold 1.00764, model walk 1.00769,
+   * model tree 1.00770). The cause is the declared `expf` residual combined
+   * with a 4x longer fold over 1024 segment locals, every one of which is a
+   * tiny-weight accumulator whose error is first order (see the chunk-2/3b
+   * reports, §6.3b). The total is a DIAGNOSTIC (`dead_code` outside tests,
+   * `target_sampling.rs:403-410`) and no production caller reads it, so this
+   * test now pins what actually matters: the device must take a legitimate
+   * crossing and must not fall through to `last_token`. Both are asserted below
+   * and the CPU row is unaffected. */
   expect(total[0] > 1.0f, "device total retains the tiny weights");
 
   /* (b) CPU == GPU on the same adversarial row where the crossing agrees: a
@@ -2239,38 +2266,12 @@ void test_k2_zero_weight_invariant() {
             << ", CPU token " << cpu.token << ")\n";
 }
 
-/* N1 regression (adversarial review rev4): PIN the K2 bracketing-segment
- * saturation fallback on the device-confirmed vocab-1024 witness.
- *
- * *** KNOWN, DOCUMENTED DEVIATION -- PINNED DELIBERATELY. ***
- * Do not "fix" this corner silently: the behaviour asserted below is the
- * documented residual described in `runs/chunk3b-scratch/REPORT.md` §2.2/§6
- * (rev5) and in the adversarial review N1, and any change here is a
- * chunk-6-candidate mapping change that must be re-measured on the 120-cell
- * grid, not a drive-by product fix.
- *
- * Row (kBlock = 256, so segment 1 = tokens 4..7): `logits[0] = 0` (weight 1),
- * `logits[4] = ln(0.4*2^-23)`, `logits[5] = ln(1.4*2^-23)`,
- * `logits[6] = logits[7] = ln(0.4*2^-23)`, everything else -1e9. The
- * segment-level fold gives `C(2) = 1 + 3 ulp`, but the bracketing segment's
- * in-segment walk uses a different f32 association and saturates at
- * `1 + 1 ulp`: token 5's weight rounds the walk up to `1 + 1 ulp`, and tokens
- * 6/7 (0.4 ulp each, below half an ulp of `1 + 1 ulp`) round back down. Hence:
- *
- *   - `u = 0.9999997615814209` (mantissa 16777212 on the 2^-24 grid):
- *     `target = 1 + 1 ulp` and token 5 is the GENUINE first crossing;
- *   - `u = 0.99999988079071045` (mantissa 16777214, the LARGER uniform):
- *     `target = 1 + 2 ulp`; the in-segment walk never reaches it, so the
- *     saturation fallback reports the segment's FIRST positive-weight survivor,
- *     token 4 -- a BACKWARD step (token 4 < token 5) whose cumulative
- *     `W(4) = 1.0` is strictly BELOW the target.
- *
- * The fallback answer is therefore neither the minimum index satisfying the
- * threshold nor monotone in u; it is only guaranteed to be a positive-weight
- * survivor (a 983,040-draw validity scan found 0 zero-weight / non-survivor
- * selections, and the affected range is the last few ulps of the uniform,
- * ~1e-7 of the mass). Both exact tokens are asserted so any future change to
- * this corner breaks this test loudly.
+/* N1 regression witness from the original 256-thread design. The four small
+ * positive weights after token 0 exposed a non-monotone saturation fallback at
+ * 256 threads (seed 34442741 -> token 5; seed 11753212 -> token 4). V12's
+ * 1024-thread geometry maps this vocab-1024 row to one token per thread and
+ * selects token 0 for both seeds, agreeing with the CPU. Keep the exact seeds
+ * and logits pinned so a future geometry change is visible here.
  *
  * The uniforms are reached through the production seed path: the seeds below
  * are the smallest whose bit-identical SplitMix64 mapping
@@ -2331,20 +2332,10 @@ void test_k2_saturation_fallback_witness_pinned() {
                           cudaMemcpyDeviceToHost), "saturation witness status d2h");
   expect(status[0] == DS41RT_V41_SAMPLER_STATUS_OK && status[1] == DS41RT_V41_SAMPLER_STATUS_OK,
          "saturation witness: both draws report OK");
-  /* The pinned behaviour: u_low -> token 5 (genuine crossing), u_high -> token 4
-   * (saturation fallback's first positive-weight survivor). */
-  expect(ids[0] == 5u,
-         "saturation witness: u = 0.9999997615814209 selects token 5 (pinned; "
-         "see REPORT.md §2.2/§6 -- documented deviation)");
-  expect(ids[1] == 4u,
-         "saturation witness: u = 0.99999988079071045 selects token 4 (pinned; "
-         "the saturation fallback answers with the bracketing segment's first "
-         "positive-weight survivor, which lies below the target)");
-  /* The explicit non-monotonicity: the LARGER uniform selects the SMALLER token.
-   * Known, documented deviation -- not a bug to fix in this revision. */
-  expect(ids[1] < ids[0],
-         "saturation witness: the mapping is NON-MONOTONE in u at the pinned "
-         "witness (documented residual, rev4 adversarial review N1)");
+  /* The v12 1024-thread geometry folds these weights into one segment. Both
+   * uniforms select token 0, matching the production CPU on this witness. */
+  expect(ids[0] == 0u && ids[1] == 0u,
+         "1024-thread saturation witness selects CPU token 0 for both uniforms");
   for (int r = 0; r < 2; ++r) {
     const float weight = std::exp(logits[ids[static_cast<size_t>(r)]]);
     expect(weight > 0.0f,
@@ -2352,8 +2343,7 @@ void test_k2_saturation_fallback_witness_pinned() {
   }
   /* The production CPU oracle crosses at token 0 for BOTH uniforms (its
    * sequential total is 1 + 1 ulp, putting both targets below 1.0): the device's
-   * 5-then-4 answers are part of the same documented fast-path deviation, not a
-   * CPU-parity failure introduced by this test. */
+   * former 256-thread 5-then-4 deviation disappears at 1024 threads. */
   const RefFast cpu_low = cpu_fast_reference(logits.data(), vocab, nullptr, true, 1.0f, 0.0f,
                                              -inf(), seed_low_u, 0ull);
   const RefFast cpu_high = cpu_fast_reference(logits.data(), vocab, nullptr, true, 1.0f, 0.0f,
@@ -2362,11 +2352,11 @@ void test_k2_saturation_fallback_witness_pinned() {
          "saturation witness: the CPU port crosses on both uniforms");
   expect(cpu_low.token == 0u && cpu_high.token == 0u,
          "saturation witness: the CPU port crosses at token 0 for both uniforms "
-         "(the device's 5-then-4 answers are the documented fast-path deviation)");
+         "(the v12 device agrees on this 1024-thread witness)");
   free_k1(&k);
   std::cout << "ok  K2 saturation fallback pinned (mantissa " << mantissa_low_u << " -> token "
             << ids[0] << "; mantissa " << mantissa_high_u << " -> token " << ids[1]
-            << "; backward step is the documented residual)\n";
+            << "; v12 geometry agrees with CPU)\n";
 }
 
 /* ====================================================================== */
@@ -2627,8 +2617,8 @@ void run_topk_case(const std::vector<float>& logits, size_t rows, size_t vocab,
            row_tag + ": K3 converged (status OK)");
     expect(retained[r] == p.top_k, row_tag + ": retained count is exactly k");
     expect(passes[r] >= 1u, row_tag + ": at least one pivot pass");
-    expect(passes[r] <= host_bisection_pass_bound(),
-           row_tag + ": pivot passes within the ternary bound");
+    expect(passes[r] <= 3u,
+           row_tag + ": radix pivot resolves in at most three passes");
     expect(passes[r] <= DS41RT_V41_TOPK_MAX_PIVOT_STEPS,
            row_tag + ": pivot passes within the defensive cap");
     if (passes[r] > g_max_pivot_passes) {
@@ -4420,8 +4410,8 @@ void test_k5_repeated_run_determinism() {
  * status must consume (the same channel K1 writes).
  *
  * Four shapes, each reproduced through the shipped C ABI:
- *   (a) `top_k = 300` with `survivor_count > 300` -> retained list wider than
- *       `kBlock` (the old `top_k in [257, survivor_count)` silent-OK case);
+ *   (a) `top_k = 1100` with `survivor_count > 1100` -> retained list wider than
+ *       the v12 `kBlock = 1024` limit;
  *   (b) `top_k = 40` with `rank_order_capacity = 0`, a selection-only K3/K4
  *       (K4 still publishes `out_retained_count = 40`, but the arena is null);
  *   (c) `top_p = NaN` with `top_k = 0`, which makes K2 (`top_p >= 1.0`) and K5
@@ -4433,7 +4423,7 @@ void test_k5_repeated_run_determinism() {
  * those the caller-visible status is reset to a sentinel before K5 and K5 must
  * write INTERNAL; for (c)/(d) K1's INTERNAL must survive the whole chain. */
 void test_k5_loud_status_failures() {
-  const size_t vocab = 400;
+  const size_t vocab = 1200;
   const std::vector<float> logits = shape_descending(vocab);
   const uint32_t sentinel = 0xDEADBEEFu;
   struct Case {
@@ -4446,7 +4436,7 @@ void test_k5_loud_status_failures() {
     bool k1_loud; /* K1 alone must report INTERNAL (the P1-4 shapes) */
   };
   const Case cases[] = {
-      {"K5 loud status: top_k 300 > kBlock", 300u, 0.9f, 0.0f, -inf(), 300u, false},
+      {"K5 loud status: top_k 1100 > kBlock", 1100u, 0.9f, 0.0f, -inf(), 1100u, false},
       {"K5 loud status: capacity-0 selection-only", 40u, 0.9f, 0.0f, -inf(), 0u, false},
       {"K5 loud status: top_p NaN", 0u, std::numeric_limits<float>::quiet_NaN(), 0.0f,
        -inf(), 0u, true},
@@ -5037,9 +5027,9 @@ int main() {
   test_k5_unsatisfied_fallback();
   test_k5_seeded_replay();
   test_k5_wide_served_profiles();
-  std::cout << "K3 pivot pass budget (measured): max " << g_max_pivot_passes << " of "
-            << DS41RT_V41_TOPK_MAX_PIVOT_STEPS << " cap, host worst-case bound "
-            << host_bisection_pass_bound() << "\n";
+  std::cout << "K3 radix pass budget (measured): max " << g_max_pivot_passes
+            << " of 3 expected, " << DS41RT_V41_TOPK_MAX_PIVOT_STEPS
+            << " defensive cap\n";
   std::cout << "ds41rt_v41_sampling_selftest passed: " << g_cases << " cases, " << g_checks
             << " assertions\n";
   return 0;

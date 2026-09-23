@@ -156,6 +156,27 @@ typedef struct ds41rt_v41_sampler_scratch_s {
 
 /* Byte layout of one row's scratch region. Exposed as macros so the Rust
  * planner and the C ABI test can pin the same numbers. */
+/* ---- The sampler's per-row CTA width (chunk 6) ----
+ *
+ * Every sampler pass is a strided scan over the row whose per-thread chain
+ * length is `vocab / kSamplerBlock`, so the width is the first performance
+ * lever named by design §13.1. It is a launch-geometry change under contract
+ * §7.2.6 and it sets the segment count, hence the tree association and the
+ * uniform->token mapping, so changing it requires re-running the validation
+ * campaign against its own baseline.
+ *
+ * v12 default 1024. Chunk 6 measured 256/512/1024 in full
+ * (`runs/chunk6-scratch/REPORT.md`); v12 re-pins the K2 adversarial boundary
+ * witnesses and publishes fresh GPU-vs-CPU mismatch rates for this geometry.
+ *
+ * It lives in the header so the sampler TU and the device selftest's host model
+ * read ONE definition: the selftest models the kernel's segments, and a
+ * mismatch between the two silently invalidates tests (measured in chunk 6). */
+#ifndef DS41RT_V41_SAMPLER_BLOCK
+#define DS41RT_V41_SAMPLER_BLOCK 1024
+#endif
+#define DS41RT_V41_SAMPLER_CTA DS41RT_V41_SAMPLER_BLOCK
+
 #define DS41RT_V41_SAMPLER_SCRATCH_BYTES 64u
 #define DS41RT_V41_SAMPLER_PARAM_BYTES 64u
 
@@ -419,7 +440,7 @@ ds41rt_status_t ds41rt_cuda_v41_topk_select(
  *
  * `out_status` is the SAME per-row status channel K1 uses and may be null. K5
  * writes `INTERNAL` there, for a K5-class row that cannot produce a defined
- * token: a retained list wider than `kBlock` (256) or not materialized
+ * token: a retained list wider than `DS41RT_V41_SAMPLER_CTA` or not materialized
  * (`rank_order_ids == nullptr`), ANY non-identity `output_row` (checked
  * unconditionally before the retained count is read), a non-finite `top_p`, or a
  * `survivor_count == 0` row. `scratch[r].status` carries the same value; the
