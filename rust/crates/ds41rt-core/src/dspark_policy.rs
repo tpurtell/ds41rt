@@ -43,8 +43,11 @@ const WINDOWS: usize = 4;
 const WARM_LAYER_SAMPLES: u64 = 120;
 /// Round samples needed before the policy engages.
 const WARM_ROUND_SAMPLES: u64 = 12;
-/// Step size of the per-position logit calibration (log-loss gradient).
-const CALIBRATION_RATE: f64 = 0.01;
+/// Floor of the per-position calibration step (long-run tracking memory of
+/// roughly 1 / floor reached samples).
+const CALIBRATION_RATE: f64 = 0.002;
+/// Largest single calibration update, in logits.
+const CALIBRATION_STEP: f64 = 0.5;
 /// Bound on each position's learned logit offset.
 const CALIBRATION_LIMIT: f64 = 4.;
 /// Per-round weight of the mean prediction-residual correction.
@@ -630,9 +633,17 @@ impl DsparkPolicy {
                     self.stats.position_confidence[position] += calibrated;
                     self.stats.position_raw_confidence[position] += confidence[position];
                     self.stats.position_accepted[position] += u64::from(position < accepted);
+                    // Stochastic Newton step on the log-loss: the gradient
+                    // scaled by the logistic curvature, with a 1/n schedule
+                    // (a running maximum-likelihood estimate) down to a floor
+                    // that keeps tracking drift.
+                    let reached = self.stats.position_reached[position] as f64;
+                    let rate = (1. / (reached + 10.)).max(CALIBRATION_RATE);
+                    let curvature = (calibrated * (1. - calibrated)).max(0.05);
+                    let step = (rate * (outcome - calibrated) / curvature)
+                        .clamp(-CALIBRATION_STEP, CALIBRATION_STEP);
                     let offset = &mut self.calibration[position];
-                    *offset = (*offset + CALIBRATION_RATE * (outcome - calibrated))
-                        .clamp(-CALIBRATION_LIMIT, CALIBRATION_LIMIT);
+                    *offset = (*offset + step).clamp(-CALIBRATION_LIMIT, CALIBRATION_LIMIT);
                 }
             }
         }
@@ -874,7 +885,12 @@ mod tests {
         let mut state = 99u64;
         let mut uniform = || { state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
             (state >> 11) as f64 / (1u64 << 53) as f64 };
-        for _ in 0..20_000 {
+        for round in 0..20_000 {
+            if round == 600 {
+                // Position 6 has been reached ~460 times: already close.
+                assert!(policy.stats().position_reached[5] < 520);
+                assert!((policy.calibrated(5, 0.95) - 0.8).abs() < 0.05, "{:?}", policy.calibration());
+            }
             let truth = [0.95, 0.95, 0.95, 0.95, 0.95, 0.8, 0.8];
             let accepted = truth.iter().take_while(|&&p| uniform() < p).count();
             let requests = [DsparkObservedRequest { id: 1, rows: 8, accepted: accepted + 1, confidence: Some(&confidence) }];
