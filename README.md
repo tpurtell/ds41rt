@@ -57,15 +57,15 @@ to be redone.
 See [compact setup and residency](docs/release-v7-exl3-compact.md)
 and the [configuration accounting chart](docs/release-v7-configurations.svg).
 No physical RTX 5090 has been tested; the same-capability grid checks used RTX PRO 6000.
-The release pair named by `ds41rt.config` is `ghcr.io/tpurtell/ds41rt-coordinator:v11`
-and `ghcr.io/tpurtell/ds41rt-spark-expert:v11` ([notes, roles and the published
-registry digests](docs/release-v10-notes.md)); `v10` and `latest` are published
-and each role was anonymous-verified, on an amd64 host for the coordinator and an
-arm64 worker for the Spark image. The v10
+The release pair named by `ds41rt.config` is `ghcr.io/tpurtell/ds41rt-coordinator:v12`
+and `ghcr.io/tpurtell/ds41rt-spark-expert:v12` ([release notes and registry
+digests](docs/release-v12-notes.md)). `latest` resolves to the same pair; both
+roles were verified by anonymous pull on their matching architectures. The
 Spark image is **universal**: it advertises
 `io.ds41rt.v41.spark_tp_roles=tp2;tp3;tp6` on top of the default TP4 shard, so one
 pair serves every approved native topology and `./run.sh` selects the role
-from `SPARK_TP`. V9 release images remain published as
+from `SPARK_TP`. V11 remains available as the previous numbered pair
+([v11 notes](docs/release-v11-notes.md)). V9 release images remain published as
 `ghcr.io/tpurtell/ds41rt-coordinator:v9` and `ghcr.io/tpurtell/ds41rt-spark-expert:v9`
 ([digests and roles](docs/release-v9-notes.md)). V8 release images remain published as
 `ghcr.io/tpurtell/ds41rt-coordinator:v8` and `ghcr.io/tpurtell/ds41rt-spark-expert:v8`
@@ -192,7 +192,41 @@ from the EXL3 5090+2-spark runs above, none qualifies either new quant.
 
 Historical EXL3 performance, acceptance and quantization analysis are preserved in the [v5 performance report](https://github.com/tpurtell/ds41rt/blob/v5/docs/release-v5-performance.md); they are not v6 measurements.
 
-**Sampling comparison (measured on the v11 final build, dSpark on).** The
+**V12 GPU sampling comparison (2026-09-23, dSpark on).** The released v12
+sampler serves normal and constrained stochastic decoding on the GPU for
+`temperature`, `top_p`, `top_k`, `min_p`, and deterministic `seed`. The campaign
+used one selected RTX PRO 6000 plus four Spark workers, the official DeepSeek
+V4.1 Flash checkpoint, five discarded warmups, and three interleaved repeats
+on natural output budgets. All 15 raw reports passed the campaign validator
+with zero quality or cache-gate failures. Values below are median observed
+decode tokens/s per content case; the weighted row is the median of the three
+per-repeat weighted ratios (weights sum to 8.0). Counting has weight zero.
+
+| Content case | Greedy | T0.2 / top-p 0.95 | T0.7 / top-p 0.9 | T0.7 / min-p 0.05 | T0.7 / top-k 40 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Code | 138.5 | 133.0 | 129.0 | 127.3 | 133.3 |
+| Code with reasoning | 103.7 | 100.4 | 97.6 | 100.4 | 95.2 |
+| Math | 134.1 | 131.6 | 140.7 | 126.5 | 132.7 |
+| Fable | 61.0 | 57.3 | 54.6 | 57.6 | 57.6 |
+| Hello | 65.3 | 72.2 | 65.1 | 65.5 | 75.2 |
+| Topic | 74.3 | 69.4 | 73.0 | 72.5 | 75.0 |
+| Natural JSON (0.5) | 98.6 | 96.6 | 95.4 | 85.2 | 103.5 |
+| Schema JSON (0.5) | 104.3 | 99.7 | 93.6 | 97.0 | 112.1 |
+| Multilingual | 76.8 | 76.6 | 70.4 | 74.6 | 71.1 |
+| **Weighted (sum w = 8.0)** | **94.17** | **89.65** | **89.73** | **90.91** | **89.64** |
+| Counting 1–200 (weight 0) | 166.4 | 162.6 | 162.4 | 166.2 | 164.9 |
+
+The paired v11 and v12 campaigns used identical request bodies and produced
+identical response hashes and token counts in all 150 `(mode, repeat, case)`
+samples. V12's weighted nucleus medians are **11.25% higher** at T0.2/top-p
+0.95 and **7.74% higher** at T0.7/top-p 0.9; these gains exceed either run's
+repeat spread. Greedy, min-p and top-k move by −1.36%, +2.16% and +2.17%,
+respectively, within the observed spread. The four stochastic v12 medians form
+one cluster; their order is not resolved by three repeats. The image source,
+hardware identity, raw hashes, repeat series, GPU/CPU sampling residual and
+fixed-logit timings are in [v12 performance](docs/release-v12-performance.md).
+
+**Historical v11 CPU sampling comparison (dSpark on).** The
 release decode battery `scripts/bench-ds41-release-decode.py` keeps the
 nine-category weighted corpus, per-category weights and decode-only metric of
 the headline table above, and additionally drives five canonical sampling
@@ -380,8 +414,8 @@ runtime-log pass described above
 which `run.sh` forwards to the coordinator and every worker); the adaptive gate
 may legitimately suppress drafts at poor acceptance, so actual activity is
 recorded rather than forced, and a suppressed-draft run is never reported as
-active dSpark. The measured tables above are the v11 final build's five-mode
-sampling comparison; the legacy runtime is not extended. The greedy fast path
+active dSpark. The historical v11 table above records its CPU sampler; the v12
+table records the released GPU sampler. The greedy fast path
 applies only when every request in a batch is greedy and unconstrained — mixed or
 constrained batches take the full logits path — so it is not a blanket default
 device argmax. The scope is the native production path: one RTX coordinator plus
@@ -467,9 +501,9 @@ MODEL_REVISION=3431dde3247c13b5957f682b1e3c6fcae2566079
 To use the published images, pull the coordinator image locally and the Spark image on each worker:
 
 ```bash
-docker pull ghcr.io/tpurtell/ds41rt-coordinator:v11
+docker pull ghcr.io/tpurtell/ds41rt-coordinator:v12
 for host in ostrich dodo emu kiwi; do
-  ssh "$host" docker pull ghcr.io/tpurtell/ds41rt-spark-expert:v11
+  ssh "$host" docker pull ghcr.io/tpurtell/ds41rt-spark-expert:v12
 done
 ./run.sh --dry-run
 ./run.sh

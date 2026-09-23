@@ -1,6 +1,19 @@
-# GPU target-sampler design (implementation gate)
+# GPU target-sampler design and v12 implementation record
 
-**Status:** design gate. **Chunks 1–5 are delivered and reviewed.** Chunk 1 is
+**Current status:** the v12 sampler is implemented at image source `b23a130`.
+The original design gate below remains the detailed contract. Chunk 6 replaced
+K3's wide top-k pivot loop with three count-radix passes and K5's full-survivor
+top-p binary mass probes with three value-radix and three tie-ID radix passes
+per boundary. K5 uses Q32 integer mass, warp-aggregated shared histograms and a
+1024-thread row geometry. It keeps the floating-point search for `top_p=1`,
+where CPU prefix saturation is observable. The served host retains a counted
+CPU fallback for top-k values above its 256-entry retained-list capacity. The
+validated residual and final five-mode deployment measurements are in
+[release-v12-performance.md](release-v12-performance.md); the per-cell residual
+bounds are in
+[release-v12-sampler-residual-bounds.json](release-v12-sampler-residual-bounds.json).
+
+**Chunks 1–5 history:** Chunk 1 is
 `9dffad0` (§17); chunk 2 `f0e7902` (§18); chunk 3a `90f745c` (§19); chunk 3b
 `ad9ea72` (§21); chunk 4 is split — **4a committed as `3572101`, 4b committed as
 `b38e910`**, both recorded in **§22** (which also answers §20's hand-off
@@ -8,9 +21,8 @@ list); **chunk 5 / 5b is delivered as `714fc1d`** with its validation record in
 **§22.7** and its harness-power record in **§12.14**. The normative sections below
 have been reconciled with all six (notably §4.1, §4.2–§4.5, §5.4–§5.5, §6.3,
 §8.2–§8.4, §9.2, §10.4, §12.4, §12.6, §12.12–§12.14, §13.1, §13.2, §16, §20,
-§22.7). **Chunks 6/7 (pass-budget optimisation and the published measurement) and
-the phase-3–4 campaign are next**; they remain design-only and still require the
-adversarial review of §14.
+§22.7). References below to chunks 6/7 as future work preserve the original
+design history; this status paragraph records the delivered v12 implementation.
 
 **Repository revision read:** `e1f5d495b5a82fb7ddad8514cad419b6ae62c0cc` (`e1f5d49`).
 Chunk 1 reads `9dffad0`, chunk 2 `f0e7902`, chunk 3a `90f745c`, chunk 3b
