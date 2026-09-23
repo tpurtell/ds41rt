@@ -79,3 +79,16 @@ six-Spark example configurations (`tp2ep3`, `tp3ep2`, `tp6ep1`) need
 `docker pull ghcr.io/tpurtell/ds41rt-spark-expert:v13` on rhea and moa before
 their dry runs pass; every other example and both default layouts pass
 `./run.sh --dry-run`. V12 remains available as the previous numbered pair.
+
+## Evidence
+
+The [GitHub release](https://github.com/tpurtell/ds41rt/releases/tag/v13)
+provides `v13-evidence.tar.gz` (48,653,945 bytes; SHA-256
+`97f320a60a79d8f9acce105823cdb6091ffc5cca0ad21bb81908e504c9a4531d`), the payload
+`SHA256SUMS` (1,170 files; SHA-256
+`4c1b438e04fc427234a9898b203df760f3f159b6b9a10dafc2f7119d8b9e89ef`), and
+`v13-release-assets.sha256`. The package holds every A/B session and analysis
+(including the earlier policy iterations), the full release campaign with its
+`/v1/stats` snapshots and derived tables, the publication records, and the
+final build and smoke logs. It was scanned for token and private-key patterns
+before upload.
