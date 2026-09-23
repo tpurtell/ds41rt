@@ -136,12 +136,23 @@ unused for 64 rounds is tried once to keep its fits and calibration current.
 Width 0 (skipping the draft) was not included: zero drafts were optimal in only
 0.3–3% of rounds.
 
+**Measured outcome: not the default.** In the interleaved A/B (four sessions
+per arm), per-round width choice lost to a fixed width 5 on both layouts:
+code C2–C16 −5% (one RTX) and −4% (two RTX), code C1 −3% and −2%, with
+greedy C1 and sampled C1 tied. At matched row counts the width-7 load is not
+slower and width-5 drafts cost the same, so the loss is in the decisions: the
+policy's mean-time residual ran 0.5–1 ms higher in that arm, meaning wide
+rounds under concurrency cost more than predicted. v13 therefore drafts the
+trained five-token block by default on both layouts, and per-round choice is
+available with `--dspark-draft-limit 7` while its concurrency pricing is
+improved.
+
 On one RTX the width-7 storage costs 404 MiB and still leaves all five
 resident expert layers and the same KV pool, with 2.25 GiB free after
 readiness. The planner reserves draft storage and the KV pool target first and
 fills the remainder with whole expert layers, so on a tighter budget the
 width-7 storage would cost a resident layer unless `--kv-pool-size` is
-lowered. `--dspark-draft-limit 5` loads width 5 only and disables the choice.
+lowered. The default (width 5) loads the five-token block only.
 
 ## Selection
 

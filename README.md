@@ -604,9 +604,10 @@ bandwidth-balance policy: it maximizes expected committed tokens per unit of
 predicted round time, pricing each layer's routed-expert weight traffic (known
 slice bytes per 16-row group) over an effective bandwidth fitted continuously
 from the lane's own layer timings. It needs no offline calibration, so quant,
-TP width, clock and thermal changes are absorbed at runtime. The draft limit
-stays 5 with one RTX and 7 with two (`--dspark-draft-limit`); `--dspark-fixed`
-verifies every draft. `/v1/stats` exports the fitted costs, prediction error
+TP width, clock and thermal changes are absorbed at runtime. dSpark drafts its
+trained five-token block by default on both layouts; `--dspark-draft-limit 7`
+loads the extended block and chooses 5 or 7 per round (experimental: it measured
+slower under concurrency). `--dspark-fixed` verifies every draft. `/v1/stats` exports the fitted costs, prediction error
 and acceptance under `dspark_policy`. See the [policy design](docs/dspark-bandwidth-policy.md).
 
 The coordinator owns attention, mHC residuals, embeddings, mapped Engram lookup, routers, shared experts, vision, all three dSpark stages, the vocabulary head, sampling, cache ownership, and the API. Dual mode splits this work by dependency across the RTX pair, uses TP2 for all shared experts and encoder routed experts, and partitions vocabulary rows for deterministic parallel greedy selection. Four Sparks retain only decoder routed experts in dual mode and all routed experts in single mode.
