@@ -35,6 +35,8 @@ pub(crate) struct DsparkTerminal<'weights, 'library> {
     temperatures: DeviceAllocation<'library>,
     tokens: DeviceAllocation<'library>,
     capacity: usize,
+    /// Live draft width; storage is sized for the loaded maximum.
+    width: usize,
     graph: Option<(*mut c_void, usize)>,
     ready_requests: Option<usize>,
 }
@@ -87,12 +89,25 @@ impl<'library> DsparkWeights<'library> {
             temperatures: DeviceAllocation::new(library, capacity * 4)?,
             tokens: DeviceAllocation::new(library, capacity * (self.draft_width + 1) * 4)?,
             capacity,
+            width: self.draft_width,
             graph: None,
             ready_requests: None,
         })
     }
 }
 impl DsparkTerminal<'_, '_> {
+    /// Switch the live draft width (5 or 7) within the loaded maximum.
+    pub(super) fn set_width(&mut self, width: usize) -> Result<()> {
+        ensure!(matches!(width, 5 | 7) && width <= self.weights.draft_width,
+            "draft width must be five or seven within the loaded width");
+        if width == self.width { return Ok(()); }
+        ensure!(self.graph.is_none(), "cannot change the width of a captured terminal");
+        self.width = width;
+        self.ready_requests = None;
+        self.sampling_requests = None;
+        Ok(())
+    }
+    pub(super) fn width(&self) -> usize { self.width }
     pub fn additional_bytes(capacity: usize) -> Result<usize> {
         Self::additional_bytes_with_width(capacity, 5)
     }
@@ -157,12 +172,12 @@ impl DsparkTerminal<'_, '_> {
             "invalid draft temperature"
         );
         ensure!(
-            rngs.iter().all(|rng| rng.can_reserve_width(self.weights.draft_width)),
+            rngs.iter().all(|rng| rng.can_reserve_width(self.width)),
             "dSpark RNG exhausted"
         );
         let bytes = self.sampling_staging.bytes_mut();
         for (i, rng) in rngs.iter_mut().enumerate() {
-            let reservation = rng.reserve_width(self.weights.draft_width).context("dSpark RNG exhausted")?;
+            let reservation = rng.reserve_width(self.width).context("dSpark RNG exhausted")?;
             bytes[i * 16..i * 16 + 8].copy_from_slice(&reservation.seed.to_ne_bytes());
             bytes[i * 16 + 8..i * 16 + 16].copy_from_slice(&reservation.first_subsequence.to_ne_bytes());
         }
@@ -221,7 +236,7 @@ impl DsparkTerminal<'_, '_> {
         unsafe {
             self.enqueue_normalize_on(requests, stream)?;
             head.kernel.launch(self.normalized.buffer, head.weights.weight()?,
-                self.shared_logits.buffer, requests * self.weights.draft_width, stream)?;
+                self.shared_logits.buffer, requests * self.width, stream)?;
             self.enqueue_sampling_on(requests, stream)
         }
     }
@@ -233,7 +248,7 @@ impl DsparkTerminal<'_, '_> {
                 self.residual.buffer,
                 self.pre_mix.buffer,
                 self.confidence.inputs()[0],
-                requests * self.weights.draft_width,
+                requests * self.width,
                 stream,
             )?;
             // This RNE variant matches the reference's one final BF16 rounding.
@@ -241,7 +256,7 @@ impl DsparkTerminal<'_, '_> {
                 self.confidence.inputs()[0],
                 self.weights.tensor("mtp.2.norm.weight")?,
                 self.normalized.buffer,
-                (requests * self.weights.draft_width) as i32,
+                (requests * self.width) as i32,
                 5120,
                 1e-20,
                 stream,
@@ -260,7 +275,7 @@ impl DsparkTerminal<'_, '_> {
                 requests * 4,
                 stream,
             )?;
-            for position in 0..self.weights.draft_width {
+            for position in 0..self.width {
                 self.markov.enqueue_on(requests, stream)?;
                 let [embedding, bias] = self.markov.storage();
                 let confidence_embedding = Self::slice(
@@ -285,11 +300,11 @@ impl DsparkTerminal<'_, '_> {
                     position,
                     stream,
                 )?;
-                if position + 1 < self.weights.draft_width {
+                if position + 1 < self.width {
                     library.copy_d2d_async(self.markov.tokens(), next, requests * 4, stream)?;
                 }
             }
-            self.confidence.enqueue_on(requests * self.weights.draft_width, stream)?;
+            self.confidence.enqueue_on(requests * self.width, stream)?;
         }
         Ok(())
     }
@@ -384,9 +399,9 @@ impl DsparkTerminal<'_, '_> {
     pub(super) fn output_storage(&self, requests: usize) -> Result<[Ds41rtDeviceBuffer; 3]> {
         self.validate_sampling(requests)?;
         Ok([
-            Self::slice(self.tokens.buffer, 0, requests * (self.weights.draft_width + 1) * 4)?,
-            Self::slice(self.adjusted_logits.buffer, 0, requests * self.weights.draft_width * 129280 * 4)?,
-            Self::slice(self.confidence.storage()[0], 0, requests * self.weights.draft_width * 4)?,
+            Self::slice(self.tokens.buffer, 0, requests * (self.width + 1) * 4)?,
+            Self::slice(self.adjusted_logits.buffer, 0, requests * self.width * 129280 * 4)?,
+            Self::slice(self.confidence.storage()[0], 0, requests * self.width * 4)?,
         ])
     }
 }

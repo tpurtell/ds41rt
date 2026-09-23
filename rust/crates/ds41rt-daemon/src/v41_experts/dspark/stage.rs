@@ -61,6 +61,14 @@ impl<'library> DsparkWeights<'library> {
     }
 }
 impl DsparkStage<'_, '_> {
+    pub(super) fn set_width(&mut self, width: usize, maximum: usize) -> Result<()> {
+        if width == self.width { return Ok(()); }
+        ensure!(self.graph.is_none(), "cannot change the width of a captured dSpark stage");
+        self.attention.set_width(width, maximum)?;
+        self.width = width;
+        self.invalidate();
+        Ok(())
+    }
     #[cfg(test)]
     pub(super) fn expert_diagnostics(&self)->[Ds41rtDeviceBuffer;4] {self.ffn.expert_diagnostics()}
 

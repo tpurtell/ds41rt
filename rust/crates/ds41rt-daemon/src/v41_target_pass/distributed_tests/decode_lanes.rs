@@ -94,7 +94,7 @@ pub(super) fn qualify<'w, 'a>(
                 let proposal_inputs: Vec<_> = members.iter().flatten().map(|&slot|
                     (9000 + slot as u64, tokens[slot][0], 8 + step as u64,
                      if step == 2 && slot % 2 == 0 { 1 } else { 6 })).collect();
-                let proposals = draft.propose(lib, &proposal_inputs)?;
+                let proposals = draft.propose(lib, 0, &proposal_inputs)?;
                 for (proposal, &(_, anchor, _, remaining)) in proposals.iter().zip(&proposal_inputs) {
                     assert_eq!(proposal[0], anchor);
                     assert_eq!(proposal.len(), remaining);

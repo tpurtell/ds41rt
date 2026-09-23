@@ -10,7 +10,8 @@ enum Phase { Normalize, Project, Assemble, Sample }
 pub(crate) struct DistributedDsparkTerminal<'w, 'a> {
     terminal: DeviceOwner<'a, DsparkTerminal<'w, 'a>>,
     head: DistributedVocabularyWave<'w, 'a>,
-    graphs: [[Option<*mut c_void>; 16]; 2],
+    /// Captured stages indexed [width 5/7][normalize/sample][requests - 1].
+    graphs: [[[Option<*mut c_void>; 16]; 2]; 2],
     ready: Option<usize>,
     pending: Option<(usize, Phase)>,
 }
@@ -35,12 +36,18 @@ impl<'w, 'a> DistributedDsparkTerminal<'w, 'a> {
         Ok(Self {
             terminal: devices[1].own(|| weights.terminal_storage(None, capacity, required[1] - head_bytes[1]))?,
             head: DistributedVocabularyWave::new(devices, shards, capacity * weights.draft_width, head_bytes)?,
-            graphs: [[None; 16]; 2], ready: None, pending: None,
+            graphs: [[[None; 16]; 2]; 2], ready: None, pending: None,
         })
     }
     /// GPU1 residual/pre-mix and anchor storage, with the ordinary terminal layout.
     pub fn inputs(&self) -> [Ds41rtDeviceBuffer; 3] { self.terminal.inputs() }
     pub fn validate_sampling(&self, requests: usize) -> Result<()> { self.terminal.validate_sampling(requests) }
+    pub fn set_width(&mut self, width: usize) -> Result<()> {
+        ensure!(self.pending.is_none(), "distributed terminal still pending");
+        self.ready = None;
+        let device = self.terminal.device;
+        device.run(|| self.terminal.get_mut().set_width(width))
+    }
     pub fn stage_sampling(&mut self, rngs: &mut [&mut DsparkRng], temperatures: &[f32]) -> Result<()> {
         ensure!(self.pending.is_none(), "distributed terminal still pending");
         self.ready = None;
@@ -50,7 +57,7 @@ impl<'w, 'a> DistributedDsparkTerminal<'w, 'a> {
         let device = self.terminal.device;
         let terminal = self.terminal.get();
         device.run(|| unsafe {
-            if let Some(graph) = self.graphs[usize::from(sampling)][requests - 1] {
+            if let Some(graph) = self.graphs[usize::from(terminal.width() == 7)][usize::from(sampling)][requests - 1] {
                 device.library.cuda_graph_launch(graph, terminal.stream.raw)
             } else if sampling { terminal.enqueue_sampling_on(requests, terminal.stream.raw) }
             else { terminal.enqueue_normalize_on(requests, terminal.stream.raw) }
@@ -60,7 +67,8 @@ impl<'w, 'a> DistributedDsparkTerminal<'w, 'a> {
         let device = self.terminal.device;
         let terminal = self.terminal.get();
         let mode = usize::from(sampling);
-        if self.graphs[mode][requests - 1].is_none() {
+        let width = usize::from(terminal.width() == 7);
+        if self.graphs[width][mode][requests - 1].is_none() {
             let graph = device.run(|| unsafe {
                 device.library.cuda_graph_begin_capture(terminal.stream.raw)?;
                 let queued = if sampling { terminal.enqueue_sampling_on(requests, terminal.stream.raw) }
@@ -72,7 +80,7 @@ impl<'w, 'a> DistributedDsparkTerminal<'w, 'a> {
                     (Err(error), Err(_)) | (Ok(()), Err(error)) => Err(error),
                 }
             })?;
-            self.graphs[mode][requests - 1] = Some(graph);
+            self.graphs[width][mode][requests - 1] = Some(graph);
         }
         Ok(())
     }
@@ -125,7 +133,7 @@ impl<'w, 'a> DistributedDsparkTerminal<'w, 'a> {
                             self.ready = Some(requests);
                             return Ok(true);
                         }
-                        unsafe { self.head.begin_logits(self.terminal.normalized.buffer, requests * self.terminal.weights.draft_width)?; }
+                        unsafe { self.head.begin_logits(self.terminal.normalized.buffer, requests * self.terminal.width)?; }
                         self.pending = Some((requests, Phase::Project));
                     }
                     Phase::Project => {
@@ -261,7 +269,7 @@ impl Drop for DistributedDsparkTerminal<'_, '_> {
         let device = self.terminal.device;
         if let Err(error) = device.run(|| {
             self.terminal.synchronize()?;
-            for graph in self.graphs.iter_mut().flatten().filter_map(Option::take) {
+            for graph in self.graphs.iter_mut().flatten().flatten().filter_map(Option::take) {
                 unsafe { device.library.cuda_graph_exec_destroy(graph)?; }
             }
             Ok(())

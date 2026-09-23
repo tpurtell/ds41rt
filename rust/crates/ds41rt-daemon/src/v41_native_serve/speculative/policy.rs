@@ -80,6 +80,9 @@ pub(super) fn publish(policy: &DsparkPolicy, draft_limit: usize) {
             "round": { "intercept_us": snapshot.round[0], "us_per_row": snapshot.round[1],
                 "us_per_request": snapshot.round[2], "samples": snapshot.round[3],
                 "residual_scale_us": snapshot.round[4] },
+            "draft": { "intercept_us": snapshot.draft[0], "us_per_request": snapshot.draft[1],
+                "wide_extra_us": snapshot.draft[2], "wide_extra_us_per_request": snapshot.draft[3],
+                "samples": snapshot.draft[4], "residual_scale_us": snapshot.draft[5] },
         })
     };
     let reliability: Vec<_> = (0..7).map(|p| serde_json::json!({
@@ -107,6 +110,8 @@ pub(super) fn publish(policy: &DsparkPolicy, draft_limit: usize) {
         "accepted_drafts": stats.accepted_drafts,
         "request_rounds": stats.emitted_requests,
         "draft_rows_histogram": stats.draft_rows,
+        "draft_widths": { "narrow": policy.widths().0, "wide": policy.widths().1 },
+        "width_rounds": { "narrow": stats.width_rounds[0], "wide": stats.width_rounds[1] },
         "confidence_reliability": reliability,
         "time_bias_us": { "solo": policy.time_bias()[0], "shared": policy.time_bias()[1] },
         "prediction": {

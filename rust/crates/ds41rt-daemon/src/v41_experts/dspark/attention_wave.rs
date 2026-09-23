@@ -77,6 +77,20 @@ impl<'library> DsparkWeights<'library> {
     }
 }
 impl DsparkAttentionWave<'_, '_> {
+    /// Switch the live draft width (5 or 7). Storage is sized for the loaded
+    /// maximum width; only kernels and row layout change. Standalone captures
+    /// are width-specific and must not exist.
+    pub(super) fn set_width(&mut self, width: usize, maximum: usize) -> Result<()> {
+        ensure!(matches!(width, 5 | 7) && width <= maximum, "draft width must be five or seven within the loaded width");
+        if width == self.width { return Ok(()); }
+        ensure!(self.graph.is_none(), "cannot change the width of a captured attention wave");
+        let library = self.stream.library;
+        self.ops = library.v41_attention_ops_width(width)?;
+        self.attention = library.v41_dspark_attention_width(width)?;
+        self.width = width;
+        self.ready = None;
+        Ok(())
+    }
     pub(super) fn projection_capacity(requests: u32) -> Result<u32> {
         Self::projection_capacity_with_width(requests, 5)
     }

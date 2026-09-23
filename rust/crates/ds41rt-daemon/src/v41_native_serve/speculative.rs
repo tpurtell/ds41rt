@@ -29,6 +29,10 @@ pub(crate) struct DraftRuntime<'w, 'a, C = DsparkChain<'w, 'a>> {
     /// The policy's predicted round time per lane, awaiting its observation.
     predicted: [Option<f64>; 2],
     published: Option<Instant>,
+    /// Width drafted for each lane's current round (0: no draft ran).
+    lane_width: [usize; 2],
+    /// Whether each lane's last selection saw an active peer lane.
+    lane_shared: [bool; 2],
 }
 struct DraftRequest {
     leases: [WindowLease; 3],
@@ -84,6 +88,8 @@ impl<'w, 'a> DraftRuntime<'w, 'a> {
             policy: None,
             predicted: [None; 2],
             published: None,
+            lane_width: [0; 2],
+            lane_shared: [false; 2],
         })
     }
 }
@@ -137,7 +143,11 @@ impl<'w, 'a, C: DraftChain<'a>> DraftRuntime<'w, 'a, C> {
         Ok(())
     }
     pub(crate) fn bind_policy(&mut self, placement: ds41rt_core::DsparkPlacement) {
-        let policy = ds41rt_core::DsparkPolicy::new(placement, self.fixed);
+        let mut policy = ds41rt_core::DsparkPolicy::new(placement, self.fixed);
+        // Width 5 is the drafter's trained block; a width-7 load can also
+        // draft 5 each round, chosen by the policy.
+        policy.set_widths(5.min(self.draft_width), self.draft_width)
+            .expect("loaded draft width is five or seven");
         policy::publish(&policy, self.draft_limit);
         self.policy = Some(policy);
     }
@@ -154,6 +164,8 @@ impl<'w, 'a, C: DraftChain<'a>> DraftRuntime<'w, 'a, C> {
         -> Result<Option<Vec<usize>>> {
         ensure!(lane < self.predicted.len(), "invalid draft policy lane");
         self.predicted[lane] = None;
+        self.lane_shared[lane] = shared;
+        let width = self.lane_width[lane];
         let Some(policy) = &mut self.policy else { return Ok(None) };
         let probabilities = requests.iter().map(|&(id, maximum)| {
             if maximum == 0 { return Ok(Vec::new()); }
@@ -164,7 +176,7 @@ impl<'w, 'a, C: DraftChain<'a>> DraftRuntime<'w, 'a, C> {
         let candidates: Vec<_> = requests.iter().zip(&probabilities)
             .map(|(&(id, _), confidence)| ds41rt_core::DsparkCandidate { id, confidence }).collect();
         let started = Instant::now();
-        let selection = policy.select(shared, &candidates).map_err(anyhow::Error::msg)?;
+        let selection = policy.select(shared, &candidates, width).map_err(anyhow::Error::msg)?;
         Ok(match selection {
             Some(selection) => {
                 tracing::debug!(target: "ds41rt::draft_policy", lane, shared,
@@ -178,7 +190,7 @@ impl<'w, 'a, C: DraftChain<'a>> DraftRuntime<'w, 'a, C> {
             None => {
                 let ids: Vec<_> = requests.iter().map(|r| r.0).collect();
                 let full: Vec<_> = requests.iter().map(|r| r.1).collect();
-                self.predicted[lane] = policy.predict(shared, &ids, &full);
+                self.predicted[lane] = policy.predict(shared, &ids, &full, width);
                 None
             }
         })
@@ -187,18 +199,23 @@ impl<'w, 'a, C: DraftChain<'a>> DraftRuntime<'w, 'a, C> {
     /// verifier rows, accepted inputs) in lane order; `total_us` spans draft
     /// start to commit. Observation problems are logged, never fatal.
     pub fn observe_round(&mut self, lane: usize, shared: bool, routes: &[Vec<[u32; 6]>],
-        layer_done: &[Option<Instant>], requests: &[(u64, usize, u32)], total_us: u64) {
+        layer_done: &[Option<Instant>], requests: &[(u64, usize, u32)], total_us: u64, draft_us: u64) {
         let predicted = self.predicted.get_mut(lane).and_then(Option::take);
+        let width = self.lane_width.get(lane).copied().unwrap_or(0);
         let Some(policy) = &mut self.policy else { return };
-        let confidence: Vec<Option<Vec<f64>>> = requests.iter().map(|&(id, rows, _)|
-            self.confidence_trace.get(&id).map(|logits| logits[..rows.saturating_sub(1).min(logits.len())]
-                .iter().map(|&x| policy::sigmoid(x)).collect())).collect();
+        // Every drafted position's confidence, verified or not: the policy
+        // bounds reliability evidence to reached positions itself.
+        let confidence: Vec<Option<Vec<f64>>> = requests.iter().map(|&(id, _, _)|
+            self.confidence_trace.get(&id).map(|logits| logits.iter().map(|&x| policy::sigmoid(x)).collect()))
+            .collect();
         let observed: Vec<_> = requests.iter().zip(&confidence).map(|(&(id, rows, accepted), confidence)|
             ds41rt_core::DsparkObservedRequest { id, rows, accepted: accepted as usize,
                 confidence: confidence.as_deref() }).collect();
         let layer_us = policy::layer_us(layer_done);
         if let Err(error) = policy.observe(ds41rt_core::DsparkRoundObservation { shared, requests: &observed,
-            routes, layer_us: &layer_us, total_us: total_us as f64, predicted_us: predicted }) {
+            routes, layer_us: &layer_us, total_us: total_us as f64, predicted_us: predicted,
+            draft_us: if width > 0 { draft_us as f64 } else { f64::NAN },
+            wide: width > policy.widths().0 }) {
             tracing::warn!(error, lane, "dSpark policy round observation skipped");
         }
         tracing::debug!(target: "ds41rt::draft_policy", lane, shared, predicted_us=predicted, total_us,
@@ -207,6 +224,23 @@ impl<'w, 'a, C: DraftChain<'a>> DraftRuntime<'w, 'a, C> {
             policy::publish(policy, self.draft_limit);
             self.published = Some(Instant::now());
         }
+    }
+    /// Choose and apply the lane's draft width for requests that will draft,
+    /// given as (identity, remaining output budget).
+    fn apply_width(&mut self, lane: usize, chain: usize, active: &[(u64, usize)]) -> Result<usize> {
+        let maximum = self.draft_width;
+        let limit = self.draft_limit;
+        let width = match &mut self.policy {
+            Some(policy) => {
+                let requests: Vec<_> = active.iter()
+                    .map(|&(id, remaining)| (id, (remaining - 1).min(limit))).collect();
+                policy.choose_width(self.lane_shared[lane], &requests)
+            }
+            None => maximum,
+        };
+        self.chains[chain].set_width(width)?;
+        self.lane_width[lane] = width;
+        Ok(width)
     }
     pub fn release(&mut self, id: u64) -> Result<()> {
         let _device = self.chains[0].execution_device().map(|device| device.enter()).transpose()?;
@@ -437,15 +471,16 @@ impl<'w, 'a, C: DraftChain<'a>> DraftRuntime<'w, 'a, C> {
             let active: Vec<_> = inputs.iter().enumerate()
                 .filter(|(_, (_, _, end, remaining))| *end >= 2 && *remaining > 1).collect();
             let count = active.len();
-            ensure!(packed.len() == (self.draft_width+1)*count && values.len() == self.draft_width*count, "draft output extent differs");
+            let width = self.chains[lane].width();
+            ensure!(packed.len() == (width+1)*count && values.len() == width*count, "draft output extent differs");
             let mut outputs: Vec<_> = inputs.iter().map(|(_, anchor, _, _)| vec![*anchor]).collect();
             for (row, &(output, &(id, anchor, _, remaining))) in active.iter().enumerate() {
                 if self.wants_confidence() {
-                    self.confidence_trace.insert(id, (0..self.draft_width).map(|step| values[step*count+row]).collect());
+                    self.confidence_trace.insert(id, (0..width).map(|step| values[step*count+row]).collect());
                 }
-                let tokens: Vec<_> = (0..=self.draft_width).map(|step| packed[step*count+row]).collect();
+                let tokens: Vec<_> = (0..=width).map(|step| packed[step*count+row]).collect();
                 ensure!(tokens[0] == anchor && tokens.iter().all(|&t| t < 129280), "invalid draft tokens");
-                outputs[output] = tokens[..remaining.min(self.draft_limit+1)].to_vec();
+                outputs[output] = tokens[..remaining.min(self.draft_limit.min(width)+1)].to_vec();
             }
             return Ok(Some((outputs, started.elapsed().as_micros() as u64)));
         }
@@ -463,7 +498,12 @@ impl<'w, 'a, C: DraftChain<'a>> DraftRuntime<'w, 'a, C> {
         let active: Vec<_> = inputs.iter().enumerate()
             .filter(|(_, (_, _, end, remaining))| *end >= 2 && *remaining > 1).collect();
         let outputs: Vec<_> = inputs.iter().map(|(_, anchor, _, _)| vec![*anchor]).collect();
-        if active.is_empty() { return Ok(Some((outputs, started.elapsed().as_micros() as u64))); }
+        if active.is_empty() {
+            self.lane_width[lane] = 0;
+            return Ok(Some((outputs, started.elapsed().as_micros() as u64)));
+        }
+        let widths: Vec<_> = active.iter().map(|(_, (id, _, _, remaining))| (*id, *remaining)).collect();
+        self.apply_width(lane, lane, &widths)?;
         let count = active.len();
         let tokens: Vec<_> = active.iter().map(|(_, (_, anchor, _, _))| *anchor as i32).collect();
         let bindings: [Vec<_>; 3] = std::array::from_fn(|stage| active.iter()
@@ -542,9 +582,10 @@ impl<'w, 'a, C: DraftChain<'a>> DraftRuntime<'w, 'a, C> {
 impl<'w, 'a> DraftRuntime<'w, 'a> {
     /// Inputs are (request identity, anchor, committed end, remaining output budget).
     /// Returned rows retain input order; short histories/budgets use the anchor only.
-    pub fn propose(&mut self, lib: &'a NativeLibrary,
+    pub fn propose(&mut self, lib: &'a NativeLibrary, lane: usize,
         inputs: &[(u64, u32, u64, usize)],
     ) -> Result<Vec<Vec<u32>>> {
+        ensure!(lane < self.lane_width.len(), "invalid draft lane");
         ensure!(self.pending.iter().all(Option::is_none), "shared draft proposal still pending");
         ensure!(!inputs.is_empty() && inputs.len() <= 16, "invalid draft batch size");
         let mut seen = std::collections::BTreeSet::new();
@@ -558,7 +599,9 @@ impl<'w, 'a> DraftRuntime<'w, 'a> {
         let active: Vec<_> = inputs.iter().enumerate()
             .filter(|(_, (_, _, end, remaining))| *end >= 2 && *remaining > 1).collect();
         let mut outputs: Vec<_> = inputs.iter().map(|(_, anchor, _, _)| vec![*anchor]).collect();
-        if active.is_empty() { return Ok(outputs); }
+        if active.is_empty() { self.lane_width[lane] = 0; return Ok(outputs); }
+        let widths: Vec<_> = active.iter().map(|(_, (id, _, _, remaining))| (*id, *remaining)).collect();
+        let width = self.apply_width(lane, 0, &widths)?;
         let count = active.len();
         let tokens: Vec<_> = active.iter().map(|(_, (_, anchor, _, _))| *anchor as i32).collect();
         let bindings: [Vec<_>; 3] = std::array::from_fn(|stage| active.iter()
@@ -579,25 +622,25 @@ impl<'w, 'a> DraftRuntime<'w, 'a> {
         let buffer = self.chains[0].draft_output()?[0];
         let mut bytes = vec![0; buffer.bytes];
         lib.copy_d2h(&mut bytes, buffer)?;
-        ensure!(bytes.len() == (self.draft_width + 1) * count * 4, "draft token extent differs");
+        ensure!(bytes.len() == (width + 1) * count * 4, "draft token extent differs");
         let packed: Vec<_> = bytes.chunks_exact(4)
             .map(|b| u32::from_ne_bytes(b.try_into().unwrap())).collect();
         if self.wants_confidence() {
             let confidence = self.chains[0].draft_output()?[2];
-            ensure!(confidence.bytes == self.draft_width * count * 4, "draft confidence extent differs");
+            ensure!(confidence.bytes == width * count * 4, "draft confidence extent differs");
             let mut bytes = vec![0; confidence.bytes];
             lib.copy_d2h(&mut bytes, confidence)?;
             let values: Vec<_> = bytes.chunks_exact(4)
                 .map(|b| f32::from_ne_bytes(b.try_into().unwrap())).collect();
             for (row, &(_, &(id, _, _, _))) in active.iter().enumerate() {
                 self.confidence_trace.insert(id,
-                    (0..self.draft_width).map(|step| values[step * count + row]).collect());
+                    (0..width).map(|step| values[step * count + row]).collect());
             }
         }
         for (row, &(output, &(_, anchor, _, remaining))) in active.iter().enumerate() {
-            let tokens: Vec<_> = (0..=self.draft_width).map(|step| packed[step * count + row]).collect();
+            let tokens: Vec<_> = (0..=width).map(|step| packed[step * count + row]).collect();
             ensure!(tokens[0] == anchor && tokens.iter().all(|&token| token < 129280), "invalid draft tokens");
-            outputs[output] = tokens[..remaining.min(self.draft_limit + 1)].to_vec();
+            outputs[output] = tokens[..remaining.min(self.draft_limit.min(width) + 1)].to_vec();
         }
         Ok(outputs)
     }

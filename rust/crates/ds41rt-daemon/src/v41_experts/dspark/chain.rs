@@ -12,9 +12,12 @@ pub(crate) use distributed::DistributedDsparkChain;
 
 pub(crate) struct DsparkChain<'weights, 'library> {
     stream: LoadStream<'library>,
+    /// Live draft width; storage and the maximum are fixed at load time.
     width: usize,
+    maximum: usize,
     stages: [DsparkStage<'weights, 'library>; 3],
-    graphs: std::collections::BTreeMap<usize, (*mut c_void, [u64; 3])>,
+    /// Captured complete drafts keyed by (request count, width).
+    graphs: std::collections::BTreeMap<(usize, usize), (*mut c_void, [u64; 3])>,
     ready: Option<usize>,
     pending: Option<PendingDraft<'library>>,
     download: HostAllocation<'library>,
@@ -109,6 +112,7 @@ impl<'library> DsparkWeights<'library> {
         let bytes = self.stage_bytes(requests)?;
         Ok(DsparkChain {
             width: self.draft_width,
+            maximum: self.draft_width,
             stream: LoadStream {
                 library,
                 raw: library.cuda_stream_create()?,
@@ -152,7 +156,22 @@ impl DsparkChain<'_, '_> {
         self.terminal.as_mut().context("dSpark chain has no terminal")?
             .stage_sampling(rngs, temperatures)
     }
-    pub fn has_graph(&self, count: usize) -> bool { self.graphs.contains_key(&count) }
+    pub fn has_graph(&self, count: usize) -> bool { self.graphs.contains_key(&(count, self.width)) }
+    pub fn width(&self) -> usize { self.width }
+    /// Select the draft width (5 or 7, within the loaded maximum) for the next
+    /// draft. All storage is sized for the maximum; each width keeps its own
+    /// captured graphs, so switching is free after both are warm.
+    pub fn set_width(&mut self, width: usize) -> Result<()> {
+        ensure!(self.pending.is_none(), "dSpark chain replay still pending");
+        ensure!(matches!(width, 5 | 7) && width <= self.maximum, "draft width must be five or seven within the loaded width");
+        if width == self.width { return Ok(()); }
+        self.invalidate();
+        for stage in &mut self.stages { stage.set_width(width, self.maximum)?; }
+        if let Some(terminal) = &mut self.terminal { terminal.set_width(width)?; }
+        self.ops = self.stream.library.v41_attention_ops_width(width)?;
+        self.width = width;
+        Ok(())
+    }
     /// Borrowed anchor + K tokens [K+1,R], corrected raw logits [K,R,V] and
     /// raw confidence [K,R], live until reuse/drop. No target history is committed.
     pub fn draft_output(&self) -> Result<[Ds41rtDeviceBuffer; 3]> {
@@ -352,7 +371,7 @@ impl DsparkChain<'_, '_> {
     ) -> Result<()> {
         ensure!(self.pending.is_none(), "dSpark chain replay still pending");
         self.invalidate();
-        ensure!(!self.graphs.contains_key(&bindings[0].len()), "dSpark chain count already captured");
+        ensure!(!self.has_graph(bindings[0].len()), "dSpark chain count already captured");
         unsafe {
             self.execute(windows, bindings)?;
         }
@@ -371,7 +390,7 @@ impl DsparkChain<'_, '_> {
         self.invalidate();
         match (launched, captured) {
             (Ok(()), Ok(graph)) => {
-                self.graphs.insert(count, (graph, reads.each_ref().map(|r| r.owner)));
+                self.graphs.insert((count, self.width), (graph, reads.each_ref().map(|r| r.owner)));
                 Ok(())
             }
             (Err(error), Ok(graph)) => {
@@ -392,7 +411,7 @@ impl DsparkChain<'_, '_> {
     ) -> Result<[Ds41rtDeviceBuffer; 2]> {
         let reads = self.prepare(windows, bindings)?;
         let count = bindings[0].len();
-        let &(graph, owners) = self.graphs.get(&count).context("dSpark chain count not captured")?;
+        let &(graph, owners) = self.graphs.get(&(count, self.width)).context("dSpark chain count not captured")?;
         ensure!(
             count == bindings[0].len() && owners == reads.each_ref().map(|r| r.owner),
             "dSpark chain capture binding differs"
@@ -416,7 +435,7 @@ impl DsparkChain<'_, '_> {
         bindings: [&[(WindowLease, u64)]; 3]) -> Result<()> {
         let reads = self.prepare(windows, bindings)?;
         let count = bindings[0].len();
-        if let Some(&(_, owners)) = self.graphs.get(&count) {
+        if let Some(&(_, owners)) = self.graphs.get(&(count, self.width)) {
             ensure!(owners == reads.each_ref().map(|r| r.owner), "dSpark chain capture binding differs");
         }
         self.terminal.as_ref().context("dSpark chain has no terminal")?.output_storage(count)?;
@@ -437,7 +456,7 @@ impl DsparkChain<'_, '_> {
         Ok(())
     }
     unsafe fn launch_download(&mut self, count: usize) -> Result<()> {
-        let graph = self.graphs.get(&count).context("dSpark chain count not captured")?.0;
+        let graph = self.graphs.get(&(count, self.width)).context("dSpark chain count not captured")?.0;
         let output = self.terminal.as_ref().context("dSpark chain has no terminal")?.output_storage(count)?;
         unsafe {
             self.stream.library.cuda_graph_launch(graph, self.stream.raw)?;

@@ -12,6 +12,10 @@ pub(crate) trait DraftChain<'a> {
     unsafe fn begin_replay(&mut self, windows: [&DsparkWindow<'_>; 3],
         bindings: [&[(WindowLease, u64)]; 3]) -> Result<()>;
     fn poll_replay(&mut self) -> Result<Option<(Vec<u32>, Vec<f32>)>>;
+    /// Draft width of the next (or pending) proposal.
+    fn width(&self) -> usize;
+    /// Select the width (5 or 7, within the loaded maximum) before staging.
+    fn set_width(&mut self, width: usize) -> Result<()>;
 }
 macro_rules! chain {
     ($ty:ident, $device:expr) => {
@@ -26,6 +30,8 @@ macro_rules! chain {
                 unsafe { self.begin_replay(windows, bindings) }
             }
             fn poll_replay(&mut self) -> Result<Option<(Vec<u32>, Vec<f32>)>> { self.poll_replay() }
+            fn width(&self) -> usize { self.width() }
+            fn set_width(&mut self, width: usize) -> Result<()> { self.set_width(width) }
         }
     };
 }

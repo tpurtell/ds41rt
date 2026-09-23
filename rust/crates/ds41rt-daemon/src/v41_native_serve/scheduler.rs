@@ -1146,7 +1146,7 @@ fn single_lane_round<'w, 'a>(lib: &'a NativeLibrary, runtime: &tokio::runtime::R
         Ok((r.id, r.anchor, requests.cache().committed_end(r.lease)?, r.job.max_tokens-r.generated))
     }).collect::<Result<Vec<_>>>()?;
     let draft_start = Instant::now();
-    let mut inputs = if let Some(draft) = draft.as_deref_mut() { draft.propose(lib, &seeds)? }
+    let mut inputs = if let Some(draft) = draft.as_deref_mut() { draft.propose(lib, lane, &seeds)? }
         else { seeds.iter().map(|r| vec![r.1]).collect() };
     for (&slot, input) in members.iter().zip(&mut inputs) {
         let r = active[slot].as_ref().unwrap();
@@ -1208,7 +1208,7 @@ fn single_lane_round<'w, 'a>(lib: &'a NativeLibrary, runtime: &tokio::runtime::R
             }
         }
         observe_lane_round(draft.as_deref_mut(), capture_routes, lane, false, pass.captured_routes(),
-            pass.captured_layer_done(), active, members, &inputs, &accepted_inputs, started);
+            pass.captured_layer_done(), active, members, &inputs, &accepted_inputs, started, draft_us);
         tracing::debug!(target: "ds41rt::timing", speculative,
             requests=members.len(), lane0=if lane == 0 { members.len() } else { 0 },
             lane1=if lane == 1 { members.len() } else { 0 },
@@ -1240,7 +1240,7 @@ fn single_lane_round<'w, 'a>(lib: &'a NativeLibrary, runtime: &tokio::runtime::R
             }
         }
         observe_lane_round(draft.as_deref_mut(), capture_routes, lane, false, pass.captured_routes(),
-            pass.captured_layer_done(), active, members, &inputs, &accepted_inputs, started);
+            pass.captured_layer_done(), active, members, &inputs, &accepted_inputs, started, draft_us);
         tracing::debug!(target: "ds41rt::timing", speculative,
             requests=members.len(), lane0=if lane == 0 { members.len() } else { 0 },
             lane1=if lane == 1 { members.len() } else { 0 },
@@ -1637,13 +1637,14 @@ fn publish_commit_lane<'a>(active: &mut [Option<Active<'a>>],
 fn observe_lane_round<'a, C: DraftChain<'a>>(draft: Option<&mut DraftRuntime<'_, 'a, C>>, capture_routes: bool,
     lane: usize, shared: bool, routes: &[Vec<[u32; 6]>], layer_done: &[Option<Instant>],
     active: &[Option<Active<'a>>], members: &[usize], inputs: &[Vec<u32>], accepted: &[u32], started: Instant,
+    draft_us: u64,
 ) {
     let Some(draft) = draft else { return };
     if !capture_routes { return; }
     let requests: Vec<_> = members.iter().zip(inputs).zip(accepted).filter_map(|((&slot, input), &count)|
         active[slot].as_ref().map(|r| (r.id, input.len(), count))).collect();
     if requests.len() != members.len() { return; }
-    draft.observe_round(lane, shared, routes, layer_done, &requests, started.elapsed().as_micros() as u64);
+    draft.observe_round(lane, shared, routes, layer_done, &requests, started.elapsed().as_micros() as u64, draft_us);
 }
 /// Resolve one finishing row's retained frontier from its downloaded bytes.
 ///
