@@ -34,8 +34,9 @@ rejected rows. The policy maximizes
 E[tokens](lengths) / T(lengths),   E = sum_r (1 + sum_{j<=k_r} prod_{i<=j} p_{r,i})
 ```
 
-where `p_{r,i}` is the sigmoid of the drafter's confidence for position `i`
-(conditional on earlier positions being accepted). Subtracting the
+where `p_{r,i}` is the calibrated acceptance probability of position `i`
+(conditional on earlier positions being accepted, so a row's value is the
+product over its prefix). Subtracting the
 once-per-token work from `T` shifts the ratio by a constant, so this argmax is
 also the minimum of fixed plus wasted resource per committed token. A row with
 certain acceptance is always verified.
@@ -82,6 +83,65 @@ across its requests, so experts shared between requests are charged once and
 the 16-row group boundary is priced exactly. Tokens without history use an
 observed per-layer novelty rate. Recent-token routes are the stand-in because
 adjacent tokens share experts far more than random tokens do.
+
+## Confidence calibration
+
+The drafter's confidence head was trained for a five-token block. Positions 1
+to 5 are close to calibrated, but at width 7 positions 6 and 7 report about
+0.99 for every content type while observed conditional acceptance is about
+0.80 to 0.83. Each position therefore fits Platt scaling
+`logit' = a * logit + b` online from the outcomes of rounds that reached it.
+The update is an online Newton step with a decayed Fisher-information matrix
+(memory of about 500 reached samples). It converges within a few hundred
+samples after a restart and keeps tracking drift. The slope is bounded to
+`[0, 3]`, so calibration can flatten uninformative confidence to its base
+rate but never invert it. A single offset was tried first and was not enough:
+it hit its bound and still overstated positions 6 and 7 by seven points.
+
+## Round-time bias
+
+The robust fit tracks typical rounds, while throughput depends on the mean
+round time, including stalls. A bounded integrator of the prediction residual
+adds that mean back to every predicted shape without moving the marginal row
+costs. It removed a consistent 3% underprediction.
+
+## Draft width, chosen per round
+
+The drafter's trained block is 5 tokens; the chain also supports width 7.
+Drafting the two extra positions costs about 0.45 ms per round at C1, more
+with lane size, whether or not they are verified, so a fixed width 7 lost to
+a fixed width 5 on both layouts (mixed C2–C16 −7%, topic C1 −9% on two RTX;
+greedy C1 −2% on one RTX). The positions themselves are useful: given five
+accepted drafts, positions 6 and 7 are accepted about 83% and 80% of the
+time overall, much more often on code.
+
+So each lane chooses its width, 5 or 7, before every draft. The chain keeps
+width-7 storage and switches kernels, row layout and terminal width at
+runtime, with graphs keyed by request count and width. The policy scores both
+widths with the same length selector and keeps the better expected ratio,
+each charged its own predicted draft pass (`draft_us = e0 + e1*R +
+wide*(e2 + e3*R)`, fitted online from measured draft time; the round residual
+excludes the draft). The acceptance it predicts per request is:
+
+* inside the native block, a short-memory average of the request's recent
+  calibrated confidence per position (all drafted positions, verified or not);
+* past it, where confidence carries no content signal, the request's own
+  decayed accepted/reached counts at that position shrunk toward the global
+  calibrated rate with a prior weight of two samples. The post-draft length
+  selection uses the same blend, so a code request with long accepted runs
+  keeps positions 6 and 7 and a prose request drops them.
+
+Warmup alternates widths so both draft-cost fits are identified, and a width
+unused for 64 rounds is tried once to keep its fits and calibration current.
+Width 0 (skipping the draft) was not included: zero drafts were optimal in only
+0.3–3% of rounds.
+
+On one RTX the width-7 storage costs 404 MiB and still leaves all five
+resident expert layers and the same KV pool, with 2.25 GiB free after
+readiness. The planner reserves draft storage and the KV pool target first and
+fills the remainder with whole expert layers, so on a tighter budget the
+width-7 storage would cost a resident layer unless `--kv-pool-size` is
+lowered. `--dspark-draft-limit 5` loads width 5 only and disables the choice.
 
 ## Selection
 
