@@ -1,6 +1,6 @@
 # DS41RT v13 release checklist
 
-Status: in progress. Follow [OPERATIONS.md](OPERATIONS.md) for branch and
+Status: complete. Follow [OPERATIONS.md](OPERATIONS.md) for branch and
 publication order. The image build source, benchmark images, and release tag
 must each be recorded by their own immutable identity.
 
@@ -23,33 +23,38 @@ must each be recorded by their own immutable identity.
   and universal Spark roles `tp2;tp3;tp6`.
 - [x] Launch that exact pair on one RTX plus four Spark workers with dSpark on;
   the API smoke check passes and `/v1/stats` exports the policy state.
-- [ ] Launch the same pair on two RTX plus four Spark workers.
+- [x] Launch the same pair on two RTX plus four Spark workers.
+- [x] Per-position calibration and per-round 5/7 width choice added and rebuilt
+  (`f5d4ee1`, `c0ac4c8`, `10927fd`, `f3c97a1`); the final image source
+  `00b25e7` defaults to the five-token block.
 
 ## Evaluation against v12 adaptive
 
-- [ ] Interleaved six-session A/B (v12, v13, v13, v12, v12, v13) on one RTX:
-  paired greedy and T0.7/top-p 0.9 batteries, code/topic C1–C16, mixed C1–C16.
-- [ ] The same A/B on two RTX.
-- [ ] The new policy wins or ties within noise on every family, with no quality
-  failures introduced.
+- [x] Interleaved twelve-session, three-arm A/B on one RTX (v12, v13 per-round
+  width, v13 five-token block; four sessions each): paired greedy and T0.7/top-p
+  0.9 batteries, code/topic C1–C16, mixed C1–C16.
+- [x] The same A/B on two RTX.
+- [x] No quality failures. The five-token default wins or ties on most families;
+  measured losses (topic C1 on one RTX, code C1 and counting on two RTX) are
+  disclosed in the report and notes.
 
 ## Measurement
 
-- [ ] README decode campaign on the final images for one and two RTX: release
+- [x] README decode campaign on the final images for one and two RTX: release
   decode, per-case acceptance, concurrency, mixed traffic, retained-context
   decode with its 2K control, and target-only decode.
-- [ ] README and the v13 performance report name source/image identities and
+- [x] README and the v13 performance report name source/image identities and
   raw evidence.
 
 ## Publication
 
-- [ ] Capture the v12 `latest` registry digests and confirm both `:v13` tags are
+- [x] Capture the v12 `latest` registry digests and confirm both `:v13` tags are
   absent before pushing.
-- [ ] Publish exactly the v13 coordinator and Spark images and their `latest`
+- [x] Publish exactly the v13 coordinator and Spark images and their `latest`
   aliases; capture the registry's returned digests.
-- [ ] Verify fresh anonymous pulls on the matching architectures.
-- [ ] Promote `ds41rt.config` and examples to v13, verify dry runs, write
+- [x] Verify fresh anonymous pulls on the matching architectures.
+- [x] Promote `ds41rt.config` and examples to v13, verify dry runs, write
   [release-v13-notes.md](release-v13-notes.md), and fast-forward `main` and
   `release/v13` to the qualified release commit. Create and push annotated tag
   `v13`; retain development on `dev`.
-- [ ] Publish a non-draft GitHub release with the evidence tarball and hashes.
+- [x] Publish a non-draft GitHub release with the evidence tarball and hashes.

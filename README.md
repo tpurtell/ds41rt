@@ -10,14 +10,14 @@ The historical official-image v6 campaign used an enforced **400 W power limit**
 
 ## Performance
 
-The official full checkpoint remains the default. Its measurements are the historical [v6 campaign](docs/release-v6-performance.md), **not re-campaigned for v7**, apart from a [v7 regression check](docs/release-v7-official-regression.md) that confirms the default path is unchanged: the published v7 images reproduce the v6 deployment geometry exactly and measure 1x C1 code decode at **134.38** against the recorded 130.41. The new NVFP4 and EXL3 measurements use the v7 raw-result package; their reports below distinguish recorded controls from outstanding provenance and qualification.
+The official full checkpoint remains the default. Its **decode** measurements are the [v13 campaign](docs/release-v13-performance.md) on the published v13 images, which introduce the online dSpark bandwidth-balance policy; its prefill, deployment, startup and memory tables remain the historical [v6 campaign](docs/release-v6-performance.md), **not re-campaigned since**, apart from a [v7 regression check](docs/release-v7-official-regression.md) that confirms the default path is unchanged: the published v7 images reproduce the v6 deployment geometry exactly and measure 1x C1 code decode at **134.38** against the recorded 130.41. The new NVFP4 and EXL3 measurements use the v7 raw-result package; their reports below distinguish recorded controls from outstanding provenance and qualification.
 
 The release protocol uses **400 W per RTX card and standard memory speed, without a memory overclock**. Reported throughput cells use three samples. Reasoning code uses high-effort thinking and counts reasoning plus final-answer tokens; other throughput cases disable thinking. The official v6 campaign kept the experimental TP2 switches off.
 
 **Headlines.** Tokens/s across all configurations. Prefill is the best cell median
 from a completed, passing matrix; decode is C1 dSpark, with a weighted nine-category
 score excluding counting. Each column pair comes from its own campaign: the official
-columns are the historical v6 measurements, NVFP4 is the
+decode rows are the v13 campaign and the official prefill row is v6, NVFP4 is the
 [v8 campaign](docs/release-v8-notes.md) on the published v8 images, EXL3 is the v7
 campaign, and the Official TP6 columns are the validated **warm-candidate** v9
 campaign. They are not a single co-measured run, so no change column is tabulated;
@@ -26,9 +26,9 @@ each report states its own observed repeat spread.
 | Measurement | Official 1x | Official 2x | NVFP4 1x | NVFP4 2x | EXL3 5090+2-spark | EXL3 2x6000 0-spark | Official TP6 1x | Official TP6 2x |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | Prefill | 7,824 | 8,355 | 5,237 | 7,371 | 2,013 | 5,597 | 7,131 | 8,577 |
-| Counting decode | 161.58 | 221.64 | 144.66 | 192.42 | 161.98 | 337.00 | 174.54 | 231.51 |
-| Weighted decode | 92.00 | 109.44 | 81.74 | 100.78 | 88.20 | 146.24 | 96.83 | 110.19 |
-| C1 code decode | 130.41 | 155.70 | 112.55 | 145.96 | 122.50 | 225.20 | 139.56 | 159.34 |
+| Counting decode | 159.35 | 192.56 | 144.66 | 192.42 | 161.98 | 337.00 | 174.54 | 231.51 |
+| Weighted decode | 91.10 | 108.91 | 81.74 | 100.78 | 88.20 | 146.24 | 96.83 | 110.19 |
+| C1 code decode | 134.01 | 161.20 | 112.55 | 145.96 | 122.50 | 225.20 | 139.56 | 159.34 |
 
 New-quant reports: [NVFP4 W4A4 (v8)](docs/release-v8-nvfp4-performance.md) · [EXL3 K2 (including the 5090+2-spark compact profile)](docs/release-v7-exl3-k2-performance.md).
 Official TP6 reports: [1 RTX TP6](docs/release-v9-tp6-1rtx-official.md) · [2 RTX TP6](docs/release-v9-tp6-2rtx-official.md) · [campaign status](docs/release-v9-tp6-campaign-status.md). These are validated warm-candidate performance, measured on the candidate binaries rather than the final images; the final v9 images have passed bounded functional checks, and no final-image performance numbers are claimed.
@@ -57,15 +57,15 @@ to be redone.
 See [compact setup and residency](docs/release-v7-exl3-compact.md)
 and the [configuration accounting chart](docs/release-v7-configurations.svg).
 No physical RTX 5090 has been tested; the same-capability grid checks used RTX PRO 6000.
-The release pair named by `ds41rt.config` is `ghcr.io/tpurtell/ds41rt-coordinator:v12`
-and `ghcr.io/tpurtell/ds41rt-spark-expert:v12` ([release notes and registry
-digests](docs/release-v12-notes.md)). `latest` resolves to the same pair; both
+The release pair named by `ds41rt.config` is `ghcr.io/tpurtell/ds41rt-coordinator:v13`
+and `ghcr.io/tpurtell/ds41rt-spark-expert:v13` ([release notes and registry
+digests](docs/release-v13-notes.md)). `latest` resolves to the same pair; both
 roles were verified by anonymous pull on their matching architectures. The
 Spark image is **universal**: it advertises
 `io.ds41rt.v41.spark_tp_roles=tp2;tp3;tp6` on top of the default TP4 shard, so one
 pair serves every approved native topology and `./run.sh` selects the role
-from `SPARK_TP`. V11 remains available as the previous numbered pair
-([v11 notes](docs/release-v11-notes.md)). V9 release images remain published as
+from `SPARK_TP`. V12 remains available as the previous numbered pair
+([v12 notes](docs/release-v12-notes.md)). V9 release images remain published as
 `ghcr.io/tpurtell/ds41rt-coordinator:v9` and `ghcr.io/tpurtell/ds41rt-spark-expert:v9`
 ([digests and roles](docs/release-v9-notes.md)). V8 release images remain published as
 `ghcr.io/tpurtell/ds41rt-coordinator:v8` and `ghcr.io/tpurtell/ds41rt-spark-expert:v8`
@@ -75,25 +75,33 @@ so the headline is a published-image measurement rather than a working-tree buil
 earlier NVFP4 1x prefill attempt that an interrupted campaign left unfinished is now a
 completed, passing matrix (4,141 tok/s) instead of a dash.
 
-**Official image only below.** Every remaining performance table in this section is
-preserved from v6, not re-measured for v7. Older official-reference, acceptance and
+Official 2x counting decode is below the historical 221.64 because v13 drafts
+the trained five-token block by default on both layouts, where earlier releases
+drafted seven tokens on two RTX. Counting accepts about 99% of drafts, so it
+gains most from the wider block. `--dspark-draft-limit 7` restores it (about 219
+in the paired A/B) at a 2–4% cost on code C1 and code concurrency; the
+[v13 performance report](docs/release-v13-performance.md) has the full comparison.
+
+**Official image only below.** The decode tables below (content type, retained
+context, concurrency, mixed traffic and dSpark acceptance) are the v13 campaign;
+the prefill, deployment, startup and memory tables are preserved from v6. Older official-reference, acceptance and
 tool-evaluation results retain their separately named historical campaigns; apart
 from the EXL3 5090+2-spark runs above, none qualifies either new quant.
 
-**Content-type decode.** Median tokens/s. Official Flash values are the historical one-shot reference, including its prior fable wording; they were not rerun.
+**Content-type decode.** Median tokens/s of three repeats, v13. Official Flash values are the historical one-shot reference, including its prior fable wording; they were not rerun.
 
 | Case | 1 RTX target | 1 RTX dSpark | 2 RTX target | 2 RTX dSpark | Historical official Flash |
 |---|---:|---:|---:|---:|---:|
-| Code | 49.08 | 130.41 | 51.67 | 155.70 | 345.90 |
-| Code with reasoning | 47.51 | 100.27 | 50.74 | 126.08 | — |
-| Math | 45.77 | 134.22 | 48.45 | 134.13 | 285.33 |
-| Fable | 44.72 | 56.49 | 48.25 | 67.88 | 123.63 |
-| Hello | 44.75 | 61.51 | 48.39 | 98.04 | 141.10 |
-| Topic | 46.28 | 73.57 | 48.59 | 87.10 | 169.24 |
-| Natural JSON | 47.37 | 103.83 | 50.07 | 133.90 | 175.33 |
-| Schema JSON | 48.50 | 105.79 | 50.84 | 102.92 | HTTP 400 |
-| Multilingual | 45.84 | 74.10 | 49.50 | 82.97 | 183.61 |
-| Counting 1–200 | 49.36 | 161.58 | 49.53 | 221.64 | 427.29 |
+| Code | 49.22 | 134.01 | 53.41 | 161.20 | 345.90 |
+| Code with reasoning | 47.62 | 99.72 | 50.67 | 122.97 | — |
+| Math | 45.80 | 116.55 | 48.65 | 133.95 | 285.33 |
+| Fable | 44.77 | 57.11 | 48.12 | 64.03 | 123.63 |
+| Hello | 44.71 | 65.56 | 47.81 | 94.79 | 141.10 |
+| Topic | 46.49 | 73.89 | 49.17 | 88.55 | 169.24 |
+| Natural JSON | 48.44 | 117.65 | 51.71 | 133.82 | 175.33 |
+| Schema JSON | 48.59 | 121.34 | 50.50 | 141.18 | HTTP 400 |
+| Multilingual | 45.98 | 75.29 | 49.66 | 83.83 | 183.61 |
+| Counting 1–200 | 49.41 | 159.35 | 53.74 | 192.56 | 427.29 |
 
 **1 RTX prefill matrix.** Median effective tokens/s after shape warmup and verified parent reuse.
 
@@ -115,36 +123,36 @@ from the EXL3 5090+2-spark runs above, none qualifies either new quant.
 | 128K | 2,588 | 3,678 | 4,655 | 5,202 | 5,486 | 5,556 |
 | 256K | 1,770 | 2,697 | 3,336 | 3,847 | 4,126 | 4,229 |
 
-**Decode over retained context.** Weighted nine-category dSpark tokens/s with verified prefix reuse.
+**Decode over retained context.** Weighted nine-category dSpark tokens/s with verified prefix reuse, v13. The context source differs from v6 (the v7-era file).
 
 | Retained base | 1 RTX | 2 RTX |
 |---|---:|---:|
-| 0K | 86.85 | 104.21 |
-| 2K | 85.97 | 103.81 |
-| 32K | 83.28 | 100.72 |
-| 64K | 82.64 | 102.15 |
-| 128K | 86.67 | 98.40 |
-| 256K | 80.02 | 92.78 |
+| 0K | 89.03 | 106.08 |
+| 2K | 88.80 | 107.06 |
+| 32K | 88.10 | 102.14 |
+| 64K | 89.91 | 101.92 |
+| 128K | 86.03 | 98.56 |
+| 256K | 84.27 | 97.68 |
 
-**Concurrency scaling.** Median aggregate tokens/s from earliest first output to final completion, including admission gaps.
+**Concurrency scaling.** Median aggregate tokens/s from earliest first output to final completion, including admission gaps, v13.
 
 | Concurrency | 1 RTX counting | 2 RTX counting | 1 RTX code | 2 RTX code | 1 RTX topic | 2 RTX topic |
 |---|---:|---:|---:|---:|---:|---:|
-| 1 | 159.32 | 211.83 | 137.43 | 171.96 | 74.63 | 96.94 |
-| 2 | 252.73 | 314.71 | 218.48 | 279.69 | 125.39 | 163.79 |
-| 4 | 454.48 | 586.05 | 384.41 | 476.04 | 225.99 | 260.73 |
-| 8 | 736.37 | 973.21 | 625.30 | 749.73 | 333.06 | 447.59 |
-| 16 | 1,267.07 | 1,508.81 | 1,069.16 | 1,195.37 | 601.90 | 622.81 |
+| 1 | 160.76 | 193.37 | 131.47 | 164.77 | 75.89 | 91.70 |
+| 2 | 251.60 | 303.43 | 213.17 | 274.43 | 125.82 | 153.29 |
+| 4 | 451.44 | 542.63 | 368.85 | 470.06 | 228.43 | 286.43 |
+| 8 | 745.95 | 895.77 | 615.86 | 786.29 | 353.81 | 476.53 |
+| 16 | 1,267.07 | 1,520.41 | 1,022.48 | 1,282.02 | 595.52 | 776.60 |
 
-**Mixed traffic.** Code/fable/topic mix; aggregate tokens/s median and range across three sweeps.
+**Mixed traffic.** Code/fable/topic mix; aggregate tokens/s median and range across three sweeps, v13.
 
 | Concurrency | 1 RTX | 2 RTX |
 |---|---:|---:|
-| 1 | 104.01 (97.36–130.92) | 156.41 (144.89–160.71) |
-| 2 | 107.10 (100.71–114.91) | 140.72 (136.36–141.02) |
-| 4 | 139.42 (135.51–161.87) | 184.62 (171.39–186.38) |
-| 8 | 147.90 (145.71–164.74) | 211.97 (206.42–215.89) |
-| 16 | 191.75 (183.09–193.95) | 284.69 (281.08–296.28) |
+| 1 | 108.94 (107.12–131.60) | 153.05 (151.78–158.25) |
+| 2 | 105.76 (103.31–113.80) | 140.11 (133.53–143.55) |
+| 4 | 149.58 (145.37–155.34) | 182.99 (181.09–185.72) |
+| 8 | 168.19 (157.19–178.00) | 207.66 (201.77–210.68) |
+| 16 | 193.34 (182.91–199.67) | 298.15 (278.97–301.43) |
 
 **Deployment and cache capacity.** RAM bytes include staging and snapshot overhead. Combined tokens count each logical source once; active requests must fit the GPU pool.
 
@@ -168,19 +176,20 @@ from the EXL3 5090+2-spark runs above, none qualifies either new quant.
 | 2 RTX | 0 | 95,132.00 | 2,119.00 | 800.00 |
 | 2 RTX | 1 | 95,738.00 | 1,510.00 | 800.00 |
 
-**Historical native draft acceptance.** V5 measurements, not rerun for v6 or v7: C1, three requests per content type. Accepted/verified percentage and mean emitted tokens per nonterminal cycle in parentheses. Schema JSON is grammar-constrained; reasoning code includes reasoning and final output. Adaptive selection omits unverified drafts, so these are serving rates, not fixed-history agreement.
+**dSpark acceptance.** V13, C1, three requests per content type, from `/v1/stats`. Accepted/verified drafts, and mean emitted tokens per verification round in parentheses. Rows the length policy declines to verify are neither accepted nor rejected, so these are serving rates, not fixed-history agreement. Schema JSON is grammar-constrained; reasoning code includes reasoning and final output.
 
-| Content | Historical 1 RTX | Historical 2 RTX |
+| Content | 1 RTX | 2 RTX |
 |---|---:|---:|
-| Code | 90.67% (5.26) | 74.89% (5.82) |
-| Code with reasoning | 78.90% (3.74) | 68.83% (3.92) |
-| Math | 90.97% (5.55) | 69.25% (5.21) |
-| Fable | 52.86% (1.79) | 40.70% (1.77) |
-| Hello | 65.12% (2.75) | 35.33% (2.43) |
-| Topic | 61.93% (2.47) | 49.38% (2.47) |
-| Natural JSON | 82.14% (4.17) | 62.14% (4.00) |
-| Schema JSON | 75.40% (4.65) | 54.76% (4.29) |
-| Multilingual | 57.33% (2.22) | 50.37% (2.38) |
+| Code | 89.74% (5.26) | 86.97% (5.18) |
+| Code with reasoning | 74.48% (3.76) | 71.20% (3.80) |
+| Math | 78.67% (4.61) | 75.45% (4.46) |
+| Fable | 55.36% (1.95) | 57.64% (2.25) |
+| Hello | 56.73% (2.20) | 45.45% (2.20) |
+| Topic | 58.88% (2.57) | 55.02% (2.63) |
+| Natural JSON | 75.42% (3.47) | 66.18% (3.81) |
+| Schema JSON | 96.00% (5.27) | 89.47% (4.64) |
+| Multilingual | 58.51% (2.61) | 54.51% (2.69) |
+| Counting 1–200 | 98.37% (5.78) | 99.01% (5.92) |
 
 **Historical native tool calling.** The three v4 full-checkpoint campaigns retained in v5; not rerun for v6 or v7. High-effort thinking was enabled, and failures remain in the scores.
 
@@ -501,9 +510,9 @@ MODEL_REVISION=3431dde3247c13b5957f682b1e3c6fcae2566079
 To use the published images, pull the coordinator image locally and the Spark image on each worker:
 
 ```bash
-docker pull ghcr.io/tpurtell/ds41rt-coordinator:v12
+docker pull ghcr.io/tpurtell/ds41rt-coordinator:v13
 for host in ostrich dodo emu kiwi; do
-  ssh "$host" docker pull ghcr.io/tpurtell/ds41rt-spark-expert:v12
+  ssh "$host" docker pull ghcr.io/tpurtell/ds41rt-spark-expert:v13
 done
 ./run.sh --dry-run
 ./run.sh
