@@ -4,8 +4,8 @@
 //! equivalent (unconditional→conditional rate conversion, per-request
 //! acceptance metrics accumulator, async-scheduling backup-token indexing) is
 //! reimplemented here as clearly-marked upstream ports; every group also
-//! anchors the invariant against product code (`select_dspark_prefixes`,
-//! `select_dspark_confidence_prefix`, `verify_dspark_greedy`).
+//! anchors the invariant against product code (`dspark_expected_tokens`,
+//! `verify_dspark_greedy`).
 //!
 //! Upstream sources:
 //! - test_synthetic_rejection_sampler_utils.py (5 tests, pure math)
@@ -21,7 +21,7 @@
 // from product regression coverage (review MAJOR 4/6, 2026-09-15).
 
 use ds41rt_core::{
-    select_dspark_confidence_prefix, select_dspark_prefixes, verify_dspark_greedy,
+    dspark_expected_tokens, verify_dspark_greedy,
 };
 
 // ---------------------------------------------------------------------------
@@ -65,15 +65,13 @@ fn upstream_acceptance_length_to_rates(length: f64, n: usize) -> Vec<f64> {
 // (vLLM test_synthetic_rejection_sampler_utils.py)
 // ---------------------------------------------------------------------------
 
-/// Product anchor: ds41rt's `select_dspark_prefixes` computes
+/// Product anchor: ds41rt's `dspark_expected_tokens` (the policy objective) computes
 /// expected_tokens = 1 + sum(cumulative products of the conditional rates),
 /// i.e. exactly 1 + sum(unconditional rates). This is the semantic contract
 /// tying ds41rt's "conditional draft confidence" input to vLLM's
 /// unconditional acceptance-rate convention.
 fn expected_tokens_for_conditional(confidence: &[f64]) -> f64 {
-    let selection = select_dspark_prefixes(&[confidence], |_| 1.0).unwrap();
-    assert_eq!(selection.lengths, vec![confidence.len()]);
-    selection.expected_tokens
+    dspark_expected_tokens(confidence)
 }
 
 #[test]
@@ -84,10 +82,10 @@ fn upstream_spec_unconditional_to_conditional_rates_basic() {
     assert!((conditional[2] - 0.2 / 0.5).abs() < 1e-12);
     // Product anchor: 1 + (0.9 + 0.5 + 0.2) = 2.6 expected tokens.
     assert!((expected_tokens_for_conditional(&conditional) - 2.6).abs() < 1e-12);
-    // The ds41rt confidence-prefix cutoff sees the same cumulative semantics:
-    // products of conditionals reproduce the unconditional sequence.
-    assert_eq!(select_dspark_confidence_prefix(&conditional, 0.5, 0), Ok(2));
-    assert_eq!(select_dspark_confidence_prefix(&conditional, 0.6, 0), Ok(1));
+    // Products of conditionals reproduce the unconditional sequence: the
+    // expected tokens of each prefix add exactly its unconditional rate.
+    assert!((dspark_expected_tokens(&conditional[..2]) - 2.4).abs() < 1e-12);
+    assert!((dspark_expected_tokens(&conditional[..1]) - 1.9).abs() < 1e-12);
 }
 
 #[test]

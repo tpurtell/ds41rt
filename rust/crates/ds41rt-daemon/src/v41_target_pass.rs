@@ -135,6 +135,7 @@ impl<'w, 'a> TargetPass<'w, 'a> {
         if enabled { self.index.enable_small_graph_shapes(); }
     }
     pub fn captured_routes(&self) -> &[Vec<[u32; 6]>] { self.lane.captured_routes() }
+    pub fn captured_layer_done(&self) -> &[Option<Instant>] { self.lane.captured_layer_done() }
     pub fn reserve_sparse_decode_rows(&mut self, rows: usize) -> Result<()> {
         self.lane.reserve_sparse_decode_rows(rows)
     }

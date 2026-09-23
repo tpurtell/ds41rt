@@ -179,6 +179,7 @@ fn serving_stats(prefixes: &PrefixCache<'_>) -> serde_json::Value {
         "host_cache": prefixes.host_metrics(),
         "host_cache_config": prefixes.host_config(),
         "target_sampling": sampling_stats::snapshot(),
+        "dspark_policy": super::speculative::policy_snapshot(),
     })
 }
 
@@ -1150,20 +1151,13 @@ fn single_lane_round<'w, 'a>(lib: &'a NativeLibrary, runtime: &tokio::runtime::R
     for (&slot, input) in members.iter().zip(&mut inputs) {
         let r = active[slot].as_ref().unwrap();
         if let Some(constraint) = &r.constraint { constraint.truncate_proposal(input)?; }
-        else if let Some(draft) = draft.as_deref() {
-            input.truncate(draft.confidence_prefix(r.id, input.len()-1)? + 1);
-        }
     }
-    if members.iter().all(|&slot| active[slot].as_ref().unwrap().constraint.is_none()) {
-        if let Some(draft) = draft.as_deref().filter(|d| d.reuse_enabled() || d.adaptive_enabled()) {
-            let candidates: Vec<_> = members.iter().zip(&inputs).map(|(&slot, input)|
-                (active[slot].as_ref().unwrap().id, lane, input.len()-1)).collect();
-            let lengths = if draft.adaptive_enabled() {
-                draft.select_prefixes(&candidates, draft_start.elapsed().as_micros() as u64)?
-            } else { draft.select_reuse_prefixes(&candidates)? };
-            if let Some(lengths) = lengths {
-                for (input, length) in inputs.iter_mut().zip(lengths) { input.truncate(length+1); }
-            }
+    // This path runs only while the other lane is empty.
+    if let Some(draft) = draft.as_deref_mut() {
+        let candidates: Vec<_> = members.iter().zip(&inputs).map(|(&slot, input)|
+            (active[slot].as_ref().unwrap().id, input.len()-1)).collect();
+        if let Some(lengths) = draft.select_lengths(lane, &candidates, false)? {
+            for (input, length) in inputs.iter_mut().zip(lengths) { input.truncate(length+1); }
         }
     }
     let draft_us = draft_start.elapsed().as_micros() as u64;
@@ -1177,13 +1171,6 @@ fn single_lane_round<'w, 'a>(lib: &'a NativeLibrary, runtime: &tokio::runtime::R
             request.constraint.is_none() && request.job.sampling.is_greedy()
         });
     let batch_id = batch.as_ref().unwrap().cache()?.identity();
-    if tracing::enabled!(target: "ds41rt::cost_model", tracing::Level::DEBUG) {
-        if let Some(draft) = draft.as_deref() {
-            let candidates: Vec<_> = members.iter().zip(&inputs).map(|(&slot, input)|
-                (active[slot].as_ref().unwrap().id, lane, input.len()-1)).collect();
-            draft.trace_cost_forecast(batch_id, &candidates);
-        }
-    }
     // Chunk-4a scope: a round is device-selected whenever the layout supports
     // the terminal and at least one row is device-servable. Each row's own
     // parameters then decide its kernels (K1, K1->K2 or K1->K3->K4->K5), and a
@@ -1198,8 +1185,10 @@ fn single_lane_round<'w, 'a>(lib: &'a NativeLibrary, runtime: &tokio::runtime::R
     if !compact && round_has_device_rows(active, members) {
         let round = build_sampling_round(active, members, &inputs,
             tracing::enabled!(target: "ds41rt::logit_trace", tracing::Level::DEBUG))?;
+        pass.set_route_capture(capture_routes);
         let next = runtime.block_on(execute_sampled_rows(pass, requests,
             batch.as_mut().unwrap(), transport, &round));
+        pass.set_route_capture(false);
         // Reuse the shared tail below by re-entering the same control flow.
         let next = match next {
             Ok(next) => next,
@@ -1208,8 +1197,8 @@ fn single_lane_round<'w, 'a>(lib: &'a NativeLibrary, runtime: &tokio::runtime::R
                 return Err(error);
             }
         };
-        let (accepted, emitted, emissions) = commit_lane(lib, lane, pass, requests,
-            active, members, &inputs, &mut batch, &next, draft.as_deref_mut(), capture_routes, 0,
+        let (accepted, emitted, emissions, accepted_inputs) = commit_lane(lib, lane, pass, requests,
+            active, members, &inputs, &mut batch, &next, draft.as_deref_mut(), 0,
             Some(&round), retain_enabled)?;
         for (&slot, tokens) in members.iter().zip(emissions) {
             let request = active[slot].as_mut().unwrap();
@@ -1218,6 +1207,8 @@ fn single_lane_round<'w, 'a>(lib: &'a NativeLibrary, runtime: &tokio::runtime::R
                 request.finished = true;
             }
         }
+        observe_lane_round(draft.as_deref_mut(), capture_routes, lane, false, pass.captured_routes(),
+            pass.captured_layer_done(), active, members, &inputs, &accepted_inputs, started);
         tracing::debug!(target: "ds41rt::timing", speculative,
             requests=members.len(), lane0=if lane == 0 { members.len() } else { 0 },
             lane1=if lane == 1 { members.len() } else { 0 },
@@ -1238,8 +1229,8 @@ fn single_lane_round<'w, 'a>(lib: &'a NativeLibrary, runtime: &tokio::runtime::R
         tracing::debug!(target: "ds41rt::cost_model", batch=batch_id, lane,
             requests=members.len(), rows=inputs.iter().map(Vec::len).sum::<usize>(),
             prepared_us, verify_us=executed_us-prepared_us, "verification round cost");
-        let (accepted, emitted, emissions) = commit_lane(lib, lane, pass, requests,
-            active, members, &inputs, &mut batch, &next, draft.as_deref_mut(), capture_routes,
+        let (accepted, emitted, emissions, accepted_inputs) = commit_lane(lib, lane, pass, requests,
+            active, members, &inputs, &mut batch, &next, draft.as_deref_mut(),
             executed_us-prepared_us, None, retain_enabled)?;
         for (&slot, tokens) in members.iter().zip(emissions) {
             let request = active[slot].as_mut().unwrap();
@@ -1248,6 +1239,8 @@ fn single_lane_round<'w, 'a>(lib: &'a NativeLibrary, runtime: &tokio::runtime::R
                 request.finished = true;
             }
         }
+        observe_lane_round(draft.as_deref_mut(), capture_routes, lane, false, pass.captured_routes(),
+            pass.captured_layer_done(), active, members, &inputs, &accepted_inputs, started);
         tracing::debug!(target: "ds41rt::timing", speculative,
             requests=members.len(), lane0=if lane == 0 { members.len() } else { 0 },
             lane1=if lane == 1 { members.len() } else { 0 },
@@ -1626,28 +1619,31 @@ fn prepare_commit_lane<'a, C: DraftChain<'a>>(lane: usize,
     Ok(CommitDecision { accepted_drafts, emitted, accepted, emissions, next_after_commit,
         frontier_downloads, frontier_packed })
 }
-fn publish_commit_lane<'a, C: DraftChain<'a>>(pass: &impl VerificationTarget<'a>, active: &mut [Option<Active<'a>>],
-    members: &[usize], inputs: &[Vec<u32>], owned_batch: &mut Option<RequestBatch>,
-    mut draft: Option<&mut DraftRuntime<'_, 'a, C>>, capture_routes: bool, decision: CommitDecision,
-) -> Result<(u32, usize, Vec<Vec<u32>>)> {
+fn publish_commit_lane<'a>(active: &mut [Option<Active<'a>>],
+    members: &[usize], owned_batch: &mut Option<RequestBatch>, decision: CommitDecision,
+) -> Result<(u32, usize, Vec<Vec<u32>>, Vec<u32>)> {
     let CommitDecision { accepted_drafts, emitted, accepted, emissions, next_after_commit, frontier_downloads, frontier_packed } = decision;
     ensure!(frontier_downloads.is_empty(), "retained frontier downloads are incomplete");
     ensure!(frontier_packed.is_empty(), "retained packed frontier is incomplete");
-    if let Some(draft) = draft.as_deref_mut() {
-        if capture_routes {
-            let mut offset = 0;
-            for ((&slot, input), &count) in members.iter().zip(inputs).zip(&accepted) {
-                draft.observe_accepted_routes(active[slot].as_ref().unwrap().id, offset,
-                    count as usize, pass.captured_routes())?;
-                offset += input.len();
-            }
-        }
-    }
     *owned_batch = None;
     for (&slot, next_token) in members.iter().zip(next_after_commit) {
         active[slot].as_mut().unwrap().next_after_commit = next_token;
     }
-    Ok((accepted_drafts, emitted, emissions))
+    Ok((accepted_drafts, emitted, emissions, accepted))
+}
+/// Feed a completed lane round's routes, layer timings and acceptance to the
+/// length policy. `started` is the round's draft start.
+#[allow(clippy::too_many_arguments)]
+fn observe_lane_round<'a, C: DraftChain<'a>>(draft: Option<&mut DraftRuntime<'_, 'a, C>>, capture_routes: bool,
+    lane: usize, shared: bool, routes: &[Vec<[u32; 6]>], layer_done: &[Option<Instant>],
+    active: &[Option<Active<'a>>], members: &[usize], inputs: &[Vec<u32>], accepted: &[u32], started: Instant,
+) {
+    let Some(draft) = draft else { return };
+    if !capture_routes { return; }
+    let requests: Vec<_> = members.iter().zip(inputs).zip(accepted).filter_map(|((&slot, input), &count)|
+        active[slot].as_ref().map(|r| (r.id, input.len(), count))).collect();
+    if requests.len() != members.len() { return; }
+    draft.observe_round(lane, shared, routes, layer_done, &requests, started.elapsed().as_micros() as u64);
 }
 /// Resolve one finishing row's retained frontier from its downloaded bytes.
 ///
@@ -1677,10 +1673,10 @@ fn commit_lane<'w, 'a>(lib: &'a NativeLibrary, lane: usize,
     pass: &mut TargetPass<'w, 'a>, requests: &mut Requests<'a>,
     active: &mut [Option<Active<'a>>], members: &[usize], inputs: &[Vec<u32>],
     owned_batch: &mut Option<RequestBatch>, next: &BatchScores,
-    mut draft: Option<&mut DraftRuntime<'_, 'a>>, capture_routes: bool, verify_us: u64,
+    mut draft: Option<&mut DraftRuntime<'_, 'a>>, verify_us: u64,
     round: Option<&SamplingRound>, retain_enabled: bool,
-) -> Result<(u32, usize, Vec<Vec<u32>>)> {
-    let Some(batch) = owned_batch else { return Ok((0, 0, Vec::new())); };
+) -> Result<(u32, usize, Vec<Vec<u32>>, Vec<u32>)> {
+    let Some(batch) = owned_batch else { return Ok((0, 0, Vec::new(), Vec::new())); };
     let mut decision = prepare_commit_lane(lane, requests, active, members, inputs,
         next, draft.as_deref(), verify_us, round, retain_enabled)?;
     // A frontier row whose bytes are already packed (a fallback row the CPU
@@ -1713,7 +1709,7 @@ fn commit_lane<'w, 'a>(lib: &'a NativeLibrary, lane: usize,
     }
     if let Some(draft) = draft.as_deref_mut() { draft.commit_batch(pass, requests, batch, &decision.accepted)?; }
     else { pass.commit(requests, batch, &decision.accepted)?; }
-    publish_commit_lane(pass, active, members, inputs, owned_batch, draft, capture_routes, decision)
+    publish_commit_lane(active, members, owned_batch, decision)
 }
 
 #[cfg(test)]

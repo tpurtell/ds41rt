@@ -82,30 +82,22 @@ async fn lane<'a, P: VerificationTarget<'a>, C: DraftChain<'a>>(lane: usize, lib
                 // draft and transaction before retirement can recycle its slots.
                 tokio::task::yield_now().await;
             };
+            let shared = active.borrow().iter().flatten().any(|r| r.lane != lane);
             let (inputs, mut batch, capture_routes) = {
                 let active = active.borrow();
                 let mut requests = requests.borrow_mut();
-                let draft = draft.borrow();
+                let mut draft = draft.borrow_mut();
                 for (&slot, input) in members.iter().zip(&mut inputs) {
                     let r = active[slot].as_ref().unwrap();
                     if let Some(constraint) = &r.constraint { constraint.truncate_proposal(input)?; }
-                    else if let Some(draft) = draft.as_deref() {
-                        input.truncate(draft.confidence_prefix(r.id, input.len()-1)? + 1);
-                    }
                 }
-                if members.iter().all(|&slot| active[slot].as_ref().unwrap().constraint.is_none()) {
-                    if let Some(draft) = draft.as_deref().filter(|d| d.reuse_enabled() || d.adaptive_enabled()) {
-                        let candidates: Vec<_> = members.iter().zip(&inputs).map(|(&slot, input)|
-                            (active[slot].as_ref().unwrap().id, lane, input.len()-1)).collect();
-                        // Only this lane contributes proposals, route unions and
-                        // draft time. The existing cost model's cross-lane term
-                        // is zero for this single-lane forecast.
-                        let lengths = if draft.adaptive_enabled() {
-                            draft.select_prefixes(&candidates, draft_us)?
-                        } else { draft.select_reuse_prefixes(&candidates)? };
-                        if let Some(lengths) = lengths {
-                            for (input, length) in inputs.iter_mut().zip(lengths) { input.truncate(length+1); }
-                        }
+                // Lengths are chosen from this lane's proposals and routes only;
+                // the peer lane's activity selects the shared-regime fit.
+                if let Some(draft) = draft.as_deref_mut() {
+                    let candidates: Vec<_> = members.iter().zip(&inputs).map(|(&slot, input)|
+                        (active[slot].as_ref().unwrap().id, input.len()-1)).collect();
+                    if let Some(lengths) = draft.select_lengths(lane, &candidates, shared)? {
+                        for (input, length) in inputs.iter_mut().zip(lengths) { input.truncate(length+1); }
                     }
                 }
                 let batch = prepare_decode_lane(&mut requests, &active, &members, &inputs, draft.is_some())?;
@@ -119,13 +111,6 @@ async fn lane<'a, P: VerificationTarget<'a>, C: DraftChain<'a>>(lane: usize, lib
                 pass.set_route_capture(capture_routes)?;
                 let current = batch.as_mut().unwrap();
                 let batch_id = current.cache()?.identity();
-                if tracing::enabled!(target: "ds41rt::cost_model", tracing::Level::DEBUG) {
-                    if let Some(draft) = draft.borrow().as_deref() {
-                        let candidates: Vec<_> = members.iter().zip(&inputs).map(|(&slot, input)|
-                            (active.borrow()[slot].as_ref().unwrap().id, lane, input.len()-1)).collect();
-                        draft.trace_cost_forecast(batch_id, &candidates);
-                    }
-                }
                 let selected: Vec<_> = (0..current.cache()?.positions().len()).collect();
                 let active_borrow = active.borrow();
                 let compact = !tracing::enabled!(target: "ds41rt::logit_trace", tracing::Level::DEBUG)
@@ -220,8 +205,8 @@ async fn lane<'a, P: VerificationTarget<'a>, C: DraftChain<'a>>(lane: usize, lib
                     } else { requests.borrow_mut().revoke_batch(batch.as_mut().unwrap()); }
                     return Err(error);
                 }
-                let (accepted, emitted, emissions) = publish_commit_lane(pass, &mut active.borrow_mut(),
-                    &members, &inputs, &mut batch, draft.borrow_mut().as_deref_mut(), capture_routes, decision)?;
+                let (accepted, emitted, emissions, accepted_inputs) = publish_commit_lane(&mut active.borrow_mut(),
+                    &members, &mut batch, decision)?;
                 tracing::debug!(target: "ds41rt::lane_schedule", lane, round_id,
                     "independent verifier committed");
                 for (&slot, tokens) in members.iter().zip(emissions) {
@@ -243,6 +228,9 @@ async fn lane<'a, P: VerificationTarget<'a>, C: DraftChain<'a>>(lane: usize, lib
                         let _ = sender.send(Err(format!("{error:#}").into())).await;
                     }
                 }
+                observe_lane_round(draft.borrow_mut().as_deref_mut(), capture_routes, lane, shared,
+                    pass.captured_routes(), pass.captured_layer_done(), &active.borrow(), &members, &inputs,
+                    &accepted_inputs, started);
                 tracing::debug!(target: "ds41rt::timing", lane, requests=members.len(),
                     proposed=inputs.iter().map(|r| r.len()-1).sum::<usize>(), accepted, emitted,
                     draft_us, prepared_us, verify_us, total_us=started.elapsed().as_micros() as u64,

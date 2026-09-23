@@ -299,9 +299,7 @@ pub(super) fn worker(mut args: crate::cli::NativeServeArgs, mut receive: mpsc::R
         devices, weights, &table, [&vocab[0], &vocab[1]], capacity, args.concurrency)).transpose()?;
     if let Some(draft) = &mut draft {
         draft.set_draft_limit(args.dspark_draft_limit)?;
-        draft.set_adaptive(args.adaptive_dspark());
-        draft.set_confidence_cutoff(args.dspark_confidence_cutoff);
-        draft.set_reuse_floor(args.dspark_reuse_floor)?;
+        draft.set_fixed(args.dspark_fixed);
     }
     memory_checkpoint("draft runtime")?;
     // Vision and target snapshot copies use GPU0. These allocations precede KV sizing.
@@ -385,7 +383,7 @@ pub(super) fn worker(mut args: crate::cli::NativeServeArgs, mut receive: mpsc::R
     let mut transport = make_transport()?;
     let mut second_transport = make_transport()?;
     memory_checkpoint("TP2 transports")?;
-    if let Some(draft) = &mut draft { draft.configure_cost_model(&transport, catalog.nvfp4().is_some())?; }
+    if let Some(draft) = &mut draft { draft.configure_policy(&transport, catalog.nvfp4().is_some())?; }
     let memory = [devices[0].run(|| lib.cuda_memory_info())?, devices[1].run(|| lib.cuda_memory_info())?];
     let pool = memory::distributed::PoolPlan::with_replication(map, args.concurrency as usize,
         args.max_context_tokens as usize, args.prefix_cache_entries as usize, snapshot_bytes,

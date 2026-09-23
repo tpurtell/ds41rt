@@ -435,21 +435,20 @@ mod tests {
         assert!(!args.adaptive_dspark()); // Target-only remains target-only.
         for (flags, adaptive) in [
             (vec!["--dspark"], true),
-            (vec!["--dspark", "--dspark-adaptive", "--independent-decode-lanes"], true),
+            (vec!["--dspark", "--independent-decode-lanes"], true),
             (vec!["--dspark", "--dspark-fixed"], false),
-            (vec!["--dspark", "--dspark-confidence-cutoff", "0.5"], false),
         ] {
             let super::Commands::ServeNative(args) = super::Cli::try_parse_from(
                 base.into_iter().chain(flags)).unwrap().command else { panic!("expected native serving"); };
             assert_eq!(args.adaptive_dspark(), adaptive);
         }
         assert!(super::Cli::try_parse_from(base.into_iter().chain(["--dspark-fixed"])).is_err());
-        assert!(super::Cli::try_parse_from(base.into_iter().chain(
-            ["--dspark", "--dspark-fixed", "--dspark-adaptive"])).is_err());
-        assert!(super::Cli::try_parse_from(base.into_iter().chain(
-            ["--dspark", "--dspark-fixed", "--dspark-confidence-cutoff", "0.5"])).is_err());
-        assert!(super::Cli::try_parse_from(base.into_iter().chain(["--dspark-adaptive"])).is_err());
-        assert!(super::Cli::try_parse_from(base.into_iter().chain(["--dspark", "--dspark-adaptive"])).is_ok());
+        // The removed policies' flags are rejected rather than silently ignored.
+        for removed in [["--dspark", "--dspark-adaptive"].as_slice(),
+            &["--dspark", "--dspark-confidence-cutoff", "0.5"],
+            &["--dspark", "--dspark-reuse-floor", "0.5"]] {
+            assert!(super::Cli::try_parse_from(base.into_iter().chain(removed.iter().copied())).is_err());
+        }
         for (flags, expected) in [
             (vec!["--dspark"], 5),
             (vec!["--dspark", "--rtx-gpus", "1"], 5),
@@ -704,18 +703,10 @@ pub(crate) struct NativeServeArgs {
     /// Maximum draft tokens per request: defaults to 5 with one RTX, 7 with two.
     #[arg(long, default_value_t = 5, default_value_if("rtx_gpus", "2", "7"), value_parser = clap::value_parser!(u8).range(1..=7))]
     pub dspark_draft_limit: u8,
-    /// Compatibility spelling: dSpark uses lane-local adaptive selection by default.
-    #[arg(long, requires = "dspark", hide = true)]
-    pub dspark_adaptive: bool,
-    /// Disable adaptive prefix selection and verify the configured fixed draft limit.
-    #[arg(long, requires = "dspark", conflicts_with_all = ["dspark_adaptive", "dspark_confidence_cutoff"])]
+    /// Verify every available draft instead of the online bandwidth-balance
+    /// length selection (the default whenever dSpark is enabled).
+    #[arg(long, requires = "dspark")]
     pub dspark_fixed: bool,
-    /// Experimental independent cumulative confidence cutoff, between zero and one.
-    #[arg(long, requires = "dspark", conflicts_with = "dspark_adaptive", value_parser = parse_dspark_confidence)]
-    pub dspark_confidence_cutoff: Option<f64>,
-    /// With a confidence cutoff, lower it toward this positive floor for predicted expert reuse.
-    #[arg(long, requires = "dspark_confidence_cutoff", value_parser = parse_dspark_confidence)]
-    pub dspark_reuse_floor: Option<f64>,
     /// Compatibility spelling: decode lanes always advance independently.
     #[arg(long, hide = true)]
     pub independent_decode_lanes: bool,
@@ -730,14 +721,6 @@ pub(crate) struct NativeServeArgs {
     /// Number of replicated Spark expert groups, each holding all 384 experts (opt-in; all-or-none with --spark-tp).
     #[arg(long, requires = "spark_tp", value_parser = clap::value_parser!(u8).range(1..=3))]
     pub spark_ep: Option<u8>,
-}
-
-fn parse_dspark_confidence(value: &str) -> Result<f64, String> {
-    let value: f64 = value.parse().map_err(|_| "expected a probability".to_string())?;
-    if !value.is_finite() || !(0.0..=1.0).contains(&value) {
-        return Err("confidence cutoff must be finite and between zero and one".into());
-    }
-    Ok(value)
 }
 
 /// Spark TP degrees with a native shard family: 2/3 replicated-group shards,
@@ -757,7 +740,7 @@ fn parse_spark_tp(value: &str) -> Result<u8, String> {
 
 impl NativeServeArgs {
     pub fn adaptive_dspark(&self) -> bool {
-        self.dspark && !self.dspark_fixed && self.dspark_confidence_cutoff.is_none()
+        self.dspark && !self.dspark_fixed
     }
 }
 

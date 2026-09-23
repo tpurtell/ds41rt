@@ -38,6 +38,7 @@ pub(crate) struct DistributedTargetPass<'w, 'a> {
     state: State,
     capture_routes: bool,
     route_capture: Vec<Vec<[u32; 6]>>,
+    layer_done: Vec<Option<std::time::Instant>>,
     #[cfg(test)]
     trace: bool,
     #[cfg(test)]
@@ -162,6 +163,7 @@ impl<'w, 'a> DistributedTargetPass<'w, 'a> {
             state: State::Idle,
             capture_routes: false,
             route_capture: (0..40).map(|_| Vec::with_capacity(4096)).collect(),
+            layer_done: vec![None; 40],
             #[cfg(test)]
             trace: false,
             #[cfg(test)]
@@ -189,10 +191,12 @@ impl<'w, 'a> DistributedTargetPass<'w, 'a> {
                 index.get_mut().enable_small_graph_shapes();
             }
             for rows in &mut self.route_capture { rows.clear(); }
+            self.layer_done.fill(None);
         }
         Ok(())
     }
     pub fn captured_routes(&self) -> &[Vec<[u32; 6]>] { &self.route_capture }
+    pub fn captured_layer_done(&self) -> &[Option<std::time::Instant>] { &self.layer_done }
     pub fn reserve_sparse_decode_rows(&mut self, rows: usize) -> Result<()> {
         for lane in &mut self.lanes {
             let device = lane.device;
@@ -556,6 +560,7 @@ impl<'w, 'a> DistributedTargetPass<'w, 'a> {
             }
             if self.capture_routes {
                 self.route_capture[layer].clone_from(&self.lanes[gpu].captured_routes()[layer]);
+                self.layer_done[layer] = self.lanes[gpu].captured_layer_done()[layer];
                 if tracing::enabled!(target: "ds41rt::timing", tracing::Level::DEBUG) {
                     let mut seen = [false; 384];
                     for &expert in self.route_capture[layer].iter().flatten() {

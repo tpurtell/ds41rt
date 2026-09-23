@@ -216,7 +216,8 @@ impl<'s, 'w, 'a> PendingLaneFfn<'s, 'w, 'a> {
         lane.phase = Phase::Ffn;
         Ok(LaneFfn { input, cooperative: true, shared: &mut lane.shared, router: &mut lane.router,
             library: lane.weights.library, phase: &mut lane.phase,
-            route_capture: if lane.capture_routes { Some(&mut lane.route_capture) } else { None } })
+            route_capture: if lane.capture_routes { Some(&mut lane.route_capture) } else { None },
+            layer_done: if lane.capture_routes { Some(&mut lane.layer_done) } else { None } })
     }
 }
 impl Drop for PendingLaneFfn<'_, '_, '_> {
@@ -243,6 +244,8 @@ pub(crate) struct LaneFfn<'s, 'w, 'a> {
     library: &'a NativeLibrary,
     phase: &'s mut Phase,
     route_capture: Option<&'s mut Vec<Vec<[u32; 6]>>>,
+    /// FFN completion instant per layer, recorded while routes are captured.
+    layer_done: Option<&'s mut Vec<Option<std::time::Instant>>>,
 }
 impl LaneFfn<'_, '_, '_> {
     #[cfg(test)]
@@ -312,7 +315,9 @@ impl LaneFfn<'_, '_, '_> {
         let shared = &mut self.shared;
         let library = self.library;
         let route_capture = &mut self.route_capture;
-        complete_ffn(self.phase, async {
+        let layer_done = &mut self.layer_done;
+        let layer = input.layer;
+        let output = complete_ffn(self.phase, async {
             let timing = std::time::Instant::now();
             router.set_local_mode(transport.has_local_layer(input.layer))?;
             let routed = unsafe { if cooperative { router.execute_ffn_cooperative(input, image_mask).await? }
@@ -393,7 +398,13 @@ impl LaneFfn<'_, '_, '_> {
             }
             Ok(result)
         })
-        .await
+        .await;
+        if output.is_ok() {
+            if let Some(done) = layer_done.as_deref_mut().and_then(|done| done.get_mut(layer)) {
+                *done = Some(std::time::Instant::now());
+            }
+        }
+        output
     }
     /// # Safety
     /// No external writes race the preserved FFN input or shared workspace.
@@ -437,6 +448,7 @@ pub(crate) struct BackboneLane<'w, 'a> {
     phase: Phase,
     capture_routes: bool,
     route_capture: Vec<Vec<[u32; 6]>>,
+    layer_done: Vec<Option<std::time::Instant>>,
 }
 impl<'w, 'a> BackboneLane<'w, 'a> {
     pub fn workspace_bytes(library: &NativeLibrary, capacity: u32) -> Result<[usize; 6]> {
@@ -491,6 +503,7 @@ impl<'w, 'a> BackboneLane<'w, 'a> {
             phase: Phase::Idle,
             capture_routes: false,
             route_capture: Vec::new(),
+            layer_done: vec![None; 40],
         })
     }
     fn enter(&mut self, expected: Phase) -> Result<()> {
@@ -690,6 +703,7 @@ impl<'w, 'a> BackboneLane<'w, 'a> {
             library: self.weights.library,
             phase: &mut self.phase,
             route_capture: if self.capture_routes { Some(&mut self.route_capture) } else { None },
+            layer_done: if self.capture_routes { Some(&mut self.layer_done) } else { None },
         })
     }
     /// # Safety
@@ -844,9 +858,12 @@ impl<'w, 'a> BackboneLane<'w, 'a> {
             self.router.enable_small_graph_shapes();
             self.route_capture.resize_with(40, Vec::new);
             for rows in &mut self.route_capture { rows.clear(); }
+            self.layer_done.fill(None);
         }
     }
     pub fn captured_routes(&self) -> &[Vec<[u32; 6]>] { &self.route_capture }
+    /// FFN completion instants of the captured pass, per layer.
+    pub fn captured_layer_done(&self) -> &[Option<std::time::Instant>] { &self.layer_done }
     pub fn route_capture_enabled(&self) -> bool { self.capture_routes }
     pub fn reserve_sparse_decode_rows(&mut self, rows: usize) -> Result<()> {
         if let Some(dual)=&mut self.dual_sparse { dual.reserve_decode_rows(rows) }

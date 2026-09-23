@@ -30,9 +30,8 @@ impl<'w, 'a> DraftRuntime<'w, 'a, DistributedDsparkChain<'w, 'a>> {
                 pending_commit_ids: vec![Vec::new(); lane_count], pending_prefix_ids: [None, None],
                 requests: Default::default(), pending: vec![None; lane_count],
                 request_limit: requests as usize, draft_limit: 5, draft_width: weights.draft_width(),
-                confidence_trace: Default::default(), adaptive: None,
-                confidence_cutoff: None, reuse_floor: None,
-                cost_model: None,
+                confidence_trace: Default::default(), fixed: false, policy: None,
+                predicted: [None; 2], published: None,
             })
         })
     }
@@ -79,7 +78,9 @@ mod tests {
             [&shards[0], &shards[1]], 80, 16)?;
         let mut reference = devices[1].own(|| DraftRuntime::with_requests(&lib, &weights, &embedding, &full, 80, 16))?;
         devices[1].run(|| {
-            actual.set_adaptive(true); reference.set_adaptive(true);
+            let placement = ds41rt_core::DsparkPlacement::new(
+                [ds41rt_core::DsparkLayerClass::Remote; 40], [4_700_160.; 40]).map_err(anyhow::Error::msg)?;
+            actual.bind_policy(placement.clone()); reference.bind_policy(placement);
             actual.reserve_prefixes(4)?; reference.reserve_prefixes(4)?;
             for id in 1000..1016 { actual.admit(id)?; reference.admit(id)?; }
             Ok(())

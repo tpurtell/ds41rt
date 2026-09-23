@@ -922,21 +922,9 @@ class BuildScopeTest(unittest.TestCase):
         self.assertNotIn("one-RTX layout", common)
         self.assertNotIn("two-RTX layout", common)
 
-    def test_adaptive_cost_mode_reaches_the_coordinator_container(self) -> None:
-        # The mode is resolved from the process environment at startup, so an
-        # explicitly pinned model must be passed into the coordinator container;
-        # it is opt-in and adds nothing when unset.
-        release = (ROOT / "run.sh").read_text()
-        self.assertIn("DS41RT_ADAPTIVE_COST_MODE", release)
-        loop = release[release.index("rdma_env_args=()"):]
-        loop = loop[:loop.index("done")]
-        self.assertIn("DS41RT_ADAPTIVE_COST_MODE", loop)
-        # The worker positional argument vector is unchanged: the knob is read by
-        # whichever role builds the transport, and widening the positional list
-        # would shift every existing worker argument.
-        worker = release[release.index("set -euo pipefail\nimage=\"$1\""):]
-        worker = worker[:worker.index("REMOTE\n")]
-        self.assertNotIn("adaptive_cost_mode", worker)
+    def test_removed_adaptive_cost_mode_is_not_forwarded(self) -> None:
+        # The online length policy has no offline cost profile or mode switch.
+        self.assertNotIn("DS41RT_ADAPTIVE_COST_MODE", (ROOT / "run.sh").read_text())
 
     def test_run_wip_rejects_replicated_wire_on_the_legacy_backend(self) -> None:
         launcher = (ROOT / "scripts/run-wip.sh").read_text()

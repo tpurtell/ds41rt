@@ -444,9 +444,7 @@ fn worker(
         .transpose()?;
     if let Some(draft) = &mut draft {
         draft.set_draft_limit(args.dspark_draft_limit)?;
-        draft.set_adaptive(args.adaptive_dspark());
-        draft.set_confidence_cutoff(args.dspark_confidence_cutoff);
-        draft.set_reuse_floor(args.dspark_reuse_floor)?;
+        draft.set_fixed(args.dspark_fixed);
     }
     let mut vision = crate::v41_vision::VisionRuntime::new(&lib, &catalog, 9216,
         crate::v41_vision::VisionRuntime::device_bytes(&catalog, 9216)?)?;
@@ -564,7 +562,7 @@ fn worker(
         spark_topology=?topology.map(|t| (t.tp(), t.ep())),
         device_occupied_bytes=occupied, device_budget_bytes=pool.reservation_bytes,
         runtime_headroom_bytes=memory::RUNTIME_HEADROOM, "native serving residency ready");
-    if let Some(draft) = &mut draft { draft.configure_cost_model(&transport, catalog.nvfp4().is_some())?; }
+    if let Some(draft) = &mut draft { draft.configure_policy(&transport, catalog.nvfp4().is_some())?; }
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
