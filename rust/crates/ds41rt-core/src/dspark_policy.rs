@@ -43,13 +43,11 @@ const WINDOWS: usize = 4;
 const WARM_LAYER_SAMPLES: u64 = 120;
 /// Round samples needed before the policy engages.
 const WARM_ROUND_SAMPLES: u64 = 12;
-/// Floor of the per-position calibration step (long-run tracking memory of
-/// roughly 1 / floor reached samples).
-const CALIBRATION_RATE: f64 = 0.002;
-/// Largest single calibration update, in logits.
-const CALIBRATION_STEP: f64 = 0.5;
-/// Bound on each position's learned logit offset.
-const CALIBRATION_LIMIT: f64 = 4.;
+/// Per-sample forgetting of the calibration curvature: memory of roughly 500
+/// reached samples per position, so the fit tracks drift.
+const CALIBRATION_DECAY: f64 = 0.998;
+/// Initial curvature (prior strength) of each position's calibration.
+const CALIBRATION_PRIOR: f64 = 2.;
 /// Per-round weight of the mean prediction-residual correction.
 const BIAS_RATE: f64 = 0.02;
 
@@ -215,6 +213,51 @@ fn solve_linear<const D: usize>(mut a: [[f64; D]; D], mut b: [f64; D]) -> Option
     x.iter().all(|v| v.is_finite()).then_some(x)
 }
 
+/// Online Platt scaling `logit' = a * logit + b` by an online Newton step on
+/// the log-loss, with a decayed Fisher-information matrix: effectively a
+/// running maximum-likelihood fit over the last few hundred samples.
+#[derive(Clone, Copy, Debug)]
+struct Platt {
+    theta: [f64; 2],
+    information: [[f64; 2]; 2],
+}
+
+impl Platt {
+    fn new() -> Self {
+        Self { theta: [1., 0.], information: [[CALIBRATION_PRIOR, 0.], [0., CALIBRATION_PRIOR]] }
+    }
+    fn logit(probability: f64) -> f64 {
+        let p = probability.clamp(1e-6, 1. - 1e-6);
+        (p / (1. - p)).ln()
+    }
+    fn apply(&self, probability: f64) -> f64 {
+        let z = self.theta[0] * Self::logit(probability) + self.theta[1];
+        1. / (1. + (-z).exp())
+    }
+    fn observe(&mut self, probability: f64, outcome: f64) {
+        let x = [Self::logit(probability), 1.];
+        let p = self.apply(probability);
+        let curvature = (p * (1. - p)).max(0.02);
+        for i in 0..2 {
+            for j in 0..2 {
+                self.information[i][j] = CALIBRATION_DECAY * self.information[i][j] + curvature * x[i] * x[j];
+            }
+            // Keep the matrix well conditioned when one direction is unexcited
+            // (constant raw confidence).
+            self.information[i][i] = self.information[i][i].max(1e-3);
+        }
+        let [[a, b], [c, d]] = self.information;
+        let determinant = a * d - b * c;
+        if !(determinant.is_finite() && determinant > 1e-12) { return; }
+        let gradient = [(outcome - p) * x[0], outcome - p];
+        let step = [(d * gradient[0] - b * gradient[1]) / determinant,
+            (a * gradient[1] - c * gradient[0]) / determinant];
+        // Slope in [0, 3]: calibration may flatten but never invert confidence.
+        self.theta[0] = (self.theta[0] + step[0].clamp(-1., 1.)).clamp(0., 3.);
+        self.theta[1] = (self.theta[1] + step[1].clamp(-2., 2.)).clamp(-8., 8.);
+    }
+}
+
 /// Fitted coefficients for one regime, exported for monitoring.
 #[derive(Clone, Debug, PartialEq)]
 pub struct DsparkCostSnapshot {
@@ -374,12 +417,13 @@ pub struct DsparkPolicy {
     /// Expected new expert groups per layer contributed by a token whose routes
     /// are not yet known (short histories), from observed novelty.
     novelty: [f64; DSPARK_LAYERS],
-    /// Learned logit offset per draft position. The drafter's confidence is
-    /// conditional on earlier positions being accepted; its reliability varies
-    /// by position (positions past the drafter's native block are strongly
-    /// overconfident), so each position is recalibrated online from the
-    /// outcomes of the rounds that reached it.
-    calibration: [f64; crate::MAX_DSPARK_PROPOSALS],
+    /// Per-position Platt calibration of the drafter's confidence. Confidence
+    /// is conditional on earlier positions being accepted, and its reliability
+    /// varies by position: past the drafter's native five-token block it
+    /// saturates near 0.99 whatever the content, so a slope as well as an
+    /// offset is needed. Each position is refitted online from the outcomes
+    /// of the rounds that reached it.
+    calibration: [Platt; crate::MAX_DSPARK_PROPOSALS],
     /// Mean residual of the predicted round time per regime. The robust fit
     /// tracks typical rounds, while throughput depends on mean time including
     /// stalls; this constant restores the mean without moving the marginals.
@@ -397,7 +441,7 @@ impl DsparkPolicy {
             fixed,
             history: BTreeMap::new(),
             novelty: [2.5; DSPARK_LAYERS],
-            calibration: [0.; crate::MAX_DSPARK_PROPOSALS],
+            calibration: [Platt::new(); crate::MAX_DSPARK_PROPOSALS],
             bias: [0.; 2],
             stats: DsparkPolicyStats::default(),
             counts: vec![[[0; EXPERTS]; DSPARK_LAYERS]; WINDOWS],
@@ -421,18 +465,16 @@ impl DsparkPolicy {
     pub fn release(&mut self, id: u64) {
         self.history.remove(&id);
     }
-    /// Learned logit offset per draft position.
-    pub fn calibration(&self) -> &[f64; crate::MAX_DSPARK_PROPOSALS] {
-        &self.calibration
+    /// Learned (slope, offset) on the raw logit, per draft position.
+    pub fn calibration(&self) -> [(f64, f64); crate::MAX_DSPARK_PROPOSALS] {
+        self.calibration.map(|platt| (platt.theta[0], platt.theta[1]))
     }
     /// Mean prediction-residual correction per regime (solo, shared), µs.
     pub fn time_bias(&self) -> [f64; 2] {
         self.bias
     }
     fn calibrated(&self, position: usize, probability: f64) -> f64 {
-        let p = probability.clamp(1e-6, 1. - 1e-6);
-        let logit = (p / (1. - p)).ln() + self.calibration[position];
-        1. / (1. + (-logit).exp())
+        self.calibration[position].apply(probability)
     }
 
     /// Predicted lane µs for explicit lengths, if the fit is usable.
@@ -633,17 +675,7 @@ impl DsparkPolicy {
                     self.stats.position_confidence[position] += calibrated;
                     self.stats.position_raw_confidence[position] += confidence[position];
                     self.stats.position_accepted[position] += u64::from(position < accepted);
-                    // Stochastic Newton step on the log-loss: the gradient
-                    // scaled by the logistic curvature, with a 1/n schedule
-                    // (a running maximum-likelihood estimate) down to a floor
-                    // that keeps tracking drift.
-                    let reached = self.stats.position_reached[position] as f64;
-                    let rate = (1. / (reached + 10.)).max(CALIBRATION_RATE);
-                    let curvature = (calibrated * (1. - calibrated)).max(0.05);
-                    let step = (rate * (outcome - calibrated) / curvature)
-                        .clamp(-CALIBRATION_STEP, CALIBRATION_STEP);
-                    let offset = &mut self.calibration[position];
-                    *offset = (*offset + step).clamp(-CALIBRATION_LIMIT, CALIBRATION_LIMIT);
+                    self.calibration[position].observe(confidence[position], outcome);
                 }
             }
         }
@@ -904,6 +936,29 @@ mod tests {
         let mean = stats.position_confidence[5] / stats.position_reached[5] as f64;
         let observed = stats.position_accepted[5] as f64 / stats.position_reached[5] as f64;
         assert!((mean - observed).abs() < 0.03, "{mean} vs {observed}");
+    }
+
+    #[test]
+    fn saturated_confidence_falls_back_to_its_base_rate() {
+        let mut state = 7u64;
+        let mut uniform = || { state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            (state >> 11) as f64 / (1u64 << 53) as f64 };
+        // Uninformative: raw 0.95..0.999 while acceptance is always 0.82.
+        let mut flat = Platt::new();
+        // Informative: acceptance equals the raw confidence.
+        let mut honest = Platt::new();
+        for _ in 0..4000 {
+            let raw = 0.95 + 0.049 * uniform();
+            flat.observe(raw, f64::from(u8::from(uniform() < 0.82)));
+            let raw = 0.3 + 0.69 * uniform();
+            honest.observe(raw, f64::from(u8::from(uniform() < raw)));
+        }
+        for raw in [0.95, 0.98, 0.995] {
+            assert!((flat.apply(raw) - 0.82).abs() < 0.04, "{raw} -> {} {:?}", flat.apply(raw), flat.theta);
+        }
+        for raw in [0.4, 0.7, 0.9] {
+            assert!((honest.apply(raw) - raw).abs() < 0.05, "{raw} -> {} {:?}", honest.apply(raw), honest.theta);
+        }
     }
 
     #[test]

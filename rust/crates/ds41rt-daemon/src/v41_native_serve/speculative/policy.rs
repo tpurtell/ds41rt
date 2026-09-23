@@ -89,7 +89,8 @@ pub(super) fn publish(policy: &DsparkPolicy, draft_limit: usize) {
             stats.position_confidence[p] / stats.position_reached[p] as f64 } else { 0. },
         "mean_raw_confidence": if stats.position_reached[p] > 0 {
             stats.position_raw_confidence[p] / stats.position_reached[p] as f64 } else { 0. },
-        "logit_offset": policy.calibration()[p],
+        "logit_slope": policy.calibration()[p].0,
+        "logit_offset": policy.calibration()[p].1,
         "accept_rate": if stats.position_reached[p] > 0 {
             stats.position_accepted[p] as f64 / stats.position_reached[p] as f64 } else { 0. },
     })).collect();
