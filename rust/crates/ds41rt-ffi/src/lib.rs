@@ -9,7 +9,7 @@ mod v41_kv;
 mod v41_sparse_attention;
 pub use v41_sparse_attention::{V41SparseAttention, V41SparseBatch, V41SparseSource, V41SparseWindow};
 pub use v41_index_scores::V41IndexScores;
-pub use v41_kv::V41Kv;
+pub use v41_kv::{V41Kv, V41KvStoreLayer, V41KvStoreLayers};
 mod v41_compressor;
 mod v41_vision;
 pub use v41_vision::V41VisionOps;

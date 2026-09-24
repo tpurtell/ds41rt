@@ -135,3 +135,44 @@ impl V41Kv<'_> {
         Ok(())
     }
 }
+
+type StoreLayers = unsafe extern "C" fn(*const c_void, i32, i32, i32, *mut c_void) -> i32;
+/// One launch storing every window layer's accepted rows (see
+/// `ds41rt_v41_kv_store_layers`). The arena layout is fixed by the header.
+pub struct V41KvStoreLayers<'a> {
+    _library: &'a NativeLibrary,
+    store: StoreLayers,
+}
+/// Layout of one table entry; must match `ds41rt_v41_kv_store_layer_t`.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct V41KvStoreLayer {
+    pub values: u64,
+    pub scales: u64,
+    pub cache: u64,
+    pub cache_scales: u64,
+    pub ends: u64,
+    pub capacity: u64,
+    pub destinations: u64,
+    pub end_pairs: u64,
+}
+impl NativeLibrary {
+    pub fn v41_kv_store_layers(&self) -> Result<V41KvStoreLayers<'_>> {
+        Ok(V41KvStoreLayers { _library: self, store: unsafe { *self.lib.get(b"ds41rt_v41_kv_store_layers")? } })
+    }
+}
+impl V41KvStoreLayers<'_> {
+    /// # Safety
+    /// `table` is a device buffer of `layers` entries whose destination and
+    /// end-pair arrays were uploaded on `stream` before this launch. Every
+    /// referenced buffer stays alive and unshared until the stream drains.
+    pub unsafe fn launch(&self, table: Ds41rtDeviceBuffer, layers: usize, rows: usize, chunks: usize,
+        stream: *mut c_void) -> Result<()> {
+        ensure!((1..=64).contains(&layers) && (1..=4096).contains(&rows) && (1..=256).contains(&chunks)
+            && table.bytes >= layers * std::mem::size_of::<V41KvStoreLayer>() && table.ptr as usize % 16 == 0,
+            "invalid batched KV store table");
+        let status = unsafe { (self.store)(table.ptr.cast_const(), layers as i32, rows as i32, chunks as i32, stream) };
+        ensure!(status == 0, "native batched KV store status {status}");
+        Ok(())
+    }
+}

@@ -248,6 +248,80 @@ pub(crate) struct BackboneExecution<'w, 'a> {
     sources: Vec<CompressorWave<'w, 'a>>,
     progress: PassProgress,
     queued_production: Option<Produced>,
+    window_batch: Option<WindowBatch<'a>>,
+}
+
+/// All 40 window layers' accepted-row writes as one pinned upload and one
+/// launch on a dedicated stream, replacing forty upload/launch/drain steps.
+/// Each window records this stream as its pending commit's completion.
+struct WindowBatch<'a> {
+    library: &'a NativeLibrary,
+    stream: crate::v41_memory::LoadStream<'a>,
+    staging: crate::v41_memory::HostAllocation<'a>,
+    table: crate::v41_memory::DeviceAllocation<'a>,
+    kernel: ds41rt_ffi::V41KvStoreLayers<'a>,
+    capacity: usize,
+}
+impl<'a> WindowBatch<'a> {
+    const LAYERS: usize = 40;
+    const CHUNKS: usize = 16;
+    fn bytes(capacity: usize) -> usize {
+        Self::LAYERS * (std::mem::size_of::<ds41rt_ffi::V41KvStoreLayer>() + capacity * 8 + Self::CHUNKS * 16)
+    }
+    fn new(library: &'a NativeLibrary, capacity: usize) -> Result<Self> {
+        let bytes = Self::bytes(capacity);
+        Ok(Self {
+            library,
+            stream: crate::v41_memory::LoadStream { library, raw: library.cuda_stream_create()? },
+            staging: crate::v41_memory::HostAllocation::new(library, bytes)?,
+            table: crate::v41_memory::DeviceAllocation::new(library, bytes)?,
+            kernel: library.v41_kv_store_layers()?,
+            capacity,
+        })
+    }
+    /// # Safety
+    /// Every staged window keeps its buffers and cache state alive until this
+    /// stream drains; the previous batch on this owner has completed.
+    unsafe fn enqueue(&mut self, layers: &[crate::v41_window::BatchedWindowCommit]) -> Result<()> {
+        let rows = layers.first().context("empty window batch")?.destinations.len();
+        let chunks = layers[0].ends.len();
+        ensure!(layers.len() <= Self::LAYERS && rows <= self.capacity && (1..=Self::CHUNKS).contains(&chunks)
+            && layers.iter().all(|l| l.destinations.len() == rows && l.ends.len() == chunks
+                && l.device == self.table.buffer.device_id),
+            "window batch shape differs");
+        let entry = std::mem::size_of::<ds41rt_ffi::V41KvStoreLayer>();
+        let base = self.table.buffer.ptr as u64;
+        let mut offset = layers.len() * entry;
+        let mut entries = Vec::with_capacity(layers.len());
+        let staging = self.staging.bytes_mut();
+        for layer in layers {
+            let mut value = layer.layer;
+            value.destinations = base + offset as u64;
+            for (i, d) in layer.destinations.iter().enumerate() {
+                staging[offset + i * 8..offset + i * 8 + 8].copy_from_slice(&d.to_ne_bytes());
+            }
+            offset += rows * 8;
+            value.end_pairs = base + offset as u64;
+            for (i, (slot, end)) in layer.ends.iter().enumerate() {
+                staging[offset + i * 16..offset + i * 16 + 8].copy_from_slice(&slot.to_ne_bytes());
+                staging[offset + i * 16 + 8..offset + i * 16 + 16].copy_from_slice(&end.to_ne_bytes());
+            }
+            offset += chunks * 16;
+            entries.push(value);
+        }
+        for (i, value) in entries.iter().enumerate() {
+            let bytes = unsafe { std::slice::from_raw_parts((value as *const ds41rt_ffi::V41KvStoreLayer).cast::<u8>(), entry) };
+            staging[i * entry..(i + 1) * entry].copy_from_slice(bytes);
+        }
+        let mut host = self.staging.buffer; host.bytes = offset;
+        unsafe {
+            self.library.copy_host_buffer_h2d_async(self.table.buffer, host, offset, self.stream.raw)?;
+            self.kernel.launch(self.table.buffer, layers.len(), rows, chunks, self.stream.raw)
+        }
+    }
+    fn synchronize(&self) -> Result<()> {
+        unsafe { self.library.cuda_stream_synchronize(self.stream.raw) }
+    }
 }
 /// Scratch producers retain their wave owner; the caller retains the matching
 /// query and admitted cache slots through completion or drained cancellation.
@@ -364,13 +438,45 @@ impl<'w, 'a> BackboneExecution<'w, 'a> {
                 )
             })
             .collect::<Result<Vec<_>>>()?;
+        let window_batch = std::env::var("DS41RT_WINDOW_BATCH").map_or(true, |v| v != "0")
+            .then(|| WindowBatch::new(weights.library, capacity as usize)).transpose()?;
         Ok(Self {
             weights,
             windows,
             sources,
             progress: PassProgress::default(),
             queued_production: None,
+            window_batch,
         })
+    }
+    /// Stage every window layer's accepted rows into one batched store. Returns
+    /// false (nothing staged) when the per-layer path must be used: encoder
+    /// publication, replicated windows, or windows already staged.
+    /// # Safety
+    /// Same retention contract as enqueue_cache_commit.
+    unsafe fn stage_window_batch(&mut self, bank: &BackboneCache<'_>, batch: &CacheBatch,
+        accepted: &[u32]) -> Result<bool> {
+        let Some(owner) = self.window_batch.as_mut() else { return Ok(false) };
+        if batch.stage() != CacheStage::Full
+            || self.windows.iter().any(|w| w.has_pending_commit() || w.has_replica()) {
+            return Ok(false);
+        }
+        let (published, _) = bank.validate_commit(batch, &self.windows, &self.sources, accepted)?;
+        if published != 0 { return Ok(false); }
+        let stream = owner.stream.raw;
+        let mut staged = Vec::with_capacity(40);
+        let result = (|| -> Result<()> {
+            for layer in batch.stage().windows() {
+                staged.push(unsafe { self.windows[layer].stage_batched_commit(bank.window(batch, layer)?, accepted, stream)? });
+            }
+            unsafe { owner.enqueue(&staged) }
+        })();
+        if let Err(error) = result {
+            // The caller's failure path aborts pending commits (drains both streams).
+            let _ = owner.synchronize();
+            return Err(error);
+        }
+        Ok(true)
     }
     /// Discard pass progress only after all consumers finish. The caller also
     /// restarts the backbone/index lanes and initializes the next query batch.
@@ -608,6 +714,7 @@ impl<'w, 'a> BackboneExecution<'w, 'a> {
     /// engram/dSpark history in the enclosing scheduler transaction.
     pub unsafe fn enqueue_cache_commit(&mut self, bank: &BackboneCache<'_>,
         batch: &CacheBatch, accepted: &[u32]) -> Result<()> {
+        unsafe { self.stage_window_batch(bank, batch, accepted)?; }
         unsafe { bank.enqueue_cache_commit(batch, &mut self.windows, &mut self.sources, accepted) }
     }
     pub fn poll_cache_commit(&self) -> Result<bool> {
@@ -626,6 +733,11 @@ impl<'w, 'a> BackboneExecution<'w, 'a> {
     ) -> Result<()> {
         self.progress.commit(batch.identity())?;
         ensure!(batch.stage() == self.progress.stage, "backbone commit/cache phase differs");
+        // Direct commit: stage and drain the batched store, then publish every
+        // window through its (now complete) pending commit.
+        if unsafe { self.stage_window_batch(bank, batch, accepted)? } {
+            self.window_batch.as_ref().unwrap().synchronize()?;
+        }
         bank.commit(batch, &mut self.windows, &mut self.sources, accepted)
     }
 }

@@ -12,7 +12,16 @@ pub(super) struct PendingCommit {
     prepared: Prepared,
     ends: Vec<u64>,
     accepted: Vec<u32>,
+    /// A batched multi-layer store runs on this stream instead of the wave's.
+    external: Option<*mut c_void>,
     _reservation: WriteReservation,
+}
+/// One layer's part of a batched window commit (see `stage_batched_commit`).
+pub(crate) struct BatchedWindowCommit {
+    pub destinations: Vec<u64>,
+    pub ends: Vec<(u64, u64)>,
+    pub layer: ds41rt_ffi::V41KvStoreLayer,
+    pub device: i32,
 }
 impl<'a> WindowWave<'_, 'a> {
     /// Configure before production. Each wave owns independent publication
@@ -33,6 +42,23 @@ impl<'a> WindowWave<'_, 'a> {
     /// All consumers of this proposal have drained. Keep state and wave alive
     /// through completion; on any failure drain before invalidating its requests.
     pub unsafe fn enqueue_commit(&mut self, state: &WindowState<'_>, accepted: &[u32]) -> Result<()> {
+        unsafe { self.enqueue_commit_on(state, accepted, None).map(|_| ()) }
+    }
+    /// Host-side part of enqueue_commit for a batched multi-layer store: the
+    /// caller launches one store for every layer on `stream`, and this wave's
+    /// completion is then observed on that stream. Replicated windows keep the
+    /// per-layer path (their publication is ordered on the wave's stream).
+    /// # Safety
+    /// Same contract as enqueue_commit; the caller enqueues the store on `stream`
+    /// before any poll/commit and drains `stream` before releasing this state.
+    pub(crate) unsafe fn stage_batched_commit(&mut self, state: &WindowState<'_>, accepted: &[u32],
+        stream: *mut c_void) -> Result<BatchedWindowCommit> {
+        ensure!(self.replica.is_none() && state.replica.is_none(), "replicated windows commit per layer");
+        unsafe { self.enqueue_commit_on(state, accepted, Some(stream)) }?
+            .context("batched window commit staged no rows")
+    }
+    unsafe fn enqueue_commit_on(&mut self, state: &WindowState<'_>, accepted: &[u32],
+        external: Option<*mut c_void>) -> Result<Option<BatchedWindowCommit>> {
         ensure!(self.pending_commit.is_none(), "window commit already pending");
         if let Some(configured)=&state.replica {
             ensure!(self.replica.as_ref().is_some_and(|(storage,_)|
@@ -71,8 +97,28 @@ impl<'a> WindowWave<'_, 'a> {
         let mask = p.chunks.iter().fold(0u16, |mask, c| mask | (1 << c.lease.slot));
         ensure!(state.writing.get() & mask == 0, "window slot is being committed");
         state.writing.set(state.writing.get() | mask);
+        let batched = external.map(|_| {
+            let pending_ends = p.chunks.iter().zip(&ends).map(|(c, &end)| (c.lease.slot as u64, end)).collect();
+            BatchedWindowCommit {
+                destinations: destinations.clone(),
+                ends: pending_ends,
+                layer: ds41rt_ffi::V41KvStoreLayer {
+                    values: self.values.buffer.ptr as u64,
+                    scales: self.scales.buffer.ptr as u64,
+                    cache: state.values.buffer.ptr as u64,
+                    cache_scales: state.scales.buffer.ptr as u64,
+                    ends: state.ends.buffer.ptr as u64,
+                    capacity: (state.slot_count * 128) as u64,
+                    // Filled in by the batch owner once its arena is laid out.
+                    destinations: 0,
+                    end_pairs: 0,
+                },
+                device: self.values.buffer.device_id,
+            }
+        });
         self.pending_commit = Some(PendingCommit { prepared: p, ends, accepted: accepted.to_vec(),
-            _reservation: WriteReservation { flags: state.writing.clone(), mask } });
+            external, _reservation: WriteReservation { flags: state.writing.clone(), mask } });
+        if batched.is_some() { return Ok(batched); }
         let p = &self.pending_commit.as_ref().unwrap().prepared;
         (|| -> Result<()> {
             unsafe {
@@ -109,12 +155,13 @@ impl<'a> WindowWave<'_, 'a> {
                 }
             }
             Ok(())
-        })()
-
+        })().map(|()| None)
     }
+    pub(crate) fn has_pending_commit(&self) -> bool { self.pending_commit.is_some() }
+    pub(crate) fn has_replica(&self) -> bool { self.replica.is_some() }
     pub fn poll_commit(&self) -> Result<bool> {
-        if self.pending_commit.is_none() { return Ok(true); }
-        unsafe { self.stream.library.cuda_stream_query(self.stream.raw) }
+        let Some(pending) = &self.pending_commit else { return Ok(true) };
+        unsafe { self.stream.library.cuda_stream_query(pending.external.unwrap_or(self.stream.raw)) }
     }
     pub(super) fn validate_pending_commit(&self, state: &WindowState<'_>) -> Result<&Prepared> {
         let pending = self.pending_commit.as_ref().context("window commit absent")?;
@@ -151,7 +198,10 @@ impl<'a> WindowWave<'_, 'a> {
     /// Drain before returning write slots to the bank; revoke any touched request.
     pub fn abort_commit(&mut self, state: &mut WindowState<'_>) -> Result<()> {
         if self.pending_commit.is_none() { return Ok(()); }
-        let drained = self.synchronize();
+        let mut drained = self.synchronize();
+        if let Some(stream) = self.pending_commit.as_ref().unwrap().external {
+            drained = drained.and(unsafe { self.stream.library.cuda_stream_synchronize(stream) });
+        }
         let pending = self.pending_commit.take().unwrap();
         let leases = pending.prepared.chunks.iter().map(|c| c.lease).collect::<Vec<_>>();
         drop(pending);

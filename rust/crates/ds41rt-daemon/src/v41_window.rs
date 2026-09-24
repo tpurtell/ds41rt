@@ -14,6 +14,7 @@ mod prefix;
 pub(crate) mod replica;
 mod commit;
 use commit::PendingCommit;
+pub(crate) use commit::BatchedWindowCommit;
 pub(crate) use prefix::{WindowPrefix, WINDOW_PREFIX_BYTES};
 static NEXT_SNAPSHOT: AtomicU64 = AtomicU64::new(1);
 fn next(counter: &AtomicU64) -> Result<u64> {

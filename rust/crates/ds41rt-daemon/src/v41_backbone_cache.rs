@@ -695,7 +695,7 @@ impl<'a> BackboneCache<'a> {
         Ok(())
     }
     /// Check every component before starting or publishing accepted cache writes.
-    fn validate_commit<'w,'wa:'w,'s,'sa:'s,W: CacheWave<WindowWave<'w,'wa>>,C: CacheWave<CompressorWave<'s,'sa>>>
+    pub(crate) fn validate_commit<'w,'wa:'w,'s,'sa:'s,W: CacheWave<WindowWave<'w,'wa>>,C: CacheWave<CompressorWave<'s,'sa>>>
         (&self, batch: &CacheBatch, windows: &[W], sources: &[C], accepted: &[u32]) -> Result<(u64, u8)> {
         self.validate_batch(batch)?;
         ensure!(
@@ -749,7 +749,8 @@ impl<'a> BackboneCache<'a> {
         (&self, batch: &CacheBatch, windows: &mut [W], sources: &mut [C], accepted: &[u32]) -> Result<()> {
         let (published, published_sources) = self.validate_commit(batch, windows, sources, accepted)?;
         for layer in batch.stage.windows() {
-            if published & (1u64 << layer) == 0 {
+            // A batched multi-layer store may already have staged this window.
+            if published & (1u64 << layer) == 0 && !windows[layer].wave_ref().has_pending_commit() {
                 windows[layer].on_device_mut(|wave| unsafe { wave.enqueue_commit(&self.windows[layer], accepted) })?;
             }
         }

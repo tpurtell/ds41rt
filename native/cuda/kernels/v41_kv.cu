@@ -55,6 +55,29 @@ __global__ void store(const uint8_t* values,const uint8_t* scales,const uint64_t
   if(t<scale_bytes)cache_scales[dst*scale_bytes+t]=scales[row*scale_bytes+t];
 }
 }
+namespace {
+// One launch stores every window layer's accepted rows and publishes the
+// per-slot ends. Row copies match `store<false>` byte for byte.
+__global__ void store_layers(const ds41rt_v41_kv_store_layer_t* layers,int chunks) {
+  const auto layer=layers[blockIdx.y];
+  const uint64_t row=blockIdx.x,dst=layer.destinations[row];const int t=threadIdx.x;
+  if(dst<layer.capacity) {
+    layer.cache[dst*512+t]=layer.values[row*512+t];
+    layer.cache[dst*512+t+256]=layer.values[row*512+t+256];
+    if(t<16)layer.cache_scales[dst*16+t]=layer.scales[row*16+t];
+  }
+  if(row==0 && t<chunks)layer.ends[layer.end_pairs[2*t]]=layer.end_pairs[2*t+1];
+}
+}
+extern "C" int32_t ds41rt_v41_kv_store_layers(const void* table,int32_t layers,int32_t rows,
+    int32_t chunks,void* stream) {
+  if(!table || reinterpret_cast<uintptr_t>(table)%16 || layers<1 || layers>64 || rows<1 || rows>4096
+      || chunks<1 || chunks>256)
+    return cudaErrorInvalidValue;
+  store_layers<<<dim3(rows,layers),256,0,reinterpret_cast<cudaStream_t>(stream)>>>(
+      reinterpret_cast<const ds41rt_v41_kv_store_layer_t*>(table),chunks);
+  return cudaGetLastError();
+}
 extern "C" int32_t ds41rt_v41_kv_pack(const uint16_t* input,const float* frequencies,
     uint8_t* values,uint8_t* scales,int32_t rows,void* stream) {
   if(rows<1 || rows>4096)return cudaErrorInvalidValue;
