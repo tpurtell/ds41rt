@@ -88,20 +88,20 @@ the prefill, deployment, startup and memory tables are preserved from v6. Older 
 tool-evaluation results retain their separately named historical campaigns; apart
 from the EXL3 5090+2-spark runs above, none qualifies either new quant.
 
-**Content-type decode.** Median tokens/s of three repeats, v14. Official Flash values are the historical one-shot reference, including its prior fable wording; they were not rerun.
+**Content-type decode.** Median tokens/s of three repeats, v14. Official Flash is DeepSeek's hosted `deepseek-flash` API, measured 2026-09-24 with the same corpus and controls, three sequential requests per case. Its rates include network streaming and unknown provider hardware, so they are a reference rather than a controlled hardware comparison. The API rejects JSON Schema `response_format` with HTTP 400. [Raw official record](docs/release-official-flash-reference-20260924.json).
 
-| Case | 1 RTX target | 1 RTX dSpark | 2 RTX target | 2 RTX dSpark | Historical official Flash |
+| Case | 1 RTX target | 1 RTX dSpark | 2 RTX target | 2 RTX dSpark | Official Flash API |
 |---|---:|---:|---:|---:|---:|
-| Code | 60.63 | 146.12 | 61.76 | 179.86 | 345.90 |
-| Code with reasoning | 59.87 | 115.78 | 60.60 | 138.99 | — |
-| Math | 59.79 | 129.15 | 60.91 | 155.34 | 285.33 |
-| Fable | 59.36 | 67.59 | 60.56 | 84.98 | 123.63 |
-| Hello | 58.37 | 77.20 | 60.43 | 113.79 | 141.10 |
-| Topic | 60.00 | 84.05 | 60.50 | 102.32 | 169.24 |
-| Natural JSON | 59.72 | 133.54 | 60.48 | 157.00 | 175.33 |
+| Code | 60.63 | 146.12 | 61.76 | 179.86 | 328.92 |
+| Code with reasoning | 59.87 | 115.78 | 60.60 | 138.99 | 265.65 |
+| Math | 59.79 | 129.15 | 60.91 | 155.34 | 230.37 |
+| Fable | 59.36 | 67.59 | 60.56 | 84.98 | 128.86 |
+| Hello | 58.37 | 77.20 | 60.43 | 113.79 | 151.88 |
+| Topic | 60.00 | 84.05 | 60.50 | 102.32 | 189.53 |
+| Natural JSON | 59.72 | 133.54 | 60.48 | 157.00 | 266.83 |
 | Schema JSON | 59.12 | 135.55 | 60.17 | 159.10 | HTTP 400 |
-| Multilingual | 59.18 | 87.46 | 60.24 | 106.52 | 183.61 |
-| Counting 1–200 | 60.81 | 182.39 | 61.64 | 219.86 | 427.29 |
+| Multilingual | 59.18 | 87.46 | 60.24 | 106.52 | 176.78 |
+| Counting 1–200 | 60.81 | 182.39 | 61.64 | 219.86 | 417.01 |
 
 **1 RTX prefill matrix.** Median effective tokens/s after shape warmup and verified parent reuse.
 
