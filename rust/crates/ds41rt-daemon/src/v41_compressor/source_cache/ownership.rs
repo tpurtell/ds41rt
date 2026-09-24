@@ -16,6 +16,9 @@ impl PagePool {
             generations: vec![0; pages],
         }
     }
+    pub fn capacity(&self) -> usize {
+        self.references.len()
+    }
     pub fn generation(&self, page: u32) -> u32 {
         self.generations[page as usize]
     }

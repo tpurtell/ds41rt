@@ -10,6 +10,7 @@ use super::scores::{BatchScores, VOCAB};
 use crate::v41_backbone_cache::CacheLease;
 use crate::v41_requests::RequestBatch;
 use super::prefix::{ImageKeys, PrefixCache, SnapshotKind};
+use super::console;
 
 #[cfg(test)]
 pub(crate) fn exercise_distributed_decode<'t, 'd, 'a: 'd>(lib: &'a NativeLibrary,
@@ -28,7 +29,7 @@ pub(crate) fn exercise_distributed_decode<'t, 'd, 'a: 'd>(lib: &'a NativeLibrary
     let mut request = Active { constraint: None, id, lease,
         job: NativeRequest { prompt: String::new(), constraint: None, images: Vec::new(), max_tokens: 4, sampling: Default::default(), events },
         decoder: ds41rt_loader::streaming_token_decoder(snapshot, false)?, anchor,
-        generated: 0, buffered: 0, lane: 0, finished: false, cacheable: false,
+        generated: 0, buffered: 0, lane: 0, finished: false, cacheable: false, failed: false,
         tokens: tokens.to_vec(), image_keys, next_after_commit: None };
     request.emit(&[anchor])?;
     ensure!(!request.finished, "fixture requires a nonterminal continuation anchor");
@@ -70,11 +71,22 @@ pub(super) struct Active<'a> {
     lane: usize,
     finished: bool,
     cacheable: bool,
+    /// The engine reported an error to a still-connected client (console only).
+    failed: bool,
     tokens: Vec<u32>,
     image_keys: ImageKeys,
     next_after_commit: Option<TokenScores>,
 }
 impl Active<'_> {
+    /// Why the request left the scheduler, for the live console.
+    fn console_reason(&self) -> &'static str {
+        if self.cacheable { "finished" } else if self.failed { "failed" } else { "cancelled" }
+    }
+    fn console_retire(&self) {
+        console::totals::retired();
+        console::lifecycle(console::Event::Retire { id: self.id, at: Instant::now(),
+            reason: self.console_reason(), generated: self.generated as u32 });
+    }
     fn emit_one(&mut self, token: u32) -> Result<[Option<InferenceChunk>; 3]> {
         ensure!(!self.job.events.is_closed(), "client disconnected");
         if let Some(constraint) = &mut self.constraint { constraint.accept(token)?; }
@@ -118,6 +130,7 @@ impl Active<'_> {
 
 fn retire_request<'a, C: DraftChain<'a>>(request: Active<'a>, requests: &mut Requests<'a>,
     prefixes: &mut PrefixCache<'a>, mut draft: Option<&mut DraftRuntime<'_, 'a, C>>) -> Result<()> {
+    request.console_retire();
     // Chunk-4b: retention is consulted **before** the retained frontier is
     // required. With the turn bank disabled `retain` early-returns, so requiring
     // `next_after_commit` first would turn a cache-disabled deployment into a
@@ -180,6 +193,7 @@ fn serving_stats(prefixes: &PrefixCache<'_>) -> serde_json::Value {
         "host_cache_config": prefixes.host_config(),
         "target_sampling": sampling_stats::snapshot(),
         "dspark_policy": super::speculative::policy_snapshot(),
+        "totals": console::totals::snapshot(),
     })
 }
 
@@ -207,6 +221,9 @@ pub(super) fn serve<'w, 'a, P: ServingTarget<'w, 'a>>(lib: &'a NativeLibrary, ar
                 *slot = serving_stats(&prefixes);
             }
         }
+        if let Some(live) = console::live().filter(|live| live.gauges_due()) {
+            live.push(console_gauges(&active, requests, &prefixes, receive.len(), Some(pending.is_some())));
+        }
         // This point is reached only after both complete stacks have drained and
         // committed. No cache owner is migrated or retired inside a layer stack.
         for entry in &mut active {
@@ -230,6 +247,10 @@ pub(super) fn serve<'w, 'a, P: ServingTarget<'w, 'a>>(lib: &'a NativeLibrary, ar
                 && !p.prepared.job.events.is_closed()) { break; }
             let prepared = if let Some(pending) = pending.take() { pending.prepared } else {
                 let job = if active_count == 0 && !closed {
+                    // Going idle: publish final occupancy so the console does not show stale lanes.
+                    if let Some(live) = console::live() {
+                        live.push(console_gauges(&active, requests, &prefixes, receive.len(), Some(false)));
+                    }
                     match receive.blocking_recv() { Some(job) => job, None => { closed = true; break; } }
                 } else {
                     match receive.try_recv() {
@@ -262,7 +283,9 @@ pub(super) fn serve<'w, 'a, P: ServingTarget<'w, 'a>>(lib: &'a NativeLibrary, ar
                 if !images.is_empty() {
                     requests.attach_images(lease, crate::v41_requests::RequestImages::new(images)?)?;
                 }
+                let restore_started = Instant::now();
                 let hit = prefixes.restore(prompt, &image_keys, id, lease, requests, draft.as_deref_mut())?;
+                let restore = (restore_started, Instant::now());
                 // Check the declared lifetime budget of every active request,
                 // including the new request, against the actual source pages.
                 // This preserves prefix sharing and accounts for partial-page COW.
@@ -273,9 +296,9 @@ pub(super) fn serve<'w, 'a, P: ServingTarget<'w, 'a>>(lib: &'a NativeLibrary, ar
                 capacity.push((lease, admission::remaining_budget(prompt.len(), job.max_tokens,
                     requests.cache().committed_end(lease)?)?));
                 prefixes.make_room(requests, &capacity)?;
-                Ok((image_keys, hit))
+                Ok((image_keys, hit, restore))
             })();
-            let (image_keys, hit) = match admitted {
+            let (image_keys, hit, restore) = match admitted {
                 Ok(value) => value,
                 Err(error) => {
                     requests.release_if_present(lease)?;
@@ -297,11 +320,13 @@ pub(super) fn serve<'w, 'a, P: ServingTarget<'w, 'a>>(lib: &'a NativeLibrary, ar
                 }
             };
             let admission::Prepared { job, prompt, images } = prepared;
+            let mut counted = false;
             let result = (|| -> Result<Active<'a>> {
                 let mut constraint = job.constraint.as_ref().map(|spec| compiler.matcher(spec)).transpose()?;
                 ensure!(!job.events.is_closed(), "client disconnected");
                 let decoder = ds41rt_loader::streaming_token_decoder(&args.snapshot, false)?;
                 let cached = hit.as_ref().map_or(0, |(end, _)| *end);
+                let image_count = images.len() as u16;
                 let source_end = requests.cache().committed_end(lease)? as usize;
                 if !images.is_empty() {
                     // Deliberately unheld (packet HC-9): this is per-image pre-prefill
@@ -328,6 +353,17 @@ pub(super) fn serve<'w, 'a, P: ServingTarget<'w, 'a>>(lib: &'a NativeLibrary, ar
                         else { "ds41rt-native-fp4-kv" }.into()),
                     prompt_usage: PromptUsage { prompt_tokens: prompt.len(), prompt_cache_hit_tokens: cached },
                 }))?;
+                console::totals::admitted(prompt.len(), cached);
+                counted = true;
+                console::lifecycle(console::Event::Admit { id, at: restore.0, prompt: prompt.len() as u32,
+                    cached: cached as u32, max: job.max_tokens as u32, lane: lane as u8,
+                    grammar: constraint.is_some(), images: image_count });
+                if cached > 0 {
+                    if let Some(live) = console::live() {
+                        live.push(console::Event::Prefill(console::Prefill { kind: console::PrefillKind::Restore,
+                            lane: 0, index: 0, of: 1, rows: cached as u32, started: restore.0, finished: restore.1 }));
+                    }
+                }
                 P::begin_request(first_transport)?; P::begin_request(second_transport)?;
                 let scores = if cached == prompt.len() { hit.expect("complete prefix hit").1.context("exact prefix has no logits")? }
                 else { prefill(lib, runtime, first, second, requests, first_transport,
@@ -343,11 +379,14 @@ pub(super) fn serve<'w, 'a, P: ServingTarget<'w, 'a>>(lib: &'a NativeLibrary, ar
                 // The first generated token is emitted-token index 0.
                 let anchor = scores.sample(mask, job.sampling, 0)?;
                 Ok(Active { constraint, id, lease, job, decoder, anchor, generated: 0, buffered: 0, lane,
-                    finished: false, cacheable: false, tokens: prompt, image_keys, next_after_commit: Some(scores) })
+                    finished: false, cacheable: false, failed: false, tokens: prompt, image_keys, next_after_commit: Some(scores) })
             })();
             match result {
                 Ok(mut request) => {
+                    console::totals::output(1);
+                    console::lifecycle(console::Event::First { id: request.id, at: Instant::now(), token: request.anchor });
                     if let Err(error) = request.emit(&[request.anchor]) {
+                        request.failed = !request.job.events.is_closed();
                         let _ = request.job.events.blocking_send(Err(format!("{error:#}").into()));
                         request.finished = true;
                     }
@@ -358,6 +397,9 @@ pub(super) fn serve<'w, 'a, P: ServingTarget<'w, 'a>>(lib: &'a NativeLibrary, ar
                     let failure = error.downcast_ref::<ds41rt_api::native_v41::NativeFailure>()
                         .cloned().unwrap_or_else(|| format!("{error:#}").into());
                     let _ = events.blocking_send(Err(failure));
+                    if counted { console::totals::retired(); }
+                    console::lifecycle(console::Event::Retire { id, at: Instant::now(),
+                        reason: if events.is_closed() { "cancelled" } else { "failed" }, generated: 0 });
                     tracing::warn!(%error, "native request admission failed");
                     requests.release_if_present(lease)?;
                     if let Some(draft) = draft.as_deref_mut() { draft.release(id)?; }
@@ -383,6 +425,7 @@ pub(super) fn serve<'w, 'a, P: ServingTarget<'w, 'a>>(lib: &'a NativeLibrary, ar
                 let _ = request.job.events.blocking_send(Err(format!("{error:#}").into()));
                 request.finished = true;
                 request.cacheable = false;
+                request.failed = true;
                 // No layer stack started. The next completed-boundary cleanup
                 // releases only this owner's pages, then retries remaining work.
                 continue;
@@ -400,6 +443,7 @@ pub(super) fn serve<'w, 'a, P: ServingTarget<'w, 'a>>(lib: &'a NativeLibrary, ar
                 let _ = request.job.events.blocking_send(Err(format!("{error:#}").into()));
                 request.finished = true;
                 request.cacheable = false;
+                request.failed = true;
             }
         }
     }
@@ -1148,6 +1192,7 @@ fn single_lane_round<'w, 'a>(lib: &'a NativeLibrary, runtime: &tokio::runtime::R
     let draft_start = Instant::now();
     let mut inputs = if let Some(draft) = draft.as_deref_mut() { draft.propose(lib, lane, &seeds)? }
         else { seeds.iter().map(|r| vec![r.1]).collect() };
+    let proposal = console::Proposal::capture(&inputs, console::live());
     for (&slot, input) in members.iter().zip(&mut inputs) {
         let r = active[slot].as_ref().unwrap();
         if let Some(constraint) = &r.constraint { constraint.truncate_proposal(input)?; }
@@ -1197,18 +1242,27 @@ fn single_lane_round<'w, 'a>(lib: &'a NativeLibrary, runtime: &tokio::runtime::R
                 return Err(error);
             }
         };
+        let verified_us = started.elapsed().as_micros() as u64 - prepared_us;
         let (accepted, emitted, emissions, accepted_inputs) = commit_lane(lib, lane, pass, requests,
             active, members, &inputs, &mut batch, &next, draft.as_deref_mut(), 0,
             Some(&round), retain_enabled)?;
+        let live = console::live();
+        let tally = console::Tally::new(proposal, &inputs, &accepted_inputs, &emissions, live);
         for (&slot, tokens) in members.iter().zip(emissions) {
             let request = active[slot].as_mut().unwrap();
             if let Err(error) = request.emit(&tokens) {
+                request.failed = !request.job.events.is_closed();
                 let _ = request.job.events.blocking_send(Err(format!("{error:#}").into()));
                 request.finished = true;
             }
         }
+        let layer_us = pass.captured_layer_us();
         observe_lane_round(draft.as_deref_mut(), capture_routes, lane, false, pass.captured_routes(),
-            &pass.captured_layer_us(), active, members, &inputs, &accepted_inputs, started, draft_us);
+            &layer_us, active, members, &inputs, &accepted_inputs, started, draft_us);
+        if let Some(live) = live {
+            live.push(console_round(tally, lane, false, started, draft_us, prepare_us, verified_us,
+                &layer_us, pass.captured_ffn_split(), active, members, &inputs, Some(&round)));
+        }
         tracing::debug!(target: "ds41rt::timing", speculative,
             requests=members.len(), lane0=if lane == 0 { members.len() } else { 0 },
             lane1=if lane == 1 { members.len() } else { 0 },
@@ -1232,15 +1286,23 @@ fn single_lane_round<'w, 'a>(lib: &'a NativeLibrary, runtime: &tokio::runtime::R
         let (accepted, emitted, emissions, accepted_inputs) = commit_lane(lib, lane, pass, requests,
             active, members, &inputs, &mut batch, &next, draft.as_deref_mut(),
             executed_us-prepared_us, None, retain_enabled)?;
+        let live = console::live();
+        let tally = console::Tally::new(proposal, &inputs, &accepted_inputs, &emissions, live);
         for (&slot, tokens) in members.iter().zip(emissions) {
             let request = active[slot].as_mut().unwrap();
             if let Err(error) = request.emit(&tokens) {
+                request.failed = !request.job.events.is_closed();
                 let _ = request.job.events.blocking_send(Err(format!("{error:#}").into()));
                 request.finished = true;
             }
         }
+        let layer_us = pass.captured_layer_us();
         observe_lane_round(draft.as_deref_mut(), capture_routes, lane, false, pass.captured_routes(),
-            &pass.captured_layer_us(), active, members, &inputs, &accepted_inputs, started, draft_us);
+            &layer_us, active, members, &inputs, &accepted_inputs, started, draft_us);
+        if let Some(live) = live {
+            live.push(console_round(tally, lane, false, started, draft_us, prepare_us, executed_us - prepared_us,
+                &layer_us, pass.captured_ffn_split(), active, members, &inputs, None));
+        }
         tracing::debug!(target: "ds41rt::timing", speculative,
             requests=members.len(), lane0=if lane == 0 { members.len() } else { 0 },
             lane1=if lane == 1 { members.len() } else { 0 },
@@ -1634,6 +1696,54 @@ fn publish_commit_lane<'a>(active: &mut [Option<Active<'a>>],
 /// Feed a completed lane round's routes, layer timings and acceptance to the
 /// length policy. `started` is the round's draft start.
 #[allow(clippy::too_many_arguments)]
+/// Whether each member decoded under an active grammar mask this round.
+fn masked_members(round: Option<&SamplingRound>, active: &[Option<Active<'_>>], members: &[usize],
+    inputs: &[Vec<u32>]) -> [bool; 8] {
+    let mut masked = [false; 8];
+    let mut row = 0;
+    for (index, (&slot, input)) in members.iter().zip(inputs).enumerate().take(8) {
+        masked[index] = match round {
+            Some(round) => round.plan.mask.get(row..row + input.len())
+                .is_some_and(|rows| rows.iter().any(Option::is_some)),
+            None => active[slot].as_ref().is_some_and(|r| r.constraint.is_some()),
+        };
+        row += input.len();
+    }
+    masked
+}
+
+/// The console event for a completed lane round (only built while a viewer is connected).
+#[allow(clippy::too_many_arguments)]
+pub(super) fn console_round(tally: console::Tally, lane: usize, shared: bool, started: Instant,
+    draft_us: u64, prepare_us: u64, verify_us: u64, layer_us: &[Option<f64>],
+    ffn: crate::v41_backbone_lane::FfnSplit, active: &[Option<Active<'_>>], members: &[usize],
+    inputs: &[Vec<u32>], round: Option<&SamplingRound>) -> console::Event {
+    let masked = masked_members(round, active, members, inputs);
+    tally.round(lane, shared, started, draft_us, prepare_us, verify_us, layer_us, ffn,
+        members.iter().zip(masked).map(|(&slot, masked)| {
+            let request = active[slot].as_ref().expect("round member remains active until retirement");
+            (request.id, masked, request.finished)
+        }))
+}
+
+/// Occupancy gauges for the live console, read from host-side bookkeeping only.
+pub(super) fn console_gauges(active: &[Option<Active<'_>>], requests: &Requests<'_>,
+    prefixes: &PrefixCache<'_>, queued: usize, pending: Option<bool>) -> console::Event {
+    let mut lanes = [0u8; 2];
+    for request in active.iter().flatten() { lanes[request.lane.min(1)] += 1; }
+    // Report the compressed-KV source closest to exhaustion; ratio-2 sources
+    // hold two tokens per row.
+    let kv = requests.cache().sources().iter().zip([2u64, 2, 2, 1]).map(|(source, ratio)| {
+        let [total, free, held] = source.get().source_cache().occupancy();
+        [total, free, held, ratio]
+    }).max_by(|a, b| {
+        let used = |v: &[u64; 4]| (v[0] - v[1]) as f64 / v[0].max(1) as f64;
+        used(a).total_cmp(&used(b))
+    });
+    let host = prefixes.host_metrics().and_then(|metrics| serde_json::to_value(metrics).ok());
+    console::Event::Gauges(console::Gauges { lanes, queued: queued as u32, pending, kv, host })
+}
+
 fn observe_lane_round<'a, C: DraftChain<'a>>(draft: Option<&mut DraftRuntime<'_, 'a, C>>, capture_routes: bool,
     lane: usize, shared: bool, routes: &[Vec<[u32; 6]>], layer_us: &[Option<f64>],
     active: &[Option<Active<'a>>], members: &[usize], inputs: &[Vec<u32>], accepted: &[u32], started: Instant,

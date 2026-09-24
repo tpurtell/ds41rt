@@ -713,6 +713,11 @@ pub(crate) struct NativeServeArgs {
     /// Compatibility spelling: decode lanes always advance independently.
     #[arg(long, hide = true)]
     pub independent_decode_lanes: bool,
+    /// Let the live console at `/` show generated token text. Anyone who can
+    /// reach the API port can then read every session's output as it streams.
+    #[arg(long, env = "DS41RT_CONSOLE_TEXT", num_args = 0..=1, default_value = "false",
+        default_missing_value = "true", value_parser = clap::builder::BoolishValueParser::new())]
+    pub console_text: bool,
 
     #[arg(long)] pub snapshot: PathBuf,
     #[arg(long)] pub native_lib: PathBuf,

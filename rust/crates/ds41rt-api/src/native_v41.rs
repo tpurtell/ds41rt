@@ -30,6 +30,8 @@ mod constraints;
 mod tools;
 pub use constraints::NativeConstraint;
 mod images;
+pub mod console;
+pub use console::ConsoleHub;
 #[cfg(test)]
 mod unicode_tests;
 pub use limits::{NativeLimits, MAX_CONTEXT_TOKENS, MAX_OUTPUT_TOKENS};
@@ -82,8 +84,18 @@ pub fn router_with_limits_and_stats(queue: mpsc::Sender<NativeRequest>, limits: 
 }
 pub fn router_with_admission(queue: mpsc::Sender<NativeRequest>, limits: NativeLimits,
     stats: SharedStats, wait: std::time::Duration) -> Router {
+    router_with_console(queue, limits, stats, wait, ConsoleHub::disabled())
+}
+/// The serving router plus the live console at `/` fed by `console`.
+pub fn router_with_console(queue: mpsc::Sender<NativeRequest>, limits: NativeLimits,
+    stats: SharedStats, wait: std::time::Duration, console: Arc<ConsoleHub>) -> Router {
     let admission = admission::Admission::new(queue.max_capacity(), wait);
     let images = images::ImageDecoder::new(queue.max_capacity());
+    let console_routes = Router::new()
+        .route("/", get(console::page))
+        .route("/v1/console", get(console::socket))
+        .route("/v1/console/snapshot", get(console::snapshot))
+        .with_state(console);
     Router::new()
         .route("/health", get(health))
         .route("/v1/models", get(models))
@@ -91,6 +103,7 @@ pub fn router_with_admission(queue: mpsc::Sender<NativeRequest>, limits: NativeL
         .route("/v1/chat/completions", post(chat))
         .layer(axum::extract::DefaultBodyLimit::max(images::BODY_BYTES))
         .with_state(NativeState { queue, limits, images, stats, admission })
+        .merge(console_routes)
 }
 async fn stats_route(State(state): State<NativeState>) -> Json<Value> {
     let mut value = state.stats.lock().map(|stats| stats.clone()).unwrap_or(Value::Null);

@@ -157,6 +157,13 @@ impl<'a> SourceCache<'a> {
     }
     /// The four device segments holding `page`'s rows (packed index, index scales, KV values,
     /// KV scales), in the order the host cache stores them.
+    /// Pool pages: total, free, and referenced by active request slots
+    /// (a page shared by two slots counts twice). Host-side reads only.
+    pub fn occupancy(&self) -> [u64; 3] {
+        let pool = self.pool.borrow();
+        let held: usize = self.pages.iter().map(Vec::len).sum();
+        [pool.capacity() as u64, pool.free.len() as u64, held as u64]
+    }
     pub fn page_segments(&self, page: u32) -> [Ds41rtDeviceBuffer; 4] {
         let rows = |buffer: Ds41rtDeviceBuffer, bytes: usize| {
             slice(buffer, page as usize * PAGE_ROWS * bytes, PAGE_ROWS * bytes)

@@ -217,6 +217,7 @@ impl<'s, 'w, 'a> PendingLaneFfn<'s, 'w, 'a> {
         Ok(LaneFfn { input, cooperative: true, shared: &mut lane.shared, router: &mut lane.router,
             library: lane.weights.library, phase: &mut lane.phase,
             route_capture: if lane.capture_routes { Some(&mut lane.route_capture) } else { None },
+            ffn_split: if lane.capture_routes { Some(&mut lane.ffn_split) } else { None },
  })
     }
 }
@@ -244,6 +245,38 @@ pub(crate) struct LaneFfn<'s, 'w, 'a> {
     library: &'a NativeLibrary,
     phase: &'s mut Phase,
     route_capture: Option<&'s mut Vec<Vec<[u32; 6]>>>,
+    ffn_split: Option<&'s mut FfnSplit>,
+}
+
+/// Host-clock split of a captured pass's FFN stages, summed over its layers.
+///
+/// Every `Instant` here is taken on every layer regardless; while routes are
+/// captured the values are also summed per pass instead of only reaching the
+/// `ds41rt::timing` trace. `routed` for a remote layer includes the router's
+/// host wait for its route ids, so it tracks device progress; `collect` is the
+/// wait for every Spark rank's reply plus the reduction.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct FfnSplit {
+    pub local_layers: u32,
+    pub local_routed_us: u64,
+    pub local_total_us: u64,
+    pub remote_layers: u32,
+    pub remote_routed_us: u64,
+    pub remote_dispatch_us: u64,
+    pub remote_shared_us: u64,
+    pub remote_collect_us: u64,
+}
+impl FfnSplit {
+    pub fn add(&mut self, other: &Self) {
+        self.local_layers += other.local_layers;
+        self.local_routed_us += other.local_routed_us;
+        self.local_total_us += other.local_total_us;
+        self.remote_layers += other.remote_layers;
+        self.remote_routed_us += other.remote_routed_us;
+        self.remote_dispatch_us += other.remote_dispatch_us;
+        self.remote_shared_us += other.remote_shared_us;
+        self.remote_collect_us += other.remote_collect_us;
+    }
 }
 impl LaneFfn<'_, '_, '_> {
     #[cfg(test)]
@@ -313,6 +346,7 @@ impl LaneFfn<'_, '_, '_> {
         let shared = &mut self.shared;
         let library = self.library;
         let route_capture = &mut self.route_capture;
+        let ffn_split = &mut self.ffn_split;
         let output = complete_ffn(self.phase, async {
             let timing = std::time::Instant::now();
             router.set_local_mode(transport.has_local_layer(input.layer))?;
@@ -339,6 +373,11 @@ impl LaneFfn<'_, '_, '_> {
                         else { transport.execute_local_ffn(&routed, &contribution) } }
                 };
                 let ffn_us = timing.elapsed().as_micros() as u64;
+                if let Some(split) = ffn_split.as_deref_mut() {
+                    split.local_layers += 1;
+                    split.local_routed_us += routed_us;
+                    split.local_total_us += ffn_us;
+                }
                 tracing::debug!(target: "ds41rt::timing", layer=input.layer, rows=rows.len(), routed_us,
                     total_us=ffn_us, "target local experts");
                 if trace {
@@ -367,6 +406,12 @@ impl LaneFfn<'_, '_, '_> {
             let dispatched_us = timing.elapsed().as_micros() as u64;
             if tp2_shared {
                 let result = unsafe { pending.finish_tp2(input).await };
+                if let Some(split) = ffn_split.as_deref_mut() {
+                    split.remote_layers += 1;
+                    split.remote_routed_us += routed_us;
+                    split.remote_dispatch_us += dispatched_us - routed_us;
+                    split.remote_collect_us += timing.elapsed().as_micros() as u64 - dispatched_us;
+                }
                 tracing::debug!(target: "ds41rt::timing", layer=input.layer, rows=rows.len(), routed_us,
                     dispatch_us=dispatched_us-routed_us, shared_and_collect_us=timing.elapsed().as_micros() as u64-dispatched_us,
                     "target experts with TP2 shared");
@@ -378,6 +423,13 @@ impl LaneFfn<'_, '_, '_> {
             let shared_us = timing.elapsed().as_micros() as u64;
             let result = unsafe { if cooperative { pending.finish_cooperative(&contribution).await }
                 else { pending.finish(&contribution).await } }?;
+            if let Some(split) = ffn_split.as_deref_mut() {
+                split.remote_layers += 1;
+                split.remote_routed_us += routed_us;
+                split.remote_dispatch_us += dispatched_us - routed_us;
+                split.remote_shared_us += shared_us - dispatched_us;
+                split.remote_collect_us += timing.elapsed().as_micros() as u64 - shared_us;
+            }
             tracing::debug!(target: "ds41rt::timing", layer=input.layer, rows=rows.len(), routed_us, dispatch_us=dispatched_us-routed_us, shared_us=shared_us-dispatched_us, collect_us=timing.elapsed().as_micros() as u64-shared_us, "target experts");
             if tracing::enabled!(target: "ds41rt::route_policy", tracing::Level::DEBUG) {
                 let ffn_us = timing.elapsed().as_micros() as u64;
@@ -439,6 +491,8 @@ pub(crate) struct BackboneLane<'w, 'a> {
     phase: Phase,
     capture_routes: bool,
     route_capture: Vec<Vec<[u32; 6]>>,
+    /// Host FFN stage times summed over the captured pass.
+    ffn_split: FfnSplit,
     /// Timing events recorded on the FFN-finish stream while routes are
     /// captured; consecutive events give each layer's device time.
     layer_events: LayerEvents<'a>,
@@ -532,6 +586,7 @@ impl<'w, 'a> BackboneLane<'w, 'a> {
             phase: Phase::Idle,
             capture_routes: false,
             route_capture: Vec::new(),
+            ffn_split: FfnSplit::default(),
             layer_events: LayerEvents::new(weights.library)?,
         })
     }
@@ -732,6 +787,7 @@ impl<'w, 'a> BackboneLane<'w, 'a> {
             library: self.weights.library,
             phase: &mut self.phase,
             route_capture: if self.capture_routes { Some(&mut self.route_capture) } else { None },
+            ffn_split: if self.capture_routes { Some(&mut self.ffn_split) } else { None },
         })
     }
     /// # Safety
@@ -890,9 +946,12 @@ impl<'w, 'a> BackboneLane<'w, 'a> {
             for rows in &mut self.route_capture { rows.clear(); }
             self.layer_events.recorded.fill(false);
             self.layer_events.entry_layer = None;
+            self.ffn_split = FfnSplit::default();
         }
     }
     pub fn captured_routes(&self) -> &[Vec<[u32; 6]>] { &self.route_capture }
+    /// Host FFN stage split of the last captured pass on this lane.
+    pub fn captured_ffn_split(&self) -> FfnSplit { self.ffn_split }
     /// Opt-in TP2 attention or projection owners, whose peer transfers are
     /// host-ordered and therefore not stage-chained.
     pub fn uses_peer_projection(&self) -> bool {

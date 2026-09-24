@@ -1,0 +1,988 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DS41RT Engine Console</title>
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #05070b;
+  --panel: #0a0e15;
+  --panel-2: #0e141d;
+  --well: #070a10;
+  --line: #172030;
+  --line-2: #22304a;
+  --ink: #e8eef8;
+  --ink-2: #9dabc1;
+  --muted: #5f6e86;
+  --accepted: #2ee6a6;
+  --target: #4cc3ff;
+  --rejected: #ff5d73;
+  --skipped: #33405a;
+  --grammar: #ffb547;
+  --prefill: #a27bff;
+  --restore: #5a4cc0;
+  --replay: #6d55e8;
+  --rtx: #4cc3ff;
+  --spark: #c08bff;
+  --good: #3ddc84;
+  --warn: #ffb547;
+  --bad: #ff5d73;
+  --mono: ui-monospace, "JetBrains Mono", "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+  --sans: "Inter", "Segoe UI Variable Text", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); }
+body {
+  font: 13px/1.4 var(--sans);
+  background:
+    radial-gradient(1200px 500px at 12% -10%, rgba(76,195,255,.07), transparent 60%),
+    radial-gradient(900px 480px at 100% 0%, rgba(162,123,255,.06), transparent 60%),
+    var(--bg);
+  min-height: 100vh;
+}
+.app { display: grid; gap: 12px; padding: 14px 18px 28px; max-width: 2000px; margin: 0 auto; }
+
+/* header */
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px; padding: 2px 2px 4px; }
+.brand { display: flex; align-items: baseline; gap: 10px; }
+.brand b { font: 700 19px/1 var(--mono); letter-spacing: .04em;
+  background: linear-gradient(90deg, var(--target), var(--accepted) 55%, var(--prefill));
+  -webkit-background-clip: text; background-clip: text; color: transparent; }
+.brand span { font: 500 10.5px var(--sans); letter-spacing: .28em; text-transform: uppercase; color: var(--muted); }
+.status { display: inline-flex; align-items: center; gap: 7px; padding: 3px 10px 3px 8px; border-radius: 999px;
+  border: 1px solid var(--line-2); background: var(--panel); font: 600 10.5px var(--mono); letter-spacing: .12em; }
+.status i { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.status.live i { background: var(--good); box-shadow: 0 0 10px var(--good); animation: pulse 1.6s ease-in-out infinite; }
+.status.stalled i { background: var(--warn); }
+.status.offline i { background: var(--bad); }
+@keyframes pulse { 50% { opacity: .45; } }
+.meta { display: flex; flex-wrap: wrap; gap: 4px 16px; font: 12px var(--mono); color: var(--muted); }
+.meta b { color: var(--ink-2); font-weight: 500; }
+.spacer { flex: 1; }
+.keys { font: 11px var(--mono); color: var(--muted); }
+.keys kbd { font: inherit; color: var(--ink-2); border: 1px solid var(--line-2); border-radius: 4px; padding: 0 4px; }
+
+/* KPI tiles */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: 10px; }
+.tile { position: relative; overflow: hidden; background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px 6px; display: grid; gap: 1px; min-width: 0; }
+.tile::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 2px; background: var(--c, var(--line-2)); opacity: .9;
+  box-shadow: 0 0 14px var(--c, transparent); }
+.label { font: 600 10px var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.tile .v { font: 600 27px/1.1 var(--mono); letter-spacing: -.02em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tile .v small { font-size: 12px; font-weight: 400; color: var(--ink-2); margin-left: 4px; letter-spacing: 0; }
+.tile .sub { font: 11.5px var(--mono); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile canvas { width: 100%; height: 30px; display: block; margin-top: 3px; }
+.tile .side { position: absolute; top: 27px; right: 12px; display: grid; gap: 1px; justify-items: end;
+  font: 11px/1.25 var(--mono); color: var(--ink-2); font-variant-numeric: tabular-nums; text-align: right; }
+.tile .side b { color: var(--ink); font-weight: 600; }
+.tile .side span { color: var(--muted); }
+
+/* meters */
+.meters { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; }
+.meter { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: grid; gap: 7px; min-width: 0; }
+.row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.num { font: 12px var(--mono); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.num b { color: var(--ink); font-weight: 600; }
+.track { position: relative; height: 10px; border-radius: 5px; background: var(--well); border: 1px solid var(--line); overflow: hidden; display: flex; }
+.track span { display: block; height: 100%; transition: width .5s ease; }
+.legend-inline { display: flex; gap: 12px; flex-wrap: wrap; font: 11px var(--mono); color: var(--muted); }
+.legend-inline i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; vertical-align: 0; }
+
+/* panels */
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: grid; gap: 10px; min-width: 0; }
+.panel-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.panel-head h2 { margin: 0; font: 600 12px var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--ink); }
+.panel-head .hint { font: 11px var(--mono); color: var(--muted); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font: 11.5px var(--sans); color: var(--ink-2); align-items: center; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+.ctl { margin-left: auto; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: 7px; overflow: hidden; }
+.seg button { font: 600 11px var(--mono); color: var(--ink-2); background: transparent; border: 0; padding: 5px 10px; cursor: pointer; letter-spacing: .04em; }
+.seg button + button { border-left: 1px solid var(--line-2); }
+.seg button[aria-pressed="true"] { color: var(--bg); background: var(--target); }
+.seg button:disabled { color: var(--muted); cursor: not-allowed; }
+button:focus-visible, select:focus-visible { outline: 2px solid var(--target); outline-offset: 2px; }
+.btn { font: 600 11px var(--mono); color: var(--ink-2); background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 7px; padding: 5px 10px; cursor: pointer; }
+.btn[aria-pressed="true"] { color: var(--bg); background: var(--grammar); border-color: var(--grammar); }
+.canvas-wrap { position: relative; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); background: var(--well); }
+#ticker { display: block; width: 100%; cursor: crosshair; }
+.note { font: 12px var(--sans); color: var(--muted); max-width: 120ch; }
+.tip { position: fixed; z-index: 10; pointer-events: none; background: rgba(10,14,21,.96); border: 1px solid var(--line-2);
+  border-radius: 8px; padding: 8px 10px; font: 11.5px/1.5 var(--mono); color: var(--ink); white-space: pre; box-shadow: 0 10px 30px rgba(0,0,0,.5); }
+
+.bottom { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 12px; }
+@media (max-width: 1100px) { .bottom { grid-template-columns: 1fr; } }
+
+/* micro-steps */
+.steps { display: grid; grid-template-columns: minmax(150px, max-content) 1fr 90px; gap: 5px 12px; align-items: center; }
+.steps .g { grid-column: 1 / -1; display: flex; gap: 10px; align-items: baseline; margin-top: 8px; }
+.steps .g:first-child { margin-top: 0; }
+.steps .g em { font: 11px var(--mono); font-style: normal; color: var(--muted); }
+.steps .n { font: 12px var(--sans); color: var(--ink-2); white-space: nowrap; }
+.steps .n .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 7px; vertical-align: 1px; }
+.bar { position: relative; height: 12px; border-radius: 3px; background: var(--well); border: 1px solid var(--line); overflow: hidden; }
+.bar .med { position: absolute; inset: 0 auto 0 0; background: color-mix(in oklab, var(--c) 26%, transparent); transition: width .35s ease; }
+.bar .now { position: absolute; left: 0; top: 3px; bottom: 3px; background: var(--c); border-radius: 0 2px 2px 0; box-shadow: 0 0 8px var(--c); transition: width .25s ease; }
+.bar .max { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--ink-2); opacity: .55; transition: left .35s ease; }
+.steps .v { font: 12px var(--mono); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.steps .v small { color: var(--muted); }
+.profile { display: grid; gap: 4px; }
+#layers { width: 100%; height: 64px; display: block; }
+
+/* right column */
+.pos { display: grid; grid-template-columns: 44px 1fr 110px; gap: 6px 12px; align-items: center; }
+.pos .n { font: 12px var(--mono); color: var(--ink-2); }
+.pos .bar .now { top: 0; bottom: 0; border-radius: 0; box-shadow: none; }
+.pos .v { font: 12px var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
+.pos .v small { color: var(--muted); }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+.fact { background: var(--well); border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; display: grid; gap: 2px; }
+.fact .v { font: 600 16px var(--mono); font-variant-numeric: tabular-nums; }
+.fact .v small { font-size: 11px; color: var(--ink-2); font-weight: 400; margin-left: 3px; }
+table { width: 100%; border-collapse: collapse; font: 12px var(--mono); font-variant-numeric: tabular-nums; }
+th { text-align: right; font: 600 10px var(--sans); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); padding: 4px 6px; border-bottom: 1px solid var(--line); }
+td { text-align: right; padding: 4px 6px; color: var(--ink-2); border-bottom: 1px solid rgba(34,48,74,.35); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+td b { color: var(--ink); font-weight: 500; }
+.tag { display: inline-block; font: 600 10px var(--mono); padding: 1px 6px; border-radius: 4px; letter-spacing: .06em; }
+.tag.ok { color: var(--good); background: rgba(61,220,132,.1); }
+.tag.bad { color: var(--bad); background: rgba(255,93,115,.1); }
+.tag.gone { color: var(--warn); background: rgba(255,181,71,.1); }
+.tablewrap { overflow-x: auto; }
+.empty { color: var(--muted); font: 12px var(--mono); padding: 6px 0; }
+.banner { border: 1px solid var(--line-2); background: var(--panel-2); border-radius: 10px; padding: 10px 14px; font: 12.5px var(--mono); color: var(--warn); }
+@media (prefers-reduced-motion: reduce) { .status.live i { animation: none; } .track span, .bar * { transition: none; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand"><b>DS41RT</b><span>Engine console</span></div>
+    <span class="status" id="status"><i></i><span id="status-text">CONNECTING</span></span>
+    <div class="meta" id="meta"></div>
+    <div class="spacer"></div>
+    <div class="keys"><kbd>space</kbd> pause · <kbd>t</kbd> text · <kbd>−</kbd><kbd>+</kbd> zoom</div>
+  </header>
+  <div class="banner" id="banner" hidden></div>
+
+  <section class="kpis" id="kpis"></section>
+
+  <section class="meters">
+    <div class="meter">
+      <div class="row"><span class="label">Concurrency</span><span class="num"><b id="c-active">0</b> active · <span id="c-queued">0</span> queued · limit <span id="c-limit">16</span></span></div>
+      <div class="track"><span id="c-l0" style="background:var(--target);width:0"></span><span id="c-l1" style="background:color-mix(in oklab,var(--target) 55%,var(--well));width:0"></span><span id="c-pf" style="background:var(--prefill);width:0"></span></div>
+      <div class="row"><span class="legend-inline"><span><i style="background:var(--target)"></i>lane 0 <b id="c-n0">0</b></span><span><i style="background:color-mix(in oklab,var(--target) 55%,var(--well))"></i>lane 1 <b id="c-n1">0</b></span><span><i style="background:var(--prefill)"></i>prefilling <b id="c-npf">0</b></span></span><span class="num" id="c-pending"></span></div>
+    </div>
+    <div class="meter">
+      <div class="row"><span class="label">KV cache · device pool</span><span class="num"><b id="kv-used">–</b> used / <span id="kv-total">–</span> pages</span></div>
+      <div class="track"><span id="kv-a" style="background:var(--accepted);width:0"></span><span id="kv-r" style="background:color-mix(in oklab,var(--accepted) 38%,var(--well));width:0"></span></div>
+      <div class="row"><span class="legend-inline"><span><i style="background:var(--accepted)"></i>active <b id="kv-active">–</b></span><span><i style="background:color-mix(in oklab,var(--accepted) 38%,var(--well))"></i>retained <b id="kv-ret">–</b></span></span><span class="num"><b id="kv-tok">–</b> of <span id="kv-cap">–</span> tokens</span></div>
+    </div>
+    <div class="meter">
+      <div class="row"><span class="label">Host KV offload · pinned RAM</span><span class="num"><b id="h-used">–</b> / <span id="h-total">–</span></span></div>
+      <div class="track"><span id="h-bar" style="background:var(--prefill);width:0"></span></div>
+      <div class="row"><span class="num">snapshots <b id="h-snaps">–</b> · hits <b id="h-hits">–</b> / <span id="h-look">–</span></span><span class="num">restore p50 <b id="h-p50">–</b></span></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Execution lanes</h2>
+      <div class="legend" id="legend">
+        <span><i style="background:var(--accepted)"></i>accepted</span>
+        <span><i style="background:var(--target)"></i>target</span>
+        <span><i style="background:var(--rejected)"></i>rejected</span>
+        <span><i style="background:var(--skipped)"></i>not verified</span>
+        <span><i style="background:var(--grammar);height:3px;vertical-align:3px"></i>constrained</span>
+        <span><i style="background:var(--prefill)"></i>prefill</span>
+        <span><i style="background:var(--restore)"></i>restore</span>
+      </div>
+      <div class="ctl">
+        <div class="seg" role="group" aria-label="View">
+          <button type="button" id="v-time" aria-pressed="true">TIME</button>
+          <button type="button" id="v-text" aria-pressed="false">TEXT</button>
+        </div>
+        <div class="seg" role="group" aria-label="Zoom" id="zoom">
+          <button type="button" data-z="150" aria-pressed="false">150</button>
+          <button type="button" data-z="300" aria-pressed="true">300</button>
+          <button type="button" data-z="600" aria-pressed="false">600</button>
+          <button type="button" data-z="1200" aria-pressed="false">1200 px/s</button>
+        </div>
+        <button type="button" class="btn" id="pause" aria-pressed="false">PAUSE</button>
+      </div>
+    </div>
+    <div class="canvas-wrap" id="ticker-wrap"><canvas id="ticker" height="240"></canvas></div>
+    <div class="note" id="ticker-note"></div>
+  </section>
+
+  <div class="bottom">
+    <section class="panel">
+      <div class="panel-head"><h2>Pipeline micro-steps</h2><span class="hint">bar = last round · shade = 60 s median · tick = 60 s max</span></div>
+      <div class="steps" id="steps"></div>
+      <div class="profile">
+        <div class="row"><span class="label">Layer profile · last round · CUDA events</span><span class="legend-inline"><span><i style="background:var(--rtx)"></i>RTX-resident experts</span><span><i style="background:var(--spark)"></i>Spark-routed experts</span><span><i style="background:var(--ink-2);opacity:.5"></i>60 s median</span></span></div>
+        <canvas id="layers"></canvas>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h2>dSpark acceptance</h2><span class="hint">by draft position · rolling 60 s</span></div>
+      <div class="pos" id="pos"></div>
+      <div class="facts" id="facts"></div>
+      <div class="panel-head" style="margin-top:4px"><h2>Recent requests</h2></div>
+      <div class="tablewrap"><table><thead><tr><th>Request</th><th>Input</th><th>Cached</th><th>Output</th><th>TTFT</th><th>Decode</th><th>Status</th></tr></thead><tbody id="recent"></tbody></table></div>
+    </section>
+  </div>
+</div>
+<div class="tip" id="tip" hidden></div>
+
+<script>
+(() => {
+'use strict';
+const $ = (s) => document.querySelector(s);
+const root = getComputedStyle(document.documentElement);
+const V = (n) => root.getPropertyValue(n).trim();
+const COL = {
+  acc: V('--accepted'), tgt: V('--target'), rej: V('--rejected'), skip: V('--skipped'), gr: V('--grammar'),
+  pf: V('--prefill'), rs: V('--restore'), rp: V('--replay'), rtx: V('--rtx'), spark: V('--spark'),
+  ink: V('--ink'), ink2: V('--ink-2'), muted: V('--muted'), line: V('--line'), line2: V('--line-2'),
+  well: V('--well'), panel: V('--panel'), good: V('--good'), bad: V('--bad'), warn: V('--warn'),
+};
+const MONO = V('--mono'), SANS = V('--sans');
+const DELAY = 180;            // display lags the engine clock so every round arrives before it is drawn
+const KEEP = 60000;           // history kept for statistics, engine ms
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// ---------------------------------------------------------------- state
+const S = {
+  config: {}, textAllowed: false, disabled: false, starting: false,
+  requests: new Map(), recent: [], gauges: {}, totals: [], prefill: [], rounds: [],
+  series: { out: [], acc: [], drf: [], pre: [], conc: [], inp: [] },
+  offsets: [], offset: null, lastFrame: 0, lastNow: null, socket: null, connected: false,
+  mode: 'time', pxPerS: 300, frozenAt: null, paused: false,
+};
+
+// ---------------------------------------------------------------- formatting
+const nf0 = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
+const nf1 = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1, minimumFractionDigits: 1 });
+function n0(v) { return Number.isFinite(v) ? nf0.format(v) : '–'; }
+function compact(v) {
+  if (!Number.isFinite(v)) return '–';
+  const a = Math.abs(v);
+  if (a >= 1e9) return (v / 1e9).toFixed(2) + 'B';
+  if (a >= 1e6) return (v / 1e6).toFixed(2) + 'M';
+  if (a >= 1e4) return (v / 1e3).toFixed(1) + 'k';
+  return nf0.format(v);
+}
+function bytes(v) {
+  if (!Number.isFinite(v)) return '–';
+  const u = ['B', 'KiB', 'MiB', 'GiB', 'TiB']; let i = 0;
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return (i ? v.toFixed(v >= 100 ? 0 : v >= 10 ? 1 : 2) : v) + ' ' + u[i];
+}
+function pct(a, b) { return b > 0 ? (100 * a / b).toFixed(0) + '%' : '–'; }
+function us(v) {
+  if (!Number.isFinite(v)) return '–';
+  if (v >= 1e6) return `${(v / 1e6).toFixed(2)} <small>s</small>`;
+  if (v >= 1000) return `${(v / 1000).toFixed(v >= 1e4 ? 1 : 2)} <small>ms</small>`;
+  return `${v.toFixed(0)} <small>µs</small>`;
+}
+function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+// ---------------------------------------------------------------- clock
+// Engine timestamps are milliseconds since the console started. The page keeps
+// the smallest observed (local - engine) offset, which removes network jitter.
+function clock(now) {
+  const t = performance.now();
+  S.offsets.push([t, t - now]);
+  while (S.offsets.length > 1 && S.offsets[0][0] < t - 8000) S.offsets.shift();
+  let best = Infinity; for (const [, o] of S.offsets) best = Math.min(best, o);
+  S.offset = best;
+}
+const engineNow = () => (S.offset == null ? 0 : performance.now() - S.offset);
+const displayNow = () => S.frozenAt ?? (engineNow() - DELAY);
+
+// ---------------------------------------------------------------- text measurement
+const measure = document.createElement('canvas').getContext('2d');
+const FONT_MAIN = `13px ${MONO}`, FONT_GHOST = `10px ${MONO}`;
+function width(font, s) { measure.font = font; return measure.measureText(s).width; }
+function visible(s) { return s.replace(/\n/g, '⏎').replace(/\t/g, '→').replace(/\r/g, ''); }
+
+// ---------------------------------------------------------------- model updates
+function request(id) {
+  let r = S.requests.get(id);
+  if (!r) {
+    r = { id, lane: 0, prompt: 0, cached: 0, max: 0, gen: 0, grammar: false, images: 0, admitted: null, first: null,
+      retired: null, reason: null, cols: [], chunks: [], shown: 0, slide: 0 };
+    S.requests.set(id, r);
+  }
+  return r;
+}
+function fromSnapshotRequest(x) {
+  const r = request(x.id);
+  Object.assign(r, { lane: x.lane, prompt: x.prompt, cached: x.cached, max: x.max, gen: x.gen, grammar: x.grammar,
+    images: x.images, admitted: x.admitted, first: x.first });
+}
+function onSnapshot(m) {
+  S.disabled = !!m.disabled; S.starting = !!m.starting;
+  banner();
+  if (m.disabled || m.starting) return;
+  if (S.lastNow != null && m.now + 1000 < S.lastNow) resetHistory();   // the engine restarted
+  S.lastNow = m.now;
+  S.offsets = []; clock(m.now);
+  S.config = m.config || {}; S.textAllowed = !!m.text;
+  $('#v-text').disabled = !S.textAllowed;
+  $('#v-text').title = S.textAllowed ? 'Show generated text' : 'Start the server with --console-text (DS41RT_CONSOLE_TEXT=1) to stream token text';
+  if (!S.textAllowed && S.mode === 'text') setMode('time');
+  const live = new Set();
+  for (const x of m.requests || []) { live.add(x.id); fromSnapshotRequest(x); }
+  for (const [id, r] of S.requests) if (!live.has(id) && r.retired == null) S.requests.delete(id);
+  S.recent = m.recent || [];
+  if (m.g) gauges(m.g, m.now);
+  header();
+}
+function resetHistory() {
+  S.requests.clear(); S.rounds = []; S.prefill = []; S.totals = []; S.recent = [];
+  for (const k in S.series) S.series[k] = [];
+}
+function onFrame(m) {
+  if (S.lastNow != null && m.now + 1000 < S.lastNow) { resetHistory(); S.offsets = []; }
+  S.lastNow = m.now;
+  clock(m.now);
+  S.lastFrame = performance.now();
+  for (const e of m.ev) event(e);
+  if (m.g) gauges(m.g, m.now);
+}
+function event(e) {
+  switch (e.e) {
+    case 'admit': {
+      const r = request(e.id);
+      Object.assign(r, { lane: e.lane, prompt: e.prompt, cached: e.cached, max: e.max, grammar: e.grammar,
+        images: e.images, admitted: e.t, gen: 0, first: null, retired: null });
+      break;
+    }
+    case 'first': {
+      const r = request(e.id); r.first = e.t; r.gen = Math.max(r.gen, 1);
+      if (e.text) addChunk(r, e.t, e.text, false);
+      break;
+    }
+    case 'round': round(e); break;
+    case 'prefill': S.prefill.push(e); break;
+    case 'retire': {
+      const r = S.requests.get(e.id);
+      if (r) { r.retired = e.t; r.reason = e.reason; r.gen = Math.max(r.gen, e.gen); }
+      if (r && r.admitted != null) {
+        S.recent.unshift({ id: e.id, t: e.t, reason: e.reason, prompt: r.prompt, cached: r.cached, gen: e.gen,
+          admitted: r.admitted, first: r.first, grammar: r.grammar });
+        S.recent.length = Math.min(S.recent.length, 16);
+      }
+      if (r && r.first == null) S.requests.delete(e.id);
+      break;
+    }
+  }
+}
+function round(e) {
+  const meta = { lane: e.lane, shared: e.shared, t0: e.t0, t1: e.t1, draft: e.draft, prepare: e.prepare,
+    verify: e.verify, layers: e.layers, ffn: e.ffn, n: e.req.length, req: e.req };
+  S.rounds.push(meta);
+  for (const q of e.req) {
+    const [id, w, v, a, em, g, fin, segs] = q;
+    const r = request(id);
+    r.lane = e.lane; r.gen += em;
+    if (r.first == null) r.first = e.t0;
+    r.cols.push({ t0: e.t0, t1: e.t1, w, v, a, e: em, g: !!g, fin: !!fin, m: meta });
+    if (r.cols.length > 6000) r.cols.splice(0, 2000);
+    if (segs) addChunk(r, e.t1, segs, !!g);
+  }
+}
+function addChunk(r, t, segs, g) {
+  const main = [], ghosts = [];
+  let mw = 0;
+  for (const [k, s] of segs) {
+    if (!s) continue;
+    const text = visible(s);
+    if (k === 'a' || k === 't') { const w = width(FONT_MAIN, text); main.push([k, text, w]); mw += w; }
+    else ghosts.push([k, text, width(FONT_GHOST, text)]);
+  }
+  if (!main.length && !ghosts.length) return;
+  r.chunks.push({ t, main, ghosts, w: mw, g });
+  if (r.chunks.length > 1500) { r.chunks.splice(0, 500); r.shown = Math.max(0, r.shown - 500); }
+}
+function gauges(g, now) {
+  S.gauges = g;
+  if (g.totals) {
+    S.totals.push({ t: now, ...g.totals });
+    while (S.totals.length > 2 && S.totals[0].t < now - 70000) S.totals.shift();
+  }
+}
+
+// ---------------------------------------------------------------- derived rates
+function rate(key, windowMs) {
+  const h = S.totals; if (h.length < 2) return NaN;
+  const last = h[h.length - 1];
+  let i = h.length - 2; while (i > 0 && h[i].t > last.t - windowMs) i--;
+  const first = h[i]; const dt = (last.t - first.t) / 1000;
+  return dt > 0.2 ? (last[key] - first[key]) / dt : NaN;
+}
+
+// ---------------------------------------------------------------- socket
+let retry = 500;
+function connect() {
+  const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/v1/console`;
+  let ws;
+  try { ws = new WebSocket(url); } catch (_) { return setTimeout(connect, retry); }
+  S.socket = ws;
+  ws.onopen = () => { S.connected = true; retry = 500; };
+  ws.onmessage = (ev) => {
+    let m; try { m = JSON.parse(ev.data); } catch (_) { return; }
+    if (m.type === 'snapshot') onSnapshot(m); else if (m.type === 'frame') onFrame(m);
+  };
+  ws.onclose = () => { S.connected = false; retry = Math.min(retry * 2, 5000); setTimeout(connect, retry); };
+  ws.onerror = () => ws.close();
+}
+
+// ---------------------------------------------------------------- header, status
+function header() {
+  const c = S.config;
+  const rev = c.revision ? String(c.revision).slice(0, 12) : 'unknown';
+  const policy = c.dspark ? `${c.policy} · limit ${c.draft_limit}` : 'dSpark off';
+  $('#meta').innerHTML = [
+    ['model', (c.model || '').split('/').pop()], ['release', c.release || 'dev'], ['rev', rev],
+    ['layout', c.layout], ['draft', policy], ['text', c.text ? 'on' : 'off'], ['up', '<span id="uptime">–</span>'],
+  ].map(([k, v]) => `<span>${k} <b>${v}</b></span>`).join('');
+  $('#c-limit').textContent = c.concurrency ?? 16;
+}
+function banner() {
+  const b = $('#banner');
+  if (S.disabled) { b.hidden = false; b.textContent = 'This server was started without the live console feed.'; }
+  else if (S.starting) { b.hidden = false; b.textContent = 'Engine is starting. The console fills in once the first requests run.'; }
+  else b.hidden = true;
+}
+function status() {
+  const el = $('#status'), text = $('#status-text');
+  const age = performance.now() - S.lastFrame;
+  let cls = 'offline', label = 'OFFLINE';
+  if (S.connected && S.lastFrame && age < 1500) { cls = 'live'; label = S.paused ? 'PAUSED' : 'LIVE'; }
+  else if (S.connected) { cls = 'stalled'; label = S.lastFrame ? 'STALLED' : 'CONNECTING'; }
+  el.className = 'status ' + cls; text.textContent = label;
+  const up = $('#uptime');
+  if (up && S.config.started_unix_ms) {
+    const s = Math.max(0, Math.floor((Date.now() - S.config.started_unix_ms) / 1000));
+    up.textContent = `${Math.floor(s / 3600)}:${String(Math.floor(s / 60) % 60).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+  }
+}
+
+// ---------------------------------------------------------------- KPI tiles
+const TILES = [
+  { key: 'out', label: 'Output tokens / s', c: COL.tgt, spark: true },
+  { key: 'acc', label: 'Accepted drafts / s', c: COL.acc, spark: true },
+  { key: 'drf', label: 'Proposed drafts / s', c: COL.spark, spark: true },
+  { key: 'pre', label: 'Prefill tokens / s', c: COL.pf, spark: true },
+  { key: 'conc', label: 'Concurrent requests', c: COL.ink2, spark: true },
+  { key: 'input', label: 'Input tokens', c: COL.rs },
+  { key: 'output', label: 'Output tokens', c: COL.acc },
+];
+$('#kpis').innerHTML = TILES.map((t) => `<div class="tile" style="--c:${t.c}"><span class="label">${t.label}</span>
+  <span class="v" id="k-${t.key}">–</span><span class="side" id="kx-${t.key}"></span><span class="sub" id="ks-${t.key}">&nbsp;</span>${t.spark ? `<canvas id="kc-${t.key}"></canvas>` : ''}</div>`).join('');
+function spark(canvas, data, color) {
+  const dpr = devicePixelRatio || 1, w = canvas.clientWidth, h = canvas.clientHeight;
+  if (!w) return;
+  if (canvas.width !== Math.round(w * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
+  const g = canvas.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+  const pts = data.filter(Number.isFinite); if (pts.length < 2) return;
+  const max = Math.max(1e-9, ...pts) * 1.1, n = 60, step = w / (n - 1);
+  const x = (i) => w - (data.length - 1 - i) * step, y = (v) => h - 1.5 - (v / max) * (h - 4);
+  g.beginPath(); let started = false;
+  data.forEach((v, i) => { if (!Number.isFinite(v)) return; started ? g.lineTo(x(i), y(v)) : g.moveTo(x(i), y(v)); started = true; });
+  g.strokeStyle = color; g.lineWidth = 1.5; g.shadowColor = color; g.shadowBlur = 6; g.stroke(); g.shadowBlur = 0;
+  g.lineTo(w, h); g.lineTo(x(data.findIndex(Number.isFinite)), h); g.closePath();
+  const grad = g.createLinearGradient(0, 0, 0, h); grad.addColorStop(0, color + '40'); grad.addColorStop(1, color + '00');
+  g.fillStyle = grad; g.fill();
+  const last = data[data.length - 1];
+  if (Number.isFinite(last)) { g.beginPath(); g.arc(w - 2, y(last), 2.5, 0, 7); g.fillStyle = color; g.fill(); }
+}
+function sampleSeries() {
+  const s = {
+    out: rate('output_tokens', 1000), acc: rate('accepted_drafts', 1000), drf: rate('drafted_tokens', 1000),
+    pre: rate('prefill_tokens', 1000), conc: S.gauges.active ?? NaN, inp: rate('input_tokens', 1000),
+  };
+  for (const k in s) { const a = S.series[k]; a.push(s[k]); if (a.length > 60) a.shift(); }
+}
+function renderKpis() {
+  const t = S.totals.length ? S.totals[S.totals.length - 1] : null;
+  const w = 2000;
+  const out = rate('output_tokens', w), acc = rate('accepted_drafts', w), drf = rate('drafted_tokens', w);
+  const ver = rate('verified_drafts', w), pre = rate('prefill_tokens', w), rounds = rate('verification_rounds', w);
+  const g = S.gauges, lanes = g.lanes || [0, 0];
+  const set = (k, v, sub) => { $('#k-' + k).innerHTML = v; $('#ks-' + k).textContent = sub; };
+  set('out', n0(out), Number.isFinite(out / rounds) && rounds > 0 ? `${nf1.format(out / rounds)} per lane round` : 'idle');
+  set('acc', n0(acc), ver > 0 ? `${pct(acc, ver)} of verified drafts` : 'no drafts verified');
+  set('drf', n0(drf), drf > 0 ? `${pct(ver, drf)} verified by the target` : 'no drafts proposed');
+  const pf = g.prefilling;
+  set('pre', n0(pre), pf ? `#${pf.id} ${pct(pf.done, pf.prompt)} of ${compact(pf.prompt)}` : 'idle');
+  set('conc', n0(g.active ?? 0), `lanes ${lanes[0]} + ${lanes[1]}${pf ? ' · 1 prefilling' : ''} · queued ${g.queued ?? 0}`);
+  if (t) {
+    set('input', compact(t.input_tokens), `${compact(t.cached_input_tokens)} cached · ${pct(t.cached_input_tokens, t.input_tokens)} · ${n0(t.requests_admitted)} req`);
+    set('output', compact(t.output_tokens), `${pct(t.accepted_drafts, t.output_tokens)} from accepted drafts`);
+  }
+  for (const tile of TILES) if (tile.spark && !reduced) spark($('#kc-' + tile.key), S.series[tile.key], tile.c);
+  // Right-hand stats: the 60 s peak, and for lifetime totals the current rate.
+  const peak = (k) => { const v = S.series[k].filter(Number.isFinite); return v.length ? Math.max(...v) : NaN; };
+  const side = (k, html) => { $('#kx-' + k).innerHTML = html; };
+  for (const k of ['out', 'acc', 'drf', 'pre']) side(k, `<span>60 s max</span><b>${compact(peak(k))}/s</b>`);
+  side('conc', `<span>60 s max</span><b>${n0(peak('conc'))}</b>`);
+  side('input', `<b>+${compact(rate('input_tokens', w))}/s</b><span>max ${compact(peak('inp'))}/s</span>`);
+  side('output', `<b>+${compact(out)}/s</b><span>max ${compact(peak('out'))}/s</span>`);
+}
+
+// ---------------------------------------------------------------- meters
+function renderMeters() {
+  const g = S.gauges, c = S.config, lanes = g.lanes || [0, 0], limit = c.concurrency || 16;
+  const pf = g.prefilling ? 1 : 0;
+  $('#c-active').textContent = g.active ?? 0; $('#c-queued').textContent = g.queued ?? 0;
+  $('#c-n0').textContent = lanes[0]; $('#c-n1').textContent = lanes[1]; $('#c-npf').textContent = pf;
+  $('#c-l0').style.width = (100 * lanes[0] / limit) + '%'; $('#c-l1').style.width = (100 * lanes[1] / limit) + '%';
+  $('#c-pf').style.width = (100 * pf / limit) + '%';
+  $('#c-pending').textContent = g.pending ? 'waiting for KV pages' : '';
+  const kv = g.kv;
+  if (kv) {
+    const used = kv.pages - kv.free, active = Math.min(kv.active, used), ret = Math.max(0, used - active);
+    $('#kv-used').textContent = n0(used); $('#kv-total').textContent = n0(kv.pages);
+    $('#kv-active').textContent = n0(active); $('#kv-ret').textContent = n0(ret);
+    $('#kv-a').style.width = (100 * active / kv.pages) + '%'; $('#kv-r').style.width = (100 * ret / kv.pages) + '%';
+    $('#kv-tok').textContent = compact(used * kv.tokens_per_page); $('#kv-cap').textContent = compact(kv.pages * kv.tokens_per_page);
+  }
+  const h = g.host;
+  if (h) {
+    $('#h-used').textContent = bytes(h.bytes_used); $('#h-total').textContent = bytes(h.quota_bytes);
+    $('#h-bar').style.width = (100 * h.bytes_used / Math.max(1, h.quota_bytes)) + '%';
+    $('#h-snaps').textContent = n0(h.resident_snapshots); $('#h-hits').textContent = n0(h.host_hits); $('#h-look').textContent = n0(h.lookups);
+    const b = h.restore_latency_buckets || [], total = b.reduce((x, y) => x + y, 0);
+    const bounds = ['≤1 ms', '≤5 ms', '≤10 ms', '≤50 ms', '≤100 ms', '≤500 ms', '≤1 s', '>1 s'];
+    let acc = 0, p50 = '–'; for (let i = 0; i < b.length; i++) { acc += b[i]; if (total && acc >= total / 2) { p50 = bounds[i]; break; } }
+    $('#h-p50').textContent = total ? p50 : 'no restores';
+  } else if (S.gauges.kv) {
+    $('#h-used').textContent = 'disabled'; $('#h-total').textContent = '0 B';
+  }
+}
+
+// ---------------------------------------------------------------- micro-steps
+const STEPS = [
+  { g: 'Lane round', note: 'host clock', rows: [
+    ['cycle0', 'lane 0 cycle', COL.tgt], ['cycle1', 'lane 1 cycle', COL.tgt], ['draft', 'dSpark draft + length select', COL.acc],
+    ['prepare', 'prepare rows', COL.ink2], ['verify', 'verification pass + head', COL.tgt], ['commit', 'commit + emit', COL.ink2]] },
+  { g: 'Verification pass', note: 'CUDA events, FFN finish to FFN finish', rows: [
+    ['pass', 'layers 1–39 on device', COL.tgt], ['lmean', 'RTX-expert layer (mean)', COL.rtx],
+    ['rmean', 'Spark-expert layer (mean)', COL.spark], ['lmax', 'slowest layer', COL.warn]] },
+  { g: 'Expert stages per layer', note: 'host clock, mean per layer', rows: [
+    ['lroute', 'RTX: router + route ids', COL.rtx], ['ltotal', 'RTX: routed + shared experts', COL.rtx],
+    ['rroute', 'Spark: router + route ids', COL.spark], ['rdispatch', 'Spark: dispatch to ranks', COL.spark],
+    ['rshared', 'Spark: shared experts on RTX', COL.rtx], ['rcollect', 'Spark: wait replies + reduce', COL.spark]] },
+  { g: 'Admission', note: 'host clock', rows: [
+    ['chunk', 'prefill chunk ≥ 1024 rows', COL.pf], ['short', 'short prompt prefill', COL.pf],
+    ['replay', 'decoder replay', COL.rp], ['restore', 'prefix restore', COL.rs]] },
+];
+$('#steps').innerHTML = STEPS.map((grp) => `<div class="g"><span class="label">${grp.g}</span><em>${grp.note}</em></div>` +
+  grp.rows.map(([k, n, c]) => `<span class="n"><span class="dot" style="background:${c}"></span>${n}</span>
+  <span class="bar" style="--c:${c}"><span class="med" id="sm-${k}" style="width:0"></span><span class="now" id="sn-${k}" style="width:0"></span><span class="max" id="sx-${k}" style="left:0"></span></span>
+  <span class="v" id="sv-${k}">–</span>`).join('')).join('');
+function median(a) { if (!a.length) return NaN; const s = a.slice().sort((x, y) => x - y); return s[s.length >> 1]; }
+function localLayers() { return S.gauges.dspark?.local_layers ?? 20; }
+function roundMetrics(r) {
+  const m = {}; const cyc = (r.t1 - r.t0) * 1000;
+  m['cycle' + r.lane] = cyc; m.draft = r.draft; m.prepare = r.prepare; m.verify = r.verify;
+  m.commit = Math.max(0, cyc - r.draft - r.prepare - r.verify);
+  const L = localLayers(); let ls = 0, ln = 0, rs = 0, rn = 0, mx = 0, sum = 0, any = false;
+  (r.layers || []).forEach((v, i) => {
+    if (v == null || i === 0) return; any = true; sum += v; mx = Math.max(mx, v);
+    if (i < L) { ls += v; ln++; } else { rs += v; rn++; }
+  });
+  if (any) { m.pass = sum; m.lmax = mx; if (ln) m.lmean = ls / ln; if (rn) m.rmean = rs / rn; }
+  const f = r.ffn || [];
+  if (f[0] > 0) { m.lroute = f[1] / f[0]; m.ltotal = f[2] / f[0]; }
+  if (f[3] > 0) { m.rroute = f[4] / f[3]; m.rdispatch = f[5] / f[3]; m.rshared = f[6] / f[3]; m.rcollect = f[7] / f[3]; }
+  return m;
+}
+function renderSteps() {
+  const now = engineNow();
+  while (S.rounds.length && S.rounds[0].t1 < now - KEEP) S.rounds.shift();
+  while (S.prefill.length && S.prefill[0].t1 < now - KEEP) S.prefill.shift();
+  const hist = {}, last = {};
+  const push = (k, v, t) => { if (!Number.isFinite(v)) return; (hist[k] ||= []).push(v); if (!last[k] || t >= last[k].t) last[k] = { t, v }; };
+  for (const r of S.rounds) { const m = roundMetrics(r); for (const k in m) push(k, m[k], r.t1); }
+  for (const p of S.prefill) {
+    const d = (p.t1 - p.t0) * 1000;
+    push(p.k === 'replay' ? 'replay' : p.k === 'restore' ? 'restore' : p.rows >= 1024 ? 'chunk' : 'short', d, p.t1);
+  }
+  for (const grp of STEPS) {
+    let scale = 1;
+    for (const [k] of grp.rows) if (hist[k]) scale = Math.max(scale, ...hist[k]);
+    for (const [k] of grp.rows) {
+      const h = hist[k];
+      const label = $('#sv-' + k).previousElementSibling.previousElementSibling;
+      if (!h) { $('#sv-' + k).innerHTML = '–'; continue; }
+      const med = median(h), max = Math.max(...h), now_ = last[k].v;
+      const unused = max === 0;
+      label.style.opacity = unused ? 0.45 : 1;
+      if (unused) { $('#sv-' + k).innerHTML = '<small>not used here</small>'; $('#sn-' + k).style.width = '0'; $('#sm-' + k).style.width = '0'; continue; }
+      $('#sn-' + k).style.width = (100 * now_ / scale) + '%';
+      $('#sm-' + k).style.width = (100 * med / scale) + '%';
+      $('#sx-' + k).style.left = `calc(${(100 * max / scale).toFixed(2)}% - 2px)`;
+      $('#sv-' + k).innerHTML = us(now_);
+    }
+  }
+  renderLayers();
+}
+function renderLayers() {
+  const c = $('#layers'), dpr = devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
+  if (!w) return;
+  if (c.width !== Math.round(w * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+  const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+  const withLayers = S.rounds.filter((r) => r.layers && r.layers.some((v) => v != null));
+  if (!withLayers.length) { g.fillStyle = COL.muted; g.font = `11px ${MONO}`; g.fillText('No layer timings yet (requires dSpark route capture)', 4, h / 2); return; }
+  const last = withLayers[withLayers.length - 1].layers;
+  const med = []; for (let i = 0; i < 40; i++) med.push(median(withLayers.map((r) => r.layers[i]).filter((v) => v != null)));
+  const max = Math.max(1, ...last.filter((v) => v != null), ...med.filter(Number.isFinite));
+  const L = localLayers(), bw = w / 39, top = 12, base = h - 13;
+  g.font = `9.5px ${MONO}`; g.textAlign = 'center';
+  for (let i = 1; i < 40; i++) {
+    const x = (i - 1) * bw, v = last[i], m = med[i], color = i < L ? COL.rtx : COL.spark;
+    if (Number.isFinite(m)) { g.fillStyle = COL.line2; const mh = (base - top) * m / max; g.fillRect(x + 1, base - mh, bw - 2, mh); }
+    if (v != null) { const vh = Math.max(1, (base - top) * v / max); g.fillStyle = color; g.globalAlpha = .9; g.fillRect(x + bw * .22, base - vh, bw * .56, vh); g.globalAlpha = 1; }
+    if (i === 1 || i % 5 === 0 || i === 39) { g.fillStyle = COL.muted; g.fillText(String(i), x + bw / 2, h - 2); }
+  }
+  g.textAlign = 'left'; g.fillStyle = COL.muted; g.fillText(`max ${(max / 1000).toFixed(2)} ms`, 2, 9);
+}
+
+// ---------------------------------------------------------------- acceptance, facts, recent
+function renderAcceptance() {
+  const reach = new Array(7).fill(0), ok = new Array(7).fill(0);
+  let rr = 0, drafted = 0, verified = 0, accepted = 0, emitted = 0, widths = {};
+  for (const r of S.rounds) for (const q of r.req) {
+    const [, w, v, a, e] = q; rr++; drafted += w; verified += v; accepted += a; emitted += e;
+    if (w) widths[w] = (widths[w] || 0) + 1;
+    for (let p = 1; p <= Math.min(v, a + 1) && p <= 7; p++) { reach[p - 1]++; if (p <= a) ok[p - 1]++; }
+  }
+  const limit = Math.max(5, S.config.draft_limit || 5);
+  let html = '';
+  for (let i = 0; i < limit; i++) {
+    const r = reach[i] ? ok[i] / reach[i] : NaN;
+    html += `<span class="n">pos ${i + 1}</span><span class="bar" style="--c:${COL.acc}"><span class="now" style="width:${Number.isFinite(r) ? (100 * r).toFixed(1) : 0}%"></span></span>
+      <span class="v">${Number.isFinite(r) ? (100 * r).toFixed(1) + '%' : '–'} <small>n=${compact(reach[i])}</small></span>`;
+  }
+  $('#pos').innerHTML = html;
+  const d = S.gauges.dspark || {};
+  const warm = d.solo ? `solo ${d.solo.warm ? 'warm' : 'cold'} · shared ${d.shared?.warm ? 'warm' : 'cold'}` : '–';
+  const err = d.prediction?.mean_abs_relative_error;
+  const facts = [
+    ['Accepted / round', rr ? nf1.format(accepted / rr) : '–', 'per request'],
+    ['Tokens / round', rr ? nf1.format(emitted / rr) : '–', 'per request'],
+    ['Drafted / round', rr ? nf1.format(drafted / rr) : '–', `verified ${pct(verified, drafted)}`],
+    ['Policy', d.mode || (S.config.dspark ? '…' : 'off'), `fit: ${warm}`],
+    ['Cost model error', Number.isFinite(err) ? (100 * err).toFixed(1) + '%' : '–', 'mean abs, per round'],
+  ];
+  $('#facts').innerHTML = facts.map(([l, v, s]) => `<div class="fact"><span class="label">${l}</span><span class="v">${v}</span><span class="num">${s}</span></div>`).join('');
+}
+function renderRecent() {
+  const rows = S.recent.slice(0, 12).map((x) => {
+    const ttft = x.first != null && x.admitted != null ? (x.first - x.admitted) : NaN;
+    const dec = x.first != null ? (x.t - x.first) / 1000 : NaN;
+    const tps = dec > 0 ? (x.gen - 1) / dec : NaN;
+    const tag = x.reason === 'finished' ? '<span class="tag ok">DONE</span>' : x.reason === 'failed' ? '<span class="tag bad">FAILED</span>' : '<span class="tag gone">CANCELLED</span>';
+    return `<tr><td><b>#${x.id}</b>${x.grammar ? ' <span style="color:var(--grammar)">{}</span>' : ''}</td><td>${compact(x.prompt)}</td><td>${compact(x.cached)}</td>
+      <td><b>${compact(x.gen)}</b></td><td>${Number.isFinite(ttft) ? (ttft >= 1000 ? (ttft / 1000).toFixed(2) + ' s' : ttft.toFixed(0) + ' ms') : '–'}</td>
+      <td>${Number.isFinite(tps) ? nf1.format(tps) + ' tok/s' : '–'}</td><td>${tag}</td></tr>`;
+  });
+  $('#recent').innerHTML = rows.join('') || '<tr><td colspan="7" class="empty">No completed requests yet.</td></tr>';
+}
+
+// ---------------------------------------------------------------- ticker
+const cv = $('#ticker'), ctx = cv.getContext('2d'), tip = $('#tip');
+const GUT = 196, PAD = 6, AXIS = 18;
+const HOLD_MS = 4000;          // rows must need less space this long before the box shrinks
+let hover = null, lastDraw = performance.now();
+const box = { h: null, below: null };
+// Grow quickly, hold, then shrink slowly so the panels below stay put while reading.
+function boxHeight(content, now, dt) {
+  if (box.h == null || reduced && content > box.h) { box.h = content; box.below = null; return box.h; }
+  if (content >= box.h - 0.5) {
+    box.below = null;
+    box.h += (content - box.h) * (1 - Math.exp(-dt / 90));
+    if (content - box.h < 0.5) box.h = content;
+  } else {
+    box.below ??= now;
+    if (now - box.below > HOLD_MS) {
+      box.h = reduced ? content : Math.max(content, box.h - Math.max(0.25, (box.h - content) * (1 - Math.exp(-dt / 650))));
+    }
+  }
+  return box.h;
+}
+const NOTES = {
+  time: 'Time runs right to left and the newest round touches the right edge. Each active request is a row, grouped by lane. Every verification round draws one column whose width is the round\'s real duration; its cells stack by draft position from the bottom, so everything below the blue target token was accepted and everything above it was wasted. The prefill row shows chunks in the lane that ran them. Hover to freeze and inspect a round.',
+  text: 'Each row streams the text the client received: green pieces came from accepted drafts, blue pieces from the target itself (the bonus token after a full accept, or the correction after a miss). The drafter\'s rejected guesses float above the line in red where they diverged; gray ones were drafted but never verified. An amber underline marks output decoded under a grammar (tool calls, JSON schema).',
+};
+function setMode(m) {
+  S.mode = m; $('#v-time').setAttribute('aria-pressed', m === 'time'); $('#v-text').setAttribute('aria-pressed', m === 'text');
+  $('#zoom').style.visibility = m === 'time' ? 'visible' : 'hidden';
+  $('#ticker-note').textContent = NOTES[m];
+  for (const r of S.requests.values()) { r.shown = r.chunks.filter((c) => c.t <= displayNow()).length; r.slide = 0; }
+}
+function setZoom(z) { S.pxPerS = z; for (const b of document.querySelectorAll('#zoom button')) b.setAttribute('aria-pressed', +b.dataset.z === z); }
+function setPaused(p) { S.paused = p; S.frozenAt = p ? displayNow() : null; $('#pause').setAttribute('aria-pressed', p); $('#pause').textContent = p ? 'RESUME' : 'PAUSE'; }
+$('#v-time').onclick = () => setMode('time');
+$('#v-text').onclick = () => S.textAllowed && setMode('text');
+for (const b of document.querySelectorAll('#zoom button')) b.onclick = () => setZoom(+b.dataset.z);
+$('#pause').onclick = () => setPaused(!S.paused);
+addEventListener('keydown', (e) => {
+  if (e.target.closest('input,select,textarea')) return;
+  if (e.key === ' ') { e.preventDefault(); setPaused(!S.paused); }
+  else if (e.key === 't') { if (S.textAllowed) setMode(S.mode === 'time' ? 'text' : 'time'); }
+  else if (e.key === '+' || e.key === '=') setZoom(Math.min(1200, S.pxPerS * 2));
+  else if (e.key === '-') setZoom(Math.max(150, S.pxPerS / 2));
+});
+cv.addEventListener('pointermove', (e) => { const b = cv.getBoundingClientRect(); hover = { x: e.clientX - b.left, y: e.clientY - b.top, cx: e.clientX, cy: e.clientY }; });
+cv.addEventListener('pointerleave', () => { hover = null; tip.hidden = true; });
+
+function layout() {
+  const rowsOut = [{ kind: 'prefill', h: 30 }];
+  const tD = displayNow();
+  for (const lane of [0, 1]) {
+    const members = [...S.requests.values()].filter((r) => r.lane === lane && r.first != null && r.first <= tD + 50).sort((a, b) => a.id - b.id);
+    rowsOut.push({ kind: 'lane', lane, h: 24, members });
+    if (!members.length) rowsOut.push({ kind: 'idle', lane, h: 24 });
+    for (const r of members) rowsOut.push({ kind: 'req', r, lane, h: S.mode === 'text' ? 38 : 24 });
+  }
+  return rowsOut;
+}
+function laneStats(lane, tD) {
+  const rs = S.rounds.filter((r) => r.lane === lane && r.t1 <= tD && r.t1 > tD - 2000);
+  if (!rs.length) return null;
+  const cyc = median(rs.map((r) => r.t1 - r.t0));
+  let e = 0, q = 0; for (const r of rs) for (const x of r.req) { e += x[4]; q++; }
+  return { cyc, per: q ? e / q : 0, hz: rs.length / 2 };
+}
+function draw() {
+  const now = performance.now(), dt = Math.min(100, now - lastDraw); lastDraw = now;
+  const dpr = devicePixelRatio || 1, W = cv.clientWidth, rowsOut = layout();
+  const content = rowsOut.reduce((a, r) => a + r.h, 0) + PAD * 2 + (S.mode === 'time' ? AXIS : 4);
+  const shown = boxHeight(content, now, dt);
+  // Draw to at least the visible box so the axis sits at its bottom; the wrapper clips the rest.
+  const H = Math.ceil(Math.max(content, shown));
+  const buffer = Math.ceil(H / 64) * 64;
+  if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(buffer * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(buffer * dpr); cv.style.height = buffer + 'px'; }
+  $('#ticker-wrap').style.height = (shown + 2).toFixed(1) + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, buffer);
+  const tD = hover && S.mode === 'time' && !S.paused ? (S.hoverFrozen ??= displayNow()) : (S.hoverFrozen = null, displayNow());
+  const right = W - 12, k = S.pxPerS / 1000, X = (t) => right - (tD - t) * k;
+  const plotBottom = H - (S.mode === 'time' ? AXIS : 4);
+  // backdrop grid
+  ctx.fillStyle = 'rgba(120,150,210,0.035)';
+  for (let y = PAD; y < plotBottom; y += 12) ctx.fillRect(GUT, y, right - GUT, 1);
+  if (S.mode === 'time') {
+    const step = S.pxPerS >= 600 ? 250 : 500;
+    ctx.font = `10.5px ${MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (let ms = 0; right - ms * k > GUT; ms += step) {
+      const x = right - ms * k;
+      ctx.fillStyle = ms % 1000 === 0 ? 'rgba(120,150,210,0.11)' : 'rgba(120,150,210,0.05)';
+      ctx.fillRect(x, PAD, 1, plotBottom - PAD);
+      ctx.fillStyle = COL.muted; ctx.fillText(ms ? `−${(ms / 1000).toFixed(step < 500 ? 2 : 1)}s` : 'now', Math.min(x, right - 12), H - AXIS / 2);
+    }
+  }
+  ctx.fillStyle = COL.line; ctx.fillRect(GUT - 10, PAD, 1, plotBottom - PAD);
+  let y = PAD, hit = null;
+  for (const row of rowsOut) {
+    const y0 = y; y += row.h;
+    if (row.kind === 'prefill') { hit = drawPrefill(y0, row.h, right, X, tD) || hit; continue; }
+    if (row.kind === 'lane') {
+      ctx.fillStyle = COL.line2; ctx.fillRect(0, y0 + row.h - 4, right, 1);
+      ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+      ctx.font = `700 10.5px ${SANS}`; ctx.fillStyle = COL.ink; ctx.fillText(`LANE ${row.lane}`, 0, y0 + 10);
+      const st = laneStats(row.lane, tD);
+      ctx.font = `10.5px ${MONO}`; ctx.fillStyle = COL.muted;
+      ctx.fillText(st ? `${row.members.filter((r) => r.retired == null).length} req · ${st.cyc.toFixed(1)} ms · ${st.per.toFixed(2)} tok/rnd` : `${row.members.length} req`, 58, y0 + 10);
+      continue;
+    }
+    if (row.kind === 'idle') { ctx.font = `11px ${MONO}`; ctx.fillStyle = COL.muted; ctx.textAlign = 'left'; ctx.fillText('idle', 12, y0 + row.h / 2); continue; }
+    const r = row.r;
+    const fade = r.retired != null ? Math.max(0.25, 1 - (tD - r.retired) / 2500) : 1;
+    ctx.globalAlpha = fade;
+    gutter(r, y0, row.h, tD);
+    ctx.save(); ctx.beginPath(); ctx.rect(GUT - 4, y0, right - GUT + 8, row.h); ctx.clip();
+    const h2 = S.mode === 'time' ? drawCells(r, y0, row.h, right, X, tD) : drawText(r, y0, row.h, right, tD, dt);
+    ctx.restore(); ctx.globalAlpha = 1;
+    if (h2) hit = h2;
+  }
+  if (!S.requests.size && !(S.prefill.length && S.prefill[S.prefill.length - 1].t1 > tD - 3000)) {
+    ctx.font = `12px ${MONO}`; ctx.fillStyle = COL.muted; ctx.textAlign = 'center';
+    ctx.fillText(S.connected ? 'Waiting for requests' : 'Connecting to the engine…', (GUT + right) / 2, PAD + 15);
+  }
+  tooltip(hit);
+  requestAnimationFrame(draw);
+}
+function gutter(r, y0, h, tD) {
+  const mid = y0 + (S.mode === 'time' ? h / 2 : 14);
+  ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+  ctx.font = `600 11.5px ${MONO}`; ctx.fillStyle = COL.ink; ctx.fillText(`#${r.id}`, 12, mid);
+  if (r.grammar) { ctx.fillStyle = COL.gr; ctx.fillText('{}', 58, mid); }
+  ctx.font = `11px ${MONO}`; ctx.fillStyle = COL.ink2; ctx.textAlign = 'right';
+  ctx.fillText(compact(r.gen), 110, mid);
+  const bx = 118, bw = 44;
+  ctx.fillStyle = COL.line; ctx.fillRect(bx, mid - 2, bw, 4);
+  ctx.fillStyle = r.retired != null ? (r.reason === 'finished' ? COL.good : r.reason === 'failed' ? COL.bad : COL.warn) : COL.tgt;
+  ctx.fillRect(bx, mid - 2, bw * Math.min(1, r.max ? r.gen / r.max : 0), 4);
+  // recent decode rate over the last two seconds
+  let e = 0; for (let i = r.cols.length - 1; i >= 0 && r.cols[i].t1 > tD - 2000; i--) if (r.cols[i].t1 <= tD) e += r.cols[i].e;
+  ctx.fillStyle = COL.muted; ctx.textAlign = 'right'; ctx.font = `10px ${MONO}`;
+  ctx.fillText(r.retired != null ? (r.reason === 'finished' ? 'done' : r.reason === 'failed' ? 'failed' : 'cancelled') : `${(e / 2).toFixed(0)}/s`, GUT - 14, mid);
+  ctx.textAlign = 'left';
+}
+function drawCells(r, y0, h, right, X, tD) {
+  const base = y0 + h - 3, cell = 2.25, fill = { acc: [], tgt: [], rej: [], skip: [], gr: [] };
+  let hit = null, glow = null;
+  for (let i = r.cols.length - 1; i >= 0; i--) {
+    const c = r.cols[i];
+    if (c.t0 > tD) continue;
+    const x0 = X(c.t0), x1 = Math.min(X(c.t1), X(tD));
+    if (x1 < GUT - 4) break;
+    const xa = Math.max(GUT - 4, x0); let w = x1 - xa; if (w <= 0.2) continue;
+    if (w > 2.5) w -= 0.9;
+    const slots = c.w > 0 ? Math.max(c.w + 1, c.v + 1) : 1;
+    for (let s = 1; s <= slots; s++) {
+      let key; if (c.w === 0) key = 'tgt';
+      else if (s <= c.a) key = 'acc'; else if (s === c.a + 1) key = 'tgt'; else if (s <= c.v + 1) key = 'rej'; else key = 'skip';
+      fill[key].push(xa, base - s * cell, w, cell - 0.45);
+    }
+    if (c.g) fill.gr.push(xa, base + 1, w + 0.9, 1.4);
+    if (!glow && tD - c.t1 < 220 && c.t1 <= tD) glow = { xa, w, top: base - slots * cell, c };
+    if (hover && hover.x >= xa - 1 && hover.x <= xa + w + 1 && hover.y >= y0 && hover.y < y0 + h) hit = { kind: 'col', r, c };
+    if (c.fin && c.t1 <= tD) { ctx.fillStyle = COL.ink2; ctx.fillRect(x1 + 1.5, base - 10, 1.5, 9); }
+  }
+  const paint = (arr, color) => { if (!arr.length) return; ctx.fillStyle = color; ctx.beginPath(); for (let i = 0; i < arr.length; i += 4) ctx.rect(arr[i], arr[i + 1], arr[i + 2], arr[i + 3]); ctx.fill(); };
+  paint(fill.skip, COL.skip); paint(fill.rej, COL.rej); paint(fill.acc, COL.acc); paint(fill.tgt, COL.tgt); paint(fill.gr, COL.gr);
+  if (glow && !reduced) {
+    const a = 1 - (tD - glow.c.t1) / 220;
+    ctx.save(); ctx.globalAlpha *= 0.55 * a; ctx.shadowColor = COL.tgt; ctx.shadowBlur = 12; ctx.fillStyle = COL.tgt;
+    ctx.fillRect(glow.xa, glow.top, Math.max(1, glow.w), base - glow.top); ctx.restore();
+  }
+  return hit;
+}
+function drawText(r, y0, h, right, tD, dt) {
+  // Reveal chunks whose round has reached display time; each one slides in.
+  while (r.shown < r.chunks.length && r.chunks[r.shown].t <= tD) { r.slide += r.chunks[r.shown].w; r.shown++; }
+  r.slide = reduced ? 0 : r.slide * Math.exp(-dt / 85);
+  if (r.slide > 600) r.slide = 600;
+  const baseY = y0 + 28, ghostY = y0 + 11;
+  let x = right + r.slide, hit = null, ghostLimit = right + 8;
+  ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+  for (let i = r.shown - 1; i >= 0 && x > GUT - 4; i--) {
+    const c = r.chunks[i];
+    const end = x; x -= c.w;
+    let px = x, tx = null;
+    ctx.font = FONT_MAIN;
+    for (const [k, s, w] of c.main) {
+      if (k === 't' && tx === null) tx = px;
+      if (px + w > GUT - 4) { ctx.fillStyle = k === 'a' ? COL.acc : COL.tgt; ctx.fillText(s, px, baseY); }
+      px += w;
+    }
+    if (c.g) { ctx.fillStyle = COL.gr; ctx.fillRect(x, baseY + 4, c.w, 1.5); }
+    if (c.ghosts.length) {
+      // Ghosts start where the draft diverged and never run into a newer round's ghosts.
+      const gx0 = tx ?? x;
+      if (gx0 < ghostLimit - 6) {
+        ctx.save(); ctx.beginPath(); ctx.rect(gx0 - 1, y0, ghostLimit - gx0 - 3, h); ctx.clip();
+        ctx.fillStyle = COL.rej; ctx.globalAlpha *= 0.7; ctx.fillRect(gx0, ghostY + 2, 1, baseY - ghostY - 12); ctx.globalAlpha /= 0.7;
+        ctx.font = FONT_GHOST; let gx = gx0 + 3;
+        for (const [k, s, w] of c.ghosts) {
+          ctx.fillStyle = k === 'r' ? COL.rej : COL.muted;
+          ctx.fillText(s, gx, ghostY); gx += w + 3;
+        }
+        ctx.restore();
+        ghostLimit = gx0;
+      }
+    }
+    if (hover && hover.y >= y0 && hover.y < y0 + h && hover.x >= x && hover.x <= end) hit = { kind: 'text', r, c };
+  }
+  if (r.shown === 0) { ctx.font = `11px ${MONO}`; ctx.fillStyle = COL.muted; ctx.fillText(S.textAllowed ? 'waiting for text…' : 'text disabled on this server', GUT + 4, baseY); }
+  return hit;
+}
+function drawPrefill(y0, h, right, X, tD) {
+  const mid = y0 + h / 2;
+  ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+  ctx.font = `700 10.5px ${SANS}`; ctx.fillStyle = COL.ink; ctx.fillText('PREFILL', 0, mid);
+  const pf = S.gauges.prefilling;
+  ctx.font = `10.5px ${MONO}`; ctx.fillStyle = pf ? COL.pf : COL.muted;
+  ctx.fillText(pf ? `#${pf.id} ${compact(pf.done)}/${compact(pf.prompt)}` : 'idle', 64, mid);
+  let hit = null;
+  if (S.mode === 'text') {
+    if (pf) {
+      const w = right - GUT, frac = Math.min(1, pf.done / Math.max(1, pf.prompt)), cf = Math.min(frac, pf.cached / Math.max(1, pf.prompt));
+      ctx.fillStyle = COL.line; ctx.fillRect(GUT, y0 + 9, w, h - 18);
+      ctx.fillStyle = COL.rs; ctx.fillRect(GUT, y0 + 9, w * cf, h - 18);
+      ctx.fillStyle = COL.pf; ctx.fillRect(GUT + w * cf, y0 + 9, w * (frac - cf), h - 18);
+    }
+    return null;
+  }
+  const hh = (h - 8) / 2;
+  for (const p of S.prefill) {
+    if (p.t0 > tD) continue;
+    const x0 = Math.max(GUT - 4, X(p.t0)), x1 = Math.min(X(p.t1), X(tD));
+    if (x1 < GUT - 4) continue;
+    let yy = y0 + 4, hh2 = h - 8, color = COL.pf;
+    if (p.k === 'chunk') { yy = y0 + 4 + (p.lane ? hh : 0); hh2 = hh - 1; }
+    else if (p.k === 'restore') color = COL.rs;
+    else if (p.k === 'replay') color = COL.rp;
+    ctx.fillStyle = color; ctx.globalAlpha = p.k === 'replay' ? 0.75 : 1;
+    ctx.fillRect(x0, yy, Math.max(1, x1 - x0 - 1), hh2); ctx.globalAlpha = 1;
+    if (x1 - x0 > 46 && hh2 >= 10) { ctx.font = `9.5px ${MONO}`; ctx.fillStyle = '#05070b'; ctx.fillText(p.k === 'replay' ? 'replay' : compact(p.rows), x0 + 4, yy + hh2 / 2 + 0.5); }
+    if (hover && hover.x >= x0 && hover.x <= x1 && hover.y >= yy && hover.y <= yy + hh2) hit = { kind: 'prefill', p };
+  }
+  return hit;
+}
+function tooltip(hit) {
+  if (!hover || !hit) { tip.hidden = true; return; }
+  let text;
+  if (hit.kind === 'col') {
+    const c = hit.c, m = c.m, cyc = (m.t1 - m.t0);
+    const commit = Math.max(0, cyc * 1000 - m.draft - m.prepare - m.verify);
+    text = `#${hit.r.id}  lane ${m.lane} ${m.shared ? '(both lanes busy)' : '(solo)'}\n` +
+      `round ${cyc.toFixed(2)} ms · ${m.n} request${m.n === 1 ? '' : 's'}\n` +
+      `drafted ${c.w}  verified ${c.v}  accepted ${c.a}  emitted ${c.e}\n` +
+      `draft ${(m.draft / 1000).toFixed(2)}  prepare ${(m.prepare / 1000).toFixed(2)}  verify ${(m.verify / 1000).toFixed(2)}  commit ${(commit / 1000).toFixed(2)} ms` +
+      (c.g ? '\ngrammar mask active' : '') + (c.fin ? '\nfinished this round' : '');
+  } else if (hit.kind === 'prefill') {
+    const p = hit.p, d = p.t1 - p.t0;
+    text = `${p.k === 'chunk' ? `prefill chunk ${p.i + 1}/${p.n}, lane ${p.lane}` : p.k === 'restore' ? 'prefix restore' : p.k === 'replay' ? 'decoder replay' : `prefill ${p.k}`}${p.id != null ? `  #${p.id}` : ''}\n` +
+      `${n0(p.rows)} rows · ${d.toFixed(1)} ms${p.k !== 'replay' && d > 0 ? ` · ${compact(p.rows / d * 1000)} tok/s` : ''}`;
+  } else {
+    const r = hit.r, c = hit.c;
+    const main = c.main.map(([k, s]) => (k === 'a' ? 'accepted ' : 'target   ') + JSON.stringify(s)).join('\n');
+    const ghosts = c.ghosts.map(([k, s]) => (k === 'r' ? 'rejected ' : 'unverified ') + JSON.stringify(s)).join('\n');
+    text = `#${r.id}  ${compact(r.gen)} / ${compact(r.max)} tokens\n${main}${ghosts ? '\n' + ghosts : ''}${c.g ? '\ngrammar mask active' : ''}`;
+  }
+  tip.textContent = text; tip.hidden = false;
+  const bw = tip.offsetWidth, bh = tip.offsetHeight;
+  tip.style.left = Math.min(innerWidth - bw - 8, hover.cx + 16) + 'px';
+  tip.style.top = Math.min(innerHeight - bh - 8, hover.cy + 16) + 'px';
+}
+
+// ---------------------------------------------------------------- housekeeping
+function prune() {
+  const tD = displayNow(), now = engineNow();
+  for (const [id, r] of S.requests) {
+    if (r.retired != null && tD - r.retired > 2600) { S.requests.delete(id); continue; }
+    const keep = now - Math.max(12000, 1500 * 1000 / Math.max(50, S.pxPerS) * 2);
+    let i = 0; while (i < r.cols.length && r.cols[i].t1 < keep) i++;
+    if (i) r.cols.splice(0, i);
+  }
+}
+setInterval(() => { sampleSeries(); }, 1000);
+setInterval(() => { status(); renderKpis(); renderMeters(); renderSteps(); renderAcceptance(); renderRecent(); prune(); }, 500);
+setMode('time');
+connect();
+requestAnimationFrame(draw);
+})();
+</script>
+</body>
+</html>

@@ -3,6 +3,7 @@ use prefill_target::PrefillTarget;
 use speculative::DraftChain;
 pub(crate) mod speculative;
 pub(crate) mod scheduler;
+pub(crate) mod console;
 mod distributed;
 mod placement;
 pub(crate) mod scores;
@@ -74,6 +75,8 @@ pub(crate) async fn run(mut args: crate::cli::NativeServeArgs) -> Result<()> {
     let (ready, readiness) = oneshot::channel();
     let stats = std::sync::Arc::new(std::sync::Mutex::new(serde_json::Value::Null));
     let worker_stats = stats.clone();
+    let console_hub = ds41rt_api::native_v41::ConsoleHub::new(args.console_text);
+    console::install(console_hub.clone(), console_config(&args))?;
     let worker_thread = std::thread::Builder::new()
         .name("v41-target-cuda".into())
         .spawn(move || {
@@ -96,7 +99,7 @@ pub(crate) async fn run(mut args: crate::cli::NativeServeArgs) -> Result<()> {
         .map_err(anyhow::Error::msg)?;
     let listener = tokio::net::TcpListener::bind(&listen).await?;
     tracing::info!(%listen,"native V4.1 target API ready");
-    axum::serve(listener, ds41rt_api::native_v41::router_with_admission(send, limits, stats, http_queue_wait))
+    axum::serve(listener, ds41rt_api::native_v41::router_with_console(send, limits, stats, http_queue_wait, console_hub))
         .with_graceful_shutdown(async {
             let mut term =
                 tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
@@ -109,6 +112,36 @@ pub(crate) async fn run(mut args: crate::cli::NativeServeArgs) -> Result<()> {
         .map_err(|_| anyhow::anyhow!("native CUDA worker panicked during shutdown"))?;
     Ok(())
 }
+/// Header facts for the live console. The revision comes from the release
+/// image's environment; `DS41RT_CONSOLE_REVISION` overrides it for dev binaries.
+fn console_config(args: &crate::cli::NativeServeArgs) -> console::Config {
+    let env = |name: &str| std::env::var(name).ok().filter(|value| !value.is_empty());
+    let layout = format!("{}×RTX + {} Spark", args.rtx_gpus, args.peers.len());
+    console::Config {
+        snapshot: args.snapshot.clone(),
+        info: serde_json::json!({
+            "model": ds41rt_api::native_v41::MODEL,
+            "release": env("DS41RT_RELEASE_VERSION"),
+            "revision": env("DS41RT_CONSOLE_REVISION").or_else(|| env("DS41RT_ENGINE_COMMIT")),
+            "layout": layout,
+            "rtx_gpus": args.rtx_gpus,
+            "sparks": args.peers.len(),
+            "concurrency": args.concurrency,
+            "lanes": 2,
+            "lane_capacity": 8,
+            "dspark": args.dspark,
+            "draft_limit": args.dspark_draft_limit,
+            "policy": if !args.dspark { "off" } else if args.dspark_fixed { "fixed" } else { "bandwidth" },
+            "prefill_chunk_rows": args.prefill_batch_tokens,
+            "max_context_tokens": args.max_context_tokens,
+            "prefix_cache_entries": args.prefix_cache_entries,
+            "text": args.console_text,
+            "started_unix_ms": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_millis() as u64),
+        }),
+    }
+}
+
 // Reserve a supported AOT capacity once; live prefill chunks retain the user's
 // requested size. All backbone/draft workspaces and transport share this bound.
 fn prefill_capacity(batch_tokens: u32) -> Result<u32> {
@@ -666,6 +699,8 @@ fn prefill<'a, P: PrefillTarget<'a>, C: DraftChain<'a>>(
         })();
         if result.is_err() { pass.discard(&mut batch)?; }
         result?;
+        console::totals::prefill(chunk.len());
+        console::Prefill::done(console::PrefillKind::Single, 0, 0, 1, chunk.len(), started);
         tracing::debug!(target: "ds41rt::timing", rows=chunk.len(), total_us=started.elapsed().as_micros() as u64, "target encoder step");
     }
     if chunks.len() != 0 {
@@ -698,6 +733,7 @@ fn prefill<'a, P: PrefillTarget<'a>, C: DraftChain<'a>>(
         Ok(scores)
     })();
     if result.is_err() { pass.discard(&mut batch)?; }
+    console::Prefill::done(console::PrefillKind::Replay, 0, 0, 1, rows as usize, started);
     tracing::debug!(target: "ds41rt::timing", rows, total_us=started.elapsed().as_micros() as u64, "target decoder replay");
     result
 }
@@ -708,9 +744,11 @@ fn prefill_continuation<'a, P: PrefillTarget<'a>, C: DraftChain<'a>>(lib: &'a Na
     job: &NativeRequest, mut draft: Option<&mut DraftRuntime<'_, 'a, C>>, hold: &mut dyn FnMut() -> Result<()>) -> Result<TokenScores> {
     ensure!(!tokens.is_empty(), "prefix continuation has no uncached rows");
     let mut anchor = None;
-    for chunk in tokens.chunks(chunk_rows) {
+    let count = tokens.len().div_ceil(chunk_rows);
+    for (index, chunk) in tokens.chunks(chunk_rows).enumerate() {
         ensure!(!job.events.is_closed(), "client disconnected");
         prefill_hold(hold);
+        let started = Instant::now();
         let mut batch = requests.prepare(&[RequestTokens { lease, tokens: chunk,
             image_mask: None, kind: ExpertV2SourceKind::Prefill }])?;
         let result = (|| -> Result<TokenScores> {
@@ -723,6 +761,8 @@ fn prefill_continuation<'a, P: PrefillTarget<'a>, C: DraftChain<'a>>(lib: &'a Na
         })();
         if result.is_err() { pass.discard(&mut batch)?; }
         anchor = Some(result?);
+        console::totals::prefill(chunk.len());
+        console::Prefill::done(console::PrefillKind::Continuation, 0, index, count, chunk.len(), started);
     }
     anchor.context("prefix continuation produced no logits")
 }

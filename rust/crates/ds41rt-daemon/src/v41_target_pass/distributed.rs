@@ -204,6 +204,12 @@ impl<'w, 'a> DistributedTargetPass<'w, 'a> {
         Ok(())
     }
     pub fn captured_routes(&self) -> &[Vec<[u32; 6]>] { &self.route_capture }
+    /// Host FFN stage split of the last captured pass, summed over both GPUs.
+    pub fn captured_ffn_split(&self) -> crate::v41_backbone_lane::FfnSplit {
+        let mut split = crate::v41_backbone_lane::FfnSplit::default();
+        for lane in &self.lanes { split.add(&lane.captured_ffn_split()); }
+        split
+    }
     /// The next `execute` is a verification pass (consumed by that call).
     pub(crate) fn mark_verification(&mut self) { self.verification = true; }
     /// Device-select the rows of a completed non-greedy verification pass.

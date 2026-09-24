@@ -137,6 +137,8 @@ impl<'w, 'a> TargetPass<'w, 'a> {
         if enabled { self.index.enable_small_graph_shapes(); }
     }
     pub fn captured_routes(&self) -> &[Vec<[u32; 6]>] { self.lane.captured_routes() }
+    /// Host FFN stage split of the last captured pass.
+    pub fn captured_ffn_split(&self) -> crate::v41_backbone_lane::FfnSplit { self.lane.captured_ffn_split() }
     /// Device time per layer (FFN finish to FFN finish) of the last captured
     /// pass; layer 0 has no predecessor.
     pub fn captured_layer_us(&self) -> Vec<Option<f64>> {

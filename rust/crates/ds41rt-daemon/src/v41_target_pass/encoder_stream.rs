@@ -110,6 +110,9 @@ impl<'w, 'a> TargetPass<'w, 'a> {
             pass.commit(&mut requests.borrow_mut(), batch, &[chunk.len() as u32])?;
             guard.complete = true;
             committed[index].notify_one();
+            crate::v41_native_serve::console::totals::prefill(chunk.len());
+            crate::v41_native_serve::console::Prefill::done(crate::v41_native_serve::console::PrefillKind::Chunk,
+                parity, index, chunks.len(), chunk.len(), started);
             tracing::debug!(target: "ds41rt::timing", index, rows=chunk.len(),
                 total_us=started.elapsed().as_micros() as u64, "target encoder stream chunk");
         }

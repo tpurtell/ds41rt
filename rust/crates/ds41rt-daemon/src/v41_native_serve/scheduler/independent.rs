@@ -82,6 +82,7 @@ async fn lane<'a, P: VerificationTarget<'a>, C: DraftChain<'a>>(lane: usize, lib
                 // draft and transaction before retirement can recycle its slots.
                 tokio::task::yield_now().await;
             };
+            let proposal = console::Proposal::capture(&inputs, console::live());
             let shared = active.borrow().iter().flatten().any(|r| r.lane != lane);
             let (inputs, mut batch, capture_routes) = {
                 let active = active.borrow();
@@ -207,6 +208,8 @@ async fn lane<'a, P: VerificationTarget<'a>, C: DraftChain<'a>>(lane: usize, lib
                 }
                 let (accepted, emitted, emissions, accepted_inputs) = publish_commit_lane(&mut active.borrow_mut(),
                     &members, &mut batch, decision)?;
+                let live = console::live();
+                let tally = console::Tally::new(proposal, &inputs, &accepted_inputs, &emissions, live);
                 tracing::debug!(target: "ds41rt::lane_schedule", lane, round_id,
                     "independent verifier committed");
                 for (&slot, tokens) in members.iter().zip(emissions) {
@@ -224,13 +227,28 @@ async fn lane<'a, P: VerificationTarget<'a>, C: DraftChain<'a>>(lane: usize, lib
                         Ok(())
                     }.await;
                     if let Err(error) = delivered {
-                        active.borrow_mut()[slot].as_mut().unwrap().finished = true;
+                        let failed = !sender.is_closed();
+                        let mut active = active.borrow_mut();
+                        let request = active[slot].as_mut().unwrap();
+                        request.finished = true;
+                        request.failed = failed;
+                        drop(active);
                         let _ = sender.send(Err(format!("{error:#}").into())).await;
                     }
                 }
+                let layer_us = pass.captured_layer_us();
                 observe_lane_round(draft.borrow_mut().as_deref_mut(), capture_routes, lane, shared,
-                    pass.captured_routes(), &pass.captured_layer_us(), &active.borrow(), &members, &inputs,
+                    pass.captured_routes(), &layer_us, &active.borrow(), &members, &inputs,
                     &accepted_inputs, started, draft_us);
+                if let Some(live) = live {
+                    let active = active.borrow();
+                    live.push(console_round(tally, lane, shared, started, draft_us,
+                        prepared_us.saturating_sub(draft_us), verify_us, &layer_us, pass.captured_ffn_split(),
+                        &active, &members, &inputs, round.as_ref()));
+                    if live.gauges_due() {
+                        live.push(console_gauges(&active, &requests.borrow(), &prefixes.borrow(), receive.len(), None));
+                    }
+                }
                 tracing::debug!(target: "ds41rt::timing", lane, requests=members.len(),
                     proposed=inputs.iter().map(|r| r.len()-1).sum::<usize>(), accepted, emitted,
                     draft_us, prepared_us, verify_us, total_us=started.elapsed().as_micros() as u64,
@@ -257,6 +275,7 @@ async fn lane<'a, P: VerificationTarget<'a>, C: DraftChain<'a>>(lane: usize, lib
 
 async fn retire<'a, C: DraftChain<'a>>(lane: usize, request: Active<'a>, requests: &RefCell<&mut Requests<'a>>,
     prefixes: &RefCell<&mut PrefixCache<'a>>, draft: &RefCell<Option<&mut DraftRuntime<'_, 'a, C>>>) -> Result<()> {
+    request.console_retire();
     // Chunk-4b: consult the turn bank before requiring the retained frontier, so
     // a cache-disabled deployment does not warn about a frontier it correctly
     // chose not to download.

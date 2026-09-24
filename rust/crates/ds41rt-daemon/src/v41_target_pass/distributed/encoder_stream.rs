@@ -115,6 +115,7 @@ impl<'w, 'a> DistributedTargetPass<'w, 'a> {
                 complete: false,
             };
             reserved[index].notify_one();
+            let started = std::time::Instant::now();
             let flow = EncoderFlow {
                 predecessor: index.checked_sub(1).map(|i| &published[i]),
                 successor: (index + 1 < chunks.len()).then_some(&published[index]),
@@ -154,6 +155,9 @@ impl<'w, 'a> DistributedTargetPass<'w, 'a> {
             )?;
             guard.complete = true;
             committed[index].notify_one();
+            crate::v41_native_serve::console::totals::prefill(chunk.len());
+            crate::v41_native_serve::console::Prefill::done(crate::v41_native_serve::console::PrefillKind::Chunk,
+                parity, index, chunks.len(), chunk.len(), started);
         }
         Ok(())
     }
