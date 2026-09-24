@@ -41,36 +41,54 @@ __global__ void attend(const __nv_bfloat16* query, const uint8_t* ring,
 #pragma unroll
   for(int t=0;t<8;++t)wmma::fill_fragment(acc[t],0.0f);
   const int count=int(window.valid_rows)+Width;
+  const bool vector_ring=reinterpret_cast<uintptr_t>(ring)%16==0;
+  const bool vector_draft=reinterpret_cast<uintptr_t>(draft)%16==0;
   for(int start=0;start<count;start+=64) {
     // Concatenate logically, preserving the reference's 64-key chunk boundaries.
-    for(int i=tid;i<64*512;i+=128) {
-      const int key=start+i/512,col=i%512;
-      __nv_bfloat16 value=__float2bfloat16(0);
+    // Sixteen columns per step share one E8 scale (32-column groups), so each
+    // thread issues one 16-byte ring load instead of sixteen scalar loads.
+    for(int i=tid;i<64*32;i+=128) {
+      const int key=start+i/32,col=(i%32)*16;
+      __align__(16) __nv_bfloat16 value[16];
       if(key<int(window.valid_rows)) {
-        const uint64_t offset=(uint64_t(window.slot)*128+key)*DS41RT_V41_DSPARK_KV_ROW_BYTES;
-        __nv_fp8_e4m3 packed; packed.__x=ring[offset+col];
-        value=__float2bfloat16_rn(ldexpf(float(packed),int(ring[offset+512+col/32])-127));
+        const uint8_t* row=ring+(uint64_t(window.slot)*128+key)*DS41RT_V41_DSPARK_KV_ROW_BYTES;
+        __align__(16) uint8_t packed[16];
+        if(vector_ring) *reinterpret_cast<uint4*>(packed)=*reinterpret_cast<const uint4*>(row+col);
+        else for(int j=0;j<16;++j)packed[j]=row[col+j];
+        const int exponent=int(row[512+col/32])-127;
+#pragma unroll
+        for(int j=0;j<16;++j) {
+          __nv_fp8_e4m3 fp8; fp8.__x=packed[j];
+          value[j]=__float2bfloat16_rn(ldexpf(float(fp8),exponent));
+        }
+      } else if(key<count) {
+        const __nv_bfloat16* source=draft+(uint64_t(request)*Width+key-window.valid_rows)*512+col;
+        if(vector_draft) {
+          reinterpret_cast<uint4*>(value)[0]=reinterpret_cast<const uint4*>(source)[0];
+          reinterpret_cast<uint4*>(value)[1]=reinterpret_cast<const uint4*>(source)[1];
+        } else for(int j=0;j<16;++j)value[j]=source[j];
+      } else {
+#pragma unroll
+        for(int j=0;j<16;++j)value[j]=__float2bfloat16(0);
       }
-      else if(key<count)value=draft[(uint64_t(request)*Width+key-window.valid_rows)*512+col];
-      kv[i]=value;
+      uint4* destination=reinterpret_cast<uint4*>(kv+(i/32)*512+col);
+      destination[0]=reinterpret_cast<const uint4*>(value)[0];
+      destination[1]=reinterpret_cast<const uint4*>(value)[1];
     }
     __syncthreads();
-    if(warp==0) {
-      wmma::fragment<wmma::accumulator,16,16,16,float> scores[4];
-#pragma unroll
-      for(int t=0;t<4;++t)wmma::fill_fragment(scores[t],0.0f);
+    {
+      // Each warp owns one 16-key score tile; its accumulation over k is the
+      // same sequence the single-warp form used, so scores are unchanged.
+      wmma::fragment<wmma::accumulator,16,16,16,float> score;
+      wmma::fill_fragment(score,0.0f);
       for(int k=0;k<512;k+=16) {
         wmma::fragment<wmma::matrix_a,16,16,16,__nv_bfloat16,wmma::row_major> a;
         wmma::load_matrix_sync(a,query+base+k,512);
-#pragma unroll
-        for(int t=0;t<4;++t) {
-          wmma::fragment<wmma::matrix_b,16,16,16,__nv_bfloat16,wmma::col_major> b;
-          wmma::load_matrix_sync(b,kv+t*16*512+k,512);
-          wmma::mma_sync(scores[t],a,b,scores[t]);
-        }
+        wmma::fragment<wmma::matrix_b,16,16,16,__nv_bfloat16,wmma::col_major> b;
+        wmma::load_matrix_sync(b,kv+warp*16*512+k,512);
+        wmma::mma_sync(score,a,b,score);
       }
-#pragma unroll
-      for(int t=0;t<4;++t)wmma::store_matrix_sync(scratch+t*16,scores[t],64,wmma::mem_row_major);
+      wmma::store_matrix_sync(scratch+warp*16,score,64,wmma::mem_row_major);
     }
     __syncthreads();
     for(int h=warp;h<16;h+=4) {

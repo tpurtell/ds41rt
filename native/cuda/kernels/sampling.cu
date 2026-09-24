@@ -595,6 +595,73 @@ __global__ void logits_argmax_f32_kernel(const float* logits, uint32_t* out_indi
   }
 }
 
+// Row-parallel argmax for decode-sized batches. One 1024-thread block per row
+// keeps many vectorized loads in flight; the original 256-thread scalar scan was
+// memory-latency bound (about 171 us for six 129280-entry rows on SM120). The
+// packed key orders by logit and then by ascending token ID, so ties and the
+// NaN/-inf behaviour match `logits_argmax_f32_kernel` exactly: NaN is never
+// selected and an all-(-inf) row yields token 0.
+constexpr int kWideArgmaxBlock = 1024;
+
+template <bool CheckFinite>
+__global__ void __launch_bounds__(kWideArgmaxBlock) logits_argmax_f32_wide_kernel(
+    const float* logits, uint32_t* out_indices, float* out_scores, size_t vocab) {
+  __shared__ uint64_t warp_best[kWideArgmaxBlock / 32];
+  __shared__ int warp_invalid[kWideArgmaxBlock / 32];
+  const size_t row = blockIdx.x;
+  const float4* row4 = reinterpret_cast<const float4*>(logits + row * vocab);
+  const uint32_t vectors = static_cast<uint32_t>(vocab / 4);
+  uint64_t best = topk_sort_key(-CUDART_INF_F, 0);
+  int invalid = 0;
+  auto consider = [&](float score, uint32_t token) {
+    if constexpr (CheckFinite) invalid |= !isfinite(score);
+    if (!isnan(score)) {
+      const uint64_t key = topk_sort_key(score, token);
+      best = key > best ? key : best;
+    }
+  };
+#pragma unroll 4
+  for (uint32_t i = threadIdx.x; i < vectors; i += kWideArgmaxBlock) {
+    const float4 v = __ldg(row4 + i);
+    const uint32_t token = i * 4;
+    consider(v.x, token);
+    consider(v.y, token + 1);
+    consider(v.z, token + 2);
+    consider(v.w, token + 3);
+  }
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    const uint64_t other = __shfl_down_sync(0xffffffffU, best, offset);
+    best = other > best ? other : best;
+    if constexpr (CheckFinite) invalid |= __shfl_down_sync(0xffffffffU, invalid, offset);
+  }
+  const int warp = threadIdx.x / 32;
+  if ((threadIdx.x & 31) == 0) {
+    warp_best[warp] = best;
+    if constexpr (CheckFinite) warp_invalid[warp] = invalid;
+  }
+  __syncthreads();
+  if (warp == 0) {
+    best = warp_best[threadIdx.x];
+    if constexpr (CheckFinite) invalid = warp_invalid[threadIdx.x];
+    for (int offset = 16; offset > 0; offset >>= 1) {
+      const uint64_t other = __shfl_down_sync(0xffffffffU, best, offset);
+      best = other > best ? other : best;
+      if constexpr (CheckFinite) invalid |= __shfl_down_sync(0xffffffffU, invalid, offset);
+    }
+    if (threadIdx.x == 0) {
+      out_indices[row] = ~static_cast<uint32_t>(best);
+      const float score = ordered_bits_to_float(static_cast<uint32_t>(best >> 32));
+      if constexpr (CheckFinite) out_scores[row] = invalid ? CUDART_NAN_F : score;
+      else out_scores[row] = score;
+    }
+  }
+}
+
+bool wide_argmax_eligible(const float* logits, size_t vocab) {
+  return vocab % 4 == 0 && vocab / 4 <= std::numeric_limits<uint32_t>::max() &&
+         reinterpret_cast<uintptr_t>(logits) % 16 == 0;
+}
+
 __global__ void logits_sample_topk_topp_f32_kernel(const float* logits,
                                                    const float* random_uniforms,
                                                    uint32_t* out_indices, float* out_scores,
@@ -1474,8 +1541,13 @@ extern "C" ds41rt_status_t ds41rt_cuda_logits_argmax_f32_async(
     return valid;
   }
   cudaStream_t stream = reinterpret_cast<cudaStream_t>(cuda_stream);
-  logits_argmax_f32_kernel<false><<<static_cast<int>(rows), kBlock, 0, stream>>>(
-      logits, out_indices, out_scores, rows, vocab);
+  if (wide_argmax_eligible(logits, vocab)) {
+    logits_argmax_f32_wide_kernel<false><<<static_cast<int>(rows), kWideArgmaxBlock, 0, stream>>>(
+        logits, out_indices, out_scores, vocab);
+  } else {
+    logits_argmax_f32_kernel<false><<<static_cast<int>(rows), kBlock, 0, stream>>>(
+        logits, out_indices, out_scores, rows, vocab);
+  }
   return status_from_cuda(cudaGetLastError());
 }
 
@@ -1488,8 +1560,13 @@ extern "C" ds41rt_status_t ds41rt_cuda_logits_argmax_checked_f32_async(
     return valid;
   }
   cudaStream_t stream = reinterpret_cast<cudaStream_t>(cuda_stream);
-  logits_argmax_f32_kernel<true><<<static_cast<int>(rows), kBlock, 0, stream>>>(
-      logits, out_indices, out_scores, rows, vocab);
+  if (wide_argmax_eligible(logits, vocab)) {
+    logits_argmax_f32_wide_kernel<true><<<static_cast<int>(rows), kWideArgmaxBlock, 0, stream>>>(
+        logits, out_indices, out_scores, vocab);
+  } else {
+    logits_argmax_f32_kernel<true><<<static_cast<int>(rows), kBlock, 0, stream>>>(
+        logits, out_indices, out_scores, rows, vocab);
+  }
   return status_from_cuda(cudaGetLastError());
 }
 
