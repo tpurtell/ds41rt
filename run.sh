@@ -435,8 +435,10 @@ fi
 # them, so a multi-homed six-rank launch can pin the rail without changing any
 # default. Values were format-checked above by release_validate_verbs_device_map.
 rdma_env_args=()
-# Diagnostic switch: DS41RT_STAGE_CHAIN=0 restores host-drained target stages.
-[[ -z "${DS41RT_STAGE_CHAIN:-}" ]] || rdma_env_args+=(-e "DS41RT_STAGE_CHAIN=$DS41RT_STAGE_CHAIN")
+# Optional coordinator switches, forwarded only when set.
+for switch_name in DS41RT_STAGE_CHAIN DS41RT_WINDOW_BATCH DS41RT_TP2_TOKEN_SUMS; do
+  [[ -z "${!switch_name:-}" ]] || rdma_env_args+=(-e "$switch_name=${!switch_name}")
+done
 for rdma_env_name in DS41RT_PROTOCOL_V2_VERBS_HOST_DEVICE_MAP DS41RT_VERBS_APP_IB_PORT_NUM DS41RT_PROTOCOL_V2_VERBS_HOST_EXECUTION_LANES; do
   [[ -n "${!rdma_env_name:-}" ]] && rdma_env_args+=(-e "$rdma_env_name=${!rdma_env_name}")
 done

@@ -39,8 +39,17 @@ Status: `[ ]` open, `[~]` in progress, `[x]` landed (commit), `[-]` dropped
   µs from first upload to routes.
 - [x] dSpark policy fed device-timed layer costs (CUDA events at FFN finish);
   host stamps under the chain misled it (topic C2 −8% → +13% vs v13).
-- [~] Two-RTX stage chain: per-device events; peer DMA (block handoff, TP2
+- [x] Two-RTX stage chain (c397bc2): per-device events; peer DMA (block handoff, TP2
   FFN, TP2 shared, result return) settles the chain first; head settles once.
+  Chained vs drained greedy outputs identical (build g). Drained passes wait
+  for their layer timing events (a pending record failed stream rebinds).
+- [x] Two-RTX policy costs (c397bc2): the first layer after the GPU handoff was
+  unmeasured, so the round cost never fitted and the policy stayed cold (all
+  rounds verified five drafts per request; topic C4 −4.8% vs v13). A layer
+  entry event on the receiving GPU times that layer.
+- [-] Skip re-uploading unchanged positions and router masks per layer: no
+  measurable change (pre-dispatch 185 vs 186 µs, verify 32.70 vs 32.68 ms at
+  C1); the copies overlap other work. Reverted.
 - [x] Target greedy argmax: bitwise identical, 171 → 17 µs in the pass (e9ae29f).
 - [x] Router: bitwise identical, 17.6 → 12.0 µs at 6 rows (e9ae29f).
 
@@ -57,8 +66,10 @@ Status: `[ ]` open, `[~]` in progress, `[x]` landed (commit), `[-]` dropped
 - [ ] Router graph writes routes/rows straight into registered send slots;
   remove per-layer Vec clones, channel/oneshot allocation, repeated prefix
   encoding.
-- [ ] Coordinator receive loop: tight poll without tokio yield per miss,
-  in-place response handling, no pooled-frame copy.
+- [-] Coordinator receive loop: already spins between yields and hands
+  pinned frames straight to the plane uploads; coordinator receive exceeds
+  the worker's total by ~22 µs, mostly the two network hops. Sharing one
+  request copy across ranks showed no dispatch change (5 µs); reverted.
 - [x] Worker: hidden rows copied on-stream from the mapped request frame, route
   ids/weights from pinned staging; upload 17 → 4 µs per layer (827383a).
 - [ ] Worker: fold compaction into the expert kernel epilogue or graph the
@@ -74,13 +85,10 @@ Status: `[ ]` open, `[~]` in progress, `[x]` landed (commit), `[-]` dropped
 - [x] Single-CTA route plan for decode capacities: identical outputs,
   12.3 → 3.6 µs per call on GB10 (acb4dfb, b12x 7fcc094).
 - [ ] Fuse slice reduce with the worker's compact route sum (~8 µs).
-- [~] Worker L2 prefetch of predicted next-layer experts during idle gaps,
-  behind `DS41RT_EXPERT_L2_PREFETCH=K`. Route traces: 2.3 of 3 predicted
-  experts are used by the next request (code and topic).
-  Dodo microbenchmark: 3 of 23 experts in the 18 MB persisting set-aside cut
-  the kernel 15% (582 → 494 µs). Needs: hit rate from real route traces;
-  gate to a single active lane (lanes are not layer-locked, so the next
-  request is ambiguous at C2+); A/B at C1 and C2–C16.
+- [-] Worker L2 prefetch of predicted next-layer experts during idle gaps.
+  Served hits were 2.2 of 3 predicted experts with ~300 µs of idle time
+  before the next request, yet the C1 expert kernel slowed 498 → 516 µs with
+  the persisting set-aside in place (A/B −2 to −10%). Dropped; code removed.
 
 - [x] Batched window KV commit: one upload + one launch for all 40 layers
   (d7d3b32).
@@ -91,8 +99,10 @@ Status: `[ ]` open, `[~]` in progress, `[x]` landed (commit), `[-]` dropped
   joins it (01591f0).
 - [ ] Graph the local expert pipeline and fuse the finish reduce.
 - [ ] Shared expert: quantize the input once for gate and up.
-- [ ] TP2 (two RTX): sum routes per token before the peer transfer (FP32
-  per-token sums instead of FP32 route planes); drop the extra copy and waits.
+- [x] TP2 (two RTX, 20 local layers, 4a3fa6b): each rank sums its six FP32 route
+  planes per token before the peer transfer (one FP32 row per token instead
+  of six; replaces the on-device route copy). Copy+reduce was 43 µs/layer at
+  12 rows. `DS41RT_TP2_TOKEN_SUMS=0` keeps route planes.
 
 ## 5. Attention side
 
@@ -104,15 +114,20 @@ Status: `[ ]` open, `[~]` in progress, `[x]` landed (commit), `[-]` dropped
 
 - [x] Draft attention: bitwise identical, 150 → 39 µs at a full window
   (e9ae29f).
-- [~] Draft vocabulary head in FP8 behind `DS41RT_DRAFT_FP8_HEAD=1` (860 →
-  440 µs at 5 rows, 2.6% rms logit error); needs an acceptance A/B.
+- [-] Draft vocabulary head in FP8 (860 → 440 µs at 5 rows, 2.6% rms logit
+  error). Acceptance fell on topic (0.656 → 0.639) and fable (0.626 → 0.578)
+  and the A/B was mixed (code −1.6/+0.7/−1.3%, topic +2.3/+5.3/+1.5% at
+  C1/C2/C4). Not a clear win; the draft head stays BF16. Code removed.
 - [ ] Two-RTX draft terminal as one graph (no host-driven phases); one-RTX
   propose with a single sync.
 - [ ] Draft kv projection reuses the query-side quantized input.
 
 ## 7. Two-RTX sampled decode
 
-- [ ] Device sampler for the two-RTX layout (no full-logit downloads).
+- [x] Device sampler for the two-RTX layout (c397bc2): vocabulary halves assembled on
+  the head GPU, single-GPU target sampler, only ids/scores/status downloaded.
+  All sampled profiles pass (build g): weighted 114–122 tok/s vs v13 top-p
+  95.6.
 
 ## 8. Release v14
 
@@ -131,3 +146,5 @@ Status: `[ ]` open, `[~]` in progress, `[x]` landed (commit), `[-]` dropped
 | v13 baseline | 00b25e7 | 134 | 38.7 | timing logs, C1 code |
 | kernels + worker + planner + chain | build c | 145 | 35.8 | timing logs |
 | + device-timed policy costs | build d | 152 | — | lite A/B vs v13 137 (+10.5%) |
+| 2×RTX chain + sampler | build g | — | — | 2×RTX lite A/B vs v13: code C1/C2/C4 +8.3/−1.2/+3.5%, topic +8.9/+0.6/−4.8% (cold policy) |
+| + handoff timing, TP2 sums | build h | 148 | 35.1 | 2×RTX lite A/B vs v13: code +10.4/+2.6/+7.7%, topic +5.1/−0.1/+1.1% |
