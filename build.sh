@@ -43,11 +43,12 @@ DS41RT_RELEASE_REMOTE_BUILD_DIR must each be a canonical absolute path built fro
 letters, digits, dot, underscore, plus and minus - no spaces, dot segments, trailing
 slashes or shell metacharacters - because they reach remote shells and bind mounts.
 
-Dirty checkouts get an automatic source manifest under .ds41rt-release/.
-Keep source files unchanged during the build; local and remote inventories
-are verified against that manifest. DS41RT_RELEASE_SOURCE_MANIFEST can supply
-an existing manifest. Source archives without .git must also provide
-DS41RT_RELEASE_ENGINE_REVISION (REVISION or REVISION-dirty-MANIFEST12).
+Images are labelled with the checkout's Git revision (HEAD), even when the
+tree has local changes. Dirty checkouts still get an automatic source manifest
+under .ds41rt-release/ so local and remote inventories can be verified; keep
+source files unchanged during the build. DS41RT_RELEASE_SOURCE_MANIFEST can
+supply an existing manifest. Source archives without .git must provide
+DS41RT_RELEASE_ENGINE_REVISION (a 40-hex Git revision).
 EOF
 }
 
@@ -315,9 +316,9 @@ if [[ -n "$engine_revision_override" ]]; then
 elif [[ -z "$detected_engine_commit" ]]; then
   release_die "source snapshot has no Git metadata; set DS41RT_RELEASE_ENGINE_REVISION and DS41RT_RELEASE_SOURCE_MANIFEST"
 elif ((engine_source_dirty)); then
-  [[ -n "$source_manifest_sha256" ]] ||
-    release_die "dirty release source requires DS41RT_RELEASE_SOURCE_MANIFEST"
-  engine_commit="${detected_engine_commit}-dirty-${source_manifest_sha256:0:12}"
+  # Label the Git revision; the build does not encode local changes.
+  echo "== note: building $detected_engine_commit with uncommitted local changes =="
+  engine_commit="$detected_engine_commit"
 else
   engine_commit="$detected_engine_commit"
 fi

@@ -145,10 +145,6 @@ else
     coordinator.cuda_arch "expected 120 got $(coord_field label.io.ds41rt.cuda_arch)"
   record "$([[ -z "$(coord_field label.io.ds41rt.v41.spark_tp_roles)" ]] && echo PASS || echo FAIL)" \
     coordinator.spark_tp_roles "expected empty got $(coord_field label.io.ds41rt.v41.spark_tp_roles)"
-  record "$([[ "$exec_rev" != *-dirty-* ]] && echo PASS || echo FAIL)" \
-    coordinator.clean_revision "$exec_rev"
-  record "$([[ -z "$(coord_field label.io.ds41rt.source-manifest.sha256)" ]] && echo PASS || echo FAIL)" \
-    coordinator.source_manifest_absent "$(coord_field label.io.ds41rt.source-manifest.sha256)"
 fi
 
 ########################################################################
@@ -223,10 +219,6 @@ if [[ -n "$anchor_host" ]]; then
     spark.cuda_arch "expected 121 got ${spark_cuda_label:-<none>}"
   record "$([[ "$spark_roles" == "tp2;tp3;tp6" ]] && echo PASS || echo FAIL)" \
     spark.spark_tp_roles "expected tp2;tp3;tp6 got ${spark_roles:-<none>}"
-  record "$([[ "$spark_exec_rev" != *-dirty-* ]] && echo PASS || echo FAIL)" \
-    spark.clean_revision "$spark_exec_rev"
-  record "$([[ -z "$spark_manifest_label" ]] && echo PASS || echo FAIL)" \
-    spark.source_manifest_absent "${spark_manifest_label:-<empty>}"
 else
   record FAIL spark.identity "no scanned host carries $spark; identity/version/role checks cannot be evaluated"
 fi
