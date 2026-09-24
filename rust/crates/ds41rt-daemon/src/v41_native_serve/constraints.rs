@@ -5,6 +5,9 @@ use ds41rt_ffi::{NativeLibrary, Ds41rtXGrammarCompiler, Ds41rtXGrammarGrammar,
     Ds41rtXGrammarMatcher, DS41RT_XGRAMMAR_STRUCTURAL_TAG};
 use std::{collections::{HashMap, VecDeque}, path::PathBuf, sync::Arc};
 
+/// The tokenizer's stop token, the only stop id the grammar compiler is given.
+const STOP_TOKEN: u32 = 1;
+
 pub(super) struct Compiler<'a> {
     library: &'a NativeLibrary,
     tokenizer: PathBuf,
@@ -18,7 +21,7 @@ impl<'a> Compiler<'a> {
     }
     pub fn matcher(&mut self, spec: &NativeConstraint) -> Result<State<'a>> {
         if self.compiler.is_none() {
-            self.compiler = Some(self.library.xgrammar_compiler(&self.tokenizer, VOCAB, &[1])?);
+            self.compiler = Some(self.library.xgrammar_compiler(&self.tokenizer, VOCAB, &[STOP_TOKEN as i32])?);
         }
         let grammar = if let Some(grammar) = self.grammars.get(spec) { grammar.clone() } else {
             let grammar = Arc::new(self.compiler.as_ref().unwrap().compile(
@@ -32,7 +35,7 @@ impl<'a> Compiler<'a> {
         };
         self.order.retain(|key| key != spec);
         self.order.push_back(spec.clone());
-        Ok(State { matcher: grammar.matcher()?, mask: vec![0; VOCAB.div_ceil(32)] })
+        Ok(State { matcher: grammar.matcher()?, mask: vec![0; VOCAB.div_ceil(32)], stop: STOP_TOKEN })
     }
 }
 
@@ -60,6 +63,7 @@ where
 pub(super) struct State<'a> {
     matcher: Ds41rtXGrammarMatcher<'a>,
     mask: Vec<u32>,
+    stop: u32,
 }
 impl State<'_> {
     pub fn mask(&mut self) -> Result<Option<&[u32]>> {
@@ -69,13 +73,22 @@ impl State<'_> {
         ensure!(self.matcher.accept_token(token)?, "emitted token violates request grammar");
         Ok(())
     }
+    /// Keep the drafts the grammar accepts, stopping at the first it rejects.
+    ///
+    /// A grammar whose root could end here (`is_completed`) may still accept
+    /// more tokens: free text around tool-call tags is always completable. So
+    /// completion alone must not end the proposal, or every tool-enabled request
+    /// loses speculation for all of its free text. When only the stop token is
+    /// legal, the next non-stop draft is rejected here anyway. A stop-token draft
+    /// is never verified; the target emits the stop token itself.
     pub fn truncate_proposal(&self, input: &mut Vec<u32>) -> Result<()> {
         ensure!(!input.is_empty(), "grammar proposal has no emitted anchor");
         let mut branch = self.matcher.fork()?;
-        if branch.is_completed()? { input.truncate(1); return Ok(()); }
         for index in 1..input.len() {
-            if !branch.accept_token(input[index])? { input.truncate(index); break; }
-            if branch.is_completed()? { input.truncate(index + 1); break; }
+            if input[index] == self.stop || !branch.accept_token(input[index])? {
+                input.truncate(index);
+                break;
+            }
         }
         Ok(())
     }
@@ -263,7 +276,7 @@ mod tests {
         let mut matcher = grammar.matcher().unwrap();
         // The committed anchor `{` (token 1) is already in the authoritative state.
         assert!(matcher.accept_token(1).unwrap(), "the anchor must be an allowed token");
-        let mut state = State { matcher, mask: vec![0u32; 1] };
+        let mut state = State { matcher, mask: vec![0u32; 1], stop: 6 };
         let before = state.mask().unwrap().map(<[u32]>::to_vec);
 
         // Hypothetical draft prefix: anchor, space, "x", colon.
@@ -291,5 +304,47 @@ mod tests {
             "unexpected error: {illegal}");
         // A row outside the round is rejected rather than silently clamped.
         assert!(state.prepare_verification_mask_row(&input, input.len()).is_err());
+    }
+
+    /// Drafts survive grammar truncation exactly as far as the grammar accepts
+    /// them. Free text around a tag is always completable, which must not stop
+    /// speculation; a finished JSON value admits only the stop token, which the
+    /// proposal never carries into verification.
+    #[test]
+    fn truncation_keeps_every_draft_the_grammar_accepts() {
+        let Some(path) = std::env::var_os("DS41RT_NATIVE_LIB") else {
+            eprintln!("skipping: DS41RT_NATIVE_LIB is not set");
+            return;
+        };
+        let library = unsafe { NativeLibrary::load(path).unwrap() };
+        let tokenizer = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../native/tests/fixtures/xgrammar_tiny_tokenizer.json");
+        // Vocabulary: 1 `{`, 2 `"x"`, 3 `:`, 4 `"a"`, 5 `}`, 6 <eos>, 7 space.
+        let compiler = library.xgrammar_compiler(&tokenizer, 8, &[6]).unwrap();
+
+        // Free text with an optional triggered tag, like tool calls without tool_choice=required.
+        let tagged = r#"{"type":"structural_tag","format":{"type":"triggered_tags","triggers":["{"],"tags":[{"type":"tag","begin":"{","content":{"type":"const_string","value":"\"a\""},"end":"}"}],"at_least_one":false,"stop_after_first":true}}"#;
+        let grammar = compiler.compile(DS41RT_XGRAMMAR_STRUCTURAL_TAG, Some(tagged), true).unwrap();
+        let mut matcher = grammar.matcher().unwrap();
+        assert!(matcher.accept_token(7).unwrap(), "free text accepts the anchor");
+        assert!(matcher.is_completed().unwrap(), "free text is completable, the case that used to drop drafts");
+        let state = State { matcher, mask: vec![0u32; 1], stop: 6 };
+        let truncated = |proposal: &[u32]| { let mut input = proposal.to_vec(); state.truncate_proposal(&mut input).unwrap(); input };
+        assert_eq!(truncated(&[7, 2, 3, 7, 2]), [7, 2, 3, 7, 2], "free-text drafts are all kept");
+        assert_eq!(truncated(&[7, 2, 1, 4, 5, 7]), [7, 2, 1, 4, 5], "drafts continue through the tag, then stop after it");
+        assert_eq!(truncated(&[7, 2, 1, 2]), [7, 2, 1], "an illegal draft inside the tag ends the proposal");
+        assert_eq!(truncated(&[7, 2, 6, 3]), [7, 2], "a stop-token draft is not verified");
+
+        // A completed JSON value admits only the stop token.
+        let schema = r#"{"type":"object","properties":{"x":{"type":"string"}},"required":["x"],"additionalProperties":false}"#;
+        let grammar = compiler.compile(ds41rt_ffi::DS41RT_XGRAMMAR_JSON_SCHEMA, Some(schema), true).unwrap();
+        let mut matcher = grammar.matcher().unwrap();
+        // The anchor (the closing brace) is already in the authoritative state.
+        for token in [1, 2, 3, 4, 5] { assert!(matcher.accept_token(token).unwrap()); }
+        assert!(matcher.is_completed().unwrap());
+        let state = State { matcher, mask: vec![0u32; 1], stop: 6 };
+        let truncated = |proposal: &[u32]| { let mut input = proposal.to_vec(); state.truncate_proposal(&mut input).unwrap(); input };
+        assert_eq!(truncated(&[5, 6, 1]), [5], "after the closing brace no draft is verified");
+        assert_eq!(truncated(&[5, 1, 2]), [5], "a token past the completed value is rejected");
     }
 }
