@@ -428,6 +428,8 @@ impl AttentionQueryWave<'_, '_> {
                 )?;
             }
             prepare(self.stream.raw, self.input())?;
+            // The normalized input is complete here; cache producers fork from it.
+            unsafe { crate::v41_memory::chain::mark_fork(self.stream.library, self.stream.raw)?; }
             let rows = tokens.len() as u32;
             if self
                 .graphs
@@ -474,6 +476,8 @@ impl AttentionQueryWave<'_, '_> {
             self.stream.library.copy_host_buffer_h2d_async(self.positions(), self.position_staging.buffer,
                 tokens.len()*8, self.stream.raw)?;
             prepare(self.stream.raw, self.input())?;
+            // The normalized input is complete here; cache producers fork from it.
+            crate::v41_memory::chain::mark_fork(self.stream.library, self.stream.raw)?;
             if let Some((graph, _)) = graph { self.stream.library.cuda_graph_launch(graph, self.stream.raw) }
             else { self.enqueue(rows) }
         } })();

@@ -34,6 +34,10 @@ struct Current {
     events: Rc<[(i32, *mut c_void)]>,
     /// Index of the event holding the chain head, if any stage finished.
     head: Rc<Cell<Option<usize>>>,
+    /// Per-device fork events: a stage marks the point where its outputs that
+    /// later producers read are complete, before its remaining work.
+    forks: Rc<[(i32, *mut c_void)]>,
+    fork: Rc<Cell<Option<usize>>>,
 }
 
 thread_local! {
@@ -45,6 +49,8 @@ pub(crate) struct StageChain<'a> {
     library: &'a NativeLibrary,
     events: Rc<[(i32, *mut c_void)]>,
     head: Rc<Cell<Option<usize>>>,
+    forks: Rc<[(i32, *mut c_void)]>,
+    fork: Rc<Cell<Option<usize>>>,
 }
 impl<'a> StageChain<'a> {
     /// A chain for the current device only.
@@ -56,27 +62,32 @@ impl<'a> StageChain<'a> {
     pub fn on_devices(library: &'a NativeLibrary, devices: &[i32]) -> Result<Self> {
         let previous = library.cuda_get_device()?;
         let mut events = Vec::with_capacity(devices.len());
+        let mut forks = Vec::with_capacity(devices.len());
         let created = (|| -> Result<()> {
             for &device in devices {
                 library.cuda_set_device(device)?;
                 events.push((device, library.cuda_event_create_ordering()?));
+                forks.push((device, library.cuda_event_create_ordering()?));
             }
             Ok(())
         })();
         library.cuda_set_device(previous)?;
         if let Err(error) = created {
-            for &(_, event) in &events { let _ = unsafe { library.cuda_event_destroy(event) }; }
+            for &(_, event) in events.iter().chain(&forks) { let _ = unsafe { library.cuda_event_destroy(event) }; }
             return Err(error);
         }
-        Ok(Self { library, events: events.into(), head: Rc::new(Cell::new(None)) })
+        Ok(Self { library, events: events.into(), head: Rc::new(Cell::new(None)),
+            forks: forks.into(), fork: Rc::new(Cell::new(None)) })
     }
     /// An owned handle that can wrap a future borrowing the chain's owner.
     pub fn handle(&self) -> ChainHandle {
-        ChainHandle(Current { events: self.events.clone(), head: self.head.clone() })
+        ChainHandle(Current { events: self.events.clone(), head: self.head.clone(),
+            forks: self.forks.clone(), fork: self.fork.clone() })
     }
     /// Host wait for everything recorded so far, then forget the head. Call
     /// after the pass (or an aborted pass) before any unscoped consumer.
     pub fn drain(&self) -> Result<()> {
+        self.fork.set(None);
         if let Some(head) = self.head.replace(None) {
             unsafe { self.library.cuda_event_synchronize(self.events[head].1)?; }
         }
@@ -88,7 +99,7 @@ impl Drop for StageChain<'_> {
         if let Err(error) = self.drain() {
             tracing::error!(%error, "draining target stage chain");
         }
-        for &(_, event) in self.events.iter() {
+        for &(_, event) in self.events.iter().chain(self.forks.iter()) {
             if let Err(error) = unsafe { self.library.cuda_event_destroy(event) } {
                 tracing::error!(%error, "destroying target stage chain event");
             }
@@ -144,9 +155,38 @@ pub(crate) fn active() -> bool {
 /// `stream` is a live stream on the chain's device.
 pub(crate) unsafe fn join(library: &NativeLibrary, stream: *mut c_void) -> Result<()> {
     let Some(current) = current() else { return Ok(()) };
+    // A full join ends any fork window: later stages see the whole chain.
+    current.fork.set(None);
     let Some(head) = current.head.get() else { return Ok(()) };
     // Cross-device event waits are permitted; the event lives on its own device.
     unsafe { library.cuda_stream_wait_event(stream, current.events[head].1) }
+}
+
+/// Mark a fork on `stream`: work queued so far on it (for example the query
+/// stage's normalized layer input) is what fork joiners depend on, while the
+/// stage's later work (the query projections) may overlap theirs.
+/// # Safety
+/// `stream` is a live stream on a chain device, already joined to the head.
+pub(crate) unsafe fn mark_fork(library: &NativeLibrary, stream: *mut c_void) -> Result<()> {
+    let Some(current) = current() else { return Ok(()) };
+    let device = library.cuda_get_device()?;
+    let Some(index) = current.forks.iter().position(|&(d, _)| d == device) else { return Ok(()) };
+    unsafe { library.cuda_event_record(current.forks[index].1, stream)?; }
+    current.fork.set(Some(index));
+    Ok(())
+}
+
+/// Join the current fork instead of the head, so this stage overlaps the rest
+/// of the forking stage. Its `finish` still merges the head. Without a fork
+/// (none marked since the last full join) this is [`join`].
+/// # Safety
+/// The stage reads only outputs complete at the fork (plus its own state).
+pub(crate) unsafe fn join_fork(library: &NativeLibrary, stream: *mut c_void) -> Result<()> {
+    let Some(current) = current() else { return Ok(()) };
+    match current.fork.get() {
+        Some(fork) => unsafe { library.cuda_stream_wait_event(stream, current.forks[fork].1) },
+        None => unsafe { join(library, stream) },
+    }
 }
 
 /// Complete a stage: record the chain head on `stream` inside a scope,

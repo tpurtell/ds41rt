@@ -784,7 +784,8 @@ impl CompressorWave<'_, '_> {
         self.select_graph(prepared.rows, state.owner, false)?;
         let capture = self.graph.is_none();
         let result = (|| -> Result<()> {
-            unsafe { crate::v41_memory::chain::join(self.stream.library, self.stream.raw)?; }
+            // Reads only the normalized layer input: overlap the query projections.
+            unsafe { crate::v41_memory::chain::join_fork(self.stream.library, self.stream.raw)?; }
             unsafe { self.stream.library.copy_d2d_async(self.input.buffer, query.hidden,
                 query.hidden.bytes, self.stream.raw)?; }
             self.upload_queued(&prepared)?;
@@ -855,6 +856,23 @@ impl CompressorWave<'_, '_> {
             && query.tokens()?.iter().copied().eq(chunks.iter().flat_map(|c|
                 c.position..c.position + u64::from(c.tokens))),
             "compressor query layer, rows or positions differ");
+        if crate::v41_memory::chain::active() && self.pending_query.is_none()
+            && self.graph.is_some_and(|(_, n, o)| n == prepared.rows && o == state.owner) {
+            // Captured shape: order the producer on the chain (forked from the
+            // query's normalized input) instead of draining it on the host.
+            let graph = self.graph.unwrap().0;
+            let queued = (|| -> Result<()> { unsafe {
+                crate::v41_memory::chain::join_fork(self.stream.library, self.stream.raw)?;
+                self.stream.library.copy_d2d_async(self.input.buffer, query.hidden,
+                    query.hidden.bytes, self.stream.raw)?;
+                self.upload_queued(&prepared)?;
+                self.stream.library.cuda_graph_launch(graph, self.stream.raw)?;
+                crate::v41_memory::chain::finish(self.stream.library, self.stream.raw)
+            } })();
+            if let Err(error) = queued { self.synchronize()?; return Err(error); }
+            self.ready = Some(prepared);
+            return self.output(state);
+        }
         crate::v41_memory::chain::settle(self.stream.library)?;
         self.synchronize()?;
         self.stream.library.copy_d2d(self.input.buffer, query.hidden, query.hidden.bytes)?;

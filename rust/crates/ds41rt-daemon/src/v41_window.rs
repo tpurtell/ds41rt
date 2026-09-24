@@ -542,7 +542,8 @@ impl WindowWave<'_, '_> {
         self.select_graph(prepared.rows, state.owner, false)?;
         let capture = self.graph.is_none();
         let result = (|| -> Result<()> {
-            unsafe { crate::v41_memory::chain::join(self.stream.library, self.stream.raw)?; }
+            // Reads only the normalized layer input: overlap the query projections.
+            unsafe { crate::v41_memory::chain::join_fork(self.stream.library, self.stream.raw)?; }
             unsafe { self.stream.library.copy_d2d_async(self.input.buffer, query.hidden,
                 query.hidden.bytes, self.stream.raw)?; }
             self.upload(&prepared)?;
@@ -616,7 +617,8 @@ impl WindowWave<'_, '_> {
             "window query layer, rows or positions differ");
         let executed = (|| -> Result<()> {
             unsafe {
-                crate::v41_memory::chain::join(self.stream.library, self.stream.raw)?;
+                // Reads only the normalized layer input: overlap the query projections.
+                crate::v41_memory::chain::join_fork(self.stream.library, self.stream.raw)?;
                 self.stream.library.copy_d2d_async(
                     self.input.buffer, query.hidden, query.hidden.bytes, self.stream.raw,
                 )?;

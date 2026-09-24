@@ -130,6 +130,15 @@ impl<'w, 'a> IndexLane<'w, 'a> {
         query: &AttentionQueryOutput<'_>,
         cache: &CacheAttention<'_>,
     ) -> Result<()> {
+        if crate::v41_memory::chain::active() {
+            // Stream-ordered: the queued projection and selection finish on the
+            // chain immediately, so the host never waits here.
+            unsafe { self.enqueue_projection(query)?; }
+            ensure!(self.poll_projection()?, "chained index projection still pending");
+            unsafe { self.enqueue_selection(cache)?; }
+            ensure!(self.poll_selection()?, "chained index selection still pending");
+            return Ok(());
+        }
         let valid = !std::mem::replace(&mut self.invalid, true);
         self.ready = None;
         ensure!(
