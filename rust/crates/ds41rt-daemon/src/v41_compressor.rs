@@ -784,6 +784,7 @@ impl CompressorWave<'_, '_> {
         self.select_graph(prepared.rows, state.owner, false)?;
         let capture = self.graph.is_none();
         let result = (|| -> Result<()> {
+            unsafe { crate::v41_memory::chain::join(self.stream.library, self.stream.raw)?; }
             unsafe { self.stream.library.copy_d2d_async(self.input.buffer, query.hidden,
                 query.hidden.bytes, self.stream.raw)?; }
             self.upload_queued(&prepared)?;
@@ -802,7 +803,8 @@ impl CompressorWave<'_, '_> {
         let result = (|| -> Result<bool> {
             let (prepared, capture) = self.pending_query.as_ref().context("no queued cache query")?;
             ensure!(prepared.owner == state.owner, "queued cache owner differs");
-            if !unsafe { self.stream.library.cuda_stream_query(self.stream.raw)? } { return Ok(false); }
+            let chained = crate::v41_memory::chain::active();
+            if !chained && !unsafe { self.stream.library.cuda_stream_query(self.stream.raw)? } { return Ok(false); }
             if *capture {
                 unsafe { self.stream.library.cuda_graph_begin_capture(self.stream.raw)?; }
                 let queued = unsafe { self.enqueue(state, prepared.rows) };
@@ -819,6 +821,7 @@ impl CompressorWave<'_, '_> {
                 // Eager proposal is complete. Capture records future work without
                 // committing cache state; publish the existing result below.
             }
+            if chained { unsafe { crate::v41_memory::chain::finish(self.stream.library, self.stream.raw)?; } }
             self.ready = Some(self.pending_query.take().unwrap().0);
             self.output(state)?;
             Ok(true)
@@ -852,6 +855,7 @@ impl CompressorWave<'_, '_> {
             && query.tokens()?.iter().copied().eq(chunks.iter().flat_map(|c|
                 c.position..c.position + u64::from(c.tokens))),
             "compressor query layer, rows or positions differ");
+        crate::v41_memory::chain::settle(self.stream.library)?;
         self.synchronize()?;
         self.stream.library.copy_d2d(self.input.buffer, query.hidden, query.hidden.bytes)?;
         self.select_graph(prepared.rows, state.owner, true)?;

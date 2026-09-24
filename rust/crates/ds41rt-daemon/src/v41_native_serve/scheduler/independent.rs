@@ -229,7 +229,7 @@ async fn lane<'a, P: VerificationTarget<'a>, C: DraftChain<'a>>(lane: usize, lib
                     }
                 }
                 observe_lane_round(draft.borrow_mut().as_deref_mut(), capture_routes, lane, shared,
-                    pass.captured_routes(), pass.captured_layer_done(), &active.borrow(), &members, &inputs,
+                    pass.captured_routes(), &pass.captured_layer_us(), &active.borrow(), &members, &inputs,
                     &accepted_inputs, started, draft_us);
                 tracing::debug!(target: "ds41rt::timing", lane, requests=members.len(),
                     proposed=inputs.iter().map(|r| r.len()-1).sum::<usize>(), accepted, emitted,

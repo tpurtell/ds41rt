@@ -12,7 +12,7 @@ pub(crate) trait VerificationTarget<'a>: TargetCache<'a> {
     fn set_route_capture(&mut self, enabled: bool) -> Result<()>;
     fn captured_routes(&self) -> &[Vec<[u32; 6]>];
     /// FFN completion instant of each layer of the last captured pass.
-    fn captured_layer_done(&self) -> &[Option<std::time::Instant>];
+    fn captured_layer_us(&self) -> Vec<Option<f64>>;
     async unsafe fn execute_shared(&mut self, requests: &RefCell<&mut Requests<'a>>,
         batch: &mut RequestBatch, transport: &mut Self::Transport, placement: u64,
         selected: &[usize]) -> Result<()>;
@@ -69,7 +69,7 @@ impl<'a> VerificationTarget<'a> for TargetPass<'_, 'a> {
         TargetPass::set_route_capture(self, enabled); Ok(())
     }
     fn captured_routes(&self) -> &[Vec<[u32; 6]>] { TargetPass::captured_routes(self) }
-    fn captured_layer_done(&self) -> &[Option<std::time::Instant>] { TargetPass::captured_layer_done(self) }
+    fn captured_layer_us(&self) -> Vec<Option<f64>> { TargetPass::captured_layer_us(self) }
     async unsafe fn execute_shared(&mut self, requests: &RefCell<&mut Requests<'a>>,
         batch: &mut RequestBatch, transport: &mut Self::Transport, placement: u64,
         selected: &[usize]) -> Result<()> {
@@ -113,7 +113,7 @@ impl<'a> VerificationTarget<'a> for DistributedTargetPass<'_, 'a> {
         DistributedTargetPass::set_route_capture(self, enabled)
     }
     fn captured_routes(&self) -> &[Vec<[u32; 6]>] { DistributedTargetPass::captured_routes(self) }
-    fn captured_layer_done(&self) -> &[Option<std::time::Instant>] { DistributedTargetPass::captured_layer_done(self) }
+    fn captured_layer_us(&self) -> Vec<Option<f64>> { DistributedTargetPass::captured_layer_us(self) }
     async unsafe fn execute_shared(&mut self, requests: &RefCell<&mut Requests<'a>>,
         batch: &mut RequestBatch, transport: &mut Self::Transport, placement: u64,
         selected: &[usize]) -> Result<()> {

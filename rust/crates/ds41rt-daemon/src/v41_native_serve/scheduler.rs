@@ -1208,7 +1208,7 @@ fn single_lane_round<'w, 'a>(lib: &'a NativeLibrary, runtime: &tokio::runtime::R
             }
         }
         observe_lane_round(draft.as_deref_mut(), capture_routes, lane, false, pass.captured_routes(),
-            pass.captured_layer_done(), active, members, &inputs, &accepted_inputs, started, draft_us);
+            &pass.captured_layer_us(), active, members, &inputs, &accepted_inputs, started, draft_us);
         tracing::debug!(target: "ds41rt::timing", speculative,
             requests=members.len(), lane0=if lane == 0 { members.len() } else { 0 },
             lane1=if lane == 1 { members.len() } else { 0 },
@@ -1240,7 +1240,7 @@ fn single_lane_round<'w, 'a>(lib: &'a NativeLibrary, runtime: &tokio::runtime::R
             }
         }
         observe_lane_round(draft.as_deref_mut(), capture_routes, lane, false, pass.captured_routes(),
-            pass.captured_layer_done(), active, members, &inputs, &accepted_inputs, started, draft_us);
+            &pass.captured_layer_us(), active, members, &inputs, &accepted_inputs, started, draft_us);
         tracing::debug!(target: "ds41rt::timing", speculative,
             requests=members.len(), lane0=if lane == 0 { members.len() } else { 0 },
             lane1=if lane == 1 { members.len() } else { 0 },
@@ -1635,7 +1635,7 @@ fn publish_commit_lane<'a>(active: &mut [Option<Active<'a>>],
 /// length policy. `started` is the round's draft start.
 #[allow(clippy::too_many_arguments)]
 fn observe_lane_round<'a, C: DraftChain<'a>>(draft: Option<&mut DraftRuntime<'_, 'a, C>>, capture_routes: bool,
-    lane: usize, shared: bool, routes: &[Vec<[u32; 6]>], layer_done: &[Option<Instant>],
+    lane: usize, shared: bool, routes: &[Vec<[u32; 6]>], layer_us: &[Option<f64>],
     active: &[Option<Active<'a>>], members: &[usize], inputs: &[Vec<u32>], accepted: &[u32], started: Instant,
     draft_us: u64,
 ) {
@@ -1644,7 +1644,7 @@ fn observe_lane_round<'a, C: DraftChain<'a>>(draft: Option<&mut DraftRuntime<'_,
     let requests: Vec<_> = members.iter().zip(inputs).zip(accepted).filter_map(|((&slot, input), &count)|
         active[slot].as_ref().map(|r| (r.id, input.len(), count))).collect();
     if requests.len() != members.len() { return; }
-    draft.observe_round(lane, shared, routes, layer_done, &requests, started.elapsed().as_micros() as u64, draft_us);
+    draft.observe_round(lane, shared, routes, layer_us, &requests, started.elapsed().as_micros() as u64, draft_us);
 }
 /// Resolve one finishing row's retained frontier from its downloaded bytes.
 ///

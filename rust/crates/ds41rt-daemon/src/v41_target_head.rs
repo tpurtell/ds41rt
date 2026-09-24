@@ -1051,6 +1051,8 @@ impl TargetHeadWave<'_, '_> {
             "target head block or selected rows differ"
         );
         let copied = (|| -> Result<()> {
+            // The final block output may still be queued in a stage chain.
+            unsafe { crate::v41_memory::chain::join(self.stream.library, self.stream.raw)?; }
             let mut first = 0;
             while first < selected.len() {
                 let mut count = 1;

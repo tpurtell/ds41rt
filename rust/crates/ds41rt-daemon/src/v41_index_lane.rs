@@ -137,6 +137,9 @@ impl<'w, 'a> IndexLane<'w, 'a> {
                 && self.device.is_none_or(|id| query.hidden.device_id == id),
             "index producer order differs; restart lane"
         );
+        // The direct index path drains its own streams and uses legacy-stream
+        // uploads; order it after any chained producers on the host.
+        crate::v41_memory::chain::settle(self.weights.library)?;
         self.query.rebind(&self.weights.weights[self.next])?;
         let requests = cache.selection_requests()?;
         let projected = unsafe { self.query.execute_attention(query)? };

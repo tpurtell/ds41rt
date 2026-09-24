@@ -541,6 +541,7 @@ impl WindowWave<'_, '_> {
         self.select_graph(prepared.rows, state.owner, false)?;
         let capture = self.graph.is_none();
         let result = (|| -> Result<()> {
+            unsafe { crate::v41_memory::chain::join(self.stream.library, self.stream.raw)?; }
             unsafe { self.stream.library.copy_d2d_async(self.input.buffer, query.hidden,
                 query.hidden.bytes, self.stream.raw)?; }
             self.upload(&prepared)?;
@@ -559,7 +560,8 @@ impl WindowWave<'_, '_> {
         let result = (|| -> Result<bool> {
             let (prepared, capture) = self.pending_query.as_ref().context("no queued cache query")?;
             ensure!(prepared.owner == state.owner, "queued cache owner differs");
-            if !unsafe { self.stream.library.cuda_stream_query(self.stream.raw)? } { return Ok(false); }
+            let chained = crate::v41_memory::chain::active();
+            if !chained && !unsafe { self.stream.library.cuda_stream_query(self.stream.raw)? } { return Ok(false); }
             if *capture {
                 unsafe { self.stream.library.cuda_graph_begin_capture(self.stream.raw)?; }
                 let queued = unsafe { self.enqueue(prepared.rows) };
@@ -576,6 +578,8 @@ impl WindowWave<'_, '_> {
                 // Eager proposal is complete. Capture records future work without
                 // committing cache state; publish the existing result below.
             }
+            // Inside a stage chain the eager/replayed proposal is ordered, not complete.
+            if chained { unsafe { crate::v41_memory::chain::finish(self.stream.library, self.stream.raw)?; } }
             self.ready = Some(self.pending_query.take().unwrap().0);
             self.output(state)?;
             Ok(true)
@@ -611,6 +615,7 @@ impl WindowWave<'_, '_> {
             "window query layer, rows or positions differ");
         let executed = (|| -> Result<()> {
             unsafe {
+                crate::v41_memory::chain::join(self.stream.library, self.stream.raw)?;
                 self.stream.library.copy_d2d_async(
                     self.input.buffer, query.hidden, query.hidden.bytes, self.stream.raw,
                 )?;
@@ -691,7 +696,7 @@ impl WindowWave<'_, '_> {
         let launched = self.upload(&p).and_then(|()| unsafe {
             self.stream.library.cuda_graph_launch(g, self.stream.raw)
         });
-        launched.and(self.synchronize())?;
+        launched.and(unsafe { crate::v41_memory::chain::finish(self.stream.library, self.stream.raw) })?;
         self.ready = Some(p);
         self.output(state)
     }

@@ -365,7 +365,9 @@ impl<'a> IndexSelectionWave<'a> {
     }
     pub fn poll_pending(&mut self) -> Result<bool> {
         ensure!(self.in_flight && self.pending.is_some(), "no pending index selection");
-        let ready = unsafe { self.stream.library.cuda_stream_query(self.stream.raw) };
+        let ready = if crate::v41_memory::chain::active() {
+            unsafe { crate::v41_memory::chain::finish(self.stream.library, self.stream.raw) }.map(|()| true)
+        } else { unsafe { self.stream.library.cuda_stream_query(self.stream.raw) } };
         match ready {
             Ok(false) => Ok(false),
             Ok(true) => { self.ready = self.pending.take(); self.in_flight = false;
@@ -504,6 +506,7 @@ impl<'a> IndexSelectionWave<'a> {
             if let Some(busy) = &self.shared_scratch_busy { busy.set(true); }
             let host = self.staging.buffer;
             unsafe {
+                crate::v41_memory::chain::join(self.stream.library, self.stream.raw)?;
                 self.stream.library.copy_host_buffer_h2d_async(self.b(0), host, rows * 48, self.stream.raw)?;
                 let mut lengths = host;
                 lengths.ptr = host.ptr.cast::<u8>().add(rows * 48).cast(); lengths.bytes = rows * 8;

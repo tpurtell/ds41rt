@@ -15,6 +15,8 @@ pub(crate) mod device;
 pub(crate) mod peer_publication;
 #[path = "v41_memory/proposal_replica.rs"]
 pub(crate) mod proposal_replica;
+#[path = "v41_memory/chain.rs"]
+pub(crate) mod chain;
 
 pub(crate) struct DeviceAllocation<'a> {
     pub(crate) library: &'a NativeLibrary,

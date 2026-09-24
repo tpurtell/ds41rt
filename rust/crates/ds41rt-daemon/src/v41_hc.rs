@@ -86,7 +86,9 @@ impl<'weights, 'library> HcSublayer<'weights, 'library> {
                 && value.device_id == self.residual.buffer.device_id,
                 "mHC rebound weight extent or device differs");
         }
-        self.stream.require_complete()?;
+        // A stage chain orders all later enqueues after the queued boundary work;
+        // rebinding changes only the weights those later enqueues will use.
+        if !crate::v41_memory::chain::active() { self.stream.require_complete()?; }
         Ok(HcBinding { weights, names })
     }
     /// # Safety
@@ -121,7 +123,9 @@ impl HcSublayer<'_, '_> {
     pub(crate) fn stream_raw(&self) -> *mut c_void {
         self.stream.raw
     }
-    pub(crate) async fn wait_chain(&self) -> Result<()> { self.stream.wait().await }
+    pub(crate) async fn wait_chain(&self) -> Result<()> {
+        unsafe { crate::v41_memory::chain::finish_cooperative(&self.stream).await }
+    }
     fn synchronize(&self) -> Result<()> {
         unsafe { self.stream.library.cuda_stream_synchronize(self.stream.raw) }
     }

@@ -66,6 +66,8 @@ pub(crate) struct BackboneBlockWave<'w, 'a> {
 impl<'w, 'a> BackboneBlockWave<'w, 'a> {
     #[cfg(test)]
     pub fn trace_stream(&self) -> *mut std::ffi::c_void { self.ffn.stream_raw() }
+    /// The stream carrying each layer's FFN finish (mHC post, next inputs).
+    pub(crate) fn finish_stream(&self) -> *mut std::ffi::c_void { self.ffn.stream_raw() }
     /// Reuse this lane's two mHC workspaces for the adjacent layer. Completed
     /// residual/pre values are copied before installing both validated bindings.
     /// No device allocation or graph capture occurs here.
@@ -505,11 +507,14 @@ impl<'w, 'a> BackboneBlockWave<'w, 'a> {
     /// FfnInput binding, in its token order, on this device. It stays immutable
     /// through the copy. Transport/expert reduction must establish this contract.
     pub unsafe fn finish_ffn(&mut self, binding: QueryBinding, result: Ds41rtDeviceBuffer) -> Result<BlockOutput<'_>> {
-        let rows = unsafe { self.enqueue_finish_ffn(binding, result, false)? };
-        if let Err(error) = unsafe { self.library.cuda_stream_synchronize(self.ffn.stream_raw()) } {
+        // Inside a stage chain the next-layer input copies share the ordered
+        // mHC stream, so advance() needs no separate drained copy.
+        let copy_next = crate::v41_memory::chain::active() && self.layer < 39;
+        let rows = unsafe { self.enqueue_finish_ffn(binding, result, copy_next)? };
+        if let Err(error) = unsafe { crate::v41_memory::chain::finish(self.library, self.ffn.stream_raw()) } {
             self.reset(); return Err(error);
         }
-        unsafe { self.publish_finished_ffn(binding, rows, false) }
+        unsafe { self.publish_finished_ffn(binding, rows, copy_next) }
     }
     /// # Safety
     /// Retain the completed transport result and exclusive block storage through
@@ -546,6 +551,7 @@ impl<'w, 'a> BackboneBlockWave<'w, 'a> {
             };
             ensure!(binding == expected && result.device_id == self.inputs()[0].device_id
                 && result.bytes >= rows * 10240 && !result.ptr.is_null(), "block FFN result binding differs");
+            unsafe { crate::v41_memory::chain::join(self.library, self.ffn.stream_raw())?; }
             unsafe { self.ffn.enqueue_finish(Some(result), self.ffn.stream_raw())?; }
             if copy_next { unsafe { self.enqueue_next_inputs(rows)?; } }
             Ok(rows)

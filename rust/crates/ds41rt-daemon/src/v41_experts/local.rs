@@ -248,11 +248,7 @@ impl<'a> LocalExpertWave<'a> {
         unsafe {
             self.enqueue(routed, shared)?;
         }
-        unsafe {
-            self.stream
-                .library
-                .cuda_stream_synchronize(self.stream.raw)?;
-        }
+        unsafe { crate::v41_memory::chain::finish(self.stream.library, self.stream.raw)?; }
         Ok(self.output_rows(rows))
     }
     /// # Safety
@@ -265,7 +261,7 @@ impl<'a> LocalExpertWave<'a> {
         unsafe {
             self.enqueue(routed, shared)?;
         }
-        self.stream.wait().await?;
+        unsafe { crate::v41_memory::chain::finish_cooperative(&self.stream).await?; }
         Ok(self.output_rows(routed.rows))
     }
     fn output_rows(&self, rows: u32) -> Ds41rtDeviceBuffer {
@@ -322,6 +318,9 @@ impl<'a> LocalExpertWave<'a> {
                 "local expert input extent or device differs"
             );
         }
+        // Router outputs were drained on the host before routing, so the routed
+        // kernels start immediately and overlap the chained shared expert; only
+        // the final reduction, which adds the shared contribution, joins it.
         let launched = (|| -> Result<()> {
             match &mut self.backend {
                 Backend::Exl3 { states, .. } => {
@@ -337,6 +336,7 @@ impl<'a> LocalExpertWave<'a> {
                             self.stream.raw,
                         )?
                     };
+                    unsafe { crate::v41_memory::chain::join(self.stream.library, self.stream.raw)?; }
                     unsafe {
                         self.reducer.finish(
                             values.ptr.cast(),
@@ -376,6 +376,7 @@ impl<'a> LocalExpertWave<'a> {
                     unsafe {
                         state.kernel.launch(&args)?;
                     }
+                    unsafe { crate::v41_memory::chain::join(self.stream.library, self.stream.raw)?; }
                     unsafe {
                         match state.kernel.output_kind() {
                             ds41rt_ffi::V41ExpertOutputKind::Bf16Routes => self.reducer.finish_bf16_routes(

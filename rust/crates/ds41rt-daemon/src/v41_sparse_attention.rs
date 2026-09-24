@@ -303,7 +303,11 @@ impl<'a,const HEADS:usize> LocalSparseAttentionWave<'a,HEADS> {
     ) -> Result<T> {
         unsafe { self.query_then(query, sink, requests, selection, consume) }
     }
-    pub async fn wait_chain(&self) -> Result<()> { self.stream.wait().await }
+    /// Complete the queued attention chain: ordered inside a stage chain,
+    /// otherwise awaited on the host.
+    pub async fn wait_chain(&self) -> Result<()> {
+        unsafe { crate::v41_memory::chain::finish_cooperative(&self.stream).await }
+    }
     pub fn drain_chain(&mut self) -> Result<()> {
         let drained = self.synchronize(); self.cold = None; drained
     }
@@ -325,6 +329,7 @@ impl<'a,const HEADS:usize> LocalSparseAttentionWave<'a,HEADS> {
             "attention query token order or device differs");
         if let Some(s) = selection { s.validate_query(binding)?; }
         let result = (|| unsafe {
+            crate::v41_memory::chain::join(self.stream.library, self.stream.raw)?;
             self.stream.library.copy_d2d_async(self.query.buffer, query.rotated, query.rotated.bytes, self.stream.raw)?;
             self.execute_staged_inner(query.layer, sink, requests, selection, defer_warmup, tail)
         })();
@@ -379,7 +384,9 @@ impl<'a,const HEADS:usize> LocalSparseAttentionWave<'a,HEADS> {
         }
         let mut drain = Drain(self.stream.library, self.stream.raw, false);
         let queued = unsafe { self.enqueue_query_prepared(query, sink, requests, selection, false, Some(tail)) };
-        let drained = self.synchronize(); drain.2 = true;
+        let drained = if queued.is_err() { self.synchronize() }
+            else { unsafe { crate::v41_memory::chain::finish(self.stream.library, self.stream.raw) } };
+        drain.2 = true;
         queued.and_then(|value| value.context("direct graph unexpectedly deferred")).and(drained)
     }
     unsafe fn query_then<T>(&mut self, query: &AttentionQueryOutput<'_>, sink: Ds41rtDeviceBuffer,

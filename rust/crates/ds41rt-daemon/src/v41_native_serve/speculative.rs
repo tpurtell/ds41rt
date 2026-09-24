@@ -199,7 +199,7 @@ impl<'w, 'a, C: DraftChain<'a>> DraftRuntime<'w, 'a, C> {
     /// verifier rows, accepted inputs) in lane order; `total_us` spans draft
     /// start to commit. Observation problems are logged, never fatal.
     pub fn observe_round(&mut self, lane: usize, shared: bool, routes: &[Vec<[u32; 6]>],
-        layer_done: &[Option<Instant>], requests: &[(u64, usize, u32)], total_us: u64, draft_us: u64) {
+        layer_us: &[Option<f64>], requests: &[(u64, usize, u32)], total_us: u64, draft_us: u64) {
         let predicted = self.predicted.get_mut(lane).and_then(Option::take);
         let width = self.lane_width.get(lane).copied().unwrap_or(0);
         let Some(policy) = &mut self.policy else { return };
@@ -211,7 +211,8 @@ impl<'w, 'a, C: DraftChain<'a>> DraftRuntime<'w, 'a, C> {
         let observed: Vec<_> = requests.iter().zip(&confidence).map(|(&(id, rows, accepted), confidence)|
             ds41rt_core::DsparkObservedRequest { id, rows, accepted: accepted as usize,
                 confidence: confidence.as_deref() }).collect();
-        let layer_us = policy::layer_us(layer_done);
+        let layer_us: [Option<f64>; ds41rt_core::DSPARK_LAYERS] =
+            std::array::from_fn(|layer| layer_us.get(layer).copied().flatten());
         if let Err(error) = policy.observe(ds41rt_core::DsparkRoundObservation { shared, requests: &observed,
             routes, layer_us: &layer_us, total_us: total_us as f64, predicted_us: predicted,
             draft_us: if width > 0 { draft_us as f64 } else { f64::NAN },

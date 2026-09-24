@@ -385,7 +385,7 @@ impl AttentionQueryWave<'_, '_> {
                 .library
                 .cuda_graph_launch(graph, self.stream.raw)
         };
-        launched.and(self.synchronize())?;
+        launched.and(unsafe { crate::v41_memory::chain::finish(self.stream.library, self.stream.raw) })?;
         self.ready = Some(rows);
         self.output()
     }
@@ -422,6 +422,7 @@ impl AttentionQueryWave<'_, '_> {
         }
         let prepared_and_executed = (|| -> Result<()> {
             unsafe {
+                crate::v41_memory::chain::join(self.stream.library, self.stream.raw)?;
                 self.stream.library.copy_host_buffer_h2d_async(
                     self.positions(), self.position_staging.buffer, tokens.len() * 8, self.stream.raw,
                 )?;
@@ -469,13 +470,15 @@ impl AttentionQueryWave<'_, '_> {
         }
         let graph = self.graphs.get_shape(self.weights.layer, self.weights, rows);
         let queued = (|| -> Result<()> { unsafe {
+            crate::v41_memory::chain::join(self.stream.library, self.stream.raw)?;
             self.stream.library.copy_host_buffer_h2d_async(self.positions(), self.position_staging.buffer,
                 tokens.len()*8, self.stream.raw)?;
             prepare(self.stream.raw, self.input())?;
             if let Some((graph, _)) = graph { self.stream.library.cuda_graph_launch(graph, self.stream.raw) }
             else { self.enqueue(rows) }
         } })();
-        let drained = self.stream.wait().await;
+        let drained = if queued.is_err() { self.stream.wait().await }
+            else { unsafe { crate::v41_memory::chain::finish_cooperative(&self.stream).await } };
         queued.and(drained)?;
         if graph.is_none() {
             // Eager output is complete; capture only records the next execution.

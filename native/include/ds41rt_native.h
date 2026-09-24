@@ -503,6 +503,7 @@ ds41rt_status_t ds41rt_cuda_stream_synchronize(void* cuda_stream);
 ds41rt_status_t ds41rt_cuda_stream_query(void* cuda_stream, int32_t* ready);
 ds41rt_status_t ds41rt_cuda_stream_wait_event(void* cuda_stream, void* cuda_event);
 ds41rt_status_t ds41rt_cuda_event_create(void** out_cuda_event);
+ds41rt_status_t ds41rt_cuda_event_create_ordering(void** out_cuda_event);
 ds41rt_status_t ds41rt_cuda_event_destroy(void* cuda_event);
 ds41rt_status_t ds41rt_cuda_event_record(void* cuda_event, void* cuda_stream);
 ds41rt_status_t ds41rt_cuda_event_synchronize(void* cuda_event);

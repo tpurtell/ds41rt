@@ -6,7 +6,6 @@ use anyhow::{ensure, Result};
 use crate::v41_experts::coordinator::NativeTp4Wave;
 use ds41rt_core::{DsparkLayerClass, DsparkPlacement, DsparkPolicy, DSPARK_LAYERS};
 use std::sync::Mutex;
-use std::time::Instant;
 
 const HIDDEN: f64 = 5120.;
 const INTERMEDIATE: f64 = 2304.;
@@ -33,20 +32,6 @@ pub(super) fn placement(transport: &NativeTp4Wave<'_>, nvfp4: bool) -> Result<Ds
         expert_slice_bytes(tp, nvfp4)
     });
     DsparkPlacement::new(class, bytes).map_err(anyhow::Error::msg)
-}
-
-/// Per-layer wall time from consecutive FFN completions; layer 0 has no
-/// predecessor and stays in the round residual.
-pub(super) fn layer_us(done: &[Option<Instant>]) -> [Option<f64>; DSPARK_LAYERS] {
-    let mut out = [None; DSPARK_LAYERS];
-    for layer in 1..DSPARK_LAYERS.min(done.len()) {
-        if let (Some(previous), Some(current)) = (done[layer - 1], done[layer]) {
-            if current >= previous {
-                out[layer] = Some(current.duration_since(previous).as_secs_f64() * 1e6);
-            }
-        }
-    }
-    out
 }
 
 pub(super) fn sigmoid(x: f32) -> f64 {
@@ -136,18 +121,5 @@ mod tests {
         assert_eq!(super::expert_slice_bytes(1, false), 18_800_640.);
         assert_eq!(super::expert_slice_bytes(2, false), 9_400_320.);
         assert_eq!(super::expert_slice_bytes(4, true), 4_976_640.);
-    }
-    #[test]
-    fn layer_times_come_from_consecutive_completions() {
-        let start = std::time::Instant::now();
-        let at = |us| Some(start + std::time::Duration::from_micros(us));
-        let mut done = vec![None; 40];
-        done[0] = at(100); done[1] = at(400); done[2] = at(1000); done[4] = at(2000);
-        let us = super::layer_us(&done);
-        assert_eq!(us[0], None);
-        assert!((us[1].unwrap() - 300.).abs() < 1e-6);
-        assert!((us[2].unwrap() - 600.).abs() < 1e-6);
-        assert_eq!(us[3], None);
-        assert_eq!(us[4], None);
     }
 }

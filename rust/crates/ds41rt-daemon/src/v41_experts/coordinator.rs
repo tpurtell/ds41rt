@@ -396,6 +396,9 @@ impl<'a> NativeTp4Wave<'a> {
         self.ready_rows = None;
         // Previous output or cancellation cleanup completed this wave.
         self.stream.require_complete()?;
+        // A chained reduction retains its upload frames until this point, when
+        // the completed stream proves their host-to-device copies finished.
+        self.upload_frames.clear();
         let header = &request.request().header;
         ensure!(
             header.layer_id as usize == request.binding().layer()
@@ -539,6 +542,9 @@ struct PlaneUploads<'s, 'a> {
     frames: &'s mut Vec<VerbsHostProtocolV2ResponsePayload>,
     rows: u32,
     pending: bool,
+    /// Uploads are ordered in a stage chain but not yet complete: keep their
+    /// frames in the wave until the next dispatch observes a completed stream.
+    retain: bool,
 }
 impl PlaneUploads<'_, '_> {
     fn copy(&mut self, rank: usize, first_row: u32, payload: VerbsHostProtocolV2ResponsePayload) -> Result<()> {
@@ -564,7 +570,7 @@ impl Drop for PlaneUploads<'_, '_> {
                 tracing::error!(%error, "draining interrupted native rank uploads");
             }
         }
-        self.frames.clear();
+        if !self.retain { self.frames.clear(); }
     }
 }
 unsafe fn enqueue_reduce_planes(reducer: &V41CompactReducer<'_>, stream: &LoadStream<'_>,
@@ -591,16 +597,23 @@ unsafe fn enqueue_reduce_planes(reducer: &V41CompactReducer<'_>, stream: &LoadSt
 fn reduce_planes(library: &NativeLibrary, reducer: &V41CompactReducer<'_>,
     stream: &LoadStream<'_>, planes: &[DeviceAllocation<'_>], output: Ds41rtDeviceBuffer,
     shared: Option<Ds41rtDeviceBuffer>, rows: u32) -> Result<()> {
-    let launched = unsafe { enqueue_reduce_planes(reducer, stream, planes, output, shared, rows) };
-    launched.and(unsafe { library.cuda_stream_synchronize(stream.raw) })
+    let launched = unsafe {
+        crate::v41_memory::chain::join(library, stream.raw)
+            .and_then(|()| enqueue_reduce_planes(reducer, stream, planes, output, shared, rows))
+    };
+    if launched.is_err() { return launched.and(unsafe { library.cuda_stream_synchronize(stream.raw) }); }
+    unsafe { crate::v41_memory::chain::finish(library, stream.raw) }
 }
 /// Retain planes, upload frames, output and shared input through completion.
 async unsafe fn reduce_planes_cooperative(reducer: &V41CompactReducer<'_>,
     stream: &LoadStream<'_>, planes: &[DeviceAllocation<'_>], output: Ds41rtDeviceBuffer,
     shared: Option<Ds41rtDeviceBuffer>, rows: u32) -> Result<()> {
-    let launched = unsafe { enqueue_reduce_planes(reducer, stream, planes, output, shared, rows) };
-    let drained = stream.wait().await;
-    launched.and(drained)
+    let launched = unsafe {
+        crate::v41_memory::chain::join(stream.library, stream.raw)
+            .and_then(|()| enqueue_reduce_planes(reducer, stream, planes, output, shared, rows))
+    };
+    if launched.is_err() { return launched.and(stream.wait().await); }
+    unsafe { crate::v41_memory::chain::finish_cooperative(stream).await }
 }
 
 /// Borrows every mutable reduction buffer and owns all unread response sockets.
@@ -677,6 +690,7 @@ impl<'w> NativePendingFfn<'w, '_, '_> {
             frames: self.upload_frames,
             rows: self.request.request().header.row_count,
             pending: false,
+            retain: false,
         };
         let mut upload_us = 0u64;
         self.pending
@@ -697,6 +711,7 @@ impl<'w> NativePendingFfn<'w, '_, '_> {
                 self.output, Some(values), rows)?;
         }
         uploads.pending = false; // uploads and reduction completed on the same stream.
+        uploads.retain = crate::v41_memory::chain::active();
         tracing::debug!(target: "ds41rt::timing", layer=self.request.request().header.layer_id, rows, shared_copy_us, upload_us, receive_us=received_us-shared_copy_us-upload_us, reduce_us=timing.elapsed().as_micros() as u64-received_us, "target collection");
         *self.ready_rows = Some(rows);
         let mut values = self.output;
@@ -1111,7 +1126,7 @@ mod upload_tests {
             {
                 let mut uploads = PlaneUploads {
                     library: &library, stream: &stream, planes: &planes,
-                    frames: &mut frames, rows, pending: false,
+                    frames: &mut frames, rows, pending: false, retain: false,
                 };
                 for first in (0..rows).step_by(3) {
                     let end = (first + 3).min(rows);
@@ -1148,7 +1163,7 @@ mod upload_tests {
                 {
                     let mut uploads = PlaneUploads {
                         library: &library, stream: &stream, planes: &planes,
-                        frames: &mut frames, rows: 1, pending: false,
+                        frames: &mut frames, rows: 1, pending: false, retain: false,
                     };
                     uploads.copy(0, 0, VerbsHostProtocolV2ResponsePayload::from_owned(payloads[0][..10240].to_vec()))?;
                     if error {
@@ -1208,7 +1223,7 @@ mod upload_tests {
                     let mut expected: Vec<(usize,u32,Vec<u8>)> = Vec::new();
                     {
                         let mut uploads = PlaneUploads { library: &library, stream: &stream,
-                            planes: &planes, frames: &mut frames, rows, pending: false };
+                            planes: &planes, frames: &mut frames, rows, pending: false, retain: false };
                         let result = client.dispatch(&request).await?.receive_owned(|rank, first, payload| {
                             ensure!(payload.pinned_host_buffer().is_some(), "live payload is not pinned");
                             ensure!(payload.retains_receive_slot(), "final response is not a retained receive slot");

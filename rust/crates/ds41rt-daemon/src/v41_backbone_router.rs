@@ -538,6 +538,7 @@ impl BackboneRouterWave<'_, '_> {
             );
         }
         let staged = (|| unsafe {
+            crate::v41_memory::chain::join(self.stream.library, self.stream.raw)?;
             self.stream
                 .library
                 .copy_d2d_async(self.b(0), input, input.bytes, self.stream.raw)?;

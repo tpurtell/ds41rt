@@ -394,6 +394,7 @@ impl IndexQueryWave<'_, '_> {
         let graph = self.graphs.get_shape(self.weights.layer, self.weights, rows);
         self.pending = Some((rows, binding, graph.is_none()));
         let result = (|| -> Result<()> { unsafe {
+            crate::v41_memory::chain::join(self.stream.library, self.stream.raw)?;
             for (dst, src) in [(self.qr.buffer, query.normalized_rank),
                 (self.hidden.buffer, query.hidden), (self.positions.buffer, query.positions)] {
                 self.stream.library.copy_d2d_async(dst, src, src.bytes, self.stream.raw)?;
@@ -407,15 +408,17 @@ impl IndexQueryWave<'_, '_> {
     pub fn poll_pending(&mut self) -> Result<bool> {
         let result = (|| -> Result<bool> {
             let (rows, binding, capture) = self.pending.context("no pending index query")?;
-            if !unsafe { self.stream.library.cuda_stream_query(self.stream.raw)? } { return Ok(false); }
+            let chained = crate::v41_memory::chain::active();
+            if !chained && !unsafe { self.stream.library.cuda_stream_query(self.stream.raw)? } { return Ok(false); }
             if capture {
                 unsafe { self.capture_ready(rows)?; }
                 let graph = self.graphs.get_shape(self.weights.layer, self.weights, rows)
                     .context("queued index graph missing")?.0;
                 self.pending.as_mut().unwrap().2 = false;
                 unsafe { self.stream.library.cuda_graph_launch(graph, self.stream.raw)?; }
-                return Ok(false);
+                if !chained { return Ok(false); }
             }
+            if chained { unsafe { crate::v41_memory::chain::finish(self.stream.library, self.stream.raw)?; } }
             self.pending = None;
             self.ready = Some(rows);
             self.origin = Some(binding);

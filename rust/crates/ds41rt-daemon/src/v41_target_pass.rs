@@ -128,6 +128,8 @@ pub(crate) struct TargetPass<'w, 'a> {
     /// Per-row selections from the last [`HeadTerminal::Sampled`] pass. `None`
     /// for every other terminal.
     sampled: Option<SampledTargetRows>,
+    /// Device-side stage ordering for this pass owner (see `v41_memory::chain`).
+    chain: Option<crate::v41_memory::chain::StageChain<'a>>,
 }
 impl<'w, 'a> TargetPass<'w, 'a> {
     pub fn set_route_capture(&mut self, enabled: bool) {
@@ -135,7 +137,11 @@ impl<'w, 'a> TargetPass<'w, 'a> {
         if enabled { self.index.enable_small_graph_shapes(); }
     }
     pub fn captured_routes(&self) -> &[Vec<[u32; 6]>] { self.lane.captured_routes() }
-    pub fn captured_layer_done(&self) -> &[Option<Instant>] { self.lane.captured_layer_done() }
+    /// Device time per layer (FFN finish to FFN finish) of the last captured
+    /// pass; layer 0 has no predecessor.
+    pub fn captured_layer_us(&self) -> Vec<Option<f64>> {
+        (0..40usize).map(|layer| layer.checked_sub(1).and_then(|previous| self.lane.layer_elapsed_us(previous, layer))).collect()
+    }
     pub fn reserve_sparse_decode_rows(&mut self, rows: usize) -> Result<()> {
         self.lane.reserve_sparse_decode_rows(rows)
     }
@@ -155,6 +161,8 @@ impl<'w, 'a> TargetPass<'w, 'a> {
             "target engram gates out of order"
         );
         ensure!(!engram_timeout.is_zero(), "engram timeout must be positive");
+        let chain = crate::v41_memory::chain::enabled()
+            .then(|| crate::v41_memory::chain::StageChain::new(upload.library())).transpose()?;
         Ok(Self {
             embedding,
             lane,
@@ -167,6 +175,7 @@ impl<'w, 'a> TargetPass<'w, 'a> {
             engram_timeout,
             state: State::Idle,
             sampled: None,
+            chain,
         })
     }
     /// # Safety
@@ -307,6 +316,27 @@ impl<'w, 'a> TargetPass<'w, 'a> {
     }
     async unsafe fn execute_phase(&mut self, requests: &impl RequestAccess<'a>, batch: &mut RequestBatch,
         transport: &mut NativeTp4Wave<'a>, placement: u64, selected: &[usize],
+        suffix: Option<&mut EncoderSuffix<'a>>, encoder: Option<&BlockOutput<'_>>,
+        terminal: HeadTerminal<'_>) -> Result<()> {
+        // Only verification passes (greedy or device-sampled head) are chained.
+        // Prefill, encoder and replay passes keep host-drained stages: their
+        // many-row paths publish KV and encoder state through host-ordered copies.
+        let verification = matches!(terminal, HeadTerminal::Greedy | HeadTerminal::Sampled { .. });
+        let Some(handle) = self.chain.as_ref().filter(|_| verification).map(|chain| chain.handle()) else {
+            return unsafe { self.execute_phase_inner(requests, batch, transport, placement, selected,
+                suffix, encoder, terminal).await };
+        };
+        // A cancelled earlier pass may have left chained work queued.
+        self.chain.as_ref().unwrap().drain()?;
+        let result = unsafe { handle.scope(self.execute_phase_inner(requests, batch, transport,
+            placement, selected, suffix, encoder, terminal)).await };
+        // Every consumer after the pass (commit, dSpark, logits downloads) is
+        // unscoped, so the chained work must be complete before returning.
+        let drained = self.chain.as_ref().unwrap().drain();
+        result.and(drained)
+    }
+    async unsafe fn execute_phase_inner(&mut self, requests: &impl RequestAccess<'a>, batch: &mut RequestBatch,
+        transport: &mut NativeTp4Wave<'a>, placement: u64, selected: &[usize],
         mut suffix: Option<&mut EncoderSuffix<'a>>, encoder: Option<&BlockOutput<'_>>,
         terminal: HeadTerminal<'_>) -> Result<()> {
         requests.with_requests(|requests| requests.validate(batch))?;
@@ -370,7 +400,10 @@ impl<'w, 'a> TargetPass<'w, 'a> {
                 let advance_us = prepare_timing.elapsed().as_micros() as u64;
                 if let Some(gate) = [1, 14].iter().position(|&l| l == layer) {
                     let start = Instant::now();
-                    if requests.cooperative_completion() {
+                    // Inside a stage chain the gathered rows are uploaded on their
+                    // own stream and the gate joins the chain, so the direct pass
+                    // uses the same queued form instead of draining the chain.
+                    if requests.cooperative_completion() || crate::v41_memory::chain::active() {
                         loop {
                             let gathered = requests.with_requests(|requests| requests.poll_engram_gather(guard.batch, &self.lane))?;
                             match gathered {
@@ -383,9 +416,14 @@ impl<'w, 'a> TargetPass<'w, 'a> {
                                 ds41rt_loader::EngramGatherPoll::Pending => {}
                             }
                             ensure!(start.elapsed() < self.engram_timeout, "target engram gather timed out at layer {layer}");
-                            tokio::time::sleep(Duration::from_millis(1)).await;
+                            // The gather normally lands within microseconds of this
+                            // point; a millisecond sleep would stall the whole pass.
+                            tokio::task::yield_now().await;
                         }
-                    } else { while !unsafe {
+                    } else {
+                        // The direct engram gate uses legacy-stream copies.
+                        crate::v41_memory::chain::settle(self.upload.library())?;
+                        while !unsafe {
                         requests.with_requests(|requests| requests.poll_engram(
                             guard.batch,
                             &mut self.upload,

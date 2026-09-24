@@ -4195,6 +4195,16 @@ impl NativeLibrary {
         Ok(cuda_event)
     }
 
+    /// Timing-disabled event for stream ordering only.
+    pub fn cuda_event_create_ordering(&self) -> Result<*mut c_void> {
+        let create_fn: Symbol<CudaEventCreateFn> =
+            unsafe { self.lib.get(b"ds41rt_cuda_event_create_ordering")? };
+        let mut cuda_event = std::ptr::null_mut();
+        let status = unsafe { create_fn(&mut cuda_event) };
+        self.status_to_result("ds41rt_cuda_event_create_ordering", status)?;
+        Ok(cuda_event)
+    }
+
     pub unsafe fn cuda_event_destroy(&self, cuda_event: *mut c_void) -> Result<()> {
         let destroy_fn: Symbol<CudaEventDestroyFn> =
             unsafe { self.lib.get(b"ds41rt_cuda_event_destroy")? };

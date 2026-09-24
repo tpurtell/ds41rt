@@ -1221,6 +1221,25 @@ extern "C" ds41rt_status_t ds41rt_cuda_event_create(void** out_cuda_event) {
 #endif
 }
 
+// Ordering-only event: no timestamp, so record and stream waits are cheaper.
+extern "C" ds41rt_status_t ds41rt_cuda_event_create_ordering(void** out_cuda_event) {
+  if (out_cuda_event == nullptr) {
+    return fail(DS41RT_STATUS_INVALID_ARGUMENT, "CUDA event output pointer is null");
+  }
+  *out_cuda_event = nullptr;
+#if DS41RT_NATIVE_ENABLE_CUDA
+  cudaEvent_t event = nullptr;
+  cudaError_t err = cudaEventCreateWithFlags(&event, cudaEventDisableTiming);
+  if (err != cudaSuccess) {
+    return fail_cuda(DS41RT_STATUS_CUDA_UNAVAILABLE, "cudaEventCreateWithFlags failed", err);
+  }
+  *out_cuda_event = reinterpret_cast<void*>(event);
+  return ok();
+#else
+  return fail(DS41RT_STATUS_CUDA_UNAVAILABLE, "CUDA event creation is unavailable in this build");
+#endif
+}
+
 extern "C" ds41rt_status_t ds41rt_cuda_event_destroy(void* cuda_event) {
   if (cuda_event == nullptr) {
     return ok();

@@ -32,6 +32,7 @@ pub(crate) enum EngramUploadPoll {
     Ready(EngramDeviceView),
 }
 impl<'a> EngramDeviceRows<'a> {
+    pub(crate) fn library(&self) -> &'a ds41rt_ffi::NativeLibrary { self.stream.library }
     /// Validate current request generations before consuming an early gather.
     pub fn poll_wave(
         &mut self,

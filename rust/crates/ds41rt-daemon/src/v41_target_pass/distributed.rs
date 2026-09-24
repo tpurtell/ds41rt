@@ -38,7 +38,6 @@ pub(crate) struct DistributedTargetPass<'w, 'a> {
     state: State,
     capture_routes: bool,
     route_capture: Vec<Vec<[u32; 6]>>,
-    layer_done: Vec<Option<std::time::Instant>>,
     #[cfg(test)]
     trace: bool,
     #[cfg(test)]
@@ -163,7 +162,6 @@ impl<'w, 'a> DistributedTargetPass<'w, 'a> {
             state: State::Idle,
             capture_routes: false,
             route_capture: (0..40).map(|_| Vec::with_capacity(4096)).collect(),
-            layer_done: vec![None; 40],
             #[cfg(test)]
             trace: false,
             #[cfg(test)]
@@ -191,12 +189,21 @@ impl<'w, 'a> DistributedTargetPass<'w, 'a> {
                 index.get_mut().enable_small_graph_shapes();
             }
             for rows in &mut self.route_capture { rows.clear(); }
-            self.layer_done.fill(None);
         }
         Ok(())
     }
     pub fn captured_routes(&self) -> &[Vec<[u32; 6]>] { &self.route_capture }
-    pub fn captured_layer_done(&self) -> &[Option<std::time::Instant>] { &self.layer_done }
+    /// Device time per layer between FFN finishes on the same GPU; intervals
+    /// that cross GPUs are not measurable with one clock and stay unmeasured.
+    pub fn captured_layer_us(&self) -> Vec<Option<f64>> {
+        (0..40usize).map(|layer| {
+            let previous = layer.checked_sub(1)?;
+            let (a, b) = (self.map.attention(previous).ok()?, self.map.attention(layer).ok()?);
+            if a != b { return None; }
+            let lane = &self.lanes[b];
+            lane.device.run(|| Ok(lane.layer_elapsed_us(previous, layer))).ok().flatten()
+        }).collect()
+    }
     pub fn reserve_sparse_decode_rows(&mut self, rows: usize) -> Result<()> {
         for lane in &mut self.lanes {
             let device = lane.device;
@@ -420,7 +427,9 @@ impl<'w, 'a> DistributedTargetPass<'w, 'a> {
                             started.elapsed() < self.timeout,
                             "distributed Engram gather timed out at layer {layer}"
                         );
-                        tokio::time::sleep(Duration::from_millis(1)).await;
+                        // A millisecond sleep here stalled the whole pass whenever
+                        // the gather landed just after the first poll.
+                        tokio::task::yield_now().await;
                     }
                 }
                 if layer >= 37 {
@@ -560,7 +569,6 @@ impl<'w, 'a> DistributedTargetPass<'w, 'a> {
             }
             if self.capture_routes {
                 self.route_capture[layer].clone_from(&self.lanes[gpu].captured_routes()[layer]);
-                self.layer_done[layer] = self.lanes[gpu].captured_layer_done()[layer];
                 if tracing::enabled!(target: "ds41rt::timing", tracing::Level::DEBUG) {
                     let mut seen = [false; 384];
                     for &expert in self.route_capture[layer].iter().flatten() {

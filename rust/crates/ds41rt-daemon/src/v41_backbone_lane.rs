@@ -217,7 +217,7 @@ impl<'s, 'w, 'a> PendingLaneFfn<'s, 'w, 'a> {
         Ok(LaneFfn { input, cooperative: true, shared: &mut lane.shared, router: &mut lane.router,
             library: lane.weights.library, phase: &mut lane.phase,
             route_capture: if lane.capture_routes { Some(&mut lane.route_capture) } else { None },
-            layer_done: if lane.capture_routes { Some(&mut lane.layer_done) } else { None } })
+ })
     }
 }
 impl Drop for PendingLaneFfn<'_, '_, '_> {
@@ -244,8 +244,6 @@ pub(crate) struct LaneFfn<'s, 'w, 'a> {
     library: &'a NativeLibrary,
     phase: &'s mut Phase,
     route_capture: Option<&'s mut Vec<Vec<[u32; 6]>>>,
-    /// FFN completion instant per layer, recorded while routes are captured.
-    layer_done: Option<&'s mut Vec<Option<std::time::Instant>>>,
 }
 impl LaneFfn<'_, '_, '_> {
     #[cfg(test)]
@@ -315,8 +313,6 @@ impl LaneFfn<'_, '_, '_> {
         let shared = &mut self.shared;
         let library = self.library;
         let route_capture = &mut self.route_capture;
-        let layer_done = &mut self.layer_done;
-        let layer = input.layer;
         let output = complete_ffn(self.phase, async {
             let timing = std::time::Instant::now();
             router.set_local_mode(transport.has_local_layer(input.layer))?;
@@ -399,11 +395,6 @@ impl LaneFfn<'_, '_, '_> {
             Ok(result)
         })
         .await;
-        if output.is_ok() {
-            if let Some(done) = layer_done.as_deref_mut().and_then(|done| done.get_mut(layer)) {
-                *done = Some(std::time::Instant::now());
-            }
-        }
         output
     }
     /// # Safety
@@ -448,7 +439,40 @@ pub(crate) struct BackboneLane<'w, 'a> {
     phase: Phase,
     capture_routes: bool,
     route_capture: Vec<Vec<[u32; 6]>>,
-    layer_done: Vec<Option<std::time::Instant>>,
+    /// Timing events recorded on the FFN-finish stream while routes are
+    /// captured; consecutive events give each layer's device time.
+    layer_events: LayerEvents<'a>,
+}
+
+/// One timing event per layer, created on the lane's device.
+struct LayerEvents<'a> {
+    library: &'a NativeLibrary,
+    events: Vec<*mut std::ffi::c_void>,
+    recorded: Vec<bool>,
+}
+impl<'a> LayerEvents<'a> {
+    fn new(library: &'a NativeLibrary) -> Result<Self> {
+        let mut events = Vec::with_capacity(40);
+        for _ in 0..40 {
+            match library.cuda_event_create() {
+                Ok(event) => events.push(event),
+                Err(error) => {
+                    for &event in &events { let _ = unsafe { library.cuda_event_destroy(event) }; }
+                    return Err(error);
+                }
+            }
+        }
+        Ok(Self { library, events, recorded: vec![false; 40] })
+    }
+}
+impl Drop for LayerEvents<'_> {
+    fn drop(&mut self) {
+        for &event in &self.events {
+            if let Err(error) = unsafe { self.library.cuda_event_destroy(event) } {
+                tracing::error!(%error, "destroying layer timing event");
+            }
+        }
+    }
 }
 impl<'w, 'a> BackboneLane<'w, 'a> {
     pub fn workspace_bytes(library: &NativeLibrary, capacity: u32) -> Result<[usize; 6]> {
@@ -503,7 +527,7 @@ impl<'w, 'a> BackboneLane<'w, 'a> {
             phase: Phase::Idle,
             capture_routes: false,
             route_capture: Vec::new(),
-            layer_done: vec![None; 40],
+            layer_events: LayerEvents::new(weights.library)?,
         })
     }
     fn enter(&mut self, expected: Phase) -> Result<()> {
@@ -703,7 +727,6 @@ impl<'w, 'a> BackboneLane<'w, 'a> {
             library: self.weights.library,
             phase: &mut self.phase,
             route_capture: if self.capture_routes { Some(&mut self.route_capture) } else { None },
-            layer_done: if self.capture_routes { Some(&mut self.layer_done) } else { None },
         })
     }
     /// # Safety
@@ -815,9 +838,10 @@ impl<'w, 'a> BackboneLane<'w, 'a> {
         result: Ds41rtDeviceBuffer,
     ) -> Result<BlockOutput<'_>> {
         self.enter(Phase::SharedReady)?;
-        let output = unsafe { self.block.finish_ffn(binding, result)? };
+        unsafe { self.block.finish_ffn(binding, result)?; }
+        self.record_layer_finish();
         self.phase = Phase::Complete;
-        Ok(output)
+        self.block.output()
     }
     /// # Safety
     /// Same completed result and exclusive lane contract as finish_ffn, retained
@@ -827,10 +851,11 @@ impl<'w, 'a> BackboneLane<'w, 'a> {
         self.enter(Phase::SharedReady)?;
         let handoff=self.weights.placement.is_some() && self.layer<39
             && self.weights.layers[self.layer+1].device.id != self.block.inputs()[0].device_id;
-        let output = unsafe { if handoff { self.block.finish_ffn_for_handoff_cooperative(binding,result).await? }
-            else { self.block.finish_ffn_cooperative(binding, result).await? } };
+        unsafe { if handoff { self.block.finish_ffn_for_handoff_cooperative(binding,result).await?; }
+            else { self.block.finish_ffn_cooperative(binding, result).await?; } }
+        self.record_layer_finish();
         self.phase = Phase::Complete;
-        Ok(output)
+        self.block.output()
     }
     #[cfg(test)]
     pub async unsafe fn check_queued_finish(&mut self, binding: QueryBinding,
@@ -858,12 +883,27 @@ impl<'w, 'a> BackboneLane<'w, 'a> {
             self.router.enable_small_graph_shapes();
             self.route_capture.resize_with(40, Vec::new);
             for rows in &mut self.route_capture { rows.clear(); }
-            self.layer_done.fill(None);
+            self.layer_events.recorded.fill(false);
         }
     }
     pub fn captured_routes(&self) -> &[Vec<[u32; 6]>] { &self.route_capture }
     /// FFN completion instants of the captured pass, per layer.
-    pub fn captured_layer_done(&self) -> &[Option<std::time::Instant>] { &self.layer_done }
+    /// Device time from layer `from`'s FFN finish to layer `to`'s, for a
+    /// captured pass whose work has completed.
+    pub fn layer_elapsed_us(&self, from: usize, to: usize) -> Option<f64> {
+        let events = &self.layer_events;
+        if !(*events.recorded.get(from)? && *events.recorded.get(to)?) { return None; }
+        unsafe { events.library.cuda_event_elapsed_ms(events.events[from], events.events[to]) }
+            .ok().map(|ms| f64::from(ms) * 1e3)
+    }
+    fn record_layer_finish(&mut self) {
+        if !self.capture_routes { return; }
+        let layer = self.layer;
+        let stream = self.block.finish_stream();
+        if unsafe { self.layer_events.library.cuda_event_record(self.layer_events.events[layer], stream) }.is_ok() {
+            self.layer_events.recorded[layer] = true;
+        }
+    }
     pub fn route_capture_enabled(&self) -> bool { self.capture_routes }
     pub fn reserve_sparse_decode_rows(&mut self, rows: usize) -> Result<()> {
         if let Some(dual)=&mut self.dual_sparse { dual.reserve_decode_rows(rows) }

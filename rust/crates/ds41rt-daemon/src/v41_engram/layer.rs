@@ -353,6 +353,7 @@ impl<'weights, 'library> EngramGate<'weights, 'library> {
         let cold = self.graph.as_ref().is_none_or(|(_, rows)| *rows != gathered.rows);
         if cold { self.clear_graph()?; }
         let launched = (|| unsafe {
+            crate::v41_memory::chain::join(self.weights.library, self.stream.raw)?;
             self.enqueue_inputs(residual, gathered)?;
             if cold { self.enqueue(gathered.rows) } else {
                 self.weights.library.cuda_graph_launch(self.graph.unwrap().0, self.stream.raw)
@@ -368,7 +369,7 @@ impl<'weights, 'library> EngramGate<'weights, 'library> {
         let copied = unsafe { self.weights.library.copy_d2d_async(residual, self.output.buffer,
             gathered.rows * 40960, self.stream.raw) };
         if let Err(error) = copied { self.synchronize()?; return Err(error); }
-        self.stream.wait().await?;
+        unsafe { crate::v41_memory::chain::finish_cooperative(&self.stream).await?; }
         self.ready_rows = Some(gathered.rows);
         Ok(())
     }

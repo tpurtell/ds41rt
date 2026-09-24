@@ -101,7 +101,8 @@ impl<'a> TargetTapWave<'a> {
         input: &PreparedBlockInput<'_>,
     ) -> Result<()> {
         let queued = unsafe { self.enqueue_capture(batch, input) };
-        let drained = unsafe { self.stream.library.cuda_stream_synchronize(self.stream.raw) };
+        let drained = if queued.is_err() { unsafe { self.stream.library.cuda_stream_synchronize(self.stream.raw) } }
+            else { unsafe { crate::v41_memory::chain::finish(self.stream.library, self.stream.raw) } };
         if let Err(error) = queued.and(drained) { self.reset(); return Err(error); }
         self.progress.next += 1;
         Ok(())
@@ -111,7 +112,9 @@ impl<'a> TargetTapWave<'a> {
     pub(super) async unsafe fn capture_cooperative(&mut self, batch: &CacheBatch,
         input: &PreparedBlockInput<'_>) -> Result<()> {
         unsafe { self.enqueue_capture(batch, input)?; }
-        if let Err(error) = self.stream.wait().await { self.reset(); return Err(error); }
+        if let Err(error) = unsafe { crate::v41_memory::chain::finish_cooperative(&self.stream).await } {
+            self.reset(); return Err(error);
+        }
         self.progress.next += 1;
         Ok(())
     }
@@ -146,6 +149,7 @@ impl<'a> TargetTapWave<'a> {
                 )?;
             }
             let launched = unsafe {
+                crate::v41_memory::chain::join(self.stream.library, self.stream.raw)?;
                 self.ops.tap(
                     input.residual,
                     self.values.buffer,
