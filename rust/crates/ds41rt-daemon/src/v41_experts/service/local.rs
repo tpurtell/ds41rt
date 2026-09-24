@@ -195,8 +195,10 @@ pub(super) fn run(config: NativeExpertServiceConfig, listen: &str) -> Result<()>
                     .context("requested expert layer is not resident on this Spark")?;
                 execution.bind_layer(&weights, layer)?;
                 if let Some(slot) = mapped.response_slot {
+                    // The mapped frame's hidden rows are device-visible, so the
+                    // worker copies them on its stream instead of uploading.
                     let response = unsafe { execution.execute_mapped_request(&request,
-                        executor_id, &mut exchange, slot) };
+                        executor_id, &mut exchange, slot, Some(mapped.hidden_payload)) };
                     let response = match response {
                         Ok(response) => response,
                         Err(error) => { execution_failed = true; return Err(error); }

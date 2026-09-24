@@ -36,9 +36,9 @@ fn real_registered_output_matches_device_compaction_and_preserves_guards() -> Re
         host.bytes_mut().fill(0xa5);
         let alias = lib.cuda_host_buffer_device_alias(host.buffer)?;
         let short = Ds41rtDeviceBuffer { bytes: prefix + bytes - 1, ..alias };
-        assert!(unsafe { execution.execute_mapped_request(&request, 1, &mut exchange, short)? }.is_none());
+        assert!(unsafe { execution.execute_mapped_request(&request, 1, &mut exchange, short, None)? }.is_none());
         assert!(host.bytes_mut().iter().all(|&b| b == 0xa5));
-        let response = unsafe { execution.execute_mapped_request(&request, 1, &mut exchange, alias)? }.unwrap();
+        let response = unsafe { execution.execute_mapped_request(&request, 1, &mut exchange, alias, None)? }.unwrap();
         assert_eq!(response.partial_output_payload.bytes, bytes);
         assert!(host.bytes_mut()[..prefix].iter().all(|&b| b == 0xa5));
         assert!(host.bytes_mut()[prefix + bytes..].iter().all(|&b| b == 0xa5));
@@ -69,7 +69,7 @@ fn real_registered_output_matches_device_compaction_and_preserves_guards() -> Re
         owned.header.flags |= EXPERT_PROTOCOL_V2_FLAG_DEBUG_CHECKSUM;
         let frame = owned.encode()?;
         let request = ds41rt_transport::v41_expert::V41BackboneRequest::parse(&frame, 4096)?;
-        assert!(unsafe { execution.execute_mapped_request(&request, 1, &mut exchange, alias)? }.is_none());
+        assert!(unsafe { execution.execute_mapped_request(&request, 1, &mut exchange, alias, None)? }.is_none());
         eprintln!("PASS registered output rows={rows}: exact compaction, guards and fallback");
     }
     Ok(())

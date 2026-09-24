@@ -83,10 +83,11 @@ impl<'w, 'a> Execution<'w, 'a> {
         executor_id: u64,
         exchange: &mut HostExpertExchange,
         slot: Ds41rtDeviceBuffer,
+        hidden: Option<Ds41rtDeviceBuffer>,
     ) -> Result<Option<ExpertProtocolV2DeviceResponseRef<'static>>> {
         match self {
             Self::Full(execution) => {
-                execution.execute_mapped_request(request, executor_id, exchange, slot)
+                execution.execute_mapped_request(request, executor_id, exchange, slot, hidden)
             }
             Self::Exl3(execution) => {
                 execution.execute_mapped_request(request, executor_id, exchange, slot)

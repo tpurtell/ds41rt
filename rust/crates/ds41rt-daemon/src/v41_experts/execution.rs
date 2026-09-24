@@ -70,6 +70,10 @@ pub(crate) struct ExpertExecution<'weights, 'library> {
     hidden: DeviceAllocation<'library>,
     ids: DeviceAllocation<'library>,
     routing: DeviceAllocation<'library>,
+    /// Pinned route ids then weights, uploaded asynchronously per request. The
+    /// stream drains before each response is emitted, so the next request may
+    /// rewrite this staging.
+    route_staging: crate::v41_memory::HostAllocation<'library>,
     compact_reducer: Option<V41CompactReducer<'library>>,
     compact_output: Option<DeviceAllocation<'library>>,
     output: Option<DeviceAllocation<'library>>,
@@ -225,10 +229,12 @@ impl<'library> ExpertWeights<'library> {
         };
         let decode = prepare_small(1, budget.decode_scratch_bytes)?;
         let small = prepare_small(80, budget.small_scratch_bytes)?;
+        let route_staging = crate::v41_memory::HostAllocation::new(library, budget.routing_bytes)?;
         Ok(ExpertExecution {
             stream,
             _weights: self,
             library,
+            route_staging,
             kernel,
             decode,
             small,
@@ -637,6 +643,7 @@ impl ExpertExecution<'_, '_> {
     pub unsafe fn execute_mapped_request(&mut self,
         request: &ds41rt_transport::v41_expert::V41BackboneRequest<'_>, executor_id: u64,
         exchange: &mut HostExpertExchange, slot: Ds41rtDeviceBuffer,
+        hidden: Option<Ds41rtDeviceBuffer>,
     ) -> Result<Option<ds41rt_transport::ExpertProtocolV2DeviceResponseRef<'static>>> {
         let prefix = ds41rt_transport::EXPERT_PROTOCOL_V2_RESPONSE_HEADER_LEN;
         let bytes = request.plane_bytes()?;
@@ -646,7 +653,7 @@ impl ExpertExecution<'_, '_> {
         };
         // Validate the destination descriptor before launching any GPU work.
         let response = request.response_device(executor_id, output)?;
-        self.execute_request_output(request, executor_id, exchange, Some(output))?;
+        self.execute_request_output(request, executor_id, exchange, Some(output), hidden)?;
         Ok(Some(response))
     }
 
@@ -658,13 +665,14 @@ impl ExpertExecution<'_, '_> {
         executor_id: u64,
         exchange: &'a mut HostExpertExchange,
     ) -> Result<ds41rt_transport::ExpertProtocolV2ResponseRef<'a>> {
-        self.execute_request_output(request, executor_id, exchange, None)?;
+        self.execute_request_output(request, executor_id, exchange, None, None)?;
         request.response(executor_id, &exchange.partials[..request.plane_bytes()?])
     }
 
     fn execute_request_output(&mut self,
         request: &ds41rt_transport::v41_expert::V41BackboneRequest<'_>, executor_id: u64,
         exchange: &mut HostExpertExchange, destination: Option<Ds41rtDeviceBuffer>,
+        hidden_view: Option<Ds41rtDeviceBuffer>,
     ) -> Result<()> {
         let layer = match self._weights.layer {
             super::ExpertLayer::Backbone { layer, .. }
@@ -703,24 +711,42 @@ impl ExpertExecution<'_, '_> {
             ),
         }
         let started = self.timing.as_ref().map(|_| std::time::Instant::now());
-        self.synchronize()?;
-        self.library
-            .copy_h2d(self.hidden.buffer, request.hidden())?;
         // Supported hosts and CUDA use the checkpoint/wire little-endian byte order.
         ensure!(
             cfg!(target_endian = "little"),
             "native host exchange requires little-endian storage"
         );
-        unsafe {
-            self.library.copy_h2d(
-                self.ids.buffer,
-                std::slice::from_raw_parts(exchange.ids.as_ptr().cast::<u8>(), routes * 4),
-            )?;
-            self.library.copy_h2d(
-                self.routing.buffer,
-                std::slice::from_raw_parts(exchange.routing.as_ptr().cast::<u8>(), routes * 4),
-            )?;
+        // Every earlier request drained this stream before emitting its response
+        // (and bind_layer drains on rebind), so all three inputs are enqueued
+        // back to back with no host wait: the hidden rows as a device copy from
+        // the mapped request frame when the transport exposes one, and the route
+        // ids/weights from pinned staging.
+        let hidden_bytes = request.hidden().len();
+        ensure!(routes * 8 <= self.route_staging.buffer.bytes && hidden_bytes <= self.hidden.buffer.bytes,
+            "native request staging is too small");
+        {
+            let staging = self.route_staging.bytes_mut();
+            unsafe {
+                staging[..routes * 4].copy_from_slice(
+                    std::slice::from_raw_parts(exchange.ids.as_ptr().cast::<u8>(), routes * 4));
+                staging[routes * 4..routes * 8].copy_from_slice(
+                    std::slice::from_raw_parts(exchange.routing.as_ptr().cast::<u8>(), routes * 4));
+            }
         }
+        let uploaded = (|| -> Result<()> { unsafe {
+            match hidden_view.filter(|view| view.bytes >= hidden_bytes) {
+                Some(view) => self.library.copy_d2d_async(self.hidden.buffer,
+                    Ds41rtDeviceBuffer { bytes: hidden_bytes, ..view }, hidden_bytes, self.stream.raw)?,
+                None => self.library.copy_h2d_async(self.hidden.buffer, request.hidden(), self.stream.raw)?,
+            }
+            let mut ids = self.route_staging.buffer; ids.bytes = routes * 4;
+            self.library.copy_host_buffer_h2d_async(self.ids.buffer, ids, routes * 4, self.stream.raw)?;
+            let mut weights = self.route_staging.buffer;
+            weights.ptr = weights.ptr.cast::<u8>().add(routes * 4).cast(); weights.bytes = routes * 4;
+            self.library.copy_host_buffer_h2d_async(self.routing.buffer, weights, routes * 4, self.stream.raw)?;
+            Ok(())
+        } })();
+        if let Err(error) = uploaded { self.synchronize()?; return Err(error); }
         let uploaded_us = started.map(|t| t.elapsed().as_micros() as u64);
         if let Some(timing) = &self.timing {
             unsafe {
