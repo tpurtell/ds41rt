@@ -10,7 +10,7 @@ The historical official-image v6 campaign used an enforced **400 W power limit**
 
 ## Performance
 
-The official full checkpoint remains the default. Its **decode** measurements are the [v14 campaign](docs/release-v14-performance.md) on the published v14 images, which shorten the verification cycle (device-ordered stages, overlapped cache producers, a two-RTX device sampler); its prefill, deployment, startup and memory tables remain the historical [v6 campaign](docs/release-v6-performance.md), **not re-campaigned since**, apart from a [v7 regression check](docs/release-v7-official-regression.md) that confirms the default path is unchanged: the published v7 images reproduce the v6 deployment geometry exactly and measure 1x C1 code decode at **134.38** against the recorded 130.41. The new NVFP4 and EXL3 measurements use the v7 raw-result package; their reports below distinguish recorded controls from outstanding provenance and qualification.
+The official full checkpoint remains the default. Its **decode** measurements are the [v14 campaign](docs/release-v14-performance.md) on the published v14 images, which shorten the verification cycle (device-ordered stages, overlapped cache producers, a two-RTX device sampler); v15 changes decode only for grammar-constrained requests, and its [schema-JSON rows](docs/release-v15-notes.md#evaluation) were remeasured on the published v15 images; its prefill, deployment, startup and memory tables remain the historical [v6 campaign](docs/release-v6-performance.md), **not re-campaigned since**, apart from a [v7 regression check](docs/release-v7-official-regression.md) that confirms the default path is unchanged: the published v7 images reproduce the v6 deployment geometry exactly and measure 1x C1 code decode at **134.38** against the recorded 130.41. The new NVFP4 and EXL3 measurements use the v7 raw-result package; their reports below distinguish recorded controls from outstanding provenance and qualification.
 
 The release protocol uses **400 W per RTX card and standard memory speed, without a memory overclock**. Reported throughput cells use three samples. Reasoning code uses high-effort thinking and counts reasoning plus final-answer tokens; other throughput cases disable thinking. The official v6 campaign kept the experimental TP2 switches off.
 
@@ -57,15 +57,15 @@ to be redone.
 See [compact setup and residency](docs/release-v7-exl3-compact.md)
 and the [configuration accounting chart](docs/release-v7-configurations.svg).
 No physical RTX 5090 has been tested; the same-capability grid checks used RTX PRO 6000.
-The release pair named by `ds41rt.config` is `ghcr.io/tpurtell/ds41rt-coordinator:v14`
-and `ghcr.io/tpurtell/ds41rt-spark-expert:v14` ([release notes and registry
-digests](docs/release-v14-notes.md)). `latest` resolves to the same pair; both
+The release pair named by `ds41rt.config` is `ghcr.io/tpurtell/ds41rt-coordinator:v15`
+and `ghcr.io/tpurtell/ds41rt-spark-expert:v15` ([release notes and registry
+digests](docs/release-v15-notes.md)). `latest` resolves to the same pair; both
 roles were verified by anonymous pull on their matching architectures. The
 Spark image is **universal**: it advertises
 `io.ds41rt.v41.spark_tp_roles=tp2;tp3;tp6` on top of the default TP4 shard, so one
 pair serves every approved native topology and `./run.sh` selects the role
-from `SPARK_TP`. V13 remains available as the previous numbered pair
-([v13 notes](docs/release-v13-notes.md)). V9 release images remain published as
+from `SPARK_TP`. V14 remains available as the previous numbered pair
+([v14 notes](docs/release-v14-notes.md)). V9 release images remain published as
 `ghcr.io/tpurtell/ds41rt-coordinator:v9` and `ghcr.io/tpurtell/ds41rt-spark-expert:v9`
 ([digests and roles](docs/release-v9-notes.md)). V8 release images remain published as
 `ghcr.io/tpurtell/ds41rt-coordinator:v8` and `ghcr.io/tpurtell/ds41rt-spark-expert:v8`
@@ -81,6 +81,12 @@ GPU), and concurrent traffic by 6–17%. The only key that did not improve is
 two-RTX code at C16 (−1.0%). Official 2x counting decode (219.86) is back near
 the historical 221.64 with the default five-token block; the
 [v14 performance report](docs/release-v14-performance.md) has the full comparison.
+
+V15 restores dSpark speculation for requests that offer tools: their free
+text previously verified no drafts, so agent turns decoded at roughly half
+speed (C1 54–63 → 98–111 tok/s on two RTX). It also adds a live engine console
+at `/` (see [Runtime options](#runtime-options)). The
+[v15 notes](docs/release-v15-notes.md) have the measurements.
 
 **Official image only below.** The decode tables below (content type, retained
 context, concurrency, mixed traffic and dSpark acceptance) are the v14 campaign;
@@ -99,9 +105,13 @@ from the EXL3 5090+2-spark runs above, none qualifies either new quant.
 | Hello | 58.37 | 77.20 | 60.43 | 113.79 | 151.88 |
 | Topic | 60.00 | 84.05 | 60.50 | 102.32 | 189.53 |
 | Natural JSON | 59.72 | 133.54 | 60.48 | 157.00 | 266.83 |
-| Schema JSON | 59.12 | 135.55 | 60.17 | 159.10 | HTTP 400 |
+| Schema JSON | 59.12 | 138.74 † | 60.17 | 148.66 † | HTTP 400 |
 | Multilingual | 59.18 | 87.46 | 60.24 | 106.52 | 176.78 |
 | Counting 1–200 | 60.81 | 182.39 | 61.64 | 219.86 | 417.01 |
+
+† V15, remeasured on the published v15 images with v14's prompts. A fresh v14
+control on the same prompts measured 147.85 on two RTX; v14's 159.10 came from
+one high sample ([v15 notes](docs/release-v15-notes.md#evaluation)).
 
 **1 RTX prefill matrix.** Median effective tokens/s after shape warmup and verified parent reuse.
 
@@ -187,9 +197,13 @@ from the EXL3 5090+2-spark runs above, none qualifies either new quant.
 | Hello | 53.97% (2.15) | 44.23% (2.31) |
 | Topic | 61.29% (2.54) | 57.82% (2.62) |
 | Natural JSON | 71.21% (2.96) | 74.07% (3.61) |
-| Schema JSON | 96.39% (5.21) | 82.29% (4.29) |
+| Schema JSON † | 89.62% (4.17) | 82.64% (4.03) |
 | Multilingual | 57.55% (2.45) | 56.30% (2.73) |
 | Counting 1–200 | 99.27% (5.90) | 99.47% (5.94) |
+
+† V15, counted with the exact lifetime totals the console exports. `/v1/stats`
+refreshes at most once per second and freezes when idle, which undercounts runs
+as short as three schema responses.
 
 **Historical native tool calling.** The three v4 full-checkpoint campaigns retained in v5; not rerun for v6 or v7. High-effort thinking was enabled, and failures remain in the scores.
 
@@ -198,6 +212,10 @@ from the EXL3 5090+2-spark runs above, none qualifies either new quant.
 | 2026-09-16T04-12-34.961137Z_2214ecfb | 124/138 | 31/38 | 155/176 |
 | 2026-09-16T04-17-40.551606Z_43911d6a | 126/138 | 34/38 | 160/176 |
 | 2026-09-16T04-22-39.602726Z_81eaa393 | 123/138 | 33/38 | 156/176 |
+
+The v15 images scored 155/176 (120/138 basic, 35/38 hard) in one run with the
+same settings, after the grammar fix that restores speculation for tool-enabled
+requests ([v15 notes](docs/release-v15-notes.md#evaluation)).
 
 Historical EXL3 performance, acceptance and quantization analysis are preserved in the [v5 performance report](https://github.com/tpurtell/ds41rt/blob/v5/docs/release-v5-performance.md); they are not v6 measurements.
 
@@ -510,9 +528,9 @@ MODEL_REVISION=3431dde3247c13b5957f682b1e3c6fcae2566079
 To use the published images, pull the coordinator image locally and the Spark image on each worker:
 
 ```bash
-docker pull ghcr.io/tpurtell/ds41rt-coordinator:v14
+docker pull ghcr.io/tpurtell/ds41rt-coordinator:v15
 for host in ostrich dodo emu kiwi; do
-  ssh "$host" docker pull ghcr.io/tpurtell/ds41rt-spark-expert:v14
+  ssh "$host" docker pull ghcr.io/tpurtell/ds41rt-spark-expert:v15
 done
 ./run.sh --dry-run
 ./run.sh
@@ -603,6 +621,14 @@ are useful for side-by-side development servers:
   --max-context-tokens 65536 --max-output-tokens 8192 \
   --kv-pool-size 2GiB --prefix-cache-entries 3 --no-dspark
 ```
+
+Open the API address in a browser (for example `http://HOST:8000/`) for the live
+engine console: rates, lane occupancy, KV and host-offload use, a per-round
+ticker of each request's accepted and rejected drafts, prefill chunks, pipeline
+micro-step timings and dSpark acceptance. It streams over a WebSocket at
+`/v1/console` (JSON snapshot at `/v1/console/snapshot`) and costs the engine
+nothing measurable. Its text view shows every session's generated tokens, so it
+is off unless the server runs with `DS41RT_CONSOLE_TEXT=1` (`--console-text`).
 
 The API supports incremental SSE, cancellation, tools, parallel tool calls, JSON and supported JSON Schema constraints, and up to sixteen images in a prompt. Image input accepts data URLs and bounded HTTP/HTTPS URLs. See the [thinking](docs/release-v1-thinking.md), [tool serving](docs/release-v1-tool-serving.md), [output constraints](docs/release-v1-response-constraints.md), and [vision](docs/release-v1-vision-serving.md) qualification records.
 

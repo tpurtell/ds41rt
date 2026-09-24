@@ -1,7 +1,7 @@
 # Live engine console at `/`
 
-Status: implemented on `dev`, under interactive iteration before
-any release. Written 2026-09-25 against `dev` at `e62143f`.
+Status: released in v15 (docs/release-v15-notes.md). Written 2026-09-25 against
+`dev` at `e62143f`.
 
 Implementation map:
 - Page: `rust/crates/ds41rt-api/assets/console.html`, compiled in with `include_str!`.
