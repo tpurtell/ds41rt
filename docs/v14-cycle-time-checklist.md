@@ -55,27 +55,29 @@ Status: `[ ]` open, `[~]` in progress, `[x]` landed (commit), `[-]` dropped
 
 - [x] Engram at layers 1 and 14: queued gather path on chained passes and a
   yield instead of the 1 ms retry sleep (01591f0).
-- [ ] Launch the next draft as soon as the commit is queued; do emission,
-  observe and logging while it runs. (Measured tail is ~0.2 ms; low value.)
+- [-] Launch the next draft as soon as the commit is queued: the measured
+  round tail is ~0.2 ms (0.6%); not pursued for v14.
 - [x] Remote layers: the shared expert no longer blocks RDMA polling (chained).
 - [x] mHC finish, next-input copies and taps stream-ordered (01591f0).
-- [ ] Head: fuse final norm; remove sequential waits.
+- [-] Head: the vocabulary GEMV reads 1.32 GB at ~1.55 TB/s (~86% of peak);
+  norm fusion would save ~2 µs. Not pursued.
 
 ## 2. Remote expert boundary (coordinator + Spark worker)
 
-- [ ] Router graph writes routes/rows straight into registered send slots;
-  remove per-layer Vec clones, channel/oneshot allocation, repeated prefix
-  encoding.
+- [-] Router graph writes into registered send slots: dispatch measures
+  5 µs per layer in total; not worth the transport rework.
 - [-] Coordinator receive loop: already spins between yields and hands
   pinned frames straight to the plane uploads; coordinator receive exceeds
   the worker's total by ~22 µs, mostly the two network hops. Sharing one
   request copy across ranks showed no dispatch change (5 µs); reverted.
 - [x] Worker: hidden rows copied on-stream from the mapped request frame, route
   ids/weights from pinned staging; upload 17 → 4 µs per layer (827383a).
-- [ ] Worker: fold compaction into the expert kernel epilogue or graph the
-  two launches.
-- [ ] GPUDirect (dmabuf) registration of RTX rank planes, removing the
-  host→device plane uploads.
+- [-] Worker: fold compaction into the expert kernel epilogue: compaction is
+  6 µs per layer (0.2 ms per round); deterministic in-epilogue route sums
+  need a kernel rework. Deferred.
+- [-] GPUDirect (dmabuf) registration of RTX rank planes: the four plane
+  uploads cost ~2.5 µs each after the last Spark response; not worth the
+  deployment requirements (peer memory registration in the container).
 
 ## 3. Expert kernels (b12x fork)
 
@@ -84,7 +86,8 @@ Status: `[ ]` open, `[~]` in progress, `[x]` landed (commit), `[-]` dropped
   the 96 resident slots; buffering would cost residency. Dropped for decode.
 - [x] Single-CTA route plan for decode capacities: identical outputs,
   12.3 → 3.6 µs per call on GB10 (acb4dfb, b12x 7fcc094).
-- [ ] Fuse slice reduce with the worker's compact route sum (~8 µs).
+- [-] Fuse slice reduce with the worker's compact route sum (~8 µs): see the
+  compaction item; deferred.
 - [-] Worker L2 prefetch of predicted next-layer experts during idle gaps.
   Served hits were 2.2 of 3 predicted experts with ~300 µs of idle time
   before the next request, yet the C1 expert kernel slowed 498 → 516 µs with
@@ -97,8 +100,10 @@ Status: `[ ]` open, `[~]` in progress, `[x]` landed (commit), `[-]` dropped
 
 - [x] Local routed experts overlap the shared expert; only the final reduce
   joins it (01591f0).
-- [ ] Graph the local expert pipeline and fuse the finish reduce.
-- [ ] Shared expert: quantize the input once for gate and up.
+- [-] Graph the local expert pipeline: the local grouped expert kernel runs at
+  ~85% of achievable bandwidth (316 µs at 6 rows); launch overhead is small.
+- [-] Shared expert: quantize the input once for gate and up: the shared
+  expert overlaps the Spark round trip on remote layers (off the critical path).
 - [x] TP2 (two RTX, 20 local layers, 4a3fa6b): each rank sums its six FP32 route
   planes per token before the peer transfer (one FP32 row per token instead
   of six; replaces the on-device route copy). Copy+reduce was 43 µs/layer at
@@ -106,9 +111,14 @@ Status: `[ ]` open, `[~]` in progress, `[x]` landed (commit), `[-]` dropped
 
 ## 5. Attention side
 
-- [ ] Reduce host round trips per layer (query, window KV, attention graphs):
-  event-chained stages, fewer polls.
-- [ ] Remove redundant frequency computation and residual D2D copies.
+- [x] Reduce host round trips per layer (dec3b89): window KV and compressor
+  producers fork from the query stage's normalized input and overlap the
+  query projections; the direct compressor and index paths no longer drain
+  the chain on the host. One RTX C1: verify 32.68 → 31.99 ms per round;
+  remote-layer upload→routes median 186 → 171 µs.
+- [-] Redundant frequency kernels (~1 µs each) and residual copies (~3 µs per
+  layer): remaining per-layer idle is ~57 µs spread over ~11 small gaps;
+  individually unmeasurable. Not pursued for v14.
 
 ## 6. dSpark draft
 
@@ -118,9 +128,10 @@ Status: `[ ]` open, `[~]` in progress, `[x]` landed (commit), `[-]` dropped
   error). Acceptance fell on topic (0.656 → 0.639) and fable (0.626 → 0.578)
   and the A/B was mixed (code −1.6/+0.7/−1.3%, topic +2.3/+5.3/+1.5% at
   C1/C2/C4). Not a clear win; the draft head stays BF16. Code removed.
-- [ ] Two-RTX draft terminal as one graph (no host-driven phases); one-RTX
-  propose with a single sync.
-- [ ] Draft kv projection reuses the query-side quantized input.
+- [-] Two-RTX draft terminal as one graph: at C1 the two-RTX draft takes
+  1.81 ms per round, already below one RTX (2.17 ms); the 3.1 ms seen earlier
+  was C4 with two requests per lane. Not needed.
+- [-] Draft kv projection reuses the query-side quantized input: ~1 µs.
 
 ## 7. Two-RTX sampled decode
 
@@ -148,3 +159,4 @@ Status: `[ ]` open, `[~]` in progress, `[x]` landed (commit), `[-]` dropped
 | + device-timed policy costs | build d | 152 | — | lite A/B vs v13 137 (+10.5%) |
 | 2×RTX chain + sampler | build g | — | — | 2×RTX lite A/B vs v13: code C1/C2/C4 +8.3/−1.2/+3.5%, topic +8.9/+0.6/−4.8% (cold policy) |
 | + handoff timing, TP2 sums | build h | 148 | 35.1 | 2×RTX lite A/B vs v13: code +10.4/+2.6/+7.7%, topic +5.1/−0.1/+1.1% |
+| + producer fork, chained direct index | build j | 150 | 34.5 | verify 31.99 ms; 2×RTX C1 round 29.1 ms (build h) |
