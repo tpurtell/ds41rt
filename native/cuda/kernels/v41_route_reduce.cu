@@ -409,6 +409,33 @@ extern "C" int32_t ds41rt_v41_reduce_tp2_experts_async(const float* rank0,
   return cudaGetLastError();
 }
 
+namespace {
+// FP32 per-token sum of one TP2 rank's six route planes (route order 0..5),
+// so only [rows, 5120] FP32 crosses GPUs instead of [rows, 6, 5120].
+__global__ void sum_tp2_routes(const float* routes, float* sums, uint64_t count) {
+  for (uint64_t i = uint64_t(blockIdx.x) * blockDim.x + threadIdx.x;
+       i < count; i += uint64_t(gridDim.x) * blockDim.x) {
+    const uint64_t base = (i / hidden) * 6 * hidden + i % hidden;
+    float value = routes[base];
+#pragma unroll
+    for (int route = 1; route < 6; ++route) value = __fadd_rn(value, routes[base + route * hidden]);
+    sums[i] = value;
+  }
+}
+}
+extern "C" int32_t ds41rt_v41_sum_tp2_routes_async(const float* routes, float* sums,
+    uint32_t rows, void* stream) {
+  if (!rows || rows > 4096 || !routes || !sums || reinterpret_cast<uintptr_t>(routes) % 4 ||
+      reinterpret_cast<uintptr_t>(sums) % 4) return cudaErrorInvalidValue;
+  const uint64_t count = uint64_t(rows) * hidden;
+  if (reinterpret_cast<uintptr_t>(routes) > UINTPTR_MAX - count * 24 ||
+      reinterpret_cast<uintptr_t>(sums) > UINTPTR_MAX - count * 4 ||
+      overlaps(routes, count * 24, sums, count * 4)) return cudaErrorInvalidValue;
+  const unsigned blocks = static_cast<unsigned>(count / 256 < 4096 ? count / 256 : 4096);
+  sum_tp2_routes<<<blocks, 256, 0, static_cast<cudaStream_t>(stream)>>>(routes, sums, count);
+  return cudaGetLastError();
+}
+
 extern "C" int32_t ds41rt_v41_finish_local_bf16_routes_async(const uint16_t* routed,
     const uint16_t* shared, uint16_t* output, uint32_t rows, void* stream) {
   const uint64_t count = uint64_t(rows) * hidden;

@@ -1286,15 +1286,34 @@ pub struct V41Tp2ExpertReducer<'a> {
     _library: &'a NativeLibrary,
     reduce: ReduceTp2Fn,
     reduce_bf16_routes: Option<ReduceTp2Bf16RoutesFn>,
+    sum_routes: Option<SumTp2RoutesFn>,
 }
+type SumTp2RoutesFn = unsafe extern "C" fn(*const f32, *mut f32, u32, *mut c_void) -> i32;
 impl NativeLibrary {
     pub fn v41_tp2_expert_reducer(&self) -> Result<V41Tp2ExpertReducer<'_>> {
         Ok(V41Tp2ExpertReducer { _library: self,
             reduce: unsafe { *self.lib.get::<ReduceTp2Fn>(b"ds41rt_v41_reduce_tp2_experts_async")? },
-            reduce_bf16_routes: unsafe { self.lib.get::<ReduceTp2Bf16RoutesFn>(b"ds41rt_v41_reduce_tp2_bf16_routes_async").ok().map(|f| *f) } })
+            reduce_bf16_routes: unsafe { self.lib.get::<ReduceTp2Bf16RoutesFn>(b"ds41rt_v41_reduce_tp2_bf16_routes_async").ok().map(|f| *f) },
+            sum_routes: unsafe { self.lib.get::<SumTp2RoutesFn>(b"ds41rt_v41_sum_tp2_routes_async").ok().map(|f| *f) } })
     }
 }
 impl V41Tp2ExpertReducer<'_> {
+    pub fn supports_route_sums(&self) -> bool { self.sum_routes.is_some() }
+    /// FP32 token sums of one rank's six FP32 route planes, route order 0..5.
+    /// # Safety
+    /// `routes` is FP32 [rows,6,5120] and `sums` FP32 [rows,5120] on the current
+    /// device, disjoint, ordered on this stream and live through completion.
+    pub unsafe fn sum_routes(&self, routes: Ds41rtDeviceBuffer, sums: Ds41rtDeviceBuffer, rows: u32,
+        stream: *mut c_void) -> Result<()> {
+        ensure!((1..=4096).contains(&rows), "invalid TP2 route-sum rows");
+        let count = rows as usize * 5120;
+        ensure!(routes.device_id == sums.device_id && routes.bytes >= count * 24 && sums.bytes >= count * 4,
+            "TP2 route-sum buffers have incompatible device or extent");
+        let function = self.sum_routes.context("native TP2 route sums unavailable")?;
+        let status = unsafe { function(routes.ptr.cast(), sums.ptr.cast(), rows, stream) };
+        ensure!(status == 0, "TP2 route sums failed with CUDA status {status}");
+        Ok(())
+    }
     /// Sum corresponding BF16 route pairs in FP32, then routes, rounding once.
     /// # Safety
     /// Inputs are BF16 [rows,6,5120]; output is BF16 [rows,5120]. All buffers

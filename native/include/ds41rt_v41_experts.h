@@ -183,6 +183,11 @@ int32_t ds41rt_v41_reduce_tp2_bf16_routes_async(const uint16_t* rank0,
 // on this stream. Sum without intermediate rank rounding; emit BF16 once.
 int32_t ds41rt_v41_reduce_tp2_experts_async(const float* rank0, const float* rank1,
     uint16_t* output, uint32_t rows, uint32_t token_sums, void* stream);
+
+// FP32 per-token sum of one rank's FP32 [rows,6,5120] route planes into
+// [rows,5120], adding routes in order 0..5 on this stream.
+int32_t ds41rt_v41_sum_tp2_routes_async(const float* routes, float* sums, uint32_t rows,
+    void* stream);
 #ifdef __cplusplus
 }
 #endif

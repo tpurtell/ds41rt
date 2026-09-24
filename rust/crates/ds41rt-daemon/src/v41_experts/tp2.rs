@@ -382,6 +382,9 @@ enum RankBackend<'a> {
 }
 pub(crate) struct RankWave<'a> {
     pub stream: Stream<'a>,
+    /// Pre-sums FP32 route planes per token on this rank before the peer
+    /// transfer (`DS41RT_TP2_TOKEN_SUMS=0` keeps route planes).
+    route_sums: Option<V41Tp2ExpertReducer<'a>>,
     ready: Event<'a>,
     timing: Option<[Event<'a>; 2]>,
     backend: RankBackend<'a>,
@@ -457,6 +460,7 @@ impl<'a> RankWave<'a> {
             };
             return Ok(Self {
                 stream,
+                route_sums: None,
                 ready: Event::new(device)?,
                 timing,
                 backend: RankBackend::Exl3(states),
@@ -505,8 +509,11 @@ impl<'a> RankWave<'a> {
         } else {
             None
         };
+        let route_sums = if nvfp4 || std::env::var("DS41RT_TP2_TOKEN_SUMS").is_ok_and(|v| v == "0") { None }
+            else { Some(device.library.v41_tp2_expert_reducer()?).filter(|r| r.supports_route_sums()) };
         Ok(Self {
             stream,
+            route_sums,
             ready: Event::new(device)?,
             timing,
             backend: RankBackend::Full {
@@ -614,13 +621,22 @@ impl<'a> RankWave<'a> {
                     let mut source = self.output.buffer;
                     source.ptr = state.slots[41];
                     source.bytes = rows as usize * 5120 * layout.element_bytes();
-                    device.library.copy_d2d_async(
-                        self.output.buffer,
-                        source,
-                        source.bytes,
-                        self.stream.raw,
-                    )?;
-                    layout
+                    match (&self.route_sums, layout) {
+                        (Some(sums), Tp2RoutedLayout::Fp32Routes) => {
+                            // One FP32 row per token crosses GPUs instead of six.
+                            sums.sum_routes(source, self.output.buffer, rows, self.stream.raw)?;
+                            Tp2RoutedLayout::Fp32Tokens
+                        }
+                        _ => {
+                            device.library.copy_d2d_async(
+                                self.output.buffer,
+                                source,
+                                source.bytes,
+                                self.stream.raw,
+                            )?;
+                            layout
+                        }
+                    }
                 }
                 _ => anyhow::bail!("TP2 execution/weight format mismatch"),
             };
