@@ -435,6 +435,8 @@ fi
 # them, so a multi-homed six-rank launch can pin the rail without changing any
 # default. Values were format-checked above by release_validate_verbs_device_map.
 rdma_env_args=()
+# Diagnostic switch: DS41RT_STAGE_CHAIN=0 restores host-drained target stages.
+[[ -z "${DS41RT_STAGE_CHAIN:-}" ]] || rdma_env_args+=(-e "DS41RT_STAGE_CHAIN=$DS41RT_STAGE_CHAIN")
 for rdma_env_name in DS41RT_PROTOCOL_V2_VERBS_HOST_DEVICE_MAP DS41RT_VERBS_APP_IB_PORT_NUM DS41RT_PROTOCOL_V2_VERBS_HOST_EXECUTION_LANES; do
   [[ -n "${!rdma_env_name:-}" ]] && rdma_env_args+=(-e "$rdma_env_name=${!rdma_env_name}")
 done
@@ -498,7 +500,10 @@ echo "== starting native Spark experts =="
 pids=()
 for i in "${!hosts[@]}"; do
   host="${hosts[$i]}"; remote="${spark_prefix}-${host}-${EXPERT_PORT}"
-  release_ssh "$host" bash -s -- "$SPARK_EXPERT_DOCKER_INFERENCE" "$remote" "$i" "$expert_capacity" "$SPARK_DEVICE_BUDGET_BYTES" "$EXPERT_PORT" "$snapshot_rel" "$fingerprint" "$spark_first_layer" "$SPARK_COUNT" "$topology_explicit" "$spark_tp" "$spark_ep" "${DS41RT_PROTOCOL_V2_VERBS_HOST_DEVICE_MAP:-}" "${DS41RT_VERBS_APP_IB_PORT_NUM:-}" "${DS41RT_PROTOCOL_V2_VERBS_HOST_EXECUTION_LANES:-}" <<'REMOTE' &
+  # ssh joins its arguments into one remote command line, which drops empty
+  # arguments and shifts every later position; quote each one explicitly.
+  remote_args=("$SPARK_EXPERT_DOCKER_INFERENCE" "$remote" "$i" "$expert_capacity" "$SPARK_DEVICE_BUDGET_BYTES" "$EXPERT_PORT" "$snapshot_rel" "$fingerprint" "$spark_first_layer" "$SPARK_COUNT" "$topology_explicit" "$spark_tp" "$spark_ep" "${DS41RT_PROTOCOL_V2_VERBS_HOST_DEVICE_MAP:-}" "${DS41RT_VERBS_APP_IB_PORT_NUM:-}" "${DS41RT_PROTOCOL_V2_VERBS_HOST_EXECUTION_LANES:-}" "${RUST_LOG:-info}")
+  release_ssh "$host" "bash -s -- $(printf '%q ' "${remote_args[@]}")" <<'REMOTE' &
 set -euo pipefail
 image="$1"; name="$2"; rank="$3"; capacity="$4"; budget="$5"; port="$6"; snapshot_rel="$7"; fingerprint="$8"; first_layer="$9"; world="${10}"
 # Defaults keep a legacy invocation (ten positional arguments) valid.
@@ -507,6 +512,9 @@ topology_args=()
 [[ "$topology_explicit" != 1 ]] || topology_args=(--spark-tp "$topology_tp" --spark-ep "$topology_ep")
 # Optional RDMA tuning, forwarded only when the operator set it.
 rdma_env="${14:-}"; ib_port="${15:-}"; execution_lanes="${16:-}"
+# The operator's RUST_LOG reaches the worker too (a quoted heredoc does not
+# see the caller's environment).
+rust_log="${17:-info}"
 rdma_args=()
 [[ -z "$rdma_env" ]] || rdma_args+=(-e "DS41RT_PROTOCOL_V2_VERBS_HOST_DEVICE_MAP=$rdma_env")
 [[ -z "$ib_port" ]] || rdma_args+=(-e "DS41RT_VERBS_APP_IB_PORT_NUM=$ib_port")
@@ -516,7 +524,7 @@ hf_home="${HF_HOME:-$HOME/.cache/huggingface}"
 # (`rank`/`world`/`role`/`intermediate`) observable; without it EnvFilter is
 # ERROR and the readiness line never reaches the container log. This adds no
 # positional argument, so the worker argument contract is unchanged.
-docker run -d --name "$name" --restart no --gpus all --network host --ipc host --ulimit memlock=-1:-1 --device=/dev/infiniband -e "DS41RT_RELEASE_CONFIG_SHA256=$fingerprint" -e "RUST_LOG=${RUST_LOG:-info}" "${rdma_args[@]}" -v "$hf_home:/root/.cache/huggingface:ro" "$image" ds41rt expertd-native --snapshot "/root/.cache/huggingface/$snapshot_rel" --native-lib /opt/ds41rt/lib/libds41rt_native.so --rank "$rank" --world "$world" --capacity "$capacity" --device-budget-bytes "$budget" --first-layer "$first_layer" --listen "0.0.0.0:$port" "${topology_args[@]}" >/dev/null
+docker run -d --name "$name" --restart no --gpus all --network host --ipc host --ulimit memlock=-1:-1 --device=/dev/infiniband -e "DS41RT_RELEASE_CONFIG_SHA256=$fingerprint" -e "RUST_LOG=$rust_log" "${rdma_args[@]}" -v "$hf_home:/root/.cache/huggingface:ro" "$image" ds41rt expertd-native --snapshot "/root/.cache/huggingface/$snapshot_rel" --native-lib /opt/ds41rt/lib/libds41rt_native.so --rank "$rank" --world "$world" --capacity "$capacity" --device-budget-bytes "$budget" --first-layer "$first_layer" --listen "0.0.0.0:$port" "${topology_args[@]}" >/dev/null
 REMOTE
   pids+=("$!")
 done
