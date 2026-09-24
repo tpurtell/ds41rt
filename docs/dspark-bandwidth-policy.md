@@ -57,8 +57,11 @@ installed placement: `3 * 5120 * (2304 / tp) * (0.5 + 1/32)` for MXFP4
 counts. `1/gamma_c` is the effective marginal bandwidth, which absorbs clocks,
 thermal state, occupancy, and quantization-specific kernel efficiency.
 
-Each lane stamps every layer's FFN completion while routes are captured.
-Consecutive stamps give each layer's wall time, and routes give its groups.
+Each lane records a CUDA event at every layer's FFN completion while routes
+are captured (v14; v13 used host timestamps, which device-ordered stages make
+misleading). Consecutive events on the same GPU give each layer's device time,
+and routes give its groups. On two RTX, the first layer after the GPU handoff
+is timed from an entry event recorded when its input arrives.
 One regression per class takes a sample per layer per round. A second
 regression takes the round total minus the layer sum. Both use exponentially
 forgotten sufficient statistics (per-sample decay 0.998 for layers, 0.98 for
