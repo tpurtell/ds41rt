@@ -153,6 +153,9 @@ impl<'a> Wave<'a> {
                 && values.bytes >= rows as usize * 10240,
             "TP2 shared input layer/device/extent differs"
         );
+        // Peer DMA is never queued behind an unresolved dependency: settle any
+        // chained producer of `values` on the host first.
+        crate::v41_memory::chain::settle(self.streams[0].device.library)?;
         let local = values.device_id as usize;
         let remote = 1 - local;
         let upload = &self.streams[remote];
@@ -206,6 +209,7 @@ impl<'a> Wave<'a> {
         destination: usize, rows: u32) -> Result<Ds41rtDeviceBuffer> {
         ensure!(destination < 2 && rows > 0 && rows <= self.capacity
             && source.bytes >= rows as usize * 10240, "invalid TP2 result transfer");
+        crate::v41_memory::chain::settle(self.streams[0].device.library)?;
         let stream = &self.streams[destination];
         let mut output = self.output[destination].buffer;
         output.bytes = rows as usize * 10240;
@@ -270,6 +274,8 @@ impl<'a> Wave<'a> {
         };
         // Do not submit DMA behind an unresolved stream dependency: a blocked
         // copy packet can hold up independent lanes on the shared copy engine.
+        // Chained producers of these inputs are settled on the host as well.
+        crate::v41_memory::chain::settle(upload.device.library)?;
         upload.wait().await?;
         let peer = self.peers[remote].buffers();
         upload.device.run(|| {

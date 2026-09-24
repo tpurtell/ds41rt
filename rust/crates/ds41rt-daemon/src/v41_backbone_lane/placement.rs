@@ -183,7 +183,7 @@ impl<'w, 'a> BackboneLane<'w, 'a> {
         }
         self.layer = layer;
         self.phase = Phase::Prepared;
-        Ok(())
+        device.run(|| { self.record_layer_entry(); Ok(()) })
     }
 }
 

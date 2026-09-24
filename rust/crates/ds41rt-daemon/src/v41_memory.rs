@@ -74,9 +74,11 @@ pub(crate) struct LoadStream<'a> {
 }
 impl LoadStream<'_> {
     /// Rebinding requires a completed owner, not a hidden host-thread wait.
+    #[track_caller]
     pub(crate) fn require_complete(&self) -> Result<()> {
+        let caller = std::panic::Location::caller();
         anyhow::ensure!(unsafe { self.library.cuda_stream_query(self.raw)? },
-            "cannot rebind an unfinished V4.1 stream");
+            "cannot rebind an unfinished V4.1 stream ({}:{})", caller.file(), caller.line());
         Ok(())
     }
     /// Yield the owner thread while retaining stream/buffer ownership. Cancellation

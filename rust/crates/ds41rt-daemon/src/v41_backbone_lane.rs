@@ -449,11 +449,15 @@ struct LayerEvents<'a> {
     library: &'a NativeLibrary,
     events: Vec<*mut std::ffi::c_void>,
     recorded: Vec<bool>,
+    /// Recorded when a layer's input arrives from the other GPU, so the first
+    /// layer after a handoff has a same-GPU start.
+    entry: *mut std::ffi::c_void,
+    entry_layer: Option<usize>,
 }
 impl<'a> LayerEvents<'a> {
     fn new(library: &'a NativeLibrary) -> Result<Self> {
-        let mut events = Vec::with_capacity(40);
-        for _ in 0..40 {
+        let mut events = Vec::with_capacity(41);
+        for _ in 0..41 {
             match library.cuda_event_create() {
                 Ok(event) => events.push(event),
                 Err(error) => {
@@ -462,12 +466,13 @@ impl<'a> LayerEvents<'a> {
                 }
             }
         }
-        Ok(Self { library, events, recorded: vec![false; 40] })
+        let entry = events.pop().expect("entry event");
+        Ok(Self { library, events, recorded: vec![false; 40], entry, entry_layer: None })
     }
 }
 impl Drop for LayerEvents<'_> {
     fn drop(&mut self) {
-        for &event in &self.events {
+        for &event in self.events.iter().chain([&self.entry]) {
             if let Err(error) = unsafe { self.library.cuda_event_destroy(event) } {
                 tracing::error!(%error, "destroying layer timing event");
             }
@@ -884,9 +889,15 @@ impl<'w, 'a> BackboneLane<'w, 'a> {
             self.route_capture.resize_with(40, Vec::new);
             for rows in &mut self.route_capture { rows.clear(); }
             self.layer_events.recorded.fill(false);
+            self.layer_events.entry_layer = None;
         }
     }
     pub fn captured_routes(&self) -> &[Vec<[u32; 6]>] { &self.route_capture }
+    /// Opt-in TP2 attention or projection owners, whose peer transfers are
+    /// host-ordered and therefore not stage-chained.
+    pub fn uses_peer_projection(&self) -> bool {
+        self.dual_sparse.is_some() || self.tp2_query.is_some() || self.tp2_output.is_some()
+    }
     /// FFN completion instants of the captured pass, per layer.
     /// Device time from layer `from`'s FFN finish to layer `to`'s, for a
     /// captured pass whose work has completed.
@@ -896,11 +907,38 @@ impl<'w, 'a> BackboneLane<'w, 'a> {
         unsafe { events.library.cuda_event_elapsed_ms(events.events[from], events.events[to]) }
             .ok().map(|ms| f64::from(ms) * 1e3)
     }
+    /// Device time from the handoff arrival of `layer` to its FFN finish.
+    pub fn entry_elapsed_us(&self, layer: usize) -> Option<f64> {
+        let events = &self.layer_events;
+        if events.entry_layer != Some(layer) || !*events.recorded.get(layer)? { return None; }
+        unsafe { events.library.cuda_event_elapsed_ms(events.entry, events.events[layer]) }
+            .ok().map(|ms| f64::from(ms) * 1e3)
+    }
+    /// Mark the arrival of the current layer's input from the other GPU.
+    pub(crate) fn record_layer_entry(&mut self) {
+        if !self.capture_routes { return; }
+        let layer = self.layer;
+        let event = self.layer_events.entry;
+        if self.record_timing_event(event) { self.layer_events.entry_layer = Some(layer); }
+    }
+    fn record_timing_event(&self, event: *mut std::ffi::c_void) -> bool {
+        let stream = self.block.finish_stream();
+        let library = self.layer_events.library;
+        if unsafe { library.cuda_event_record(event, stream) }.is_err() { return false; }
+        // Unchained passes drained this stream and later rebinds require it
+        // idle; the event completes at once, so wait for it here.
+        if !crate::v41_memory::chain::active() {
+            if let Err(error) = unsafe { library.cuda_event_synchronize(event) } {
+                tracing::warn!(%error, "layer timing event wait failed");
+            }
+        }
+        true
+    }
     fn record_layer_finish(&mut self) {
         if !self.capture_routes { return; }
         let layer = self.layer;
-        let stream = self.block.finish_stream();
-        if unsafe { self.layer_events.library.cuda_event_record(self.layer_events.events[layer], stream) }.is_ok() {
+        let event = self.layer_events.events[layer];
+        if self.record_timing_event(event) {
             self.layer_events.recorded[layer] = true;
         }
     }

@@ -41,6 +41,8 @@ impl<'a> BlockTransfer<'a> {
             "block transfer devices or extents differ"
         );
         let device = self.destination.device;
+        // Peer DMA never waits on an unresolved event; settle chained producers.
+        crate::v41_memory::chain::settle(device.library)?;
         let queued = device.run(|| {
             for (source, destination) in sources.into_iter().zip(destinations) {
                 unsafe {

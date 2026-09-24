@@ -2137,10 +2137,12 @@ mod sampling_tests {
                 crate::v41_target_pass::VerificationTarget<'static>>::SUPPORTS_SAMPLED_TERMINAL,
             "TargetPass implements the sampled terminal"
         );
+        // v14: the distributed layout assembles both vocabulary halves on the
+        // head GPU and runs the same sampler.
         assert!(
-            !<crate::v41_target_pass::DistributedTargetPass<'static, 'static> as
+            <crate::v41_target_pass::DistributedTargetPass<'static, 'static> as
                 crate::v41_target_pass::VerificationTarget<'static>>::SUPPORTS_SAMPLED_TERMINAL,
-            "the distributed layout has no sampled terminal"
+            "the distributed layout implements the sampled terminal"
         );
         // The gate is capability AND "some row is device-servable". A
         // stochastic round is no longer a reason to move the whole round to the

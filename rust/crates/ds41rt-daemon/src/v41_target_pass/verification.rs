@@ -109,6 +109,23 @@ impl<'a> VerificationTarget<'a> for TargetPass<'_, 'a> {
 
 impl<'a> VerificationTarget<'a> for DistributedTargetPass<'_, 'a> {
     type Transport = DeviceOwner<'a, NativeTp4Wave<'a>>;
+    const SUPPORTS_SAMPLED_TERMINAL: bool = true;
+    async unsafe fn execute_shared_sampled(&mut self, requests: &RefCell<&mut Requests<'a>>,
+        batch: &mut RequestBatch, transport: &mut Self::Transport, placement: u64,
+        selected: &[usize], sampling: &[TargetSamplingRowRequest], masks: Option<&[u32]>,
+        mask_words: usize, ordered_rows: bool) -> Result<()> {
+        anyhow::ensure!(batch.cache()?.stage() == CacheStage::Full, "verification requires full phase");
+        self.mark_verification();
+        unsafe {
+            self.execute(requests, batch, transport, placement, selected, None, None, false).await?;
+            self.sample_head(sampling, masks, mask_words, ordered_rows).await
+        }
+    }
+    fn sampled_rows(&mut self) -> Result<SampledTargetRows> { self.take_sampled() }
+    async fn download_sampled_rows(&mut self, rows: &SampledTargetRows,
+        selection: &[usize]) -> Result<Vec<u8>> {
+        self.download_sampled(rows, selection).await
+    }
     fn set_route_capture(&mut self, enabled: bool) -> Result<()> {
         DistributedTargetPass::set_route_capture(self, enabled)
     }
@@ -118,12 +135,14 @@ impl<'a> VerificationTarget<'a> for DistributedTargetPass<'_, 'a> {
         batch: &mut RequestBatch, transport: &mut Self::Transport, placement: u64,
         selected: &[usize]) -> Result<()> {
         anyhow::ensure!(batch.cache()?.stage() == CacheStage::Full, "verification requires full phase");
+        self.mark_verification();
         unsafe { self.execute(requests, batch, transport, placement, selected, None, None, false).await }
     }
     async unsafe fn execute_shared_greedy(&mut self, requests: &RefCell<&mut Requests<'a>>,
         batch: &mut RequestBatch, transport: &mut Self::Transport, placement: u64,
         selected: &[usize]) -> Result<Vec<(u32, f32)>> {
         anyhow::ensure!(batch.cache()?.stage() == CacheStage::Full, "verification requires full phase");
+        self.mark_verification();
         unsafe { self.execute(requests, batch, transport, placement, selected, None, None, true).await?; }
         self.greedy_output(batch)
     }

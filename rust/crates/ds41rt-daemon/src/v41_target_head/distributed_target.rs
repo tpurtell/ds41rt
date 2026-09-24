@@ -85,7 +85,17 @@ pub(crate) struct DistributedTargetLogits<'a> {
     pub binding: QueryBinding,
 }
 
+/// Device sampling for the split head: both vocabulary halves are assembled
+/// into full rows on the head GPU, then the single-GPU target sampler runs.
+struct HeadSampler<'a> {
+    assembled: DeviceOwner<'a, DeviceAllocation<'a>>,
+    wave: DeviceOwner<'a, TargetSamplingWave<'a>>,
+    stream: Stream<'a>,
+    download: DeviceOwner<'a, crate::v41_memory::RowDownload<'a>>,
+}
+
 pub(crate) struct DistributedTargetHead<'w, 'a> {
+    sampler: HeadSampler<'a>,
     normalize: DeviceOwner<'a, Normalize<'w, 'a>>,
     vocabulary: DistributedVocabularyWave<'w, 'a>,
     download: Stream<'a>,
@@ -100,7 +110,8 @@ pub(crate) struct DistributedTargetHead<'w, 'a> {
 impl<'w, 'a> DistributedTargetHead<'w, 'a> {
     pub fn device_bytes(capacity: usize, split: usize) -> Result<[usize; 2]> {
         let mut bytes = DistributedVocabularyWave::device_bytes(capacity, split)?;
-        bytes[1] += capacity * INPUT_STRIDES.iter().sum::<usize>();
+        bytes[1] += capacity * INPUT_STRIDES.iter().sum::<usize>()
+            + capacity * 129280 * 4 + TargetSamplingWave::device_bytes(capacity);
         Ok(bytes)
     }
     pub fn new(devices: [Device<'a>; 2], weights: &'w TargetHeadWeights<'a>,
@@ -112,9 +123,16 @@ impl<'w, 'a> DistributedTargetHead<'w, 'a> {
             devices[1].own(|| crate::v41_memory::RowDownload::new(devices[1].library, capacity * vocabulary[1].tokens().len() * 4))?,
         ];
         let normalize = devices[1].own(|| Normalize::new(weights, capacity))?;
+        let sampler_bytes = capacity * 129280 * 4 + TargetSamplingWave::device_bytes(capacity);
         let vocabulary = DistributedVocabularyWave::new(devices, vocabulary, capacity,
-            [budgets[0], budgets[1] - capacity * INPUT_STRIDES.iter().sum::<usize>()])?;
-        Ok(Self { normalize, vocabulary, download: Stream::new(devices[1])?,
+            [budgets[0], budgets[1] - capacity * INPUT_STRIDES.iter().sum::<usize>() - sampler_bytes])?;
+        let sampler = HeadSampler {
+            assembled: devices[1].own(|| DeviceAllocation::new(devices[1].library, capacity * 129280 * 4))?,
+            wave: devices[1].own(|| TargetSamplingWave::new(devices[1].library, capacity))?,
+            stream: Stream::new(devices[1])?,
+            download: devices[1].own(|| crate::v41_memory::RowDownload::new(devices[1].library, capacity * 129280 * 4))?,
+        };
+        Ok(Self { sampler, normalize, vocabulary, download: Stream::new(devices[1])?,
             staging: HostAllocation::new(devices[1].library, capacity * 8)?, rank_downloads, capacity,
             binding: None, selected: Vec::with_capacity(capacity), tokens: Vec::with_capacity(capacity),
             greedy: Vec::with_capacity(capacity) })
@@ -139,6 +157,9 @@ impl<'w, 'a> DistributedTargetHead<'w, 'a> {
             && block.residual.bytes == block.tokens.len() * 40960 && block.pre.bytes == block.tokens.len() * 16
             && block.residual.device_id == device.id && block.pre.device_id == device.id,
             "distributed target head block or selected rows differ");
+        // The TP2 vocabulary projection moves rows between GPUs with host-ordered
+        // copies; settle a chained final layer first (one wait per pass).
+        crate::v41_memory::chain::settle(device.library)?;
         device.future(unsafe { self.normalize.get_mut().execute(block, selected) }).await?;
         let normalized = self.normalize.buffers[3].buffer;
         unsafe { self.vocabulary.execute(normalized, selected.len()).await?; }
@@ -163,6 +184,46 @@ impl<'w, 'a> DistributedTargetHead<'w, 'a> {
         Ok(())
     }
     pub fn device(&self) -> Device<'a> { self.normalize.device }
+    /// Select every row of the completed (non-greedy) head pass on the device:
+    /// assemble the two vocabulary halves into full rows on the head GPU and run
+    /// the target sampler there, downloading only ids/scores/status.
+    /// # Safety
+    /// `execute_block_with_greedy(.., false)` completed for these rows; the
+    /// head's logits stay immutable until this returns.
+    pub async unsafe fn sample(&mut self, requests: &[TargetSamplingRowRequest], masks: Option<&[u32]>,
+        mask_words: usize, ordered_rows: bool) -> Result<SampledTargetRows> {
+        let rows = self.selected.len();
+        ensure!(self.binding.is_some() && rows > 0 && requests.len() == rows,
+            "distributed sampling requests must match the head rows");
+        let shards = self.vocabulary.logits()?;
+        let widths = [shards[0].bytes / rows / 4, shards[1].bytes / rows / 4];
+        ensure!(widths[0] + widths[1] == 129280 && shards[1].device_id == self.sampler.stream.device.id,
+            "distributed vocabulary halves differ from the sampler layout");
+        let device = self.sampler.stream.device;
+        let assembled = part(self.sampler.assembled.buffer, 0, rows * 129280 * 4)?;
+        let stream = self.sampler.stream.raw;
+        let wave = self.sampler.wave.get_mut();
+        let queued = device.run(|| unsafe {
+            for row in 0..rows {
+                device.library.copy_peer_async(part(assembled, row * 129280 * 4, widths[0] * 4)?,
+                    part(shards[0], row * widths[0] * 4, widths[0] * 4)?, widths[0] * 4, stream)?;
+                device.library.copy_d2d_async(part(assembled, (row * 129280 + widths[0]) * 4, widths[1] * 4)?,
+                    part(shards[1], row * widths[1] * 4, widths[1] * 4)?, widths[1] * 4, stream)?;
+            }
+            wave.upload(requests, masks, mask_words, stream)?;
+            wave.launch(assembled, rows, ordered_rows, stream)
+        });
+        let drained = self.sampler.stream.wait().await;
+        queued.and(drained)?;
+        device.run(|| self.sampler.wave.get_mut().output(assembled, rows))
+    }
+    /// Full logits of selected sampled rows, from the assembled head rows.
+    pub async fn download_sampled(&mut self, rows: &SampledTargetRows, selection: &[usize]) -> Result<Vec<u8>> {
+        ensure!(!selection.is_empty(), "sampled row download selection is empty");
+        let download = &mut self.sampler.download;
+        let device = download.device;
+        device.future(unsafe { download.get_mut().rows(rows.logits, 129280 * 4, selection) }).await
+    }
     pub fn output(&self) -> Result<DistributedTargetLogits<'_>> {
         let binding = self.binding()?;
         let rows = self.selected.len();

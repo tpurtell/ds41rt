@@ -38,6 +38,11 @@ pub(crate) struct DistributedTargetPass<'w, 'a> {
     state: State,
     capture_routes: bool,
     route_capture: Vec<Vec<[u32; 6]>>,
+    /// Device-side stage ordering across both GPUs (see `v41_memory::chain`),
+    /// used for verification passes only.
+    chain: Option<crate::v41_memory::chain::StageChain<'a>>,
+    verification: bool,
+    sampled: Option<crate::v41_target_head::SampledTargetRows>,
     #[cfg(test)]
     trace: bool,
     #[cfg(test)]
@@ -140,6 +145,9 @@ impl<'w, 'a> DistributedTargetPass<'w, 'a> {
             lanes[0].device.own(|| crate::v41_memory::DeviceAllocation::new(device.library, 60 * 16 * 131072))?,
             lanes[1].device.own(|| crate::v41_memory::DeviceAllocation::new(device.library, 60 * 16 * 131072))?,
         ];
+        let chain = crate::v41_memory::chain::enabled()
+            .then(|| crate::v41_memory::chain::StageChain::on_devices(lanes[0].device.library, &[0, 1]))
+            .transpose()?;
         let mut lanes = lanes;
         // Reserve host history at planning time. The per-layer IDs are already
         // present in each router's completed pinned staging; collecting them
@@ -162,6 +170,9 @@ impl<'w, 'a> DistributedTargetPass<'w, 'a> {
             state: State::Idle,
             capture_routes: false,
             route_capture: (0..40).map(|_| Vec::with_capacity(4096)).collect(),
+            chain,
+            verification: false,
+            sampled: None,
             #[cfg(test)]
             trace: false,
             #[cfg(test)]
@@ -193,15 +204,36 @@ impl<'w, 'a> DistributedTargetPass<'w, 'a> {
         Ok(())
     }
     pub fn captured_routes(&self) -> &[Vec<[u32; 6]>] { &self.route_capture }
-    /// Device time per layer between FFN finishes on the same GPU; intervals
-    /// that cross GPUs are not measurable with one clock and stay unmeasured.
+    /// The next `execute` is a verification pass (consumed by that call).
+    pub(crate) fn mark_verification(&mut self) { self.verification = true; }
+    /// Device-select the rows of a completed non-greedy verification pass.
+    /// # Safety
+    /// The pass completed with `greedy = false` and its head is unconsumed.
+    pub(crate) async unsafe fn sample_head(&mut self,
+        requests: &[crate::v41_target_head::TargetSamplingRowRequest], masks: Option<&[u32]>,
+        mask_words: usize, ordered_rows: bool) -> Result<()> {
+        self.sampled = None;
+        let rows = unsafe { self.head.sample(requests, masks, mask_words, ordered_rows).await? };
+        self.sampled = Some(rows);
+        Ok(())
+    }
+    pub(crate) fn take_sampled(&mut self) -> Result<crate::v41_target_head::SampledTargetRows> {
+        self.sampled.take().context("distributed pass has no sampled rows")
+    }
+    pub(crate) async fn download_sampled(&mut self, rows: &crate::v41_target_head::SampledTargetRows,
+        selection: &[usize]) -> Result<Vec<u8>> {
+        self.head.download_sampled(rows, selection).await
+    }
+    /// Device time per layer between FFN finishes on the same GPU. The first
+    /// layer after a GPU handoff is timed from its input's arrival (one clock
+    /// per GPU), which omits only the peer transfer itself.
     pub fn captured_layer_us(&self) -> Vec<Option<f64>> {
         (0..40usize).map(|layer| {
             let previous = layer.checked_sub(1)?;
             let (a, b) = (self.map.attention(previous).ok()?, self.map.attention(layer).ok()?);
-            if a != b { return None; }
             let lane = &self.lanes[b];
-            lane.device.run(|| Ok(lane.layer_elapsed_us(previous, layer))).ok().flatten()
+            lane.device.run(|| Ok(if a == b { lane.layer_elapsed_us(previous, layer) }
+                else { lane.entry_elapsed_us(layer) })).ok().flatten()
         }).collect()
     }
     pub fn reserve_sparse_decode_rows(&mut self, rows: usize) -> Result<()> {
@@ -240,6 +272,31 @@ impl<'w, 'a> DistributedTargetPass<'w, 'a> {
     /// concurrent request lane owns a separate pass and transport. The caller
     /// retains suffix/head/model owners through completion or drained cancellation.
     pub async unsafe fn execute(
+        &mut self,
+        requests: &std::cell::RefCell<&mut Requests<'a>>,
+        batch: &mut RequestBatch,
+        transport: &mut DeviceOwner<'a, NativeTp4Wave<'a>>,
+        placement: u64,
+        selected: &[usize],
+        suffix: Option<&mut DeviceOwner<'a, EncoderSuffix<'a>>>,
+        encoder: Option<&BlockOutput<'_>>,
+        greedy: bool,
+    ) -> Result<()> {
+        // Verification passes run with device-ordered stages. Peer-projection
+        // modes (TP2 attention/query/output, all opt-in) keep host drains.
+        let chained = std::mem::replace(&mut self.verification, false)
+            && !self.lanes.iter().any(|lane| lane.uses_peer_projection());
+        let Some(handle) = self.chain.as_ref().filter(|_| chained).map(|chain| chain.handle()) else {
+            return unsafe { self.execute_unchained(requests, batch, transport, placement, selected,
+                suffix, encoder, greedy).await };
+        };
+        self.chain.as_ref().unwrap().drain()?;
+        let result = unsafe { handle.scope(self.execute_unchained(requests, batch, transport, placement,
+            selected, suffix, encoder, greedy)).await };
+        let drained = self.chain.as_ref().unwrap().drain();
+        result.and(drained)
+    }
+    async unsafe fn execute_unchained(
         &mut self,
         requests: &std::cell::RefCell<&mut Requests<'a>>,
         batch: &mut RequestBatch,
