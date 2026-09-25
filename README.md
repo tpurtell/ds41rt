@@ -8,6 +8,14 @@ The historical official-image v6 campaign used an enforced **400 W power limit**
 
 [![DS41RT native execution across RTX coordinators and four expert workers](docs/native-path-execution.svg)](docs/native-path-execution.svg)
 
+## Realtime dashboard
+
+Opening the API address in a browser (`GET /`) shows the live engine console: throughput, lane occupancy, KV and host-offload use, pipeline micro-step timings and dSpark acceptance by draft position. The time view draws every verification round per request, with accepted, rejected and unverified drafts stacked by draft position; the text view streams each request's output with the drafter's rejected guesses above the line. The text view is off unless the server runs with `--console-text`; see [Runtime options](#runtime-options).
+
+[![DS41RT engine console, time view: per-round verification lanes, pipeline micro-steps and dSpark acceptance](docs/console-timeline.jpg)](docs/console-timeline.jpg)
+
+[![DS41RT engine console, text view: each request's output colored by accepted drafts and target tokens, with rejected guesses above the line](docs/console-text.jpg)](docs/console-text.jpg)
+
 ## Performance
 
 The official full checkpoint remains the default. Its **decode** measurements are the [v14 campaign](docs/release-v14-performance.md) on the published v14 images, which shorten the verification cycle (device-ordered stages, overlapped cache producers, a two-RTX device sampler); v15 changes decode only for grammar-constrained requests, and its [schema-JSON rows](docs/release-v15-notes.md#evaluation) were remeasured on the published v15 images; its prefill, deployment, startup and memory tables remain the historical [v6 campaign](docs/release-v6-performance.md), **not re-campaigned since**, apart from a [v7 regression check](docs/release-v7-official-regression.md) that confirms the default path is unchanged: the published v7 images reproduce the v6 deployment geometry exactly and measure 1x C1 code decode at **134.38** against the recorded 130.41. The new NVFP4 and EXL3 measurements use the v7 raw-result package; their reports below distinguish recorded controls from outstanding provenance and qualification.
